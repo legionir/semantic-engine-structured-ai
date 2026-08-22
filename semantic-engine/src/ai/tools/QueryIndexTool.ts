@@ -5,6 +5,7 @@
  * files, symbols, call_graph, type_graph, dependency_graph, reverse_dependency_graph
  */
 
+import * as path from 'path';
 import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { applyQueryPolicy, validateDatabasePath } from './queryPolicy';
 
@@ -54,7 +55,7 @@ export class QueryIndexTool implements AiTool<QueryIndexInput> {
     type: 'object',
     properties: {
       sqlitePath: { type: 'string', description: 'Path to project-index.sqlite' },
-      sql: { type: 'string', description: 'SELECT query' },
+      sql: { type: 'string', description: 'Read-only SELECT. symbols uses file_id; join files on files.id = symbols.file_id when you need a path.' },
       params: { type: 'array', default: [], description: 'Query parameters' },
       limit: { type: 'integer', default: 100 },
     },
@@ -72,7 +73,17 @@ export class QueryIndexTool implements AiTool<QueryIndexInput> {
       ),
     };
 
-    const pathCheck = validateDatabasePath(input.sqlitePath, policy);
+    /* Paths coming from an MCP client are commonly relative to the
+       artifact directory (for example `project-index.sqlite`). Resolving
+       them before policy validation both makes that contract useful and
+       keeps the security check on the final path, not on process.cwd(). */
+    const databasePath = path.isAbsolute(input.sqlitePath)
+      ? input.sqlitePath
+      : policy.allowedRoot
+        ? path.resolve(policy.allowedRoot, input.sqlitePath)
+        : input.sqlitePath;
+
+    const pathCheck = validateDatabasePath(databasePath, policy);
     if (!pathCheck.ok) {
       return { success: false, error: pathCheck.error, items: [] };
     }
@@ -94,7 +105,7 @@ export class QueryIndexTool implements AiTool<QueryIndexInput> {
     }
 
     try {
-      const db = await this.openDatabase(sqlite, input.sqlitePath);
+      const db = await this.openDatabase(sqlite, databasePath);
       try {
         const rows = await this.query(db, queryCheck.sql, input.params ?? []);
         const items = rows.map((row, index) => ({

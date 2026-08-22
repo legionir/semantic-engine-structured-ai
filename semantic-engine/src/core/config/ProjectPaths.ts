@@ -127,7 +127,16 @@ export function workspaceRootFromIndex(
   index: { readonly rootPath?: string },
   indexPath: string
 ): string {
-  return normalizeWorkspaceRoot(
-    index.rootPath || workspaceRootFromIndexPath(indexPath)
-  );
+  /* `rootPath` can point to the machine that produced a committed index.
+     Use it only while it still exists; otherwise the index location is the
+     portable source of truth. An explicit CLI --root is handled by callers
+     before this function and remains authoritative. */
+  const persistedRoot =
+    index.rootPath &&
+    path.isAbsolute(index.rootPath) &&
+    fs.existsSync(index.rootPath)
+      ? index.rootPath
+      : workspaceRootFromIndexPath(indexPath);
+
+  return normalizeWorkspaceRoot(persistedRoot);
 }

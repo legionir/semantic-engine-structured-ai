@@ -41,6 +41,7 @@
 import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
 import { GraphQueryEngine, VisitedNode } from '../../graphs/GraphQueryEngine';
+import { resolveFileOrSymbolId } from './resolveIndexEntity';
 
 export interface ImpactAnalysisInput extends AiToolInput {
   readonly id: string;
@@ -61,7 +62,7 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
   readonly inputSchema = {
     type: 'object',
     properties: {
-      id: { type: 'string', description: 'fileId or symbolId' },
+      id: { type: 'string', description: 'fileId, symbolId, or indexed relative file path' },
       level: { enum: ['file', 'symbol', 'any'], default: 'file' },
       depth: { type: 'integer', default: 2 },
       limit: { type: 'integer', default: 30 },
@@ -83,6 +84,7 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
       const depth = Math.min(input.depth ?? 2, 3);
       const limit = input.limit ?? 30;
       const level = input.level ?? 'file';
+      const resolvedId = resolveFileOrSymbolId(this.reader, input.id) ?? input.id;
 
       /*
       | ساخت گراف یک بار برای کل عمر ابزار. رجیستری ابزارها با هر
@@ -97,7 +99,7 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
       | پیمایش بریده شود. سقف را سخاوتمندانه از `limit` بزرگ‌تر
       | می‌گیریم تا مرتب‌سازی روی مجموعه‌ای معنادار انجام شود.
       */
-      const traversal = engine.ancestors(input.id, {
+      const traversal = engine.ancestors(resolvedId, {
         depth,
         minConfidence: input.minConfidence ?? 70,
         maxNodes: Math.max(limit * 10, 200),
