@@ -65,7 +65,7 @@ function binaryPath() {
 
     const localBin =
         path.join(
-            __dirname, "..", "..", "semantic-engine", "bin", "semantic-engine.js"
+            __dirname, "..", "..", "..", "semantic-engine", "bin", "semantic-engine.js"
         );
 
     if (fs.existsSync(localBin)) {

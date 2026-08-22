@@ -32,7 +32,10 @@ const {
 
 const memoryStore = require("./lib/memory");
 
-const { _skillIndex: skillIndex } = require("./tools/skills");
+const {
+    _skillIndex: skillIndex,
+    _isActiveSkill: isActiveSkill
+} = require("./tools/skills");
 
 const archive = require("./lib/archive");
 const hookRegistry = require("./lib/hooks");
@@ -2192,7 +2195,10 @@ function resolveSkills(skillNames) {
             name =>
                 SKILL_REGISTRY_OF().get(name)
         )
-        .filter(Boolean);
+        .filter(
+            skill =>
+                skill && isActiveSkill(skill)
+        );
 }
 
 
