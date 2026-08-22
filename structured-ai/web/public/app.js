@@ -45,7 +45,8 @@ const state = {
     mcpOpening: false,
     settings: [],
     logFilter: "",
-    logType: ""
+    logType: "",
+    openExecutionKeys: new Set()
 };
 
 
@@ -848,6 +849,63 @@ function updateWaitingElapsed() {
 }
 
 
+/*
+| Older session files did not store turn_id on reasoning messages. Recovering
+| it from the nearest preceding user message lets those sessions use the new
+| per-iteration renderer too, instead of falling back to one aggregate box.
+*/
+function normalizeConversationMessage(message, previous = state.messages) {
+
+    if (!message || typeof message !== "object") {
+        return message;
+    }
+
+    const normalized = { ...message };
+
+    if (
+        normalized.role !== "assistant" ||
+        !["model", "thinking"].includes(normalized.kind)
+    ) {
+        return normalized;
+    }
+
+    if (!normalized.turn_id && normalized.execution_key) {
+        normalized.turn_id = String(normalized.execution_key).split("|")[0];
+    }
+
+    if (!normalized.turn_id) {
+
+        for (let index = previous.length - 1; index >= 0; index--) {
+
+            const candidate = previous[index];
+
+            if (candidate.role === "user" && candidate.turn_id) {
+                normalized.turn_id = candidate.turn_id;
+                break;
+            }
+        }
+    }
+
+    if (normalized.turn_id && !normalized.execution_key) {
+        normalized.execution_key = messageExecutionKey(normalized);
+    }
+
+    return normalized;
+}
+
+
+function normalizeConversationMessages(messages) {
+
+    const normalized = [];
+
+    for (const message of Array.isArray(messages) ? messages : []) {
+        normalized.push(normalizeConversationMessage(message, normalized));
+    }
+
+    return normalized;
+}
+
+
 function renderChat() {
 
     const container = el("chat");
@@ -857,6 +915,16 @@ function renderChat() {
     }
 
     state.waitingElapsed = null;
+
+    /* Preserve blocks the operator explicitly expanded when a newly arrived
+       reasoning message causes the chat to be rebuilt. */
+    for (const existing of container.querySelectorAll("details.turn-execution")) {
+        const key = existing.getAttribute("data-execution-key");
+        if (!key) continue;
+        if (existing.open) state.openExecutionKeys.add(key);
+        else state.openExecutionKeys.delete(key);
+    }
+
     container.innerHTML = "";
 
     if (state.messages.length === 0) {
@@ -868,10 +936,10 @@ function renderChat() {
 
         /*
         | A single user turn can contain many model messages. Build one
-        | execution key per assistant response (agent + iteration), then
-        | attach the matching tool events to that response. The old UI used
-        | only turn_id here, which merged fs_list, fs_read, and every other
-        | tool in the turn into one box.
+        | execution block per assistant response (agent + iteration), and
+        | place it immediately before the reasoning/action message that
+        | produced it. The previous implementation keyed only by turn_id,
+        | so every iteration was merged into one large block.
         */
         const assistantTurns = new Set(
             state.messages
@@ -883,26 +951,16 @@ function renderChat() {
                 .map(message => message.turn_id)
         );
 
-        const modelKeys = new Set(
-            state.messages
-                .filter(message =>
-                    message.role === "assistant" &&
-                    message.kind === "model"
-                )
-                .map(message => messageExecutionKey(message))
-                .filter(Boolean)
-        );
-
         const renderedExecutions = new Set();
 
         for (const message of state.messages) {
 
-            container.appendChild(bubble(message));
+            const isExecutionMessage =
+                message.role === "assistant" &&
+                ["model", "thinking"].includes(message.kind);
 
             const key =
-                message.kind === "model" ||
-                (message.kind === "thinking" &&
-                    !modelKeys.has(messageExecutionKey(message)))
+                isExecutionMessage
                     ? messageExecutionKey(message)
                     : null;
 
@@ -911,11 +969,24 @@ function renderChat() {
                 const block = turnExecutionBlock(key);
 
                 if (block) {
+                    /* The raw structured model envelope is retained in the
+                       session for diagnostics, but is not a user-facing
+                       bubble. The execution block belongs before reasoning
+                       so each AI step reads as one unit. */
                     container.appendChild(block);
                     renderedExecutions.add(key);
                 }
+            }
 
-            } else if (
+            /* The provider's raw content is the action protocol JSON, not a
+               useful chat message. Final response and thinking bubbles are
+               rendered normally; model envelopes stay available in Events
+               and session storage without polluting the conversation. */
+            if (message.kind !== "model") {
+                container.appendChild(bubble(message));
+            }
+
+            if (
                 message.role === "user" &&
                 message.turn_id &&
                 !assistantTurns.has(message.turn_id)
@@ -1028,24 +1099,41 @@ function turnEventsOf(executionKey) {
 
 function turnSummaryText(events) {
 
-    const toolStarts =
-        events.filter(e => e.type === "tool:start").length;
+    /* Count calls by id, not lifecycle events. A tool has a start and an end,
+       but it is still one call. This also remains correct for a result event
+       that arrives without a start after reconnect/replay. */
+    const calls = new Map();
 
-    const actions =
-        events.filter(e => e.type === "agent:action");
+    for (const event of events) {
 
-    const actionsText =
-        actions.length > 0
-            ? actions.map(a => a.action).join(", ")
-            : "";
+        if (event.type !== "tool:start" && event.type !== "tool:end") {
+            continue;
+        }
 
-    const malformed =
-        events.filter(e => e.type === "run:malformed").length;
+        const id =
+            event.id || `${event.name || "tool"}-${calls.size + 1}`;
+
+        const call = calls.get(id) || { success: null };
+
+        if (event.type === "tool:end") {
+            call.success = event.success === true;
+        }
+
+        calls.set(id, call);
+    }
+
+    const success =
+        [...calls.values()].filter(call => call.success === true).length;
+
+    const fail =
+        [...calls.values()].filter(call => call.success === false).length;
+
+    const retried =
+        events.filter(event => event.type === "run:malformed").length;
 
     return (
-        `execution · ${toolStarts} tool call(s)${
-            actionsText ? ` · ${actionsText}` : ""
-        }${malformed ? ` · ${malformed} retried` : ""}`
+        `execution · ${calls.size} tool call(s) · ${success} success · ` +
+        `${fail} fail · ${retried} retried`
     );
 }
 
@@ -1109,9 +1197,14 @@ function turnExecutionBlock(executionKey) {
         details.setAttribute("data-turn-id", turnId);
     }
 
-    /* Tool activity is important feedback, not an empty one-line summary.
-       It remains collapsible, but starts open so a running task is legible. */
-    details.open = true;
+    /* Keep the block collapsible and closed by default. CSS must not impose
+       a fixed height: when the user clicks the summary, the full body can
+       expand normally. */
+    details.open = state.openExecutionKeys.has(executionKey);
+    details.addEventListener("toggle", () => {
+        if (details.open) state.openExecutionKeys.add(executionKey);
+        else state.openExecutionKeys.delete(executionKey);
+    });
 
     details.appendChild(
         node("summary", null, turnSummaryText(events))
@@ -2111,7 +2204,7 @@ function applySession(session) {
 
     resetRun(true);
 
-    state.messages = session.messages || [];
+    state.messages = normalizeConversationMessages(session.messages);
 
     state.session = {
         id: session.id,
@@ -2852,6 +2945,7 @@ function resetRun(clearArchive = false) {
     state.hooks.clear();
     state.hookOrder = [];
     state.currentTask = null;
+    state.openExecutionKeys.clear();
 
     if (clearArchive) {
         el("executionArchive").innerHTML = "";
@@ -2861,7 +2955,9 @@ function resetRun(clearArchive = false) {
 
 function pushMessage(message) {
 
-    state.messages.push(message);
+    state.messages.push(
+        normalizeConversationMessage(message)
+    );
 
     renderChat();
 }
@@ -3393,10 +3489,7 @@ function applySnapshot(snapshot) {
 
     el("autoContinue").checked = Boolean(snapshot.auto_continue);
 
-    state.messages =
-        Array.isArray(snapshot.messages)
-            ? snapshot.messages
-            : [];
+    state.messages = normalizeConversationMessages(snapshot.messages);
 
     state.session = snapshot.session || null;
 
