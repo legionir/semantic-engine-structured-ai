@@ -1,0 +1,783 @@
+{
+  "version": "1",
+  "updated_at": "2026-08-22T13:50:09.454Z",
+  "next_id": 39,
+  "next_segment": 1,
+  "records": [
+    {
+      "id": "e1",
+      "ts": "2026-08-22T13:09:13.562Z",
+      "last_seen": "2026-08-22T13:09:13.562Z",
+      "run": "run-2026-08-22T13-09-01-338Z",
+      "agent": "main_agent",
+      "tool": "fs_tree",
+      "kind": "inspection",
+      "title": "fs_tree .",
+      "tags": [
+        "fs_tree",
+        "."
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"tree\",\"success\":true,\"result\":{\"path\":\".\",\"max_depth\":3,\"directories\":59,\"files\":87,\"depth_truncated\":true,\"tree\":[{\"name\":\".agent\",\"type\":\"directory\",\"children\":[{\"name\":\"eventstore\",\"type\":\"directory\",\"children\":[{\"name\":\"2026-08-2…",
+      "chars": 4001,
+      "seen": 1,
+      "hash": "4f97184e7d1a0d95",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e2",
+      "ts": "2026-08-22T13:09:13.562Z",
+      "last_seen": "2026-08-22T13:09:13.562Z",
+      "run": "run-2026-08-22T13-09-01-338Z",
+      "agent": "main_agent",
+      "tool": "git_status",
+      "kind": "inspection",
+      "title": "git_status",
+      "tags": [
+        "git_status"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"git_status\",\"success\":true,\"result\":{\"cwd\":\".\",\"command\":\"git status --short --branch\",\"stdout\":\"## arena/01a0295c-semantic-engine-structured-ai...semantic-engine-structured-ai/arena/01a0295c-semantic-engine-structured-ai\\n M .agent/…",
+      "chars": 397,
+      "seen": 1,
+      "hash": "4f1ea63c711d8ff6",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e3",
+      "ts": "2026-08-22T13:09:13.562Z",
+      "last_seen": "2026-08-22T13:09:13.562Z",
+      "run": "run-2026-08-22T13-09-01-338Z",
+      "agent": "main_agent",
+      "tool": "git_log",
+      "kind": "inspection",
+      "title": "git_log",
+      "tags": [
+        "git_log"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"git_log\",\"success\":true,\"result\":{\"cwd\":\".\",\"command\":\"git log -10 --oneline --decorate\",\"stdout\":\"03e6df2 (HEAD -> arena/01a0295c-semantic-engine-structured-ai, semantic-engine-structured-ai/arena/01a0295c-semantic-engine-structured…",
+      "chars": 522,
+      "seen": 1,
+      "hash": "7e8a91ffc10de06f",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e4",
+      "ts": "2026-08-22T13:10:17.900Z",
+      "last_seen": "2026-08-22T13:10:17.900Z",
+      "run": "run-2026-08-22T13-09-01-338Z",
+      "agent": "main_agent",
+      "tool": "fs_read",
+      "kind": "inspection",
+      "title": "fs_read package.json",
+      "tags": [
+        "fs_read",
+        "package.json"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"read_package\",\"success\":true,\"result\":{\"path\":\"package.json\",\"binary\":false,\"size_bytes\":677,\"total_lines\":31,\"start_line\":0,\"end_line\":31,\"partial\":false,\"content\":\"{\\n  \\\"name\\\": \\\"web-engine\\\",\\n  \\\"version\\\": \\\"0.1.0\\\",\\n  \\\"priv…",
+      "chars": 982,
+      "seen": 1,
+      "hash": "9b7b80ea05e693ef",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e5",
+      "ts": "2026-08-22T13:10:17.900Z",
+      "last_seen": "2026-08-22T13:10:17.900Z",
+      "run": "run-2026-08-22T13-09-01-338Z",
+      "agent": "main_agent",
+      "tool": "fs_read",
+      "kind": "inspection",
+      "title": "fs_read docs/README.md",
+      "tags": [
+        "fs_read",
+        "README.md"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"read_docs\",\"success\":true,\"result\":{\"path\":\"docs\\\\README.md\",\"binary\":false,\"size_bytes\":5005,\"total_lines\":123,\"start_line\":0,\"end_line\":123,\"partial\":false,\"content\":\"# Web Engine\\n\\n**Web-native 3D engine & visual editor** — \\\"Fig…",
+      "chars": 4001,
+      "seen": 1,
+      "hash": "ba6f9ca85f59338e",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e6",
+      "ts": "2026-08-22T13:10:17.900Z",
+      "last_seen": "2026-08-22T13:10:17.900Z",
+      "run": "run-2026-08-22T13-09-01-338Z",
+      "agent": "main_agent",
+      "tool": "fs_read",
+      "kind": "inspection",
+      "title": "fs_read docs/architecture.md",
+      "tags": [
+        "fs_read",
+        "architecture.md"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"read_arch\",\"success\":true,\"result\":{\"path\":\"docs\\\\architecture.md\",\"binary\":false,\"size_bytes\":9830,\"total_lines\":223,\"start_line\":0,\"end_line\":223,\"partial\":false,\"content\":\"# Architecture Overview\\n\\nThis document describes the hig…",
+      "chars": 4001,
+      "seen": 1,
+      "hash": "fd4442db7f3b6400",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e7",
+      "ts": "2026-08-22T13:11:20.066Z",
+      "last_seen": "2026-08-22T13:11:20.066Z",
+      "run": "run-2026-08-22T13-09-01-338Z",
+      "agent": "main_agent",
+      "tool": "fs_write",
+      "kind": "mutation",
+      "title": "fs_write PROJECT_REPORT.md",
+      "tags": [
+        "fs_write",
+        "PROJECT_REPORT.md"
+      ],
+      "error": "",
+      "importance": 0.8,
+      "summary": "{\"id\":\"write_report\",\"success\":true,\"result\":{\"path\":\"PROJECT_REPORT.md\",\"mode\":\"overwrite\",\"created\":true,\"bytes_written\":8146,\"size_bytes\":8146},\"name\":\"fs_write\"}",
+      "chars": 165,
+      "seen": 1,
+      "hash": "29a611287048a619",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e8",
+      "ts": "2026-08-22T13:24:31.511Z",
+      "last_seen": "2026-08-22T13:24:31.511Z",
+      "run": "run-2026-08-22T13-24-16-477Z",
+      "agent": "main_agent",
+      "tool": "mcp_servers",
+      "kind": "inspection",
+      "title": "mcp_servers",
+      "tags": [
+        "mcp_servers"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"list_mcp_servers\",\"success\":true,\"result\":{\"enabled\":true,\"supported_transports\":[\"stdio\",\"http\",\"sse\",\"websocket\"],\"total\":1,\"connected\":1,\"servers\":[{\"name\":\"Semantic\",\"transport\":\"http\",\"state\":\"ready\",\"enabled\":true,\"builtin\":fal…",
+      "chars": 447,
+      "seen": 1,
+      "hash": "f9e73c05ed54f0e5",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e9",
+      "ts": "2026-08-22T13:24:31.511Z",
+      "last_seen": "2026-08-22T13:24:31.511Z",
+      "run": "run-2026-08-22T13-24-16-477Z",
+      "agent": "main_agent",
+      "tool": "mcp_tools",
+      "kind": "inspection",
+      "title": "mcp_tools",
+      "tags": [
+        "mcp_tools"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"list_mcp_tools\",\"success\":true,\"result\":{\"server\":null,\"total\":15,\"returned\":15,\"tools\":[{\"name\":\"mcp__Semantic__find_symbol\",\"server\":\"Semantic\",\"tool\":\"find_symbol\",\"description\":\"Find symbols by name, kind, language, or file path.…",
+      "chars": 4001,
+      "seen": 1,
+      "hash": "2c308502593fe801",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e10",
+      "ts": "2026-08-22T13:28:47.479Z",
+      "last_seen": "2026-08-22T13:28:47.479Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__find_symbol",
+      "kind": "inspection",
+      "title": "mcp__Semantic__find_symbol",
+      "tags": [
+        "mcp__Semantic__find_symbol"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"mcp_find_symbols\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"find_symbol\",\"duration_ms\":102,\"result\":{\"success\":true,\"items\":[{\"id\":\"68deb87bc868ec3d\",\"name\":\"AnimationKeyframe\",\"kind\":\"interface\",\"path\":\"packages…",
+      "chars": 1647,
+      "seen": 1,
+      "hash": "883e8ca730593669",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e11",
+      "ts": "2026-08-22T13:28:47.479Z",
+      "last_seen": "2026-08-22T13:28:47.479Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__semantic_search",
+      "kind": "inspection",
+      "title": "mcp__Semantic__semantic_search ECS entity component system",
+      "tags": [
+        "mcp__Semantic__semantic_search"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"mcp_semantic_search\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"semantic_search\",\"duration_ms\":441,\"result\":{\"success\":true,\"items\":[{\"id\":\"69fecd712141bcc8\",\"name\":\"entityA\",\"kind\":\"constant\",\"path\":\"packages/eng…",
+      "chars": 3498,
+      "seen": 1,
+      "hash": "3bfd6c5f5323e6aa",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e12",
+      "ts": "2026-08-22T13:28:47.479Z",
+      "last_seen": "2026-08-22T13:28:47.479Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_git_hotspots",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_git_hotspots",
+      "tags": [
+        "mcp__Semantic__get_git_hotspots"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"mcp_git_hotspots\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_git_hotspots\",\"duration_ms\":503,\"result\":{\"success\":true,\"metadata\":{\"hotspots\":[{\"filePath\":\"apps/desktop-tauri/src-tauri/icons/icon.svg\",\"commitsC…",
+      "chars": 4001,
+      "seen": 1,
+      "hash": "f1708606819efd58",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e13",
+      "ts": "2026-08-22T13:28:47.479Z",
+      "last_seen": "2026-08-22T13:28:47.479Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__detect_architecture_violations",
+      "kind": "inspection",
+      "title": "mcp__Semantic__detect_architecture_violations",
+      "tags": [
+        "mcp__Semantic__detect_architecture_violations"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"mcp_arch_violations\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"detect_architecture_violations\",\"duration_ms\":475,\"result\":{\"success\":true,\"metadata\":{\"report\":{\"totalViolations\":1,\"circularDependencies\":[{\"cycleL…",
+      "chars": 715,
+      "seen": 1,
+      "hash": "7382361336c0be8b",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e14",
+      "ts": "2026-08-22T13:29:02.796Z",
+      "last_seen": "2026-08-22T13:29:02.796Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__explain_symbol",
+      "kind": "inspection",
+      "title": "mcp__Semantic__explain_symbol packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__explain_symbol",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"explain_symbol\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"explain_symbol\",\"duration_ms\":45,\"result\":{\"success\":true,\"items\":[{\"id\":\"49e1889889fc17c3\",\"name\":\"packages/engine-core/src/ecs/World.ts::World\",\"kind\":\"…",
+      "chars": 2601,
+      "seen": 1,
+      "hash": "8cf649e0f39af117",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e15",
+      "ts": "2026-08-22T13:29:02.796Z",
+      "last_seen": "2026-08-22T13:29:02.796Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_file_summary",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_file_summary packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__get_file_summary",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"file_summary_core\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_file_summary\",\"duration_ms\":64,\"result\":{\"success\":true,\"items\":[{\"id\":\"5d01a217326be1c6\",\"name\":\"WorldOptions\",\"kind\":\"interface\",\"path\":\"packages…",
+      "chars": 4001,
+      "seen": 1,
+      "hash": "a7ab46f947a184dd",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e16",
+      "ts": "2026-08-22T13:29:02.796Z",
+      "last_seen": "2026-08-22T13:29:02.796Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__impact_analysis",
+      "kind": "inspection",
+      "title": "mcp__Semantic__impact_analysis",
+      "tags": [
+        "mcp__Semantic__impact_analysis"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"impact_analysis\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"impact_analysis\",\"duration_ms\":107,\"result\":{\"success\":true,\"items\":[],\"metadata\":{\"visited\":1,\"truncated\":false,\"cyclic\":false,\"minConfidence\":70}}},\"na…",
+      "chars": 277,
+      "seen": 1,
+      "hash": "1d2a53d5b786341c",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e17",
+      "ts": "2026-08-22T13:32:46.924Z",
+      "last_seen": "2026-08-22T13:32:46.924Z",
+      "run": "run-2026-08-22T13-27-03-097Z",
+      "agent": "main_agent",
+      "tool": "fs_write",
+      "kind": "mutation",
+      "title": "fs_write PROJECT_REPORT.md",
+      "tags": [
+        "fs_write",
+        "PROJECT_REPORT.md"
+      ],
+      "error": "",
+      "importance": 0.8,
+      "summary": "{\"id\":\"update_report\",\"success\":true,\"result\":{\"path\":\"PROJECT_REPORT.md\",\"mode\":\"overwrite\",\"created\":false,\"bytes_written\":9008,\"size_bytes\":9008,\"replaced\":{\"previous_bytes\":8146,\"previous_lines\":202,\"lines\":224,\"lines_removed\":1},\"hint\"…",
+      "chars": 466,
+      "seen": 1,
+      "hash": "de5f8a478e941964",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e18",
+      "ts": "2026-08-22T13:39:50.809Z",
+      "last_seen": "2026-08-22T13:39:50.809Z",
+      "run": "run-2026-08-22T13-38-53-807Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_dependencies",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_dependencies",
+      "tags": [
+        "mcp__Semantic__get_dependencies"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"get_deps_core\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_dependencies\",\"duration_ms\":52,\"result\":{\"success\":true,\"items\":[]}},\"name\":\"mcp__Semantic__get_dependencies\"}",
+      "chars": 199,
+      "seen": 1,
+      "hash": "89efd92f1fc0a44a",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e19",
+      "ts": "2026-08-22T13:39:50.809Z",
+      "last_seen": "2026-08-22T13:39:50.809Z",
+      "run": "run-2026-08-22T13-38-53-807Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_recent_changes",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_recent_changes packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__get_recent_changes",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"get_recent_changes\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_recent_changes\",\"duration_ms\":524,\"result\":{\"success\":true,\"items\":[{\"id\":\"c7612ac96c69a351b4dd5234b88567132b11ca3c\",\"name\":\"init\",\"kind\":\"commit\"…",
+      "chars": 421,
+      "seen": 1,
+      "hash": "715a6cbe1d273ebb",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e20",
+      "ts": "2026-08-22T13:39:50.809Z",
+      "last_seen": "2026-08-22T13:39:50.809Z",
+      "run": "run-2026-08-22T13-38-53-807Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__discover_context",
+      "kind": "inspection",
+      "title": "mcp__Semantic__discover_context",
+      "tags": [
+        "mcp__Semantic__discover_context"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"discover_context\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"discover_context\",\"duration_ms\":518,\"result\":{\"success\":true,\"items\":[{\"id\":\"5fec6a4758716069\",\"name\":\"component\",\"kind\":\"symbol\",\"path\":\"packages/engin…",
+      "chars": 1004,
+      "seen": 1,
+      "hash": "65362b444d8feaea",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e21",
+      "ts": "2026-08-22T13:40:54.107Z",
+      "last_seen": "2026-08-22T13:40:54.107Z",
+      "run": "run-2026-08-22T13-38-53-807Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__query_index",
+      "kind": "inspection",
+      "title": "mcp__Semantic__query_index",
+      "tags": [
+        "mcp__Semantic__query_index"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"query_index\",\"success\":true,\"result\":{\"ok\":false,\"server\":\"Semantic\",\"tool\":\"query_index\",\"duration_ms\":99,\"error\":\"No database directory is configured, so no database may be opened\"},\"name\":\"mcp__Semantic__query_index\"}",
+      "chars": 227,
+      "seen": 1,
+      "hash": "0b6ee9ceca3c5f9c",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e22",
+      "ts": "2026-08-22T13:40:54.107Z",
+      "last_seen": "2026-08-22T13:40:54.107Z",
+      "run": "run-2026-08-22T13-38-53-807Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__explain_symbol",
+      "kind": "inspection",
+      "title": "mcp__Semantic__explain_symbol packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__explain_symbol",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"explain_symbol_entity\",\"success\":true,\"result\":{\"ok\":false,\"server\":\"Semantic\",\"tool\":\"explain_symbol\",\"duration_ms\":172,\"error\":\"No symbol named Entity\"},\"name\":\"mcp__Semantic__explain_symbol\"}",
+      "chars": 201,
+      "seen": 1,
+      "hash": "37d82a0c42284249",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e23",
+      "ts": "2026-08-22T13:40:54.107Z",
+      "last_seen": "2026-08-22T13:40:54.107Z",
+      "run": "run-2026-08-22T13-38-53-807Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__find_tests",
+      "kind": "inspection",
+      "title": "mcp__Semantic__find_tests packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__find_tests",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"find_tests_core\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"find_tests\",\"duration_ms\":245,\"result\":{\"success\":true,\"items\":[{\"id\":\"b2ec4780c19d6671\",\"name\":\"packages/engine-animation/tests/animation.test.ts\",\"kind…",
+      "chars": 2627,
+      "seen": 1,
+      "hash": "9094b3c7b81e9b74",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e24",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__find_symbol",
+      "kind": "inspection",
+      "title": "mcp__Semantic__find_symbol",
+      "tags": [
+        "mcp__Semantic__find_symbol"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"find_symbol\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"find_symbol\",\"duration_ms\":134,\"result\":{\"success\":true,\"items\":[{\"id\":\"bbf8858868182fc3\",\"name\":\"worldPos\",\"kind\":\"constant\",\"path\":\"packages/engine-core/te…",
+      "chars": 1057,
+      "seen": 1,
+      "hash": "0469db66e73e5ac4",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e25",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_dependencies",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_dependencies",
+      "tags": [
+        "mcp__Semantic__get_dependencies"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"get_dependencies\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_dependencies\",\"duration_ms\":186,\"result\":{\"success\":true,\"items\":[]}},\"name\":\"mcp__Semantic__get_dependencies\"}",
+      "chars": 203,
+      "seen": 1,
+      "hash": "661844c2bb85c003",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e26",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__query_index",
+      "kind": "inspection",
+      "title": "mcp__Semantic__query_index",
+      "tags": [
+        "mcp__Semantic__query_index"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"query_index\",\"success\":true,\"result\":{\"ok\":false,\"server\":\"Semantic\",\"tool\":\"query_index\",\"duration_ms\":246,\"error\":\"No database directory is configured, so no database may be opened\"},\"name\":\"mcp__Semantic__query_index\"}",
+      "chars": 228,
+      "seen": 1,
+      "hash": "9248389ebb9d98aa",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e27",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_file_summary",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_file_summary packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__get_file_summary",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"get_file_summary\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_file_summary\",\"duration_ms\":331,\"result\":{\"success\":true,\"items\":[{\"id\":\"5d01a217326be1c6\",\"name\":\"WorldOptions\",\"kind\":\"interface\",\"path\":\"packages…",
+      "chars": 4001,
+      "seen": 1,
+      "hash": "625dae0a9bb744ab",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e28",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__semantic_search",
+      "kind": "inspection",
+      "title": "mcp__Semantic__semantic_search ECS entity component system",
+      "tags": [
+        "mcp__Semantic__semantic_search"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"semantic_search\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"semantic_search\",\"duration_ms\":847,\"result\":{\"success\":true,\"items\":[{\"id\":\"69fecd712141bcc8\",\"name\":\"entityA\",\"kind\":\"constant\",\"path\":\"packages/engine-…",
+      "chars": 1940,
+      "seen": 1,
+      "hash": "21feb4a44b532e8c",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e29",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__assemble_context",
+      "kind": "inspection",
+      "title": "mcp__Semantic__assemble_context",
+      "tags": [
+        "mcp__Semantic__assemble_context"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"assemble_context\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"assemble_context\",\"duration_ms\":1521,\"result\":{\"success\":true,\"items\":[{\"id\":\"5fec6a4758716069\",\"name\":\"component\",\"kind\":\"constant\",\"path\":\"packages/en…",
+      "chars": 1371,
+      "seen": 1,
+      "hash": "050aa6ba1ace72d5",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e30",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__discover_context",
+      "kind": "inspection",
+      "title": "mcp__Semantic__discover_context",
+      "tags": [
+        "mcp__Semantic__discover_context"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"discover_context\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"discover_context\",\"duration_ms\":2091,\"result\":{\"success\":true,\"items\":[{\"id\":\"4bdd635aa8cefa69\",\"name\":\"parentWorld\",\"kind\":\"symbol\",\"path\":\"packages/en…",
+      "chars": 3436,
+      "seen": 1,
+      "hash": "40aa2979842728a1",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e31",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__impact_analysis",
+      "kind": "inspection",
+      "title": "mcp__Semantic__impact_analysis",
+      "tags": [
+        "mcp__Semantic__impact_analysis"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"impact_analysis\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"impact_analysis\",\"duration_ms\":2158,\"result\":{\"success\":true,\"items\":[],\"metadata\":{\"visited\":1,\"truncated\":false,\"cyclic\":false,\"minConfidence\":70}}},\"n…",
+      "chars": 278,
+      "seen": 1,
+      "hash": "117c0fa098e4aeba",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e32",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__explain_symbol",
+      "kind": "inspection",
+      "title": "mcp__Semantic__explain_symbol packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__explain_symbol",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"explain_symbol\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"explain_symbol\",\"duration_ms\":113,\"result\":{\"success\":true,\"items\":[{\"id\":\"49e1889889fc17c3\",\"name\":\"packages/engine-core/src/ecs/World.ts::World\",\"kind\":…",
+      "chars": 2602,
+      "seen": 1,
+      "hash": "6d7baa565f71e139",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e33",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__find_tests",
+      "kind": "inspection",
+      "title": "mcp__Semantic__find_tests packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__find_tests",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"find_tests\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"find_tests\",\"duration_ms\":162,\"result\":{\"success\":true,\"items\":[{\"id\":\"b2ec4780c19d6671\",\"name\":\"packages/engine-animation/tests/animation.test.ts\",\"kind\":\"te…",
+      "chars": 1399,
+      "seen": 1,
+      "hash": "5835e5ef1b05bc8b",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e34",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_recent_changes",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_recent_changes packages/engine-core/src/ecs/World.ts",
+      "tags": [
+        "mcp__Semantic__get_recent_changes",
+        "World.ts"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"get_recent_changes\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_recent_changes\",\"duration_ms\":527,\"result\":{\"success\":true,\"items\":[{\"id\":\"c7612ac96c69a351b4dd5234b88567132b11ca3c\",\"name\":\"init\",\"kind\":\"commit\"…",
+      "chars": 421,
+      "seen": 1,
+      "hash": "34f5ff58695078b8",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e35",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_config_usage",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_config_usage",
+      "tags": [
+        "mcp__Semantic__get_config_usage"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"get_config_usage\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_config_usage\",\"duration_ms\":362,\"result\":{\"success\":true,\"items\":[]}},\"name\":\"mcp__Semantic__get_config_usage\"}",
+      "chars": 203,
+      "seen": 1,
+      "hash": "9352882cadfeed10",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e36",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__simulate_mutation",
+      "kind": "inspection",
+      "title": "mcp__Semantic__simulate_mutation",
+      "tags": [
+        "mcp__Semantic__simulate_mutation"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"simulate_mutation\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"simulate_mutation\",\"duration_ms\":222,\"result\":{\"success\":true,\"metadata\":{\"diff\":{\"action\":{\"type\":\"rename_symbol\",\"targetSymbolId\":\"packages/engine-co…",
+      "chars": 526,
+      "seen": 1,
+      "hash": "9567712c59214c9e",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e37",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__detect_architecture_violations",
+      "kind": "inspection",
+      "title": "mcp__Semantic__detect_architecture_violations",
+      "tags": [
+        "mcp__Semantic__detect_architecture_violations"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"detect_arch_violations\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"detect_architecture_violations\",\"duration_ms\":472,\"result\":{\"success\":true,\"metadata\":{\"report\":{\"totalViolations\":1,\"circularDependencies\":[{\"cyc…",
+      "chars": 718,
+      "seen": 1,
+      "hash": "b006340afcca4550",
+      "segment": "segment-0001.jsonl"
+    },
+    {
+      "id": "e38",
+      "ts": "2026-08-22T13:50:09.435Z",
+      "last_seen": "2026-08-22T13:50:09.435Z",
+      "run": "run-2026-08-22T13-49-18-662Z",
+      "agent": "main_agent",
+      "tool": "mcp__Semantic__get_git_hotspots",
+      "kind": "inspection",
+      "title": "mcp__Semantic__get_git_hotspots",
+      "tags": [
+        "mcp__Semantic__get_git_hotspots"
+      ],
+      "error": "",
+      "importance": 0.25,
+      "summary": "{\"id\":\"get_git_hotspots\",\"success\":true,\"result\":{\"ok\":true,\"server\":\"Semantic\",\"tool\":\"get_git_hotspots\",\"duration_ms\":515,\"result\":{\"success\":true,\"metadata\":{\"hotspots\":[{\"filePath\":\"apps/desktop-tauri/src-tauri/icons/icon.svg\",\"commitsC…",
+      "chars": 2447,
+      "seen": 1,
+      "hash": "dff74f87a06654c3",
+      "segment": "segment-0001.jsonl"
+    }
+  ]
+}
