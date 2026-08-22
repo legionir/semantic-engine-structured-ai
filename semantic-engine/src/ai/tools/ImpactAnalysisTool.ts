@@ -42,6 +42,7 @@ import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
 import { GraphQueryEngine, VisitedNode } from '../../graphs/GraphQueryEngine';
 import { resolveFileOrSymbolId } from './resolveIndexEntity';
+import type { BlueprintIndex } from '../discovery/BlueprintIndex';
 
 export interface ImpactAnalysisInput extends AiToolInput {
   readonly id: string;
@@ -54,6 +55,10 @@ export interface ImpactAnalysisInput extends AiToolInput {
 
 /** هرچه دورتر، اثر کمتر. همان ۰٫۷ نسخهٔ قبلی. */
 const DECAY = 0.7;
+
+export interface ImpactAnalysisOptions {
+  readonly blueprint?: BlueprintIndex;
+}
 
 export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
   readonly name = 'impact_analysis';
@@ -77,21 +82,39 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
 
   private engine: GraphQueryEngine | undefined;
 
-  constructor(private readonly reader: ProjectIndexReader) {}
+  constructor(
+    private readonly reader: ProjectIndexReader,
+    private readonly options: ImpactAnalysisOptions = {}
+  ) {}
 
   async execute(input: ImpactAnalysisInput): Promise<AiToolOutput> {
     try {
       const depth = Math.min(input.depth ?? 2, 3);
       const limit = input.limit ?? 30;
       const level = input.level ?? 'file';
-      const resolvedId = resolveFileOrSymbolId(this.reader, input.id) ?? input.id;
+      const seeds = this.resolveSeeds(input.id);
 
       /*
       | ساخت گراف یک بار برای کل عمر ابزار. رجیستری ابزارها با هر
       | ایندکس تازه دوباره ساخته می‌شود (SE-AI-02)، پس این کش با
       | همان چرخه باطل می‌شود.
       */
-      const engine = (this.engine ??= new GraphQueryEngine(this.reader.projectIndex));
+      const engine = (this.engine ??= new GraphQueryEngine(this.reader.projectIndex, {
+        /* GraphQueryEngine normally omits external package nodes. Module
+           impact needs them because consumers import a package name rather
+           than one of the module's individual files. */
+        extraEdges: (this.reader.projectIndex.graphs?.dependencyGraph ?? [])
+          .filter(edge => edge.to.startsWith('pkg:'))
+          .map(edge => ({
+            from: edge.from,
+            to: edge.to,
+            relation: 'imports' as const,
+            kind: edge.kind,
+            confidence: edge.provenance.confidence,
+            basis: edge.provenance.basis,
+            extractor: edge.provenance.extractor,
+          })),
+      }));
 
       /*
       | جهت `in`: «چه چیزی به این وابسته است». پیمایش تا سقفِ
@@ -99,12 +122,23 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
       | پیمایش بریده شود. سقف را سخاوتمندانه از `limit` بزرگ‌تر
       | می‌گیریم تا مرتب‌سازی روی مجموعه‌ای معنادار انجام شود.
       */
-      const traversal = engine.ancestors(resolvedId, {
-        depth,
-        minConfidence: input.minConfidence ?? 70,
-        maxNodes: Math.max(limit * 10, 200),
-      });
+      const traversal = seeds.length > 1
+        ? engine.subgraph(seeds, {
+            direction: 'in',
+            depth,
+            minConfidence: input.minConfidence ?? 70,
+            maxNodes: Math.max(limit * 10, 200),
+          })
+        : engine.ancestors(seeds[0] ?? input.id, {
+            depth,
+            minConfidence: input.minConfidence ?? 70,
+            maxNodes: Math.max(limit * 10, 200),
+          });
 
+      const cyclic = 'cyclic' in traversal ? traversal.cyclic : false;
+      const visitedCount = 'visitedCount' in traversal
+        ? traversal.visitedCount
+        : seeds.length + traversal.nodes.length;
       const items = traversal.nodes
         .filter(node => this.matchesLevel(node.id, level))
         .map(node => this.describe(node))
@@ -115,10 +149,16 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
         success: true,
         items,
         metadata: {
-          visited: traversal.visitedCount,
+          visited: visitedCount,
           truncated: traversal.truncated,
-          cyclic: traversal.cyclic,
+          cyclic,
           minConfidence: input.minConfidence ?? 70,
+          targetType: this.isModule(input.id)
+            ? 'module'
+            : this.isPackage(input.id)
+              ? 'package'
+              : 'file_or_symbol',
+          seedCount: seeds.length,
         },
       };
     } catch (error) {
@@ -129,6 +169,54 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
       };
     }
   }
+
+  private isPackage(value: string): boolean {
+    return value.startsWith('pkg:') &&
+      (this.reader.projectIndex.graphs?.dependencyGraph ?? []).some(edge => edge.to === value);
+  }
+
+
+  private isModule(value: string): boolean {
+    return Boolean(
+      this.options.blueprint?.getModule(value) ||
+      (!resolveFileOrSymbolId(this.reader, value) &&
+        this.reader.getAllFiles().some(file =>
+          file.path === value || file.path.startsWith(`${value.replace(/[\\/]+$/, '')}/`)
+        ))
+    );
+  }
+
+
+  private resolveSeeds(value: string): string[] {
+    const direct = resolveFileOrSymbolId(this.reader, value);
+    if (direct) return [direct];
+
+    if (this.isPackage(value)) return [value];
+
+    const module = this.options.blueprint?.getModule(value);
+    const modulePath = module?.path || value;
+    const prefix = modulePath.replace(/[\\/]+$/, '');
+    const fileIds = this.reader
+      .getAllFiles()
+      .filter(file => file.path === prefix || file.path.startsWith(`${prefix}/`))
+      .map(file => file.id);
+
+    /* Package imports are represented as pkg:<name> graph nodes. A module
+       such as packages/engine-input/src therefore needs its package node as
+       a seed too, otherwise consumers importing @web-engine/engine-input
+       appear unrelated to the selected module. */
+    const leaf = prefix.split(/[\\/]/).filter(Boolean).slice(-2, -1)[0] || '';
+    const packageSeeds = (this.reader.projectIndex.graphs?.dependencyGraph ?? [])
+      .map(edge => edge.to)
+      .filter(id =>
+        id.startsWith('pkg:') &&
+        leaf !== '' &&
+        id.replace(/^pkg:/, '').split(/[\\/]/).pop() === leaf
+      );
+
+    return [...new Set([...fileIds, ...packageSeeds])];
+  }
+
 
   private matchesLevel(id: string, level: 'file' | 'symbol' | 'any'): boolean {
     if (level === 'any') return true;

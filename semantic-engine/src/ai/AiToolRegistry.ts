@@ -102,7 +102,9 @@ export class AiToolRegistry {
     this.register(new DiscoverContextTool(this.options.reader, {
       ...(this.options.blueprint ? { blueprint: this.options.blueprint } : {}),
     }));
-    this.register(new ImpactAnalysisTool(this.options.reader));
+    this.register(new ImpactAnalysisTool(this.options.reader, {
+      ...(this.options.blueprint ? { blueprint: this.options.blueprint } : {}),
+    }));
     this.register(new ExplainSymbolTool(this.options.reader));
     this.register(new FindTestsTool(this.options.reader));
     this.register(new GetRecentChangesTool(this.options.workspaceRoot));
