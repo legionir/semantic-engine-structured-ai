@@ -1,0 +1,1 @@
+export { tauriAPI } from './main';

@@ -1,0 +1,341 @@
+[
+  {
+    "name": "main_agent",
+    "description": "Root orchestrator. Understands the user objective and selects the simplest reliable execution strategy.",
+    "persona": "orchestrator",
+    "capabilities": [
+      "orchestration",
+      "tool_execution",
+      "delegation",
+      "synthesis"
+    ],
+    "output_contract": [
+      "Return the actual result produced by runtime execution.",
+      "Attribute findings to the tool result or sub-agent report they came from."
+    ],
+    "skills": [
+      "file_management",
+      "terminal_execution",
+      "git",
+      "codebase_analysis",
+      "testing_and_verification",
+      "search",
+      "web_research",
+      "planning",
+      "memory_and_recall"
+    ],
+    "tools": "*",
+    "model": null,
+    "temperature": null,
+    "delegation": {
+      "enabled": true,
+      "max_depth": 3,
+      "max_children": 4
+    }
+  },
+  {
+    "name": "code_analysis",
+    "description": "Analyze software project structure, architecture, dependencies, code organization, and implementation patterns.",
+    "persona": "code_architect",
+    "capabilities": [
+      "architecture_analysis",
+      "code_navigation",
+      "dependency_analysis",
+      "change_impact_analysis"
+    ],
+    "output_contract": [
+      "Report findings only from inspected files and executed commands.",
+      "Cover: project purpose, architecture, key modules, dependencies, important files.",
+      "List risks and concrete recommendations separately from observations."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "file_management",
+      "search",
+      "terminal_execution",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_tree",
+      "fs_read",
+      "fs_read_many",
+      "fs_stat",
+      "search_start",
+      "search_get",
+      "search_stop",
+      "terminal_exec",
+      "fs_info",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read",
+      "code_find_symbol",
+      "code_search",
+      "code_file_summary",
+      "code_dependencies",
+      "code_impact",
+      "code_find_tests",
+      "code_config_usage",
+      "code_context",
+      "code_index_status",
+      "code_index_start",
+      "code_index_get",
+      "code_diagnostics",
+      "code_callers",
+      "code_definition",
+      "code_organize_imports",
+      "code_rename"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": true,
+      "max_depth": 1,
+      "max_children": 3
+    }
+  },
+  {
+    "name": "git_analysis",
+    "description": "Analyze Git repository state, branches, history, diffs, and recent development activity.",
+    "persona": "git_analyst",
+    "capabilities": [
+      "repository_analysis",
+      "history_analysis",
+      "diff_analysis",
+      "branch_analysis"
+    ],
+    "output_contract": [
+      "Report repository status, active branch, recent commits, and pending changes.",
+      "Separate factual Git output from interpretation.",
+      "Never modify repository state.",
+      "Branch and status information comes from git_status; never create or switch branches."
+    ],
+    "skills": [
+      "git",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "git_status",
+      "git_diff",
+      "git_log",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "testing",
+    "description": "Analyze and execute project tests, builds, validation, and verification procedures.",
+    "persona": "test_engineer",
+    "capabilities": [
+      "testing",
+      "build_verification",
+      "error_analysis",
+      "regression_detection"
+    ],
+    "output_contract": [
+      "Identify the appropriate validation command before running anything.",
+      "Report the exact command, its exit status, and the actual output.",
+      "Analyze failures explicitly and never report success without evidence."
+    ],
+    "skills": [
+      "testing_and_verification",
+      "terminal_execution",
+      "file_management",
+      "planning",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_read",
+      "fs_read_many",
+      "search_start",
+      "search_get",
+      "terminal_exec",
+      "process_start",
+      "process_read",
+      "process_terminate",
+      "process_list",
+      "git_diff",
+      "runtime_stats",
+      "fs_info",
+      "plan_get",
+      "plan_update",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read",
+      "code_find_tests",
+      "code_diagnostics"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": true,
+      "max_depth": 1,
+      "max_children": 2
+    }
+  },
+  {
+    "name": "security_analysis",
+    "description": "Analyze application and infrastructure security risks.",
+    "persona": "security_analyst",
+    "capabilities": [
+      "security_analysis",
+      "risk_analysis",
+      "command_execution_analysis",
+      "permission_analysis"
+    ],
+    "output_contract": [
+      "Report each finding with the file and the evidence that supports it.",
+      "Cover: command execution risks, path handling, secrets exposure, permission boundaries, input validation.",
+      "Clearly separate confirmed issues from potential risks."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "file_management",
+      "search",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_tree",
+      "fs_read",
+      "fs_read_many",
+      "fs_stat",
+      "fs_roots",
+      "search_start",
+      "search_get",
+      "fs_info",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read",
+      "code_config_usage",
+      "code_dependencies"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "implementation",
+    "description": "Carry out a scoped change in the workspace: edit files, create files, and verify the result.",
+    "persona": "general_engineer",
+    "capabilities": [
+      "code_editing",
+      "refactoring",
+      "file_creation",
+      "local_verification"
+    ],
+    "output_contract": [
+      "List every file that was changed and why.",
+      "Quote the verification that was run and its actual outcome.",
+      "State plainly when a change could not be completed."
+    ],
+    "skills": [
+      "file_management",
+      "search",
+      "codebase_analysis",
+      "terminal_execution",
+      "testing_and_verification",
+      "planning",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_tree",
+      "fs_read",
+      "fs_read_many",
+      "fs_info",
+      "fs_stat",
+      "search_start",
+      "search_get",
+      "fs_write",
+      "fs_edit",
+      "fs_mkdir",
+      "fs_move",
+      "terminal_exec",
+      "git_status",
+      "git_diff",
+      "plan_get",
+      "plan_update",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read",
+      "code_find_symbol",
+      "code_diagnostics",
+      "code_rename",
+      "code_definition",
+      "code_organize_imports",
+      "code_dependencies"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "research",
+    "description": "Answer a question using remote documentation and the project's own files.",
+    "persona": "researcher",
+    "capabilities": [
+      "documentation_lookup",
+      "api_inspection",
+      "comparison"
+    ],
+    "output_contract": [
+      "Quote the URL or file behind every finding.",
+      "Separate what a source states from what is inferred.",
+      "Report when the sources disagree or are inconclusive."
+    ],
+    "skills": [
+      "web_research",
+      "search",
+      "file_management",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "net_fetch",
+      "fs_read",
+      "fs_read_many",
+      "fs_list",
+      "search_start",
+      "search_get",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  }
+]

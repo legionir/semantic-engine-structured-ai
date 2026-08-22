@@ -1,0 +1,25 @@
+{
+  "name": "@engine/materials",
+  "version": "1.0.0",
+  "description": "Material system for the web engine including material graphs, shader generation, and post-processing",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "keywords": [
+    "webgl",
+    "materials",
+    "shaders",
+    "graphics",
+    "engine"
+  ],
+  "author": "Structured AI",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^4.9.0",
+    "@types/jest": "^29.0.0",
+    "jest": "^29.0.0"
+  }
+}

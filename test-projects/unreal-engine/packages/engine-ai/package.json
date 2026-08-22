@@ -1,0 +1,18 @@
+{
+  "name": "@engine/ai",
+  "version": "1.0.0",
+  "description": "AI Engine for Web Engine",
+  "main": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ai",
+    "game-engine",
+    "behavior-tree",
+    "navigation",
+    "perception"
+  ],
+  "author": "",
+  "license": "ISC"
+}

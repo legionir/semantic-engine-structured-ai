@@ -1,0 +1,30 @@
+{
+  "workspace": {
+    "root": "detected from WORKSPACE_ROOT, or the current directory"
+  },
+  "environment": {
+    "note": "os, shell, platform and node version are detected at runtime"
+  },
+  "repository": {
+    "note": "type, root, branch, head and cleanliness are detected at runtime"
+  },
+  "execution": {
+    "tool_graph": true,
+    "agent_graph": true,
+    "parallel_tools": true,
+    "parallel_agents": true,
+    "nested_agents": true,
+    "ad_hoc_agents": true
+  },
+  "limits": {
+    "max_iterations": 50,
+    "max_agent_depth": 3,
+    "max_parallel_tools": 8,
+    "max_parallel_agents": 4,
+    "max_total_agents": 15
+  },
+  "security": {
+    "approval_system": false,
+    "central_permission_policy": false
+  }
+}

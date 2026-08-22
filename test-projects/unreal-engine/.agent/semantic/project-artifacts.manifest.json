@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "generation": "a2d623db-ba46-4791-99fb-1c134fddf88c",
+  "committedAt": "2026-08-22T11:38:26.683Z",
+  "artifacts": {
+    "index": {
+      "path": "project-index.json",
+      "sha256": "cc2e61edb0d1c1991d11d775060cf3be000b90f5a059ec9fb4cfcb0958a0fa1e",
+      "bytes": 15717189
+    },
+    "blueprint": {
+      "path": "blueprint.json",
+      "sha256": "3ccdb015d094ab1b9c7ccdcd073ee0f75ab39540afb14e6ebc6156bf231bf318",
+      "bytes": 1163127
+    },
+    "sqlite": null
+  }
+}

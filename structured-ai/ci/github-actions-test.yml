@@ -1,0 +1,43 @@
+name: test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Tool and boundary tests
+        run: npm run test:tools
+
+      - name: Runtime unit tests
+        run: npm run test:runtime
+
+      - name: End to end tests
+        run: npm run test:e2e
+
+      - name: CLI tests
+        run: npm run test:cli
+
+      - name: Interactive session tests
+        run: npm run test:interactive
+
+      - name: Web console tests
+        run: npm run test:web

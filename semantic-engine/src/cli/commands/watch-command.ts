@@ -1,0 +1,182 @@
+/**
+ * `semantic-engine watch` — MIG-52.
+ *
+ * ایندکس اولیه، بعد رصد تا SIGINT/SIGTERM. فایل PID می‌نویسد تا
+ * بشود از بیرون متوقفش کرد و تا دو نمونهٔ هم‌زمان روی یک کارگاه
+ * راه نیفتند.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { IndexPipeline } from '../../pipeline/IndexPipeline';
+import { createExtractors } from '../../pipeline/ExtractorFactory';
+import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
+import { WatchPipeline } from '../../pipeline/WatchPipeline';
+import { IncrementalEngine } from '../../incremental/IncrementalEngine';
+import { GitInfoCollector } from '../../core/git';
+import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
+import { CommandContext, CommandResult } from './types';
+import { DEFAULT_OUTPUT_DIR } from './index-command';
+import { waitForShutdown } from './serve-command';
+
+export const PID_FILE_NAME = 'watch.pid';
+
+/**
+ * آیا پروسه‌ای با این شناسه زنده است؟
+ *
+ * `kill(pid, 0)` چیزی نمی‌فرستد و فقط وجود را بررسی می‌کند. `EPERM`
+ * یعنی هست ولی مال کاربر دیگری است — که باز هم «هست».
+ */
+export function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * گرفتن قفل PID.
+ *
+ * یک فایل PID که از یک کرش جا مانده نباید تا ابد watch را قفل کند،
+ * پس اگر پروسه‌اش زنده نباشد بازنویسی می‌شود.
+ */
+export function claimPidFile(pidPath: string): { ok: true } | { ok: false; pid: number } {
+  if (fs.existsSync(pidPath)) {
+    const existing = Number(fs.readFileSync(pidPath, 'utf8').trim());
+    if (Number.isInteger(existing) && existing > 0 && isProcessAlive(existing)) {
+      return { ok: false, pid: existing };
+    }
+  }
+
+  fs.mkdirSync(path.dirname(pidPath), { recursive: true });
+  fs.writeFileSync(pidPath, `${process.pid}\n`, 'utf8');
+  return { ok: true };
+}
+
+/** آزاد کردن قفل — فقط اگر هنوز مال ماست. */
+export function releasePidFile(pidPath: string): void {
+  try {
+    const owner = Number(fs.readFileSync(pidPath, 'utf8').trim());
+    if (owner === process.pid) fs.rmSync(pidPath);
+  } catch {
+    /* فایل نیست یا خوانده نشد — چیزی برای آزاد کردن نمانده */
+  }
+}
+
+export async function runWatch(args: ParsedArgs, context: CommandContext): Promise<CommandResult> {
+  const root = path.resolve(stringOption(args.options, 'root') ?? context.cwd);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return { code: EXIT.failure, error: `--root does not exist or is not a directory: ${root}` };
+  }
+
+  const outputDir = path.resolve(root, stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR);
+  const pidPath = path.join(outputDir, PID_FILE_NAME);
+
+  const claim = claimPidFile(pidPath);
+  if (!claim.ok) {
+    return {
+      code: EXIT.failure,
+      error:
+        `another watcher is already running for this workspace (pid ${claim.pid}).\n` +
+        `stop it, or delete ${pidPath} if that process is gone.`,
+    };
+  }
+
+  const extractors = createExtractors({
+    workspaceRoot: root,
+    treeSitter: boolOption(args.options, 'treeSitter', true),
+    logger: context.logger,
+  });
+
+  const wantsGit = boolOption(args.options, 'git', true);
+  const pretty = boolOption(args.options, 'pretty', true);
+
+  try {
+    const { projectIndex, stats } = await new IndexPipeline({
+      workspaceRoot: root,
+      outputPath: path.join(outputDir, INDEX_FILE_NAME),
+      symbolExtractors: extractors.symbols,
+      dependencyExtractors: extractors.dependencies,
+      logger: context.logger,
+      gitCollector: wantsGit ? new GitInfoCollector(root) : null,
+      vectorIndexer: null,
+      pretty,
+    }).run();
+
+    await new OutputWriter({
+      outputDir,
+      logger: context.logger,
+      pretty,
+      blueprint: boolOption(args.options, 'blueprint', true),
+      sqlite: boolOption(args.options, 'sqlite', false),
+    }).write(projectIndex);
+
+    const engine = new IncrementalEngine({
+      workspaceRoot: root,
+      symbolExtractorManager: extractors.symbols,
+      dependencyExtractorManager: extractors.dependencies,
+      logger: context.logger,
+    });
+    engine.load(projectIndex);
+
+    const pipeline = new WatchPipeline({
+      workspaceRoot: root,
+      outputDir,
+      engine,
+      logger: context.logger,
+      pretty,
+      blueprint: boolOption(args.options, 'blueprint', true),
+      sqlite: boolOption(args.options, 'sqlite', false),
+      ...(stringOption(args.options, 'debounce')
+        ? { debounceMs: Number(stringOption(args.options, 'debounce')) }
+        : {}),
+    });
+
+    pipeline.onBatchComplete(result => {
+      process.stderr.write(
+        `updated: ${result.changedFileIds.length} changed, ` +
+          `${result.removedFileIds.length} removed, ` +
+          `${result.dependentFileIds.length} dependents\n`
+      );
+    });
+    pipeline.onError(error => {
+      process.stderr.write(`batch failed: ${error.message}\n`);
+    });
+
+    await pipeline.watchFilesystem();
+
+    /*
+    | نصب handler **پیش از** اعلام آمادگی، نه بعدش (فاز ۴۹).
+    |
+    | ترتیب قبلی این بود: اول «press Ctrl+C to stop» نوشته می‌شد و
+    | بعد `waitForShutdown` صدا زده می‌شد. بین آن دو خط پروسه هیچ
+    | شنونده‌ای برای SIGINT/SIGTERM نداشت، پس سیگنال با رفتار
+    | پیش‌فرض آن را می‌کشت: نه `dispose`، نه پاک شدن فایل PID.
+    |
+    | اندازه‌گیری روی ماشین شلوغ: از هر ۸ اجرا، ۵ تا با
+    | `signal=SIGTERM` و فایل PID جامانده تمام می‌شد. روی ماشین
+    | بی‌کار ۰ از ۸ — به همین دلیل شبیه flake به نظر می‌رسید.
+    |
+    | `waitForShutdown` شنونده‌ها را همان لحظهٔ فراخوانی نصب می‌کند
+    | (executor یک Promise همگام اجرا می‌شود)، پس فقط کافی است
+    | نتیجه‌اش نگه داشته شود و بعد از اعلام، انتظار کشیده شود.
+    */
+    const shutdown = waitForShutdown(async () => {
+      await pipeline.dispose();
+    });
+
+    process.stderr.write(
+      `watching ${root} (${stats.files} files indexed, pid ${process.pid})\n` +
+        `press Ctrl+C to stop\n`
+    );
+
+    await shutdown;
+
+    return { code: EXIT.ok, text: `stopped after ${pipeline.stats().batches} update(s)` };
+  } finally {
+    extractors.dispose();
+    releasePidFile(pidPath);
+  }
+}

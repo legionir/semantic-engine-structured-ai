@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>structured-ai console</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <span class="dot" id="statusDot"></span>
+    <strong>structured-ai</strong>
+    <span class="muted" id="statusText">connecting</span>
+  </div>
+
+  <div class="meta">
+    <span class="chip" id="workspace" title="workspace"></span>
+    <span class="chip" id="model" title="model"></span>
+    <label class="chip select">
+      approval
+      <select id="approvalMode">
+        <option value="auto">auto</option>
+        <option value="prompt">prompt</option>
+        <option value="deny">deny</option>
+      </select>
+    </label>
+    <span class="chip" id="turns">0 turns</span>
+    <label class="chip select" title="keep starting cycles while the plan has open steps">
+      <input type="checkbox" id="autoContinue"> until done
+    </label>
+    <button type="button" id="approvalsButton" class="chip alert" hidden>
+      approvals <span id="approvalsCount">0</span>
+    </button>
+    <a href="/visualizer.html" class="chip button" title="Open Code Intelligence Visualizer" style="text-decoration: none; color: inherit;">
+      Visualizer 🧭
+    </a>
+    <button type="button" id="historyButton" class="chip button" title="open saved conversations">
+      history
+    </button>
+    <button type="button" id="executionButton" class="chip button" title="open the agent execution tree">
+      Execution
+    </button>
+    <button type="button" id="eventsButton" class="chip button" title="open the event log">
+      Events
+    </button>
+    <button type="button" id="settingsButton" class="chip button" title="open settings">
+      Settings
+    </button>
+  </div>
+</header>
+
+<main>
+
+  <!-- row 1: the conversation, full width -->
+  <section class="row conversation-grid">
+    <div class="panel conversation">
+      <div class="panel-head">
+        <h2>Conversation</h2>
+        <div class="head-tools">
+          <span class="muted" id="sessionTitle"></span>
+        </div>
+      </div>
+
+      <div id="chat" class="chat">
+        <p class="empty">No messages yet. Describe a task to start.</p>
+      </div>
+
+      <form id="taskForm" class="composer">
+        <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
+        <div class="actions">
+          <button type="submit" id="runButton">Run task</button>
+          <button type="button" id="cancelButton" class="ghost" disabled>Cancel</button>
+          <button type="button" id="clearButton" class="ghost">New conversation</button>
+          <span class="muted grow-right" id="runTimer"></span>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel plan-panel">
+      <div class="panel-head">
+        <h2>Plan</h2>
+        <span class="muted" id="planSummary"></span>
+      </div>
+      <div id="plan" class="plan-view">
+        <p class="empty">No plan yet.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- row 2: execution and events, hidden; opened as modals from the header -->
+  <section class="row split" id="rowTwo" hidden>
+    <div class="panel scroller execution-panel">
+      <div class="panel-head">
+        <h2>Execution</h2>
+        <span class="muted" id="execSummary"></span>
+      </div>
+      <div class="execution-scroll">
+        <div id="executionArchive" class="execution-archive"></div>
+        <div id="tree" class="tree">
+          <p class="empty">No run yet. Send a task to see the agent tree.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel scroller log-panel">
+      <div class="panel-head">
+        <h2>Events</h2>
+        <div class="head-tools">
+          <input type="search" id="logFilter" class="filter" placeholder="filter">
+          <button type="button" id="clearLog" class="link">clear</button>
+        </div>
+      </div>
+      <ul id="log" class="log"></ul>
+    </div>
+  </section>
+
+</main>
+
+<script src="/modal.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

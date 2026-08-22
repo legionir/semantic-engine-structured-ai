@@ -1,0 +1,89 @@
+/**
+ * GetConfigUsageTool — یافتن استفاده‌های config/env در پروژه.
+ */
+
+import { AiTool, AiToolInput, AiToolOutput } from './types';
+import { ProjectIndexReader } from '../ProjectIndexReader';
+
+export interface GetConfigUsageInput extends AiToolInput {
+  readonly key?: string;
+  readonly path?: string;
+  readonly kind?: 'env' | 'config-get' | 'dotenv' | 'env-file-reference';
+  readonly limit?: number;
+}
+
+export class GetConfigUsageTool implements AiTool<GetConfigUsageInput> {
+  readonly name = 'get_config_usage';
+  readonly description = 'Find environment variables and configuration key usages across the project.';
+  readonly inputSchema = {
+    type: 'object',
+    properties: {
+      key: { type: 'string', description: 'Filter by variable/config key (substring match)' },
+      path: { type: 'string', description: 'Filter by relative file path' },
+      kind: {
+        type: 'string',
+        enum: ['env', 'config-get', 'dotenv', 'env-file-reference'],
+      },
+      limit: { type: 'integer', default: 50 },
+    },
+    required: ['key'],
+  };
+
+  constructor(private readonly reader: ProjectIndexReader) {}
+
+  async execute(input: GetConfigUsageInput): Promise<AiToolOutput> {
+    try {
+      const limit = input.limit ?? 50;
+      const keyFilter = input.key?.toLowerCase();
+      const pathFilter = input.path?.toLowerCase();
+
+      const files = pathFilter
+        ? this.reader.getAllFiles().filter(f => f.path.toLowerCase().includes(pathFilter))
+        : this.reader.getAllFiles();
+
+      const items: {
+        id: string;
+        name: string;
+        kind: string;
+        path: string;
+        line: number;
+        source: string;
+        relevanceScore: number;
+        excerpt?: string;
+      }[] = [];
+
+      for (const file of files) {
+        if (!file.configUsages || file.configUsages.length === 0) continue;
+
+        for (const usage of file.configUsages) {
+          if (input.kind && usage.kind !== input.kind) continue;
+          if (keyFilter && !usage.key.toLowerCase().includes(keyFilter)) continue;
+
+          items.push({
+            id: `${file.id}:${usage.kind}:${usage.key}:${usage.line}`,
+            name: usage.key,
+            kind: usage.kind,
+            path: file.path,
+            line: usage.line,
+            source: `${file.path}:${usage.line}`,
+            relevanceScore: keyFilter && usage.key.toLowerCase() === keyFilter ? 1 : 0.7,
+            excerpt: usage.context,
+          });
+        }
+      }
+
+      items.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+      return {
+        success: true,
+        items: items.slice(0, limit),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        items: [],
+      };
+    }
+  }
+}
