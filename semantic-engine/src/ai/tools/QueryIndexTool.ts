@@ -10,7 +10,7 @@ import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { applyQueryPolicy, validateDatabasePath } from './queryPolicy';
 
 export interface QueryIndexInput extends AiToolInput {
-  readonly sqlitePath: string;
+  readonly sqlitePath?: string;
   readonly sql: string;
   readonly params?: readonly unknown[];
   readonly limit?: number;
@@ -77,11 +77,12 @@ export class QueryIndexTool implements AiTool<QueryIndexInput> {
        artifact directory (for example `project-index.sqlite`). Resolving
        them before policy validation both makes that contract useful and
        keeps the security check on the final path, not on process.cwd(). */
-    const databasePath = path.isAbsolute(input.sqlitePath)
-      ? input.sqlitePath
+    const requestedPath = input.sqlitePath?.trim() || 'project-index.sqlite';
+    const databasePath = path.isAbsolute(requestedPath)
+      ? requestedPath
       : policy.allowedRoot
-        ? path.resolve(policy.allowedRoot, input.sqlitePath)
-        : input.sqlitePath;
+        ? path.resolve(policy.allowedRoot, requestedPath)
+        : requestedPath;
 
     const pathCheck = validateDatabasePath(databasePath, policy);
     if (!pathCheck.ok) {

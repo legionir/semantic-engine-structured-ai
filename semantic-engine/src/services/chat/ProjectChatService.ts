@@ -81,6 +81,9 @@ Your job is to answer questions about THIS specific project accurately and hones
 - 'get_dependencies' requires a 'direction' ("forward" = what this depends on;
   "backward" = what depends on this) and 'depth' is capped at 3.
 - 'impact_analysis' needs an 'id' and an optional 'level' (file|symbol|any).
+- 'query_index' is available for safe read-only SQL over the local SQLite
+  index. Its sqlitePath is optional and defaults to project-index.sqlite.
+  The symbols table has file_id, not path; join files when a path is needed.
 - Every tool returns JSON shaped like:
       { "success": boolean, "items": [ ... ], "context"?: string, "error"?: string }
   Read 'items' for the results and 'context' for a prose summary. If
@@ -103,11 +106,11 @@ Your job is to answer questions about THIS specific project accurately and hones
 - Prefer a short direct answer followed by supporting detail, not a wall of text.`;
 
 /**
- * ابزارهایی که در چت در اختیار مدل قرار نمی‌گیرند. `query_index` یک لایهٔ
- * SQL خام روی sqlite است و به مسیر فایل نیاز دارد؛ آن را از سطح گفت‌وگو
- * حذف می‌کنیم تا مدل فقط از ابزارهای معناییِ امن استفاده کند.
+ * `query_index` اکنون از طریق همان QueryIndexTool امن در چت هم مجاز است:
+ * فقط SELECT روی جدول‌های allow-list شده و فقط دیتابیس داخل artifact directory
+ * پروژه. مسیر پیش‌فرض ابزار، نیاز مدل به دانستن مسیر سیستم را حذف می‌کند.
  */
-const CHAT_TOOL_DENYLIST = new Set<string>(['query_index']);
+const CHAT_TOOL_DENYLIST = new Set<string>();
 
 export class ProjectChatService {
   async chat(
@@ -151,17 +154,12 @@ export class ProjectChatService {
 
         let resultText: string;
         let ok = false;
-        if (CHAT_TOOL_DENYLIST.has(name)) {
-          // مدل ابزار ممنوع را خواسته — بی‌صدا اجرا نکن، به مدل بگو مجاز نیست.
-          resultText = `tool '${name}' is not available in chat. Use the semantic tools instead (e.g. semantic_search, find_symbol, explain_symbol).`;
-        } else {
-          try {
-            const output = await registry.execute(name, input);
-            ok = output.success;
-            resultText = this.summarizeToolOutput(output);
-          } catch (error) {
-            resultText = `tool error: ${error instanceof Error ? error.message : String(error)}`;
-          }
+        try {
+          const output = await registry.execute(name, input);
+          ok = output.success;
+          resultText = this.summarizeToolOutput(output);
+        } catch (error) {
+          resultText = `tool error: ${error instanceof Error ? error.message : String(error)}`;
         }
 
         toolTrace.push({ tool: name, input, ok, summary: truncate(resultText, 160) });
@@ -187,9 +185,8 @@ export class ProjectChatService {
   /**
    * ابزارهای رجیستری را به schema ابزار OpenAI تبدیل می‌کند.
    *
-   * - `query_index` عمداً به مدل داده نمی‌شود: SQL خام است و به مسیر فایلِ
-   *   sqlite نیاز دارد که مدل نمی‌داند و نباید بداند — با فلسفهٔ «فقط ابزار
-   *   معنایی، بدون دسترسی مستقیم به دیتابیس» ناسازگار است.
+   * - `query_index` هم با همان محدودیت‌های QueryIndexTool به مدل داده
+   *   می‌شود: فقط SELECT و فقط دیتابیس داخل artifact directory پروژه.
    * - به هر توضیح یک یادآوریِ کوتاهِ شکلِ خروجی اضافه می‌شود تا مدل پیش از
    *   فراخوانی بداند چه انتظاری داشته باشد.
    */
