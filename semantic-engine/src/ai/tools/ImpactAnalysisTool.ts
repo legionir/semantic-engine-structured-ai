@@ -205,7 +205,10 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
        such as packages/engine-input/src therefore needs its package node as
        a seed too, otherwise consumers importing @web-engine/engine-input
        appear unrelated to the selected module. */
-    const leaf = prefix.split(/[\\/]/).filter(Boolean).slice(-2, -1)[0] || '';
+    const segments = prefix.split(/[\\/]/).filter(Boolean);
+    const leaf = segments[segments.length - 1] === 'src'
+      ? segments[segments.length - 2] || ''
+      : segments[segments.length - 1] || '';
     const packageSeeds = (this.reader.projectIndex.graphs?.dependencyGraph ?? [])
       .map(edge => edge.to)
       .filter(id =>
