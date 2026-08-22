@@ -225,6 +225,26 @@ function createServer(runtime, options = {}) {
 
 
     /*
+    | One model response can have a reasoning entry, a raw provider response,
+    | and a group of tool events. They all use the same key so the browser
+    | can render the tools beside the exact AI message that caused them,
+    | rather than attaching every tool from a turn to one large accordion.
+    */
+    function executionMessageKey(event) {
+
+        if (event.message_id || event.ai_message_id) {
+            return event.message_id || event.ai_message_id;
+        }
+
+        return [
+            event.turn_id || event.run_id || "run",
+            event.scope || event.agent || "main_agent",
+            event.iteration ?? "unknown"
+        ].join("|");
+    }
+
+
+    /*
     | After each turn (user message → run) a short git report is captured and
     | recorded both in the event stream and in the conversation, so the user
     | can see what the run changed at a glance. The report counts modified,
@@ -646,28 +666,40 @@ function createServer(runtime, options = {}) {
 
 
     /*
-    | Reasoning is part of the conversation for a reader, so it is kept
-    | as its own entry rather than folded into the answer.
+    | The browser must receive model output even when session persistence is
+    | disabled. Persistence is an optional storage feature; it must never
+    | turn the live conversation into a single final-answer bubble.
     */
+    runtime.events.bus.on("agent:response", event => {
 
+        addMessage({
+            role: "assistant",
+            kind: "model",
+            agent: event.scope || event.agent,
+            iteration: event.iteration,
+            turn_id: event.turn_id,
+            execution_key: executionMessageKey(event),
+            finish_reason: event.finish_reason,
+            truncated: event.truncated,
+            content: event.content
+        });
+    });
+
+
+    /*
+    | Reasoning is part of the conversation for a reader, so it is kept
+    | as its own entry rather than folded into the answer. This handles both
+    | the live stream and the stored conversation through addMessage.
+    */
     runtime.events.bus.on("agent:thinking", event => {
-
-        if (!sessionsEnabled()) {
-            return;
-        }
-
-        /*
-        | Pushed straight into the session, this arrived only when the
-        | conversation was reopened: a live console never heard about
-        | it. It goes through addMessage like every other entry, so the
-        | bubble appears while the agent is still working.
-        */
 
         addMessage({
             role: "assistant",
             kind: "thinking",
             agent: event.scope || event.agent,
             iteration: event.iteration,
+            turn_id: event.turn_id,
+            execution_key: executionMessageKey(event),
             content: event.content
         });
     });
@@ -922,6 +954,7 @@ function createServer(runtime, options = {}) {
                 addMessage({
                     role: "assistant",
                     kind: "response",
+                    turn_id,
                     content: state.answer
                 });
             }
@@ -931,6 +964,7 @@ function createServer(runtime, options = {}) {
                 addMessage({
                     role: "assistant",
                     kind: "error",
+                    turn_id,
                     content:
                         `${state.error.code}: ${state.error.message}`
                 });
@@ -963,6 +997,7 @@ function createServer(runtime, options = {}) {
             addMessage({
                 role: "assistant",
                 kind: "error",
+                turn_id,
                 content: error.message
             });
 

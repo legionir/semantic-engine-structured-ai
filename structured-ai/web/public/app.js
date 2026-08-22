@@ -41,6 +41,8 @@ const state = {
     approvalModal: null,
     settingsModal: null,
     mcpModal: null,
+    historyOpening: false,
+    mcpOpening: false,
     settings: [],
     logFilter: "",
     logType: ""
@@ -850,6 +852,10 @@ function renderChat() {
 
     const container = el("chat");
 
+    if (!container) {
+        return;
+    }
+
     state.waitingElapsed = null;
     container.innerHTML = "";
 
@@ -860,18 +866,73 @@ function renderChat() {
 
     } else {
 
+        /*
+        | A single user turn can contain many model messages. Build one
+        | execution key per assistant response (agent + iteration), then
+        | attach the matching tool events to that response. The old UI used
+        | only turn_id here, which merged fs_list, fs_read, and every other
+        | tool in the turn into one box.
+        */
+        const assistantTurns = new Set(
+            state.messages
+                .filter(message =>
+                    message.role === "assistant" &&
+                    ["model", "thinking"].includes(message.kind) &&
+                    message.turn_id
+                )
+                .map(message => message.turn_id)
+        );
+
+        const modelKeys = new Set(
+            state.messages
+                .filter(message =>
+                    message.role === "assistant" &&
+                    message.kind === "model"
+                )
+                .map(message => messageExecutionKey(message))
+                .filter(Boolean)
+        );
+
+        const renderedExecutions = new Set();
+
         for (const message of state.messages) {
 
             container.appendChild(bubble(message));
 
-            /* Under each user message, show the execution that ran for
-               that turn as a collapsible stage-by-stage block. */
-            if (message.role === "user" && message.turn_id) {
+            const key =
+                message.kind === "model" ||
+                (message.kind === "thinking" &&
+                    !modelKeys.has(messageExecutionKey(message)))
+                    ? messageExecutionKey(message)
+                    : null;
 
-                const block = turnExecutionBlock(message.turn_id);
+            if (key && !renderedExecutions.has(key)) {
+
+                const block = turnExecutionBlock(key);
 
                 if (block) {
                     container.appendChild(block);
+                    renderedExecutions.add(key);
+                }
+
+            } else if (
+                message.role === "user" &&
+                message.turn_id &&
+                !assistantTurns.has(message.turn_id)
+            ) {
+
+                /* Backwards compatibility for sessions written before model
+                   response messages were stored: keep their tool events
+                   visible under the user message until a new response arrives. */
+                const fallbackKey = `${message.turn_id}|all`;
+
+                if (!renderedExecutions.has(fallbackKey)) {
+                    const block = turnExecutionBlock(fallbackKey);
+
+                    if (block) {
+                        container.appendChild(block);
+                        renderedExecutions.add(fallbackKey);
+                    }
                 }
             }
         }
@@ -909,19 +970,59 @@ function renderChat() {
 
 
 /*
-| Builds the stage-by-stage execution block shown under a user message.
-| It collects the events of the same turn (keyed by turn_id), summarises
-| the tool calls and agent actions, and hides the detail behind a
-| <details> element so the conversation stays readable.
+| A model response is identified by the turn, the agent scope, and the
+| iteration that produced it. Every tool event emitted during that action
+| carries the same three correlation fields. `execution_key` is accepted
+| when present so newer servers can provide an explicit stable key.
 */
+function messageExecutionKey(value) {
 
-function turnEventsOf(turn_id) {
+    if (value.execution_key || value.ai_message_id) {
+        return value.execution_key || value.ai_message_id;
+    }
 
-    return state.events.filter(
-        event =>
-            event.turn_id === turn_id &&
-            ["agent:iteration", "agent:action", "tool:start", "tool:end", "run:malformed"].includes(event.type)
-    );
+    if (!value.turn_id) {
+        return null;
+    }
+
+    return [
+        value.turn_id,
+        value.scope || value.agent || "main_agent",
+        value.iteration ?? "all"
+    ].join("|");
+}
+
+
+function turnEventsOf(executionKey) {
+
+    if (!executionKey) {
+        return [];
+    }
+
+    const relevant = new Set([
+        "agent:iteration",
+        "agent:action",
+        "tool:graph",
+        "tool:start",
+        "tool:end",
+        "run:malformed"
+    ]);
+
+    const parts = executionKey.split("|");
+    const isTurnFallback = parts.length === 2 && parts[1] === "all";
+
+    return state.events.filter(event => {
+
+        if (!relevant.has(event.type)) {
+            return false;
+        }
+
+        if (isTurnFallback) {
+            return event.turn_id === parts[0];
+        }
+
+        return messageExecutionKey(event) === executionKey;
+    });
 }
 
 
@@ -968,7 +1069,6 @@ function turnExecutionLine(event) {
     );
 
     if (event.type === "tool:start" || event.type === "tool:end") {
-
         line.appendChild(node("span", "tool-chip", event.name || ""));
     }
 
@@ -983,7 +1083,6 @@ function turnExecutionBody(events) {
     const body = node("div", "turn-execution-body");
 
     for (const event of events) {
-
         body.appendChild(turnExecutionLine(event));
     }
 
@@ -991,9 +1090,9 @@ function turnExecutionBody(events) {
 }
 
 
-function turnExecutionBlock(turn_id) {
+function turnExecutionBlock(executionKey) {
 
-    const events = turnEventsOf(turn_id);
+    const events = turnEventsOf(executionKey);
 
     if (events.length === 0) {
         return null;
@@ -1001,7 +1100,18 @@ function turnExecutionBlock(turn_id) {
 
     const details = node("details", "turn-execution");
 
-    details.setAttribute("data-turn-id", turn_id);
+    details.setAttribute("data-execution-key", executionKey);
+
+    /* Keep the old attribute for stored sessions and integrations that used
+       it to locate a turn, while the new key distinguishes iterations. */
+    const turnId = executionKey.split("|")[0];
+    if (turnId) {
+        details.setAttribute("data-turn-id", turnId);
+    }
+
+    /* Tool activity is important feedback, not an empty one-line summary.
+       It remains collapsible, but starts open so a running task is legible. */
+    details.open = true;
 
     details.appendChild(
         node("summary", null, turnSummaryText(events))
@@ -1014,30 +1124,27 @@ function turnExecutionBlock(turn_id) {
 
 
 /*
-| Updates only the turn-execution block for one turn in place, instead of
-| re-rendering the whole conversation. This keeps the UI stable while a run
-| streams new tool events: an already-open block stays open and the chat
-| does not jump. A new turn's block (added by a fresh user message) is
-| rendered by renderChat, which resets it closed by default.
+| Updates only the execution block for one model response in place, instead
+| of re-rendering the whole conversation. An already-open block stays open.
 */
+function refreshTurnExecution(executionKey) {
 
-function refreshTurnExecution(turn_id) {
-
-    if (!turn_id) {
+    if (!executionKey) {
         return;
     }
 
     const chat = el("chat");
 
-    /* A safe exact match on the data attribute: turn ids are runtime
-       generated (alphanumeric + -), and CSS.escape is not present in the
-       test shim, so filter the candidates explicitly. */
+    if (!chat) {
+        return;
+    }
+
     let existing = null;
 
-    for (const el of chat.querySelectorAll("details.turn-execution")) {
+    for (const candidate of chat.querySelectorAll("details.turn-execution")) {
 
-        if (el.getAttribute("data-turn-id") === turn_id) {
-            existing = el;
+        if (candidate.getAttribute("data-execution-key") === executionKey) {
+            existing = candidate;
             break;
         }
     }
@@ -1047,24 +1154,22 @@ function refreshTurnExecution(turn_id) {
         return;
     }
 
-    const events = turnEventsOf(turn_id);
+    const events = turnEventsOf(executionKey);
+    const summary = existing.querySelector("summary");
+    const body = existing.querySelector(".turn-execution-body");
 
-    existing.querySelector("summary").textContent =
-        turnSummaryText(events);
+    if (!summary || !body) {
+        renderChat();
+        return;
+    }
 
-    const body =
-        existing.querySelector(".turn-execution-body");
+    summary.textContent = turnSummaryText(events);
 
     const wasOpen = existing.open;
 
-    existing.replaceChild(
-        turnExecutionBody(events),
-        body
-    );
-
+    existing.replaceChild(turnExecutionBody(events), body);
     existing.open = wasOpen;
 }
-
 
 function eventLabel(event) {
 
@@ -1094,8 +1199,8 @@ function eventLabel(event) {
 
 
 /*
-| Reasoning is folded away by default: it is useful when something went
-| wrong and noise the rest of the time.
+| Reasoning is rendered as a dedicated expandable entry so provider
+| reasoning never disappears from the conversation.
 */
 
 function bubble(message) {
@@ -1137,6 +1242,46 @@ function bubble(message) {
         details.appendChild(node("pre", null, message.content || ""));
 
         box.appendChild(details);
+
+        return box;
+    }
+
+    if (kind === "model") {
+
+        box.appendChild(
+            node(
+                "span",
+                "who",
+                `${message.agent || "agent"} · response${
+                    message.iteration
+                        ? ` · iteration ${message.iteration}`
+                        : ""
+                }`
+            )
+        );
+
+        box.appendChild(
+            node("pre", null, message.content || "")
+        );
+
+        if (message.truncated) {
+            box.appendChild(
+                node("span", "truncated", "response preview truncated")
+            );
+        }
+
+        if (message.at) {
+            box.appendChild(
+                node(
+                    "span",
+                    "stamp",
+                    new Date(message.at).toLocaleTimeString(
+                        "en-GB",
+                        { hour12: false }
+                    )
+                )
+            );
+        }
 
         return box;
     }
@@ -1219,11 +1364,46 @@ function describeSession(session) {
 
 async function openHistory() {
 
-    const response =
-        await fetch("/api/sessions");
+    if (state.historyModal && state.historyModal.isOpen()) {
+        return state.historyModal;
+    }
 
-    const payload =
-        await response.json();
+    /* Fetching the list is asynchronous. Ignore double clicks while it is
+       in flight; otherwise two orphaned dialogs are pushed onto the modal
+       stack and the visible one no longer matches state.historyModal. */
+    if (state.historyOpening) {
+        return null;
+    }
+
+    state.historyOpening = true;
+
+    let response;
+
+    try {
+        response = await fetch("/api/sessions");
+    } catch {
+        state.historyOpening = false;
+        return null;
+    }
+
+    if (!response.ok) {
+        state.historyOpening = false;
+        return null;
+    }
+
+    let payload;
+
+    try {
+        payload = await response.json();
+    } catch {
+        state.historyOpening = false;
+        return null;
+    }
+
+    if (!payload || !Array.isArray(payload.sessions)) {
+        state.historyOpening = false;
+        return null;
+    }
 
     state.sessions = payload.sessions;
 
@@ -1300,6 +1480,7 @@ async function openHistory() {
         });
 
     state.historyModal = handle;
+    state.historyOpening = false;
 
     return handle;
 }
@@ -1615,6 +1796,12 @@ async function openMcp() {
         return state.mcpModal;
     }
 
+    if (state.mcpOpening) {
+        return null;
+    }
+
+    state.mcpOpening = true;
+
     const load = async (refresh) => {
 
         const response =
@@ -1623,11 +1810,24 @@ async function openMcp() {
         return response.json();
     };
 
-    const payload = await load(false);
+    let payload;
+
+    try {
+        payload = await load(false);
+    } catch {
+        state.mcpOpening = false;
+        return null;
+    }
 
     const refresh = async (force) => {
 
-        const next = await load(force);
+        let next;
+
+        try {
+            next = await load(force);
+        } catch {
+            return null;
+        }
 
         if (state.mcpModal && state.mcpModal.isOpen()) {
 
@@ -1661,6 +1861,7 @@ async function openMcp() {
         });
 
     state.mcpModal = handle;
+    state.mcpOpening = false;
 
     return handle;
 }
@@ -1728,9 +1929,14 @@ function borrow(nodes) {
 
 function openExecutionModal() {
 
-    if (state.executionModal) {
+    if (state.executionModal && state.executionModal.isOpen()) {
         return state.executionModal;
     }
+
+    /* A modal can be removed by browser/navigation cleanup without the
+       component callback running. Do not let that stale handle block every
+       future Execution click. */
+    state.executionModal = null;
 
     const tree = el("tree");
     const archive = el("executionArchive");
@@ -1778,9 +1984,11 @@ function openExecutionModal() {
 
             onClose: () => {
 
-                restore();
-
-                state.executionModal = null;
+                try {
+                    restore();
+                } finally {
+                    state.executionModal = null;
+                }
             }
         });
 
@@ -1792,9 +2000,11 @@ function openExecutionModal() {
 
 function openEventsModal() {
 
-    if (state.eventsModal) {
+    if (state.eventsModal && state.eventsModal.isOpen()) {
         return state.eventsModal;
     }
+
+    state.eventsModal = null;
 
     const log = el("log");
     const filter = el("logFilter");
@@ -1835,9 +2045,11 @@ function openEventsModal() {
 
             onClose: () => {
 
-                restore();
-
-                state.eventsModal = null;
+                try {
+                    restore();
+                } finally {
+                    state.eventsModal = null;
+                }
             }
         });
 
@@ -1910,6 +2122,7 @@ function applySession(session) {
     el("sessionTitle").textContent =
         session.title || "new conversation";
 
+    state.events = [];
     el("log").innerHTML = "";
 
     for (const event of session.events || []) {
@@ -2289,6 +2502,11 @@ function describeEvent(event) {
             return `${event.scope || event.agent} ${
                 event.chars
             } chars of reasoning`;
+
+        case "agent:response":
+            return `${event.scope || event.agent} response${
+                event.truncated ? " (preview truncated)" : ""
+            }`;
 
         case "session:message":
             return `${event.message.role} ${event.message.kind}`;
@@ -2671,7 +2889,7 @@ function apply(event) {
     if (
         ["agent:iteration", "agent:action", "tool:start", "tool:end", "run:malformed"].includes(event.type)
     ) {
-        refreshTurnExecution(event.turn_id);
+        refreshTurnExecution(messageExecutionKey(event));
     }
 
     switch (event.type) {
@@ -3151,6 +3369,7 @@ function apply(event) {
 function applySnapshot(snapshot) {
 
     resetRun(true);
+    state.events = [];
     el("log").innerHTML = "";
     renderTree();
 
@@ -3190,11 +3409,15 @@ function applySnapshot(snapshot) {
 
     renderChat();
 
-    for (const event of snapshot.events) {
-        apply(event);
+    for (const event of snapshot.events || []) {
+        /* Messages are already authoritative in snapshot.messages. Replaying
+           their transport events would duplicate every bubble after reload. */
+        if (event.type !== "session:message") {
+            apply(event);
+        }
     }
 
-    for (const approval of snapshot.pending_approvals) {
+    for (const approval of snapshot.pending_approvals || []) {
 
         state.approvals.set(approval.id, approval);
     }

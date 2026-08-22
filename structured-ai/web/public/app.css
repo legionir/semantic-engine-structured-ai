@@ -318,6 +318,27 @@ button.link {
   max-height: 240px;
   overflow: auto;
 }
+
+/* A provider response is useful diagnostic information even when its
+   structured action is rejected. Keep it readable without making it look
+   like the user-facing final answer. */
+.bubble.model {
+  align-self: flex-start;
+  max-width: 94%;
+  background: rgba(110, 168, 254, .045);
+  border-color: rgba(110, 168, 254, .28);
+}
+.bubble.model .who { color: var(--accent); }
+.bubble.model pre {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.bubble.model .truncated { color: var(--warn); font-size: 11px; }
 .bubble .stamp { display: block; margin-top: 4px; font-size: 10px; color: var(--muted); }
 
 .sessions { display: flex; flex-direction: column; gap: 6px; }
@@ -350,7 +371,8 @@ button.link {
   border-radius: 10px;
   background: rgba(110, 168, 254, .05);
   overflow: hidden;
-  height: 30px !important;
+  min-height: 30px;
+  height: auto;
   display: block;
 }
 .turn-execution > summary {

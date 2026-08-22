@@ -162,6 +162,11 @@ const Modal = (() => {
         const previouslyFocused =
             document.activeElement;
 
+        /* A callback is application code. It must never be able to leave a
+           modal in the internal stack or the page permanently scroll-locked
+           when it throws during cleanup. */
+        let closeCallbackRan = false;
+
         const handle = {
             element: dialog,
 
@@ -217,23 +222,38 @@ const Modal = (() => {
                     return;
                 }
 
+                /* Remove the handle first. Even if a callback fails, a later
+                   click must be able to open another modal. */
                 stack.splice(index, 1);
 
-                backdrop.remove();
+                try {
+                    backdrop.remove();
+                } finally {
+                    if (stack.length === 0) {
+                        document.body.classList.remove("modal-open");
+                    }
 
-                if (stack.length === 0) {
-                    document.body.classList.remove("modal-open");
+                    if (
+                        previouslyFocused &&
+                        typeof previouslyFocused.focus === "function"
+                    ) {
+                        try {
+                            previouslyFocused.focus();
+                        } catch {
+                            /* The borrowed focus target may have been removed. */
+                        }
+                    }
                 }
 
-                if (
-                    previouslyFocused &&
-                    typeof previouslyFocused.focus === "function"
-                ) {
-                    previouslyFocused.focus();
-                }
+                if (!closeCallbackRan && typeof onClose === "function") {
+                    closeCallbackRan = true;
 
-                if (typeof onClose === "function") {
-                    onClose(reason);
+                    try {
+                        onClose(reason);
+                    } catch {
+                        /* Closing a modal is best-effort cleanup. A component
+                           callback must not strand the rest of the console. */
+                    }
                 }
             }
         };
