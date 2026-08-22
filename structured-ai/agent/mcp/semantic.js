@@ -91,9 +91,33 @@ function binaryPath() {
 }
 
 
+function normalizeWorkspaceRoot(input) {
+
+    let root = path.resolve(input);
+    const base = path.basename(root).toLowerCase();
+    const parent = path.basename(path.dirname(root)).toLowerCase();
+
+    /* The semantic-engine CLI expects the actual project root. Never start
+       it with Structured AI's runtime directory or with an artifact folder,
+       otherwise it appends another output directory to that path. */
+    if (base === ".agent" || base === ".semantic-engine") {
+        root = path.dirname(root);
+    } else if (base === "semantic" && parent === ".agent") {
+        root = path.dirname(path.dirname(root));
+    } else if (
+        base === "semantic" &&
+        fs.existsSync(path.join(root, "project-index.json"))
+    ) {
+        root = path.dirname(root);
+    }
+
+    return root;
+}
+
+
 function workspaceRoot() {
 
-    return WORKSPACE_ROOT || process.cwd();
+    return normalizeWorkspaceRoot(WORKSPACE_ROOT || process.cwd());
 }
 
 
@@ -316,10 +340,17 @@ async function call(method, params, options = {}) {
 function checkStaleness(root) {
 
     const base =
-        root || workspaceRoot();
+        normalizeWorkspaceRoot(root || workspaceRoot());
+
+    const candidates = [
+        path.join(base, ".semantic-engine", "project-index.json"),
+        /* Compatibility with indexes created by older Structured AI builds. */
+        path.join(base, ".agent", "semantic", "project-index.json"),
+        path.join(base, "semantic", "project-index.json")
+    ];
 
     const indexPath =
-        path.join(base, ".agent", "semantic", "project-index.json");
+        candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
 
     const missing = {
         state: "missing",

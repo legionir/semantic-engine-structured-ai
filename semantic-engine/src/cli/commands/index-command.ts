@@ -15,11 +15,12 @@ import { VectorIndexer } from '../../vector/VectorIndexer';
 import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
+import { normalizeWorkspaceRoot, PROJECT_OUTPUT_DIR } from '../../core/config/ProjectPaths';
 
-export const DEFAULT_OUTPUT_DIR = '.semantic-engine';
+export const DEFAULT_OUTPUT_DIR = PROJECT_OUTPUT_DIR;
 
 export async function runIndex(args: ParsedArgs, context: CommandContext): Promise<CommandResult> {
-  const root = path.resolve(stringOption(args.options, 'root') ?? context.cwd);
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? context.cwd);
 
 
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {

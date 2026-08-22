@@ -15,6 +15,11 @@ import { ProjectIndex } from '../../core/types/project-index.types';
 import { loadBlueprintBeside } from '../discovery/loadBlueprint';
 import type { BlueprintIndex } from '../discovery/BlueprintIndex';
 import {
+  normalizeWorkspaceRoot,
+  resolveProjectIndexPath,
+  workspaceRootFromIndex,
+} from '../../core/config/ProjectPaths';
+import {
   HttpGuard,
   DEFAULT_HOST,
   DEFAULT_MAX_BODY_BYTES,
@@ -24,6 +29,7 @@ import {
 
 interface ParsedCliArgs {
   readonly projectIndexPath: string;
+  readonly rootPath: string | undefined;
   readonly http: boolean;
   readonly port: number;
   readonly host: string;
@@ -33,17 +39,41 @@ interface ParsedCliArgs {
 }
 
 function valueAfter(argv: string[], flag: string): string | undefined {
+  const inline = argv.find(token => token.startsWith(`${flag}=`));
+  if (inline) return inline.slice(flag.length + 1);
+
   const at = argv.indexOf(flag);
-  return at !== -1 && at + 1 < argv.length ? argv[at + 1] : undefined;
+  const value = at !== -1 && at + 1 < argv.length ? argv[at + 1] : undefined;
+  return value && !value.startsWith('-') ? value : undefined;
+}
+
+function positionalArgument(argv: string[]): string | undefined {
+  const valueFlags = new Set(['--root', '--index', '--port', '--host', '--token', '--max-body']);
+
+  for (let index = 2; index < argv.length; index++) {
+    const token = argv[index]!;
+    if (valueFlags.has(token)) {
+      index++;
+      continue;
+    }
+    if (!token.startsWith('-')) return token;
+  }
+
+  return undefined;
 }
 
 function parseArgs(argv: string[]): ParsedCliArgs {
-  const projectIndexPath = argv[2];
+  const positional = positionalArgument(argv);
+  const rootPath = valueAfter(argv, '--root');
+  const explicitIndex = valueAfter(argv, '--index') ?? positional;
+  const projectIndexPath = explicitIndex
+    ?? (rootPath ? resolveProjectIndexPath(normalizeWorkspaceRoot(rootPath)) : '');
   const rawPort = valueAfter(argv, '--port');
   const rawMaxBody = valueAfter(argv, '--max-body');
 
   return {
-    projectIndexPath: projectIndexPath ?? '',
+    projectIndexPath,
+    rootPath: rootPath ? normalizeWorkspaceRoot(rootPath) : undefined,
     http: argv.includes('--http'),
     port: rawPort !== undefined ? parseInt(rawPort, 10) : 3000,
     host: valueAfter(argv, '--host') ?? DEFAULT_HOST,
@@ -56,7 +86,8 @@ function parseArgs(argv: string[]): ParsedCliArgs {
 
 async function runStdio(
   projectIndex: ProjectIndex,
-  blueprint: BlueprintIndex | null
+  blueprint: BlueprintIndex | null,
+  args: ParsedCliArgs
 ): Promise<void> {
   const server = new SemanticEngineMcpServer({
     projectIndex,
@@ -67,7 +98,7 @@ async function runStdio(
     | پوشه را به‌عنوان workspaceRoot می‌گرفت و هر ابزاری که فایل
     | می‌خواند به مسیری بی‌معنا نگاه می‌کرد.
     */
-    workspaceRoot: projectIndex.rootPath ?? projectIndex.root,
+    workspaceRoot: args.rootPath ?? workspaceRootFromIndex(projectIndex, args.projectIndexPath),
   });
   await server.start();
 }
@@ -107,7 +138,7 @@ async function runHttp(
     path: '/mcp',
   });
 
-  const workspaceRoot = projectIndex.rootPath ?? projectIndex.root;
+  const workspaceRoot = args.rootPath ?? workspaceRootFromIndex(projectIndex, args.projectIndexPath);
 
   const httpServer = http.createServer((req, res) => {
     void guard.handle(req, res, async body => {
@@ -152,6 +183,7 @@ async function main(): Promise<void> {
   if (!args.projectIndexPath) {
     console.error(
       'Usage: node cli.js <path-to-project-index.json> [--http] [--port 3000]\n' +
+        '       node cli.js --root <project-root> [--http] [--port 3000]\n' +
         '                   [--host 127.0.0.1] [--token <token>] [--allow-remote]\n' +
         '                   [--max-body <bytes>]'
     );
@@ -201,7 +233,7 @@ async function main(): Promise<void> {
   if (args.http) {
     await runHttp(projectIndex, args, loaded.index);
   } else {
-    await runStdio(projectIndex, loaded.index);
+    await runStdio(projectIndex, loaded.index, args);
   }
 }
 

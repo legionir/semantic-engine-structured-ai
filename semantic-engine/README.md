@@ -137,11 +137,21 @@ node bin/semantic-engine.js doctor
 | فرمان | عملکرد |
 |---|---|
 | `semantic-engine ui` | **راه‌اندازی وب‌سرور یکپارچه و داشبورد بصری گراف (پیش‌فرض: پورت ۴۰۰۰). حتی بدون ایندکس قبلی هم بالا می‌آید و صفحهٔ Open/Configure را نشان می‌دهد.** |
+| `semantic-engine start` | **ساخت ایندکس در صورت نیاز و راه‌اندازی هم‌زمان UI و MCP HTTP (پورت‌های پیش‌فرض ۴۰۰۰ و ۳۰۰۰).** |
 | `semantic-engine index` | اسکن کامل پروژه و ساخت `project-index.json` و `blueprint.json` |
 | `semantic-engine watch` | ایندکس اولیه و پایش بلادرنگ تغییرات فایل‌ها (Live Indexing) |
 | `semantic-engine serve` | ارائهٔ سرویس‌های ایندکس بر بستر پروتکل MCP (پیش‌فرض Stdio یا HTTP) |
 | `semantic-engine query <tool>` | اجرای مستقیم ابزارهای تحلیلی هوش مصنوعی از خط فرمان |
 | `semantic-engine doctor` | تست و ارزیابی پیش‌نیازهای محیط اجرا |
+
+### مسیر یکنواخت پروژه و ایندکس
+
+ریشهٔ پروژه همیشه همان مسیر `--root` است و خروجی پیش‌فرض در
+`<root>/.semantic-engine/` ساخته می‌شود. دستورهای `serve`، `query`، `watch`،
+UI و MCP همین قرارداد را استفاده می‌کنند. اگر یک ایندکس قدیمی در
+`<root>/.agent/semantic/` یا `<root>/semantic/` وجود داشته باشد، فقط برای سازگاری خوانده می‌شود و
+خروجی‌های جدید هرگز در آن مسیر نوشته نمی‌شوند. دادن خودِ `.agent` یا
+`.semantic-engine` به‌عنوان `--root` نیز به ریشهٔ واقعی پروژه نرمال می‌شود.
 
 ### نمونه‌های کاربردی CLI:
 ```bash
@@ -155,10 +165,13 @@ semantic-engine ui --port 4000 --root . --token my-secret-token
 # برای دیده‌شدن UI در محیط‌های پیش‌نمایش/شبکه، روی همهٔ رابط‌ها Bind کن:
 semantic-engine ui --port 4000 --root . --host 0.0.0.0 --allow-remote --token my-secret-token
 
-# ۳. پایش زنده تغییرات کد
+# ۳. راه‌اندازی هم‌زمان UI و MCP HTTP (ایندکس در صورت نیاز ساخته می‌شود)
+semantic-engine start --root . --ui-port 4000 --mcp-port 3000 --token my-secret-token
+
+# ۴. پایش زنده تغییرات کد
 semantic-engine watch --root .
 
-# ۴. اجرای کوئری تحلیلی نماد
+# ۵. اجرای کوئری تحلیلی نماد
 semantic-engine query find_symbol --name "AuthService" --json
 ```
 

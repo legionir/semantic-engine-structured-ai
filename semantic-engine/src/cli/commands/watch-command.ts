@@ -17,6 +17,7 @@ import { GitInfoCollector } from '../../core/git';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
 import { DEFAULT_OUTPUT_DIR } from './index-command';
+import { normalizeWorkspaceRoot } from '../../core/config/ProjectPaths';
 import { waitForShutdown } from './serve-command';
 
 export const PID_FILE_NAME = 'watch.pid';
@@ -66,7 +67,7 @@ export function releasePidFile(pidPath: string): void {
 }
 
 export async function runWatch(args: ParsedArgs, context: CommandContext): Promise<CommandResult> {
-  const root = path.resolve(stringOption(args.options, 'root') ?? context.cwd);
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? context.cwd);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
     return { code: EXIT.failure, error: `--root does not exist or is not a directory: ${root}` };
   }

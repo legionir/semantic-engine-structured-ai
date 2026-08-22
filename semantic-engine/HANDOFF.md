@@ -43,7 +43,7 @@ Semantic Engine یک code-intelligence engine مستقل است که از یک w
 | `semantic-engine/src/cli/args.ts` | parsing flags و exit codes |
 | `semantic-engine/src/cli/commands/index-command.ts` | full index |
 | `semantic-engine/src/cli/commands/query-command.ts` | اجرای AI tool روی index موجود |
-| `semantic-engine/src/cli/commands/serve-command.ts` | UI، REST platform و MCP HTTP/stdio |
+| `semantic-engine/src/cli/commands/serve-command.ts` | UI، REST platform، MCP HTTP/stdio و start یکپارچه |
 | `semantic-engine/src/cli/commands/watch-command.ts` | indexing اولیه و watch تغییرات |
 | `semantic-engine/src/cli/commands/doctor-command.ts` | بررسی محیط |
 
@@ -78,6 +78,13 @@ node bin/semantic-engine.js serve \
   --port 3000 \
   --token "$SEMANTIC_ENGINE_TOKEN" \
   --root /path/to/project
+
+# راه‌اندازی هم‌زمان UI و MCP HTTP؛ اگر ایندکس نباشد ساخته می‌شود
+node bin/semantic-engine.js start \
+  --root /path/to/project \
+  --ui-port 4000 \
+  --mcp-port 3000 \
+  --token "$SEMANTIC_ENGINE_TOKEN"
 
 # watch
 node bin/semantic-engine.js watch \

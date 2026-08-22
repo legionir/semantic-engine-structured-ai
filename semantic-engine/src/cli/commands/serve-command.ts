@@ -8,12 +8,18 @@
 
 import * as fs from 'fs';
 import * as http from 'http';
+import { ChildProcess, spawn } from 'child_process';
 import * as path from 'path';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
-import { DEFAULT_OUTPUT_DIR } from './index-command';
+import { runIndex } from './index-command';
 import { INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
+import {
+  normalizeWorkspaceRoot,
+  resolveProjectIndexPath,
+  workspaceRootFromIndex,
+} from '../../core/config/ProjectPaths';
 import {
   HttpGuard,
   DEFAULT_HOST,
@@ -23,10 +29,8 @@ import {
 } from '../HttpGuard';
 
 export function resolveIndexPath(args: ParsedArgs, cwd: string): string {
-  return path.resolve(
-    stringOption(args.options, 'index') ??
-      path.join(stringOption(args.options, 'root') ?? cwd, DEFAULT_OUTPUT_DIR, INDEX_FILE_NAME)
-  );
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? cwd);
+  return resolveProjectIndexPath(root, stringOption(args.options, 'index'));
 }
 
 export function loadIndex(indexPath: string): ProjectIndex | { error: string } {
@@ -62,7 +66,13 @@ export async function runServe(args: ParsedArgs, context: CommandContext): Promi
   const loaded = loadIndex(indexPath);
   if ('error' in loaded) return { code: EXIT.failure, error: loaded.error };
 
-  const workspaceRoot = loaded.rootPath ?? path.dirname(path.dirname(indexPath));
+  /* An explicit --root is authoritative. The embedded rootPath belongs to
+     the machine that created the index and may be stale after a project is
+     moved or checked out elsewhere. */
+  const requestedRoot = stringOption(args.options, 'root');
+  const workspaceRoot = requestedRoot
+    ? normalizeWorkspaceRoot(requestedRoot)
+    : workspaceRootFromIndex(loaded, indexPath);
 
   if (wantsPlatform) return runPlatform(loaded, workspaceRoot, args, context);
   if (wantsHttp) return runHttp(loaded, workspaceRoot, args, context);
@@ -85,9 +95,12 @@ export async function runUi(args: ParsedArgs, context: CommandContext): Promise<
   const loaded = loadIndex(indexPath);
   const hasIndex = !('error' in loaded);
 
-  const rootRoot = path.resolve(stringOption(args.options, 'root') ?? context.cwd);
+  const rootOption = stringOption(args.options, 'root');
+  const rootRoot = normalizeWorkspaceRoot(rootOption ?? context.cwd);
   const workspaceRoot = hasIndex
-    ? (loaded as ProjectIndex).rootPath ?? path.dirname(path.dirname(indexPath))
+    ? rootOption
+      ? rootRoot
+      : workspaceRootFromIndex(loaded as ProjectIndex, indexPath)
     : rootRoot;
 
   return runPlatform(hasIndex ? (loaded as ProjectIndex) : null, workspaceRoot, args, context);
@@ -304,6 +317,235 @@ async function runHttp(
     `MCP server on http://${host}:${boundPort}/mcp\n` +
       `token: ${token}\n` +
       (provided ? '' : '(generated — pass --token or SEMANTIC_ENGINE_TOKEN to pin it)\n')
+  );
+
+  await shutdown;
+  return { code: EXIT.ok };
+}
+
+/** Resolve the output selected by `index --out`, without guessing another root. */
+function startIndexPath(args: ParsedArgs, root: string): string {
+  const explicit = stringOption(args.options, 'index');
+  if (explicit) return path.resolve(explicit);
+
+  const output = stringOption(args.options, 'out');
+  return output
+    ? path.resolve(root, output, INDEX_FILE_NAME)
+    : resolveProjectIndexPath(root);
+}
+
+function validatePort(value: string | undefined, flag: string): CommandResult | null {
+  if (value === undefined) return null;
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    return { code: EXIT.usage, error: `${flag} must be a number between 0 and 65535` };
+  }
+  return null;
+}
+
+interface StartedChild {
+  readonly child: ChildProcess;
+  readonly ready: Promise<void>;
+  readonly output: () => string;
+}
+
+/** Start one child and mirror its stderr so both services remain observable. */
+function spawnService(
+  args: readonly string[],
+  marker: RegExp,
+  root: string
+): StartedChild {
+  const cli = path.resolve(__dirname, '../../..', 'bin', 'semantic-engine.js');
+  const child = spawn(process.execPath, [cli, ...args], {
+    cwd: root,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+
+  let settled = false;
+  let output = '';
+  let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
+
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  child.stderr?.on('data', chunk => {
+    const text = String(chunk);
+    output += text;
+    process.stderr.write(text);
+    if (!settled && marker.test(output)) {
+      settled = true;
+      resolveReady();
+    }
+  });
+
+  child.once('error', error => {
+    if (!settled) {
+      settled = true;
+      rejectReady(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+
+  child.once('exit', code => {
+    if (!settled) {
+      settled = true;
+      rejectReady(new Error(`semantic-engine service exited before ready (code ${code})`));
+    }
+  });
+
+  return { child, ready, output: () => output };
+}
+
+async function stopChild(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+
+  await new Promise<void>(resolve => {
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve();
+    };
+
+    const timer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      finish();
+    }, 5000);
+
+    child.once('exit', finish);
+    child.kill('SIGTERM');
+  });
+}
+
+/**
+ * `semantic-engine start` — launch the Web UI and MCP HTTP server together.
+ *
+ * It deliberately supervises the two existing entry points instead of
+ * duplicating their HTTP implementations. A missing canonical index is
+ * created before either service starts, so one command is enough for a new
+ * workspace as well as an already indexed one.
+ */
+export async function runStart(
+  args: ParsedArgs,
+  context: CommandContext
+): Promise<CommandResult> {
+  const invalid = validateHttpOptions(args);
+  if (invalid) return invalid;
+
+  const invalidUiPort = validatePort(
+    stringOption(args.options, 'uiPort'),
+    '--ui-port'
+  );
+  if (invalidUiPort) return invalidUiPort;
+
+  const invalidMcpPort = validatePort(
+    stringOption(args.options, 'mcpPort'),
+    '--mcp-port'
+  );
+  if (invalidMcpPort) return invalidMcpPort;
+
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? context.cwd);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return { code: EXIT.failure, error: `--root does not exist or is not a directory: ${root}` };
+  }
+
+  let indexPath = startIndexPath(args, root);
+  const explicitIndex = stringOption(args.options, 'index');
+
+  if (!fs.existsSync(indexPath)) {
+    if (explicitIndex) {
+      return {
+        code: EXIT.failure,
+        error:
+          `index not found: ${indexPath}\n` +
+          `run "semantic-engine index --root ${root}" first, or omit --index to let start create it`,
+      };
+    }
+
+    const indexed = await runIndex(args, context);
+    if (indexed.code !== EXIT.ok) return indexed;
+    indexPath = startIndexPath(args, root);
+  }
+
+  if (!fs.existsSync(indexPath)) {
+    return {
+      code: EXIT.failure,
+      error: `index was not created at the expected path: ${indexPath}`,
+    };
+  }
+
+  const host = stringOption(args.options, 'host') ?? DEFAULT_HOST;
+  const provided = stringOption(args.options, 'token') ?? process.env['SEMANTIC_ENGINE_TOKEN'];
+  if (boolOption(args.options, 'allowRemote', false) && !provided) {
+    return {
+      code: EXIT.usage,
+      error: 'remote start mode requires --token or SEMANTIC_ENGINE_TOKEN',
+    };
+  }
+  const token = provided ?? generateToken();
+
+  const sharedPort = stringOption(args.options, 'port');
+  const uiPort = stringOption(args.options, 'uiPort') ?? sharedPort ?? '4000';
+  const mcpPort = stringOption(args.options, 'mcpPort') ?? '3000';
+
+  if (uiPort === mcpPort) {
+    return { code: EXIT.usage, error: '--ui-port and --mcp-port must be different' };
+  }
+
+  const common = [
+    '--root', root,
+    '--index', indexPath,
+    '--host', host,
+    '--token', token,
+  ];
+
+  const ui = spawnService(
+    ['ui', ...common, '--port', uiPort],
+    /Semantic Engine Standalone Web & Platform Server/,
+    root
+  );
+  const mcp = spawnService(
+    ['serve', '--http', ...common, '--port', mcpPort],
+    /MCP server on http:\/\/[^\s]+/,
+    root
+  );
+  const children = [ui.child, mcp.child];
+  let stopping = false;
+
+  const cleanup = async (): Promise<void> => {
+    if (stopping) return;
+    stopping = true;
+    await Promise.all(children.map(stopChild));
+  };
+
+  /* Install signal handlers before waiting for either service to start. */
+  const shutdown = waitForShutdown(cleanup);
+
+  try {
+    await Promise.all([ui.ready, mcp.ready]);
+  } catch (error) {
+    await cleanup();
+    return {
+      code: EXIT.failure,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const uiUrl = /Web Visualizer UI:\s+(http:\/\/\S+)/.exec(ui.output())?.[1]
+    ?? `http://${host}:${uiPort}/`;
+  const mcpUrl = /MCP server on\s+(http:\/\/\S+)/.exec(mcp.output())?.[1]
+    ?? `http://${host}:${mcpPort}/mcp`;
+
+  process.stderr.write(
+    `\n🚀 Semantic Engine UI + MCP\n` +
+      `   • UI:  ${uiUrl}\n` +
+      `   • MCP: ${mcpUrl}\n` +
+      `   • Root: ${root}\n` +
+      `   • Index: ${indexPath}\n` +
+      `   • Token: ${token}\n`
   );
 
   await shutdown;

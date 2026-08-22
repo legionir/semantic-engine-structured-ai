@@ -1745,8 +1745,24 @@ function createServer(runtime, options = {}) {
                     req.method === "GET"
                 ) {
                     const viewType = pathname.slice("/api/graph/".length);
-                    const root = runtime.workspaceRoot;
-                    const indexPath = path.join(root, ".agent", "semantic", "project-index.json");
+                    let root = path.resolve(runtime.workspaceRoot || process.cwd());
+                    const rootBase = path.basename(root).toLowerCase();
+                    const rootParent = path.basename(path.dirname(root)).toLowerCase();
+
+                    if (rootBase === ".agent" || rootBase === ".semantic-engine") {
+                        root = path.dirname(root);
+                    } else if (rootBase === "semantic" && rootParent === ".agent") {
+                        root = path.dirname(path.dirname(root));
+                    }
+
+                    const indexCandidates = [
+                        path.join(root, ".semantic-engine", "project-index.json"),
+                        /* compatibility with older Structured AI indexes */
+                        path.join(root, ".agent", "semantic", "project-index.json"),
+                        path.join(root, "semantic", "project-index.json")
+                    ];
+                    const indexPath =
+                        indexCandidates.find(candidate => fs.existsSync(candidate)) || indexCandidates[0];
 
                     let nodes = [];
                     let edges = [];

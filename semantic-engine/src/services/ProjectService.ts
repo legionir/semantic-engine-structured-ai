@@ -11,6 +11,7 @@ import { AiToolRegistry } from '../ai/AiToolRegistry';
 import { loadBlueprintBeside } from '../ai/discovery/loadBlueprint';
 import { BlueprintIndex } from '../ai/discovery/BlueprintIndex';
 import { AnalysisGraph } from './analysis/AnalysisGraph';
+import { canonicalIndexPath, normalizeWorkspaceRoot, resolveProjectIndexPath } from '../core/config/ProjectPaths';
 
 const MAX_INDEX_BYTES = 256 * 1024 * 1024;
 const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
@@ -44,13 +45,15 @@ export class ProjectService {
    * ثبت یا باز کردن یک پروژه بر اساس مسیر.
    */
   registerProject(projectPath: string, customId?: string, customName?: string): ManagedProject {
-    const rootPath = path.resolve(projectPath);
+    const rootPath = normalizeWorkspaceRoot(projectPath);
     const id = customId || `prj-${path.basename(rootPath).toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`;
     const name = customName || path.basename(rootPath);
 
-    const indexPath = path.join(rootPath, '.agent', 'semantic', 'project-index.json');
-    const legacyIndexPath = path.join(rootPath, '.semantic-engine', 'project-index.json');
-    const actualIndexPath = fs.existsSync(indexPath) ? indexPath : (fs.existsSync(legacyIndexPath) ? legacyIndexPath : indexPath);
+    /* `.semantic-engine` is canonical. `resolveProjectIndexPath` keeps the
+       old Structured AI sidecar location readable during migration without
+       ever making it the destination for a new index. */
+    const canonicalPath = canonicalIndexPath(rootPath);
+    const actualIndexPath = resolveProjectIndexPath(rootPath);
 
     /*
     | SE-PERF-01، یک محدودیتِ شناخته‌شده و نه رفع‌شده.
@@ -145,7 +148,10 @@ export class ProjectService {
       id,
       name,
       rootPath,
-      indexPath: actualIndexPath,
+      /* Always expose the write destination. A legacy index may have been
+         read above, but the next UI indexing job must migrate it to the
+         canonical directory instead of refreshing `.agent/semantic`. */
+      indexPath: canonicalPath,
       blueprintPath: blueprint ? path.join(path.dirname(actualIndexPath), 'blueprint.json') : undefined,
       sqlitePath,
       status,
