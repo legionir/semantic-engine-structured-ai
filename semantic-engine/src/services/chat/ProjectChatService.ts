@@ -13,6 +13,7 @@
  */
 
 import { AiToolRegistry } from '../../ai/AiToolRegistry';
+import { QUERY_INDEX_SCHEMA_DESCRIPTION } from '../../ai/tools/QueryIndexTool';
 import { assertFetchableUrl, assertResolvedFetchableUrl } from '../providers/EmbeddingProviderService';
 
 export interface ChatLlmConfig {
@@ -84,6 +85,8 @@ Your job is to answer questions about THIS specific project accurately and hones
 - 'query_index' is available for safe read-only SQL over the local SQLite
   index. Its sqlitePath is optional and defaults to project-index.sqlite.
   The symbols table has file_id, not path; join files when a path is needed.
+  Complete allowed table/column descriptions:
+${QUERY_INDEX_SCHEMA_DESCRIPTION}
 - Every tool returns JSON shaped like:
       { "success": boolean, "items": [ ... ], "context"?: string, "error"?: string }
   Read 'items' for the results and 'context' for a prose summary. If
