@@ -13,13 +13,15 @@ import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { GitInfoCollector } from '../../core/git';
 import { VectorIndexer } from '../../vector/VectorIndexer';
 import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
+import { normalizeWorkspaceRoot, PROJECT_OUTPUT_DIR } from '../../core/config/ProjectPaths';
 
-export const DEFAULT_OUTPUT_DIR = '.semantic-engine';
+export const DEFAULT_OUTPUT_DIR = PROJECT_OUTPUT_DIR;
 
 export async function runIndex(args: ParsedArgs, context: CommandContext): Promise<CommandResult> {
-  const root = path.resolve(stringOption(args.options, 'root') ?? context.cwd);
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? context.cwd);
 
 
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
@@ -34,7 +36,11 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
     stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR
   );
 
-  const wantsSqlite = boolOption(args.options, 'sqlite', false);
+  const wantsSqlite = boolOption(
+    args.options,
+    'sqlite',
+    fs.existsSync(path.join(outputDir, 'project-index.sqlite'))
+  );
   const wantsBlueprint = boolOption(args.options, 'blueprint', true);
   const wantsGit = boolOption(args.options, 'git', true);
   /*
@@ -44,9 +50,24 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
   | `--vectors` روشن می‌شود.
   |
   | پیش‌فرض خاموش است چون هزینهٔ زمان و اندازهٔ فایل دارد، نه چون
-  | کار نمی‌کند.
+  | کار نمی‌کند. اگر ایندکس قبلی vector داشته باشد، آن حالت به‌طور
+  | خودکار حفظ می‌شود تا یک index/SQLite refresh معمولی vectorها را
+  | ناخواسته حذف نکند؛ `--no-vectors` برای خاموش‌کردن صریح است.
   */
-  const wantsVectors = boolOption(args.options, 'vectors', false);
+  const existingIndexPath = path.join(outputDir, INDEX_FILE_NAME);
+  let previousIndex: ProjectIndex | null = null;
+  if (fs.existsSync(existingIndexPath)) {
+    try {
+      previousIndex = JSON.parse(fs.readFileSync(existingIndexPath, 'utf8')) as ProjectIndex;
+    } catch {
+      previousIndex = null;
+    }
+  }
+  const wantsVectors = boolOption(
+    args.options,
+    'vectors',
+    Boolean(previousIndex?.vectorChunks)
+  );
   const pretty = boolOption(args.options, 'pretty', true);
 
   const extractors = createExtractors({
@@ -71,6 +92,9 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       vectorIndexer: wantsVectors
         ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
         : null,
+      ...(previousIndex?.vectorChunks
+        ? { previousVectorChunks: previousIndex.vectorChunks }
+        : {}),
       pretty,
     }).run();
 

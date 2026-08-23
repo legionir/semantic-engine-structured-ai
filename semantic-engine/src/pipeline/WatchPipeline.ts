@@ -56,6 +56,8 @@ export interface WatchPipelineOptions {
    */
   readonly maxWaitMs?: number;
   readonly blueprint?: boolean;
+  /** بازسازی blueprint در هر batch یا فقط پس از عبور از drift threshold. */
+  readonly blueprintMode?: 'always' | 'threshold';
   readonly sqlite?: boolean;
   readonly pretty?: boolean;
   readonly validate?: boolean;
@@ -227,7 +229,10 @@ export class WatchPipeline {
         logger: this.logger,
         ...(this.options.pretty !== undefined ? { pretty: this.options.pretty } : {}),
         ...(this.options.validate !== undefined ? { validate: this.options.validate } : {}),
-        blueprint: (this.options.blueprint ?? true) && result.shouldRebuildBlueprint,
+        blueprint:
+          (this.options.blueprint ?? true) &&
+          ((this.options.blueprintMode ?? 'threshold') === 'always' ||
+            result.shouldRebuildBlueprint),
         sqlite: this.options.sqlite === true,
         driftScore: result.driftScore,
         ...(result.projectIndex.git?.commit

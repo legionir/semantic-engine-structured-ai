@@ -14,7 +14,7 @@ import { CommandResult } from './commands/types';
 import { runIndex } from './commands/index-command';
 import { runQuery } from './commands/query-command';
 import { runDoctor } from './commands/doctor-command';
-import { runServe, runUi } from './commands/serve-command';
+import { runServe, runUi, runStart } from './commands/serve-command';
 import { runWatch } from './commands/watch-command';
 import { createLoggerFromEnv } from '../host/Logger';
 
@@ -28,6 +28,7 @@ const COMMANDS: Record<
   serve: runServe,
   watch: runWatch,
   ui: runUi,
+  start: runStart,
 };
 
 const HELP = `semantic-engine — standalone code intelligence platform and visualizer
@@ -38,6 +39,7 @@ usage:
 commands:
   index                 scan a project and write project-index.json
   ui                    launch standalone web visualizer and platform server
+  start                 index if needed, launch UI/MCP, and keep artifacts updated
   serve                 expose index over MCP or standalone HTTP server
   watch                 index, then keep it up to date until Ctrl+C
   query [tool] [params] run an AI tool against an existing index
@@ -48,6 +50,9 @@ ui & serve options:
   --http                MCP protocol over HTTP
   --stdio               MCP protocol over stdin/stdout (default for 'serve')
   --port <n>            HTTP port                  (default: 4000 for ui, 3000 for http)
+  --ui-port <n>          UI port for 'start'         (default: 4000)
+  --mcp-port <n>         MCP port for 'start'        (default: 3000)
+  --no-watch             start UI/MCP without the file watcher
   --host <addr>         bind address               (default: 127.0.0.1)
   --token <secret>      required bearer token      (generated if omitted)
   --allow-remote        permit a non-loopback bind (needs a strong token)
@@ -65,6 +70,11 @@ watch options:
   --root <dir>          project to watch           (default: cwd)
   --out <dir>           output directory           (default: <root>/.semantic-engine)
   --debounce <ms>       batch window               (default: 500)
+  --vectors             build/update vector chunks and embeddings
+  --sqlite              write/update project-index.sqlite
+  --no-blueprint        skip blueprint.json updates
+  --blueprint-mode <m>  always (default) or threshold
+  --skip-initial-index  internal: watch an existing index without rebuilding it
 
 query options:
   --index <file>        path to project-index.json (default: <root>/.semantic-engine/…)

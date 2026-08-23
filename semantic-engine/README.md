@@ -137,11 +137,43 @@ node bin/semantic-engine.js doctor
 | فرمان | عملکرد |
 |---|---|
 | `semantic-engine ui` | **راه‌اندازی وب‌سرور یکپارچه و داشبورد بصری گراف (پیش‌فرض: پورت ۴۰۰۰). حتی بدون ایندکس قبلی هم بالا می‌آید و صفحهٔ Open/Configure را نشان می‌دهد.** |
+| `semantic-engine start` | **ساخت ایندکس در صورت نیاز، راه‌اندازی هم‌زمان UI و MCP HTTP و فعال‌کردن watcher برای به‌روزرسانی خودکار artifactها (پورت‌های پیش‌فرض ۴۰۰۰ و ۳۰۰۰).** |
 | `semantic-engine index` | اسکن کامل پروژه و ساخت `project-index.json` و `blueprint.json` |
-| `semantic-engine watch` | ایندکس اولیه و پایش بلادرنگ تغییرات فایل‌ها (Live Indexing) |
+| `semantic-engine watch` | ایندکس اولیه و پایش بلادرنگ تغییرات فایل‌ها؛ symbol، graph، blueprint، SQLite و vectorهای فعال را به‌روز می‌کند |
 | `semantic-engine serve` | ارائهٔ سرویس‌های ایندکس بر بستر پروتکل MCP (پیش‌فرض Stdio یا HTTP) |
 | `semantic-engine query <tool>` | اجرای مستقیم ابزارهای تحلیلی هوش مصنوعی از خط فرمان |
 | `semantic-engine doctor` | تست و ارزیابی پیش‌نیازهای محیط اجرا |
+
+### مسیر یکنواخت پروژه و ایندکس
+
+ریشهٔ پروژه همیشه همان مسیر `--root` است و خروجی پیش‌فرض در
+`<root>/.semantic-engine/` ساخته می‌شود. دستورهای `serve`، `query`، `watch`،
+UI و MCP همین قرارداد را استفاده می‌کنند. اگر یک ایندکس قدیمی در
+`<root>/.agent/semantic/` یا `<root>/semantic/` وجود داشته باشد، فقط برای سازگاری خوانده می‌شود و
+خروجی‌های جدید هرگز در آن مسیر نوشته نمی‌شوند. دادن خودِ `.agent` یا
+`.semantic-engine` به‌عنوان `--root` نیز به ریشهٔ واقعی پروژه نرمال می‌شود.
+
+### به‌روزرسانی خودکار artifactها
+
+`semantic-engine watch` تغییرات create/modify/delete/rename را پس از یک
+بازهٔ کوتاه debounce به‌صورت incremental پردازش می‌کند. در هر batch موفق،
+فایل تغییرکرده و وابسته‌های لازم دوباره parse می‌شوند و این داده‌ها در
+`project-index.json` به‌روز می‌شوند:
+
+- فایل‌ها، symbols، imports/exports و metrics
+- dependency graph، type graph، call graph و reverse dependency graph
+- config usages، Git metrics و test mappings
+- vector chunk و embedding فایل‌های affected، در صورتی که vector mode فعال باشد
+
+`blueprint.json` در watcher با حالت `always` (پیش‌فرض CLI) بازسازی می‌شود؛
+با `--blueprint-mode threshold` می‌توان رفتار قدیمیِ مبتنی بر drift را فعال
+کرد. نوشتن SQLite با `--sqlite` فعال می‌شود و یک snapshot سازگار از index
+فعلی تولید می‌کند. اگر فایل SQLite قبلاً وجود داشته باشد، watcher آن را
+به‌طور خودکار دنبال می‌کند، مگر اینکه `--no-sqlite` داده شود.
+
+فرمان `start` همین watcher را هم به‌صورت پیش‌فرض زیر نظر می‌گیرد. علاوه بر
+این، UI/Platform cache و MCP snapshot هنگام تغییر artifactها reload می‌شوند.
+برای اجرای فقط UI و MCP بدون watcher از `--no-watch` استفاده کن.
 
 ### نمونه‌های کاربردی CLI:
 ```bash
@@ -155,10 +187,17 @@ semantic-engine ui --port 4000 --root . --token my-secret-token
 # برای دیده‌شدن UI در محیط‌های پیش‌نمایش/شبکه، روی همهٔ رابط‌ها Bind کن:
 semantic-engine ui --port 4000 --root . --host 0.0.0.0 --allow-remote --token my-secret-token
 
-# ۳. پایش زنده تغییرات کد
-semantic-engine watch --root .
+# ۳. راه‌اندازی هم‌زمان UI و MCP HTTP + watcher خودکار
+#    start به‌صورت پیش‌فرض artifactهای index/blueprint/sqlite/vector را
+#    پس از تغییر فایل‌ها تازه می‌کند؛ برای خاموش‌کردن watcher: --no-watch
+semantic-engine start --root . --ui-port 4000 --mcp-port 3000 \
+  --vectors --sqlite --token my-secret-token
 
-# ۴. اجرای کوئری تحلیلی نماد
+# ۴. پایش زنده تغییرات کد به‌صورت مستقل
+semantic-engine watch --root . --vectors --sqlite
+#    --blueprint-mode always (پیش‌فرض) یا threshold
+
+# ۵. اجرای کوئری تحلیلی نماد
 semantic-engine query find_symbol --name "AuthService" --json
 ```
 
@@ -680,11 +719,16 @@ semantic-engine query find_symbol --name "AuthService" --json
 * **provider های LLM** (`ollama`, `openai-compatible`) — سرویس باید در دسترس باشد؛ در حالت `local` هیچ درخواست شبکه‌ای زده نمی‌شود.
 * **غنی‌سازی با LSP** — به زبان‌سرور نصب‌شدهٔ همان زبان نیاز دارد.
 
+`serve` و ورودی MCP standalone نیز وقتی index موجود باشد watcher را
+به‌صورت پیش‌فرض اجرا می‌کنند؛ برای اتصال صرفاً به snapshot فعلی از
+`--no-watch` استفاده کن. در نتیجه ابزارهای MCP و cache داشبورد پس از نوشتن
+artifactهای جدید، snapshot تازه را دریافت می‌کنند.
+
 ### محدودیت‌های شناخته‌شده (known limitations)
 
 * **زبان‌ها**: استخراج کامل سمبل فقط برای TypeScript و JavaScript است. بقیه (Python, Go, Java, Rust, …) با استخراج‌گر heuristic کار می‌کنند: فایل و وابستگی دیده می‌شود، ولی دقت سمبل کمتر است.
 * **مقیاس**: ایندکس در حافظه ساخته می‌شود؛ برای مخازن خیلی بزرگ حافظه به‌تدریج سقف پیدا می‌کند.
-* **تازگی ایندکس**: ایندکس یک عکس لحظه‌ای است. بدون `--watch` تغییرات بعدی دیده نمی‌شوند.
+* **تازگی ایندکس**: `index` یک عکس لحظه‌ای است؛ برای به‌روزرسانی پیوسته از `watch` یا `start` (که watcher را پیش‌فرض فعال می‌کند) استفاده کنید.
 * **گراف فراخوانی**: فراخوانی‌های داینامیک (reflection، `eval`، ارسال با رشته) قابل ردیابی نیستند.
 
 ---

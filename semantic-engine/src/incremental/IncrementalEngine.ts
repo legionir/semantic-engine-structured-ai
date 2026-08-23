@@ -32,6 +32,7 @@ import { DependencyResult, GraphResult, JsonExporter, ProjectEnrichment } from '
 import { SymbolMetricsCalculator } from '../core/metrics/SymbolMetricsCalculator';
 import { ConfigUsageMapper } from '../ai/ConfigUsageMapper';
 import { GitInfoCollector } from '../core/git/GitInfoCollector';
+import { VectorIndexer } from '../vector/VectorIndexer';
 import { normalizePath } from '../core/utils/hash';
 import { ILogger, defaultLogger } from '../host/Logger';
 
@@ -39,6 +40,8 @@ export interface IncrementalEngineOptions {
   readonly workspaceRoot: string;
   readonly symbolExtractorManager: SymbolExtractorManager;
   readonly dependencyExtractorManager: DependencyExtractorManager;
+  /** بردارساز incremental؛ null/undefined یعنی vectorها دست‌نخورده بمانند. */
+  readonly vectorIndexer?: VectorIndexer | null;
   readonly blueprintRebuildThreshold?: number;
   readonly logger?: ILogger;
 }
@@ -65,6 +68,7 @@ export class IncrementalEngine {
   constructor(options: IncrementalEngineOptions) {
     this.options = {
       ...options,
+      vectorIndexer: options.vectorIndexer ?? null,
       blueprintRebuildThreshold: options.blueprintRebuildThreshold ?? 0.05,
       logger: options.logger ?? defaultLogger,
     };
@@ -327,6 +331,26 @@ export class IncrementalEngine {
     };
 
     /*
+    | SE-VEC-11: در مسیر watch، vectorها باید همانند symbol و graph
+    | بخشی از update incremental باشند. پیش از این فقط chunkهای orphan
+    | حذف می‌شدند و chunk فایل تغییرکرده با محتوای قدیمی باقی می‌ماند.
+    | VectorIndexer فقط فایل‌های affected را دوباره chunk می‌کند و
+    | embeddingهای unchanged را از previous reuse می‌کند.
+    */
+    const vectorChunks = this.options.vectorIndexer
+      ? await this.options.vectorIndexer.updateIncremental(
+          projectIndexWithTests,
+          affectedFileIds,
+          fileContents,
+          store.projectIndex.vectorChunks ?? []
+        )
+      : projectIndexWithTests.vectorChunks;
+    const projectIndexWithVectors = {
+      ...projectIndexWithTests,
+      ...(vectorChunks ? { vectorChunks } : {}),
+    };
+
+    /*
     | SE-INC-10: این map از قبل بالاتر ساخته می‌شد و بعد *استفاده
     | نمی‌شد*؛ به‌جایش `fileContents` تحویل exporter می‌شد تا همان
     | کار را از نو انجام دهد. هر ذخیره، دو بار روی محتوای هر فایل
@@ -349,7 +373,7 @@ export class IncrementalEngine {
     );
 
     const finalizedProjectIndex = await exporter.finalizeProjectIndex({
-      projectIndex: projectIndexWithTests,
+      projectIndex: projectIndexWithVectors,
       options: {
         outputPath: '',
         workspaceRoot: this.options.workspaceRoot,

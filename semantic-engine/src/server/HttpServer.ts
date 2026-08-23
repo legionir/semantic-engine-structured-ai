@@ -175,6 +175,7 @@ export class HttpServer {
   }
 
   async stop(): Promise<void> {
+    this.projects.dispose();
     this.sse.close();
     this.ws.close();
     if (this.config.projectsRoot) {
