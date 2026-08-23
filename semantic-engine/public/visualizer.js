@@ -978,7 +978,11 @@ async function analyzeImpact(nodeId) {
           .map(a => "• " + escapeHtml(a.name || a.label || a.id || JSON.stringify(a)))
           .join("\n");
     } else {
-      box.textContent = "Nothing is directly impacted, or this node is not in the call graph.";
+      box.textContent = data.targetType === "module"
+        ? "No indexed dependents were found for this module."
+        : data.targetType === "package"
+          ? "No indexed dependents were found for this package."
+          : "No indexed dependents were found for this node.";
     }
   } catch (e) {
     box.classList.remove("loading");

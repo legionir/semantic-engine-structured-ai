@@ -4,6 +4,7 @@
 
 import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
+import { resolveFileOrSymbolId } from './resolveIndexEntity';
 
 export interface GetDependenciesInput extends AiToolInput {
   readonly id: string;
@@ -23,7 +24,7 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
   readonly inputSchema = {
     type: 'object',
     properties: {
-      id: { type: 'string', description: 'fileId or symbolId' },
+      id: { type: 'string', description: 'fileId, symbolId, or indexed relative file path' },
       direction: { enum: ['forward', 'backward'], description: 'forward = this depends on others; backward = others depend on this' },
       level: { enum: ['file', 'symbol'], default: 'file', description: 'Resolution level' },
       depth: { type: 'integer', default: 1, minimum: 1, maximum: 3, description: 'How many hops to traverse. Capped at 3; asking for more is rejected rather than silently reduced.' },
@@ -54,6 +55,15 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
       */
       const level = input.level ?? 'file';
 
+      const resolvedId = resolveFileOrSymbolId(this.reader, input.id);
+      if (!resolvedId) {
+        return {
+          success: false,
+          error: `No file or symbol found for id or path: ${input.id}`,
+          items: [],
+        };
+      }
+
       const visited = new Set<string>();
       const results: import('./types').AiToolResultItem[] = [];
 
@@ -72,13 +82,17 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
 
           const targetFile = this.reader.getFileById(targetId);
           const targetSymbol = this.reader.getSymbolById(targetId);
+          const externalPackage = targetId.startsWith('pkg:');
 
-          if (level === 'file' && !targetFile) continue;
+          /* A file can depend on a package that is intentionally not a file
+             node in the index. It is still a useful file-level dependency;
+             only symbol-level queries should exclude it. */
+          if (level === 'file' && !targetFile && !externalPackage) continue;
           if (level === 'symbol' && !targetSymbol) continue;
 
           results.push({
             id: targetId,
-            name: targetSymbol?.name ?? targetFile?.path ?? targetId,
+            name: targetSymbol?.name ?? targetFile?.path ?? targetId.replace(/^pkg:/, ''),
             kind: edge.kind,
             path: targetFile?.path,
             line: targetSymbol?.line,
@@ -92,7 +106,7 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
         }
       };
 
-      traverse(input.id, 1);
+      traverse(resolvedId, 1);
 
       return { success: true, items: results.slice(0, limit) };
     } catch (error) {

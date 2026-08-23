@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { RouteDefinition } from '../types';
+import { indexPathCandidates } from '../../core/config/ProjectPaths';
 
 interface DirEntry {
   readonly name: string;
@@ -40,12 +41,9 @@ async function exists(candidate: string): Promise<boolean> {
 
 async function detectHint(dir: string): Promise<DirEntry['hint']> {
   try {
-    const [indexed, legacyIndexed] = await Promise.all([
-      exists(path.join(dir, '.agent', 'semantic', 'project-index.json')),
-      exists(path.join(dir, '.semantic-engine', 'project-index.json')),
-    ]);
+    const indexed = await Promise.all(indexPathCandidates(dir).map(exists));
 
-    if (indexed || legacyIndexed) return 'indexed';
+    if (indexed.some(Boolean)) return 'indexed';
 
     const markers = await Promise.all(
       ['.git', 'package.json', 'go.mod', 'Cargo.toml', 'pyproject.toml'].map(marker =>

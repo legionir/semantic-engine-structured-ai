@@ -286,9 +286,12 @@ export class LodService {
     const edges: GraphEdge[] = [];
 
     const allFiles = project.reader?.getAllFiles() ?? [];
-    const filteredFiles = moduleId
-      ? allFiles.filter(f => f.path.startsWith(moduleId.replace(/^mod-/, '')))
-      : allFiles.slice(0, 60);
+    const selectedModule = moduleId ? project.blueprint?.getModule(moduleId) : undefined;
+    const filteredFiles = selectedModule
+      ? project.reader?.getFilesForIds(selectedModule.fileIds) ?? []
+      : moduleId
+        ? allFiles.filter(f => f.path.startsWith(moduleId.replace(/^mod-/, '')))
+        : allFiles.slice(0, 60);
 
     for (const f of filteredFiles) {
       nodes.push(GraphViewModelMapper.fromFileEntry(f));

@@ -183,12 +183,59 @@ function resolveResource(skill, resourceId) {
 
 
 /*
+| A conditional skill is visible only when the capability it documents is
+| available. The semantic skill is special because its MCP sidecar may be
+| local or remote; `semantic.isAvailable()` covers both definitions and
+| does not make a network call merely to build the prompt.
+*/
+function semanticEngineActive() {
+
+    if (
+        settings.get("MCP_ENABLED") === false ||
+        settings.get("SEMANTIC_ENABLED") === false
+    ) {
+        return false;
+    }
+
+    try {
+        const semantic = require("../mcp/semantic");
+        return semantic.isAvailable() === true;
+    } catch {
+        return false;
+    }
+}
+
+
+function isActiveSkill(skill) {
+
+    const server =
+        skill?.requires?.mcp_server ||
+        skill?.activation?.mcp_server;
+
+    if (!server) {
+        return true;
+    }
+
+    if (String(server).toLowerCase() === "semantic-engine") {
+        return semanticEngineActive();
+    }
+
+    return false;
+}
+
+
+function activeSkills() {
+    return loadSkills().filter(isActiveSkill);
+}
+
+
+/*
 | What the prompt carries: enough to choose, never enough to work from.
 */
 
 function skillIndex() {
 
-    return loadSkills().map(
+    return activeSkills().map(
         skill => ({
             name: skill.name,
             description: skill.description
@@ -206,7 +253,7 @@ function skill_get(args = {}) {
                 ? [args.name]
                 : [];
 
-    const skills = loadSkills();
+    const skills = activeSkills();
 
     if (requested.length === 0) {
 
@@ -292,7 +339,7 @@ function skill_get(args = {}) {
 
 function skill_read(args = {}) {
 
-    const skills = loadSkills();
+    const skills = activeSkills();
 
     const skill =
         skills.find(item => item.name === args.name);
@@ -377,5 +424,6 @@ module.exports = {
     skill_read,
 
     _loadSkills: loadSkills,
-    _skillIndex: skillIndex
+    _skillIndex: skillIndex,
+    _isActiveSkill: isActiveSkill
 };
