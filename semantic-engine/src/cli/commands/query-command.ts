@@ -6,23 +6,19 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import { AiToolRegistry } from '../../ai/AiToolRegistry';
 import { ProjectIndexReader } from '../../ai/ProjectIndexReader';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
-import { DEFAULT_OUTPUT_DIR } from './index-command';
-import { INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
+import { normalizeWorkspaceRoot, resolveProjectIndexPath, workspaceRootFromIndex } from '../../core/config/ProjectPaths';
 
 /** گزینه‌هایی که خودِ CLI مصرف می‌کند و پارامتر ابزار نیستند. */
 const RESERVED = new Set(['index', 'json', 'root', 'help', 'version']);
 
 export async function runQuery(args: ParsedArgs, context: CommandContext): Promise<CommandResult> {
-  const indexPath = path.resolve(
-    stringOption(args.options, 'index') ??
-      path.join(stringOption(args.options, 'root') ?? context.cwd, DEFAULT_OUTPUT_DIR, INDEX_FILE_NAME)
-  );
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? context.cwd);
+  const indexPath = resolveProjectIndexPath(root, stringOption(args.options, 'index'));
 
   if (!fs.existsSync(indexPath)) {
     return {
@@ -50,7 +46,9 @@ export async function runQuery(args: ParsedArgs, context: CommandContext): Promi
   | دادنِ `root` به‌عنوان workspaceRoot یعنی هر ابزاری که فایل
   | می‌خواند، به یک مسیر بی‌معنا نگاه کند.
   */
-  const workspaceRoot = projectIndex.rootPath ?? path.dirname(path.dirname(indexPath));
+  const workspaceRoot = stringOption(args.options, 'root')
+    ? root
+    : workspaceRootFromIndex(projectIndex, indexPath);
 
   const registry = new AiToolRegistry({
     reader: new ProjectIndexReader(projectIndex),

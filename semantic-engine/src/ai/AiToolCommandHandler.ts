@@ -9,13 +9,13 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import { ProjectIndexReader } from './ProjectIndexReader';
 import { AiToolRegistry } from './AiToolRegistry';
 import { AiToolInput } from './tools/types';
 import { VectorStoreOptions } from '../vector/VectorStore';
 import { ILogger, defaultLogger } from '../host/Logger';
 import { Config } from '../host/Config';
+import { normalizeWorkspaceRoot, resolveProjectIndexPath } from '../core/config/ProjectPaths';
 
 export interface AiToolCommandHandlerOptions {
   readonly logger?: ILogger;
@@ -27,10 +27,13 @@ export class AiToolCommandHandler {
   private registry: AiToolRegistry | null = null;
   private readonly logger: ILogger;
 
+  private readonly workspaceRoot: string;
+
   constructor(
-    private readonly workspaceRoot: string,
+    workspaceRoot: string,
     private readonly options: AiToolCommandHandlerOptions = {}
   ) {
+    this.workspaceRoot = normalizeWorkspaceRoot(workspaceRoot);
     this.logger = options.logger ?? defaultLogger;
   }
 
@@ -94,7 +97,7 @@ export class AiToolCommandHandler {
    * حذفش کند.
    */
   private async ensureRegistry(): Promise<void> {
-    const indexPath = path.join(this.workspaceRoot, '.semantic-engine', 'project-index.json');
+    const indexPath = resolveProjectIndexPath(this.workspaceRoot);
 
     if (!fs.existsSync(indexPath)) {
       // ایندکس حذف شده؛ نتیجهٔ کهنه هم نباید سرو شود.

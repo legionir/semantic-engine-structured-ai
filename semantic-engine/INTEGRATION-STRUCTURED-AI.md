@@ -38,7 +38,7 @@
 ### چرا گزینهٔ ج
 
 1. **صفر-وابستگی حفظ می‌شود.** پروتکل MCP روی stdio چیزی جز JSON با هدر `Content-Length` نیست. یک کلاینت کامل در **~۱۵۰ خط جاوااسکریپت خالص** با `child_process` نوشته می‌شود. هیچ پکیجی لازم نیست.
-2. **ایندکس یک بار در حافظه می‌ماند.** تماس دوم به بعد میلی‌ثانیه‌ای است.
+2. **snapshot ایندکس در حافظه می‌ماند و با artifact watcher تازه می‌شود.** تماس دوم به بعد میلی‌ثانیه‌ای است؛ پس از تغییر فایل، snapshot جدید بدون قطع transport load می‌شود.
 3. **با معماری موجود جور است.** `agent/tools/process.js` از قبل دقیقاً همین کار را می‌کند: پروسهٔ بلندعمر با session و خاموشی مدیریت‌شده.
 4. **`semantic-engine` از قبل سرور MCP دارد.** فقط باید مصرف‌کننده‌اش را بنویسیم.
 5. **اختیاری بودن رایگان است.** اگر باینری نصب نباشد، ابزارها با پیام راهنما تنزل می‌کنند و بقیهٔ سیستم دست‌نخورده کار می‌کند.
@@ -57,7 +57,7 @@
                               │  (پروسهٔ جدا)        │
                               └──────────┬───────────┘
                                          │
-                              .agent/semantic/project-index.json
+                              .semantic-engine/project-index.json
 ```
 
 ---
@@ -107,13 +107,16 @@ module.exports = {
 };
 ```
 
-### ۲.۶ ⚠ مسیر خروجی باید زیر `.agent/` باشد
+### ۲.۶ قرارداد مسیر خروجی
 
-README: «فایل‌های `.agent/` که متعلق به runtime هستند از انتساب تغییرات فایل مستثنا می‌شوند.»
+مسیر canonical ایندکس `<workspace>/.semantic-engine/` است؛ این همان مسیری است
+که `index`، `watch`، `query`، UI و هر دو ورودی MCP استفاده می‌کنند. مسیر قدیمی
+`<workspace>/.agent/semantic/` و `<workspace>/semantic/` فقط برای خواندن ایندکس‌های موجود به‌عنوان fallback
+پشتیبانی می‌شود و هیچ اجرای جدیدی در آن خروجی نمی‌نویسد.
 
-اگر `semantic-engine` مثل امروز در `.semantic-engine/` بنویسد، **هر بازسازی ایندکس مثل «فایل تغییر کرد» دیده می‌شود** و hookهای `after_task` (مثل commit خودکار) را بی‌خود فعال می‌کند.
-
-→ مسیر خروجی باید `.agent/semantic/` باشد. این یک تغییر یک‌خطی در پیکربندی `semantic-engine` است اما حیاتی است.
+`--root` باید ریشهٔ واقعی پروژه باشد. اگر یک integration به‌اشتباه خودِ `.agent`
+یا `.semantic-engine` را فرستاد، CLI آن را به workspace واقعی نرمال می‌کند تا
+مسیرهایی مثل `.agent/.semantic-engine/` ساخته نشوند.
 
 ---
 
@@ -121,7 +124,7 @@ README: «فایل‌های `.agent/` که متعلق به runtime هستند ا
 
 سطح ابزار **دو خانواده** دارد که منشأ متفاوتی دارند:
 
-- **`code_*` پرس‌وجوی ایندکس** — از `project-index.json`؛ سریع، آفلاین، ممکن است کهنه باشد.
+- **`code_*` پرس‌وجوی ایندکس** — از `project-index.json`؛ سریع و آفلاین. ورودی‌های MCP با watcher پیش‌فرض artifactها را reload می‌کنند؛ در اجرای `--no-watch` یا indexer متوقف، ممکن است کهنه باشد.
 - **`code_*` زندهٔ LSP** — مستقیم از زبان‌سرور؛ **هرگز کهنه نیست**، نیازمند سرور گرم.
 
 تفکیک این دو مهم است چون خصلت اعتمادپذیری‌شان فرق دارد و باید در توضیح ابزار به مدل گفته شود.
@@ -184,7 +187,7 @@ README: «فایل‌های `.agent/` که متعلق به runtime هستند ا
 |---|---|---|
 | INT-00 | استقلال کامل از VS Code | طبق `MIGRATION-STANDALONE.md`. تا وقتی `require('vscode')` وجود دارد، هیچ اجرایی بیرون از ادیتور ممکن نیست |
 | INT-01 | CLI پایدار | `semantic-engine index` و `semantic-engine serve --stdio` کار کنند |
-| INT-02 | تغییر مسیر خروجی پیش‌فرض | `.semantic-engine/` → `.agent/semantic/` (بخش ۲.۶) |
+| INT-02 | قرارداد مسیر خروجی پیش‌فرض | canonical: `<workspace>/.semantic-engine/` با fallback خواندنی برای `.agent/semantic/` (بخش ۲.۶) |
 | INT-03 | رفع مسدودکننده‌های امنیتی | `SE-SEC-01` و `SE-SEC-02` قبل از هر اتصالی بسته شوند |
 | INT-04 | تصمیم دربارهٔ محل نصب | پیشنهاد بخش ۸ |
 
@@ -370,7 +373,7 @@ async function codeFindSymbol(args) {
             "code_config_usage", "code_context", "code_index_status"]
 },
 "code.index": {
-  "description": "Build or refresh the semantic index. Reads the whole workspace and writes under .agent/semantic/.",
+  "description": "Build or refresh the semantic index. Reads the whole workspace and writes under .semantic-engine/.",
   "sensitive": false,
   "default_policy": "allow",
   "note": "Expensive: a full index reads every source file.",
@@ -414,7 +417,7 @@ async function codeFindSymbol(args) {
 }
 ```
 
-`code.index` نوشتن دارد ولی فقط داخل `.agent/semantic/` — `allow` قابل دفاع است، اما اگر می‌خواهید محافظه‌کار باشید `require_approval` بگذارید.
+`code.index` نوشتن دارد ولی فقط داخل `.semantic-engine/` — `allow` قابل دفاع است، اما اگر می‌خواهید محافظه‌کار باشید `require_approval` بگذارید.
 
 **۳.۴ `agent/tools/index.js`** — ثبت پیاده‌سازی‌ها:
 
@@ -693,7 +696,7 @@ INT-00..04 (پیش‌نیاز)
 | **انفجار حجم خروجی** | `capResult` بی‌صدا می‌بُرد | سقف در خود ابزار + گزارش `total` در برابر `returned` |
 | **مدل ابزار جدید را نادیده می‌گیرد** | سرمایه‌گذاری بی‌نتیجه | `description` صریح «به‌جای X استفاده کن» + به‌روزرسانی مهارت + `output_contract` |
 | **ایندکس‌سازی، run را کند کند** | تجربهٔ بد | پیش‌فرض `lazy`؛ الگوی session؛ هرگز ساخت مسدودکنندهٔ خودکار |
-| **`.agent/semantic/` در provenance بیفتد** | commit خودکار آلوده | INT-02 (مسیر زیر `.agent/`) + تأیید در تست |
+| **مسیر artifact اشتباه شود** | MCP به ایندکس دیگری نگاه می‌کند یا `.agent/.semantic-engine/` ساخته می‌شود | helper مرکزی مسیرها، fallback legacy و تست نرمال‌سازی root |
 | **دو منبع حقیقت برای «تغییرات اخیر»** | مدل سردرگم | `get_recent_changes` وارد نشود؛ `git_log` تنها منبع بماند |
 | **اختلاف ایندکس و LSP** | دو ابزار دو جواب متفاوت می‌دهند و مدل نمی‌داند کدام درست است | در توضیح هر ابزار صریح گفته شود: `code_*` ایندکسی «ممکن است کهنه باشد»، `code_*` زنده «همیشه به‌روز». روی اختلاف، LSP معتبر است |
 | **ابزاری که همیشه خالی برمی‌گرداند** | مدل اعتمادش را به کل خانواده از دست می‌دهد | کاوش واقعی قابلیت در startup (LSP-15)؛ ابزار بی‌اثر اصلاً اعلام نشود |

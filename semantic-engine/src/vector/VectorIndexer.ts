@@ -92,6 +92,46 @@ export class VectorIndexer {
   }
 
   /**
+   * به‌روزرسانی incremental بردارها.
+   *
+   * فایل‌های affected از روی index جدید دوباره chunk می‌شوند، اما
+   * chunkهای فایل‌های دست‌نخورده همان‌طور که هستند نگه داشته می‌شوند.
+   * `attachEmbeddings` نیز embeddingهای هم‌محتوا را reuse می‌کند؛ بنابراین
+   * تغییر یک فایل باعث تولید embedding برای کل پروژه نمی‌شود.
+   */
+  async updateIncremental(
+    projectIndex: ProjectIndex,
+    affectedFileIds: ReadonlySet<string>,
+    contents: ReadonlyMap<string, string>,
+    previous: readonly VectorChunk[] = projectIndex.vectorChunks ?? [],
+  ): Promise<VectorChunk[]> {
+    const liveFileIds = new Set(projectIndex.files.map(file => file.id));
+    const liveSymbolIds = new Set(projectIndex.symbols.map(symbol => symbol.id));
+
+    const previousLive = previous.filter(chunk =>
+      liveFileIds.has(chunk.fileId) &&
+      (!chunk.symbolId || liveSymbolIds.has(chunk.symbolId))
+    );
+
+    const retained = previousLive.filter(chunk => !affectedFileIds.has(chunk.fileId));
+    const affectedFiles = projectIndex.files.filter(file => affectedFileIds.has(file.id));
+    const affectedSymbols = projectIndex.symbols.filter(symbol => affectedFileIds.has(symbol.fileId));
+    const affectedIndex: ProjectIndex = {
+      ...projectIndex,
+      files: affectedFiles,
+      symbols: affectedSymbols,
+      vectorChunks: undefined,
+    };
+
+    const refreshed = await this.index(affectedIndex, {
+      contents,
+      previous: previousLive.filter(chunk => affectedFileIds.has(chunk.fileId)),
+    });
+
+    return [...retained, ...refreshed].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  /**
    * فقط chunkهایی embed می‌شوند که تازه یا تغییرکرده‌اند.
    *
    * SE-VEC-09 — پیش از این، هر اجرا کلِ chunkها را دوباره embed

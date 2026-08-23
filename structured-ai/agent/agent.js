@@ -32,7 +32,10 @@ const {
 
 const memoryStore = require("./lib/memory");
 
-const { _skillIndex: skillIndex } = require("./tools/skills");
+const {
+    _skillIndex: skillIndex,
+    _isActiveSkill: isActiveSkill
+} = require("./tools/skills");
 
 const archive = require("./lib/archive");
 const hookRegistry = require("./lib/hooks");
@@ -2192,7 +2195,10 @@ function resolveSkills(skillNames) {
             name =>
                 SKILL_REGISTRY_OF().get(name)
         )
-        .filter(Boolean);
+        .filter(
+            skill =>
+                skill && isActiveSkill(skill)
+        );
 }
 
 
@@ -3790,6 +3796,9 @@ async function executeToolGraph(
         agent:
             scope || "main_agent",
 
+        scope:
+            scope || "main_agent",
+
         graph_id:
             graphId,
 
@@ -3875,6 +3884,7 @@ async function executeToolGraph(
 
                         events.emit("tool:arguments_ignored", {
                             agent: scope || "main_agent",
+                            scope: scope || "main_agent",
                             id: call.id,
                             name: call.name,
                             dropped: checked.dropped
@@ -3901,6 +3911,9 @@ async function executeToolGraph(
 
                     events.emit("tool:start", {
                         agent:
+                            scope || "main_agent",
+
+                        scope:
                             scope || "main_agent",
 
                         id:
@@ -3999,6 +4012,9 @@ async function executeToolGraph(
                             agent:
                                 scope || "main_agent",
 
+                            scope:
+                                scope || "main_agent",
+
                             id:
                                 call.id,
 
@@ -4046,6 +4062,9 @@ async function executeToolGraph(
 
                         events.emit("tool:end", {
                             agent:
+                                scope || "main_agent",
+
+                            scope:
                                 scope || "main_agent",
 
                             id:
@@ -5682,12 +5701,155 @@ function readModelAction(data) {
 | event and nothing else.
 */
 
+/*
+| Providers do not agree on the name or shape of a reasoning field. OpenAI
+| compatible gateways commonly use reasoning_content, OpenRouter responses
+| may use reasoning, and newer APIs can return reasoning_details as an array
+| of typed parts. Keep the normalisation here so the UI never has to know
+| which provider produced a response.
+*/
+function reasoningText(message) {
+
+    const parts = [];
+    const seen = new Set();
+
+    const add = value => {
+
+        if (typeof value !== "string") {
+            return;
+        }
+
+        const text = value.trim();
+
+        if (text !== "" && !seen.has(text)) {
+            seen.add(text);
+            parts.push(text);
+        }
+    };
+
+    const read = value => {
+
+        if (typeof value === "string") {
+            add(value);
+            return;
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                read(item);
+            }
+            return;
+        }
+
+        if (value && typeof value === "object") {
+            /* Different gateways call the useful part text, content,
+               summary, or reasoning. Prefer the most specific value and
+               do not stringify the metadata wrapper. */
+            for (const key of ["text", "content", "summary", "reasoning"]) {
+                if (Object.prototype.hasOwnProperty.call(value, key)) {
+                    read(value[key]);
+                }
+            }
+        }
+    };
+
+    read(message?.reasoning_content);
+    read(message?.reasoning);
+    read(message?.reasoning_details);
+
+    return parts.join("\n\n");
+}
+
+
+function modelMessageText(message) {
+
+    if (!message || typeof message !== "object") {
+        return "";
+    }
+
+    if (typeof message.content === "string") {
+        return message.content.trim();
+    }
+
+    if (message.content !== undefined && message.content !== null) {
+        try {
+            return JSON.stringify(message.content, null, 2);
+        } catch {
+            return String(message.content);
+        }
+    }
+
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+        try {
+            return JSON.stringify({ tool_calls: message.tool_calls }, null, 2);
+        } catch {
+            return "";
+        }
+    }
+
+    if (typeof message.refusal === "string") {
+        return message.refusal.trim();
+    }
+
+    return "";
+}
+
+
+/*
+| Report both halves of a model response before parsing it. This is
+| deliberately before readModelAction(): a malformed action is still a
+| valuable response to show in the console, and its reasoning is often the
+| only clue explaining why validation failed.
+*/
+function reportModelResponse(data, scope, agent, depth, iteration) {
+
+    const message =
+        data?.choices?.[0]?.message;
+
+    if (!message) {
+        return null;
+    }
+
+    const thinking =
+        reportThinking(message, scope, agent, depth, iteration);
+
+    const raw =
+        modelMessageText(message);
+
+    const maxChars =
+        Math.max(
+            settings.get("THINKING_MAX_CHARS"),
+            4000
+        );
+
+    const content =
+        raw.length > maxChars
+            ? `${raw.slice(0, maxChars)}…`
+            : raw;
+
+    const response =
+        content === ""
+            ? null
+            : events.emit("agent:response", {
+                agent: agent || "main_agent",
+                scope: scope || "main_agent",
+                depth: depth || 0,
+                iteration: iteration || null,
+                content,
+                chars: raw.length,
+                truncated: raw.length > maxChars,
+                finish_reason:
+                    data?.choices?.[0]?.finish_reason || null,
+                model: data?.model || null
+            });
+
+    return response || thinking;
+}
+
+
 function reportThinking(message, scope, agent, depth, iteration) {
 
-    const text =
-        typeof message?.reasoning_content === "string"
-            ? message.reasoning_content.trim()
-            : "";
+    const text = reasoningText(message);
 
     if (text === "") {
         return null;
@@ -7363,6 +7525,10 @@ async function runSubAgentLoop({
                 scope
             });
 
+        /* Keep the provider response visible even when the structured action
+           below turns out to be malformed. */
+        reportModelResponse(data, scope, agentName, depth, iteration);
+
         let parsed;
 
         try {
@@ -7446,12 +7612,11 @@ async function runSubAgentLoop({
         const action =
             parsed.structured;
 
-        reportThinking(message, scope, agentName, depth, iteration);
-
         events.emit("agent:action", {
             agent: agentName,
             scope,
             depth,
+            iteration,
             action: action.action
         });
 
@@ -8969,6 +9134,7 @@ async function runAgentCore(options = {}) {
 
         events.emit("agent:iteration", {
             agent: "main_agent",
+            scope: "main_agent",
             depth: 0,
             iteration
         });
@@ -9088,6 +9254,10 @@ async function runAgentCore(options = {}) {
                     "main_agent"
             });
 
+        /* Keep the provider response visible even when the structured action
+           below turns out to be malformed. */
+        reportModelResponse(data, "main_agent", "main_agent", 0, iteration);
+
         let parsed;
 
         try {
@@ -9170,11 +9340,11 @@ async function runAgentCore(options = {}) {
         const action =
             parsed.structured;
 
-        reportThinking(message, "main_agent", "main_agent", 0, iteration);
-
         events.emit("agent:action", {
             agent: "main_agent",
+            scope: "main_agent",
             depth: 0,
+            iteration,
             action: action.action
         });
 

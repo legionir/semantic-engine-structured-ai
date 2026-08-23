@@ -51,14 +51,32 @@ export class FindSymbolTool implements AiTool<FindSymbolInput> {
       const limit = input.limit ?? 20;
 
       let symbols = this.reader.getAllSymbols();
-
       if (input.name) {
         const query = input.name.toLowerCase();
-        symbols = symbols.filter(s =>
-          s.name.toLowerCase().includes(query) ||
-          s.fullyQualifiedName?.toLowerCase().includes(query) ||
-          s.signature?.toLowerCase().includes(query)
+        const scored = symbols.flatMap(symbol => {
+          const name = symbol.name.toLowerCase();
+          const qualified = symbol.fullyQualifiedName?.toLowerCase() ?? '';
+          const signature = symbol.signature?.toLowerCase() ?? '';
+          let score = 0;
+
+          /* Prefer the symbol name over a path/name substring. A query such
+             as `Engine` should start with `ExecutionEngine`, not properties
+             from the first package tsconfig symbol encountered. */
+          if (name === query) score = 1000;
+          else if (name.startsWith(query)) score = 800;
+          else if (name.includes(query)) score = 650;
+          else if (qualified.includes(query)) score = 350;
+          else if (signature.includes(query)) score = 250;
+
+          return score > 0 ? [{ symbol, score }] : [];
+        });
+
+        scored.sort((left, right) =>
+          right.score - left.score ||
+          left.symbol.name.localeCompare(right.symbol.name) ||
+          left.symbol.line - right.symbol.line
         );
+        symbols = scored.map(entry => entry.symbol);
       }
 
       if (kinds.length > 0) {

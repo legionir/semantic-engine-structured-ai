@@ -40,7 +40,7 @@ describe('ProjectChatService', () => {
   const realFetch = globalThis.fetch;
   afterEach(() => { (globalThis as any).fetch = realFetch; });
 
-  it('exposes semantic tools to the model but withholds query_index (SE-CHAT-03)', async () => {
+  it('exposes the safe query_index tool to the model (SE-CHAT-03)', async () => {
     const { calls } = mockFetchSequence([
       { choices: [{ message: { content: 'done', tool_calls: [] } }] },
     ]);
@@ -50,7 +50,7 @@ describe('ProjectChatService', () => {
     const toolsSent = calls[0].body.tools.map((t: any) => t.function.name);
     expect(toolsSent).toContain('semantic_search');
     expect(toolsSent).toContain('explain_symbol');
-    expect(toolsSent).not.toContain('query_index');
+    expect(toolsSent).toContain('query_index');
   });
 
   it('passes each tool input schema and an output-shape hint to the model', async () => {
@@ -94,20 +94,20 @@ describe('ProjectChatService', () => {
     expect(secondCallMessages.some((m: any) => m.role === 'tool' && m.tool_call_id === 'c1')).toBe(true);
   });
 
-  it('refuses a denied tool the model tries anyway, without executing it', async () => {
+  it('executes the safe query_index tool when the model requests it', async () => {
     let executed = '';
     const reg = {
-      list: () => [{ name: 'query_index', description: 'x', inputSchema: {} }, { name: 'semantic_search', description: 'y', inputSchema: {} }],
-      execute: async (name: string) => { executed = name; return { success: true, items: [] }; },
+      list: () => [{ name: 'query_index', description: 'Safe read-only SQL', inputSchema: { type: 'object' } }],
+      execute: async (name: string) => { executed = name; return { success: true, items: [{ total: 1 }] }; },
     } as unknown as AiToolRegistry;
 
     mockFetchSequence([
-      { choices: [{ message: { content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'query_index', arguments: '{}' } }] } }] },
-      { choices: [{ message: { content: 'ok', tool_calls: [] } }] },
+      { choices: [{ message: { content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'query_index', arguments: '{"sql":"SELECT COUNT(*) AS total FROM symbols"}' } }] } }] },
+      { choices: [{ message: { content: 'There is one result.', tool_calls: [] } }] },
     ]);
 
-    const result = await new ProjectChatService().chat(reg, LLM, [{ role: 'user', content: 'hack' }]);
-    expect(executed).toBe(''); // query_index هرگز اجرا نشد
-    expect(result.toolTrace[0].summary).toMatch(/not available/i);
+    const result = await new ProjectChatService().chat(reg, LLM, [{ role: 'user', content: 'run query_index' }]);
+    expect(executed).toBe('query_index');
+    expect(result.toolTrace[0].ok).toBe(true);
   });
 });

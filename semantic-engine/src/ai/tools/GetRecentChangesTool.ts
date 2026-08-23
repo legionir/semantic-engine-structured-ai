@@ -3,6 +3,7 @@
  */
 
 import { AiTool, AiToolInput, AiToolOutput } from './types';
+import * as path from 'path';
 import { GitClient } from '../../core/git/GitClient';
 
 export interface GetRecentChangesInput extends AiToolInput {
@@ -26,9 +27,17 @@ export class GetRecentChangesTool implements AiTool<GetRecentChangesInput> {
     required: ['workspaceRoot'],
   };
 
+  constructor(private readonly defaultWorkspaceRoot?: string) {}
+
   async execute(input: GetRecentChangesInput): Promise<AiToolOutput> {
     try {
-      const git = new GitClient(input.workspaceRoot);
+      /* MCP models commonly answer `workspaceRoot: "."`. Resolve that
+         relative to the project selected by the server, not the process
+         directory used to launch semantic-engine. */
+      const workspaceRoot = path.isAbsolute(input.workspaceRoot)
+        ? input.workspaceRoot
+        : path.resolve(this.defaultWorkspaceRoot ?? process.cwd(), input.workspaceRoot);
+      const git = new GitClient(workspaceRoot);
       const limit = input.limit ?? 10;
 
       let log = input.path

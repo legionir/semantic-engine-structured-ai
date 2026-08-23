@@ -41,9 +41,12 @@ const state = {
     approvalModal: null,
     settingsModal: null,
     mcpModal: null,
+    historyOpening: false,
+    mcpOpening: false,
     settings: [],
     logFilter: "",
-    logType: ""
+    logType: "",
+    openExecutionKeys: new Set()
 };
 
 
@@ -846,11 +849,82 @@ function updateWaitingElapsed() {
 }
 
 
+/*
+| Older session files did not store turn_id on reasoning messages. Recovering
+| it from the nearest preceding user message lets those sessions use the new
+| per-iteration renderer too, instead of falling back to one aggregate box.
+*/
+function normalizeConversationMessage(message, previous = state.messages) {
+
+    if (!message || typeof message !== "object") {
+        return message;
+    }
+
+    const normalized = { ...message };
+
+    if (
+        normalized.role !== "assistant" ||
+        !["model", "thinking"].includes(normalized.kind)
+    ) {
+        return normalized;
+    }
+
+    if (!normalized.turn_id && normalized.execution_key) {
+        normalized.turn_id = String(normalized.execution_key).split("|")[0];
+    }
+
+    if (!normalized.turn_id) {
+
+        for (let index = previous.length - 1; index >= 0; index--) {
+
+            const candidate = previous[index];
+
+            if (candidate.role === "user" && candidate.turn_id) {
+                normalized.turn_id = candidate.turn_id;
+                break;
+            }
+        }
+    }
+
+    if (normalized.turn_id && !normalized.execution_key) {
+        normalized.execution_key = messageExecutionKey(normalized);
+    }
+
+    return normalized;
+}
+
+
+function normalizeConversationMessages(messages) {
+
+    const normalized = [];
+
+    for (const message of Array.isArray(messages) ? messages : []) {
+        normalized.push(normalizeConversationMessage(message, normalized));
+    }
+
+    return normalized;
+}
+
+
 function renderChat() {
 
     const container = el("chat");
 
+    if (!container) {
+        return;
+    }
+
     state.waitingElapsed = null;
+
+    /* Preserve blocks the operator explicitly expanded when a newly arrived
+       reasoning message causes the chat to be rebuilt. */
+    for (const existing of container.querySelectorAll("details.turn-execution")) {
+        const key = existing.getAttribute("data-execution-key");
+        if (!key) continue;
+        if (existing.open) state.openExecutionKeys.add(key);
+        else state.openExecutionKeys.delete(key);
+    }
+
     container.innerHTML = "";
 
     if (state.messages.length === 0) {
@@ -860,18 +934,76 @@ function renderChat() {
 
     } else {
 
+        /*
+        | A single user turn can contain many model messages. Build one
+        | execution block per assistant response (agent + iteration), and
+        | place it immediately before the reasoning/action message that
+        | produced it. The previous implementation keyed only by turn_id,
+        | so every iteration was merged into one large block.
+        */
+        const assistantTurns = new Set(
+            state.messages
+                .filter(message =>
+                    message.role === "assistant" &&
+                    ["model", "thinking"].includes(message.kind) &&
+                    message.turn_id
+                )
+                .map(message => message.turn_id)
+        );
+
+        const renderedExecutions = new Set();
+
         for (const message of state.messages) {
 
-            container.appendChild(bubble(message));
+            const isExecutionMessage =
+                message.role === "assistant" &&
+                ["model", "thinking"].includes(message.kind);
 
-            /* Under each user message, show the execution that ran for
-               that turn as a collapsible stage-by-stage block. */
-            if (message.role === "user" && message.turn_id) {
+            const key =
+                isExecutionMessage
+                    ? messageExecutionKey(message)
+                    : null;
 
-                const block = turnExecutionBlock(message.turn_id);
+            if (key && !renderedExecutions.has(key)) {
+
+                const block = turnExecutionBlock(key);
 
                 if (block) {
+                    /* The raw structured model envelope is retained in the
+                       session for diagnostics, but is not a user-facing
+                       bubble. The execution block belongs before reasoning
+                       so each AI step reads as one unit. */
                     container.appendChild(block);
+                    renderedExecutions.add(key);
+                }
+            }
+
+            /* The provider's raw content is the action protocol JSON, not a
+               useful chat message. Final response and thinking bubbles are
+               rendered normally; model envelopes stay available in Events
+               and session storage without polluting the conversation. */
+            if (message.kind !== "model") {
+                container.appendChild(bubble(message));
+            }
+
+            if (
+                message.role === "user" &&
+                message.turn_id &&
+                !assistantTurns.has(message.turn_id)
+            ) {
+
+                /* Backwards compatibility for sessions written before model
+                   response messages were stored: keep their tool events
+                   visible under the user message until a new response arrives. */
+                const fallbackKey = `${message.turn_id}|all`;
+
+                if (!renderedExecutions.has(fallbackKey)) {
+                    const block = turnExecutionBlock(fallbackKey);
+
+                    if (block) {
+                        container.appendChild(block);
+                        renderedExecutions.add(fallbackKey);
+                    }
                 }
             }
         }
@@ -909,42 +1041,99 @@ function renderChat() {
 
 
 /*
-| Builds the stage-by-stage execution block shown under a user message.
-| It collects the events of the same turn (keyed by turn_id), summarises
-| the tool calls and agent actions, and hides the detail behind a
-| <details> element so the conversation stays readable.
+| A model response is identified by the turn, the agent scope, and the
+| iteration that produced it. Every tool event emitted during that action
+| carries the same three correlation fields. `execution_key` is accepted
+| when present so newer servers can provide an explicit stable key.
 */
+function messageExecutionKey(value) {
 
-function turnEventsOf(turn_id) {
+    if (value.execution_key || value.ai_message_id) {
+        return value.execution_key || value.ai_message_id;
+    }
 
-    return state.events.filter(
-        event =>
-            event.turn_id === turn_id &&
-            ["agent:iteration", "agent:action", "tool:start", "tool:end", "run:malformed"].includes(event.type)
-    );
+    if (!value.turn_id) {
+        return null;
+    }
+
+    return [
+        value.turn_id,
+        value.scope || value.agent || "main_agent",
+        value.iteration ?? "all"
+    ].join("|");
+}
+
+
+function turnEventsOf(executionKey) {
+
+    if (!executionKey) {
+        return [];
+    }
+
+    const relevant = new Set([
+        "agent:iteration",
+        "agent:action",
+        "tool:graph",
+        "tool:start",
+        "tool:end",
+        "run:malformed"
+    ]);
+
+    const parts = executionKey.split("|");
+    const isTurnFallback = parts.length === 2 && parts[1] === "all";
+
+    return state.events.filter(event => {
+
+        if (!relevant.has(event.type)) {
+            return false;
+        }
+
+        if (isTurnFallback) {
+            return event.turn_id === parts[0];
+        }
+
+        return messageExecutionKey(event) === executionKey;
+    });
 }
 
 
 function turnSummaryText(events) {
 
-    const toolStarts =
-        events.filter(e => e.type === "tool:start").length;
+    /* Count calls by id, not lifecycle events. A tool has a start and an end,
+       but it is still one call. This also remains correct for a result event
+       that arrives without a start after reconnect/replay. */
+    const calls = new Map();
 
-    const actions =
-        events.filter(e => e.type === "agent:action");
+    for (const event of events) {
 
-    const actionsText =
-        actions.length > 0
-            ? actions.map(a => a.action).join(", ")
-            : "";
+        if (event.type !== "tool:start" && event.type !== "tool:end") {
+            continue;
+        }
 
-    const malformed =
-        events.filter(e => e.type === "run:malformed").length;
+        const id =
+            event.id || `${event.name || "tool"}-${calls.size + 1}`;
+
+        const call = calls.get(id) || { success: null };
+
+        if (event.type === "tool:end") {
+            call.success = event.success === true;
+        }
+
+        calls.set(id, call);
+    }
+
+    const success =
+        [...calls.values()].filter(call => call.success === true).length;
+
+    const fail =
+        [...calls.values()].filter(call => call.success === false).length;
+
+    const retried =
+        events.filter(event => event.type === "run:malformed").length;
 
     return (
-        `execution · ${toolStarts} tool call(s)${
-            actionsText ? ` · ${actionsText}` : ""
-        }${malformed ? ` · ${malformed} retried` : ""}`
+        `execution · ${calls.size} tool call(s) · ${success} success · ` +
+        `${fail} fail · ${retried} retried`
     );
 }
 
@@ -968,7 +1157,6 @@ function turnExecutionLine(event) {
     );
 
     if (event.type === "tool:start" || event.type === "tool:end") {
-
         line.appendChild(node("span", "tool-chip", event.name || ""));
     }
 
@@ -983,7 +1171,6 @@ function turnExecutionBody(events) {
     const body = node("div", "turn-execution-body");
 
     for (const event of events) {
-
         body.appendChild(turnExecutionLine(event));
     }
 
@@ -991,9 +1178,9 @@ function turnExecutionBody(events) {
 }
 
 
-function turnExecutionBlock(turn_id) {
+function turnExecutionBlock(executionKey) {
 
-    const events = turnEventsOf(turn_id);
+    const events = turnEventsOf(executionKey);
 
     if (events.length === 0) {
         return null;
@@ -1001,7 +1188,23 @@ function turnExecutionBlock(turn_id) {
 
     const details = node("details", "turn-execution");
 
-    details.setAttribute("data-turn-id", turn_id);
+    details.setAttribute("data-execution-key", executionKey);
+
+    /* Keep the old attribute for stored sessions and integrations that used
+       it to locate a turn, while the new key distinguishes iterations. */
+    const turnId = executionKey.split("|")[0];
+    if (turnId) {
+        details.setAttribute("data-turn-id", turnId);
+    }
+
+    /* Keep the block collapsible and closed by default. CSS must not impose
+       a fixed height: when the user clicks the summary, the full body can
+       expand normally. */
+    details.open = state.openExecutionKeys.has(executionKey);
+    details.addEventListener("toggle", () => {
+        if (details.open) state.openExecutionKeys.add(executionKey);
+        else state.openExecutionKeys.delete(executionKey);
+    });
 
     details.appendChild(
         node("summary", null, turnSummaryText(events))
@@ -1014,30 +1217,27 @@ function turnExecutionBlock(turn_id) {
 
 
 /*
-| Updates only the turn-execution block for one turn in place, instead of
-| re-rendering the whole conversation. This keeps the UI stable while a run
-| streams new tool events: an already-open block stays open and the chat
-| does not jump. A new turn's block (added by a fresh user message) is
-| rendered by renderChat, which resets it closed by default.
+| Updates only the execution block for one model response in place, instead
+| of re-rendering the whole conversation. An already-open block stays open.
 */
+function refreshTurnExecution(executionKey) {
 
-function refreshTurnExecution(turn_id) {
-
-    if (!turn_id) {
+    if (!executionKey) {
         return;
     }
 
     const chat = el("chat");
 
-    /* A safe exact match on the data attribute: turn ids are runtime
-       generated (alphanumeric + -), and CSS.escape is not present in the
-       test shim, so filter the candidates explicitly. */
+    if (!chat) {
+        return;
+    }
+
     let existing = null;
 
-    for (const el of chat.querySelectorAll("details.turn-execution")) {
+    for (const candidate of chat.querySelectorAll("details.turn-execution")) {
 
-        if (el.getAttribute("data-turn-id") === turn_id) {
-            existing = el;
+        if (candidate.getAttribute("data-execution-key") === executionKey) {
+            existing = candidate;
             break;
         }
     }
@@ -1047,24 +1247,22 @@ function refreshTurnExecution(turn_id) {
         return;
     }
 
-    const events = turnEventsOf(turn_id);
+    const events = turnEventsOf(executionKey);
+    const summary = existing.querySelector("summary");
+    const body = existing.querySelector(".turn-execution-body");
 
-    existing.querySelector("summary").textContent =
-        turnSummaryText(events);
+    if (!summary || !body) {
+        renderChat();
+        return;
+    }
 
-    const body =
-        existing.querySelector(".turn-execution-body");
+    summary.textContent = turnSummaryText(events);
 
     const wasOpen = existing.open;
 
-    existing.replaceChild(
-        turnExecutionBody(events),
-        body
-    );
-
+    existing.replaceChild(turnExecutionBody(events), body);
     existing.open = wasOpen;
 }
-
 
 function eventLabel(event) {
 
@@ -1094,20 +1292,402 @@ function eventLabel(event) {
 
 
 /*
-| Reasoning is folded away by default: it is useful when something went
-| wrong and noise the rest of the time.
+| Reasoning is rendered as a dedicated expandable entry so provider
+| reasoning never disappears from the conversation.
 */
+
+/* ----------------------------------------------------------- markdown */
+
+const RTL_TEXT = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+
+
+function containsRtlText(value) {
+    return RTL_TEXT.test(String(value ?? ""));
+}
+
+
+function safeMarkdownHref(value) {
+
+    const href = String(value ?? "").trim();
+
+    if (href.startsWith("//")) {
+        return null;
+    }
+
+    if (
+        href === "" ||
+        href.startsWith("#") ||
+        (href.startsWith("/") && !href.startsWith("//")) ||
+        href.startsWith("./") ||
+        href.startsWith("../")
+    ) {
+        return href;
+    }
+
+    try {
+        const baseUrl =
+            typeof window !== "undefined" && window.location
+                ? window.location.href
+                : "http://localhost/";
+        const parsed = new URL(href, baseUrl);
+
+        return ["http:", "https:", "mailto:"].includes(parsed.protocol)
+            ? parsed.href
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+
+function appendInlineMarkdown(parent, value, depth = 0) {
+
+    const text = String(value ?? "");
+
+    /* A depth limit prevents malformed nested delimiters from recursing
+       forever while still supporting normal emphasis inside links/bold. */
+    if (depth > 8 || text === "") {
+        if (text !== "") parent.appendChild(node("span", null, text));
+        return;
+    }
+
+    let index = 0;
+    let plainStart = 0;
+
+    const flushPlain = end => {
+        if (end > plainStart) {
+            parent.appendChild(node("span", null, text.slice(plainStart, end)));
+        }
+    };
+
+    const findClosing = (delimiter, from) => {
+        const closing = text.indexOf(delimiter, from);
+        return closing > from ? closing : -1;
+    };
+
+    while (index < text.length) {
+
+        let delimiter = null;
+        let closing = -1;
+        let tag = null;
+
+        if (text[index] === "`") {
+            delimiter = "`";
+            closing = findClosing(delimiter, index + 1);
+            tag = "code";
+        } else if (text.startsWith("**", index)) {
+            delimiter = "**";
+            closing = findClosing(delimiter, index + 2);
+            tag = "strong";
+        } else if (text.startsWith("__", index)) {
+            delimiter = "__";
+            closing = findClosing(delimiter, index + 2);
+            tag = "strong";
+        } else if (text.startsWith("~~", index)) {
+            delimiter = "~~";
+            closing = findClosing(delimiter, index + 2);
+            tag = "del";
+        } else if (
+            (text[index] === "*" || text[index] === "_") &&
+            (index === 0 || /\s/.test(text[index - 1] || ""))
+        ) {
+            delimiter = text[index];
+            closing = findClosing(delimiter, index + 1);
+            tag = "em";
+        }
+
+        /* Markdown links are parsed before ordinary text. Unsafe schemes are
+           emitted as their literal markdown instead of becoming a link. */
+        if (text[index] === "[") {
+            const labelEnd = text.indexOf("](", index + 1);
+            const urlEnd = labelEnd === -1 ? -1 : text.indexOf(")", labelEnd + 2);
+
+            if (labelEnd > index && urlEnd > labelEnd) {
+                const href = safeMarkdownHref(text.slice(labelEnd + 2, urlEnd));
+
+                if (href !== null) {
+                    flushPlain(index);
+                    const link = node("a");
+                    link.href = href;
+                    appendInlineMarkdown(
+                        link,
+                        text.slice(index + 1, labelEnd),
+                        depth + 1
+                    );
+                    link.target = "_blank";
+                    link.rel = "noopener noreferrer";
+                    parent.appendChild(link);
+                    index = urlEnd + 1;
+                    plainStart = index;
+                    continue;
+                }
+            }
+        }
+
+        if (tag && closing !== -1) {
+            flushPlain(index);
+            const element = node(tag, tag === "code" ? "inline-code" : null);
+            const inner = text.slice(index + delimiter.length, closing);
+
+            if (tag === "code") {
+                element.textContent = inner;
+            } else {
+                appendInlineMarkdown(element, inner, depth + 1);
+            }
+
+            parent.appendChild(element);
+            index = closing + delimiter.length;
+            plainStart = index;
+            continue;
+        }
+
+        index++;
+    }
+
+    flushPlain(text.length);
+}
+
+
+function isMarkdownBlockStart(line) {
+    return (
+        /^\s{0,3}#{1,6}\s+/.test(line) ||
+        /^\s{0,3}(```|~~~)/.test(line) ||
+        /^\s{0,3}>/.test(line) ||
+        /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line) ||
+        /^\s*(?:[-+*]|\d+[.)])\s+/.test(line)
+    );
+}
+
+
+function appendMarkdownParagraph(parent, lines) {
+
+    const paragraph = node("p", "md-paragraph");
+
+    lines.forEach((line, index) => {
+        if (index > 0) paragraph.appendChild(node("br"));
+        appendInlineMarkdown(paragraph, line);
+    });
+
+    parent.appendChild(paragraph);
+}
+
+
+function markdownTableCells(line) {
+
+    const normalized = String(line ?? "").trim().replace(/^\|/, "").replace(/\|$/, "");
+    return normalized.split("|").map(cell => cell.trim());
+}
+
+
+function isMarkdownTableSeparator(line) {
+
+    const cells = markdownTableCells(line);
+
+    return (
+        cells.length > 0 &&
+        cells.every(cell => /^:?-{1,}:?$/.test(cell))
+    );
+}
+
+
+function appendMarkdownTable(parent, headerLine, rows) {
+
+    const table = node("table", "md-table");
+    const head = node("thead");
+    const headRow = node("tr");
+
+    for (const cell of markdownTableCells(headerLine)) {
+        const th = node("th");
+        appendInlineMarkdown(th, cell);
+        headRow.appendChild(th);
+    }
+
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    const body = node("tbody");
+    const headerCount = markdownTableCells(headerLine).length;
+
+    for (const row of rows) {
+        const tr = node("tr");
+        const cells = markdownTableCells(row);
+
+        for (let index = 0; index < headerCount; index++) {
+            const td = node("td");
+            appendInlineMarkdown(td, cells[index] || "");
+            tr.appendChild(td);
+        }
+
+        body.appendChild(tr);
+    }
+
+    table.appendChild(body);
+    parent.appendChild(table);
+}
+
+
+function renderMarkdown(parent, value) {
+
+    const markdown = String(value ?? "").replace(/\r\n?/g, "\n");
+    parent.innerHTML = "";
+
+    if (markdown.trim() === "") {
+        return;
+    }
+
+    const lines = markdown.split("\n");
+    let index = 0;
+
+    while (index < lines.length) {
+
+        const line = lines[index];
+
+        if (line.trim() === "") {
+            index++;
+            continue;
+        }
+
+        if (
+            line.includes("|") &&
+            index + 1 < lines.length &&
+            isMarkdownTableSeparator(lines[index + 1])
+        ) {
+            const tableRows = [];
+            index += 2;
+
+            while (
+                index < lines.length &&
+                lines[index].trim() !== "" &&
+                lines[index].includes("|")
+            ) {
+                tableRows.push(lines[index]);
+                index++;
+            }
+
+            appendMarkdownTable(parent, line, tableRows);
+            continue;
+        }
+
+        const fence = /^\s{0,3}(```|~~~)\s*([^\s]*)\s*$/.exec(line);
+
+        if (fence) {
+            const marker = fence[1];
+            const language = fence[2] || "";
+            const codeLines = [];
+            index++;
+
+            while (index < lines.length && !new RegExp(`^\\s{0,3}${marker}`).test(lines[index])) {
+                codeLines.push(lines[index]);
+                index++;
+            }
+
+            if (index < lines.length) index++;
+
+            const pre = node("pre", "md-code-block");
+            const code = node("code");
+            if (language) code.className = `language-${language}`;
+            code.textContent = codeLines.join("\n");
+            pre.appendChild(code);
+            parent.appendChild(pre);
+            continue;
+        }
+
+        const heading = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+        if (heading) {
+            const headingNode = node(`h${heading[1].length}`, "md-heading");
+            appendInlineMarkdown(headingNode, heading[2]);
+            parent.appendChild(headingNode);
+            index++;
+            continue;
+        }
+
+        if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
+            parent.appendChild(node("hr"));
+            index++;
+            continue;
+        }
+
+        if (/^\s{0,3}>/.test(line)) {
+            const quoteLines = [];
+            while (index < lines.length && /^\s{0,3}>/.test(lines[index])) {
+                quoteLines.push(lines[index].replace(/^\s{0,3}>\s?/, ""));
+                index++;
+            }
+            const quote = node("blockquote", "md-quote");
+            renderMarkdown(quote, quoteLines.join("\n"));
+            parent.appendChild(quote);
+            continue;
+        }
+
+        const listItem = /^\s*((?:[-+*])|(?:\d+[.)]))\s+(.+)$/.exec(line);
+        if (listItem) {
+            const ordered = /^\d/.test(listItem[1]);
+            const list = node(ordered ? "ol" : "ul", "md-list");
+
+            while (index < lines.length) {
+                const item = /^\s*((?:[-+*])|(?:\d+[.)]))\s+(.+)$/.exec(lines[index]);
+                if (!item || /^\d/.test(item[1]) !== ordered) break;
+
+                const listEntry = node("li");
+                appendInlineMarkdown(listEntry, item[2]);
+                list.appendChild(listEntry);
+                index++;
+            }
+
+            parent.appendChild(list);
+            continue;
+        }
+
+        const paragraphLines = [line.trim()];
+        index++;
+
+        while (
+            index < lines.length &&
+            lines[index].trim() !== "" &&
+            !isMarkdownBlockStart(lines[index])
+        ) {
+            paragraphLines.push(lines[index].trim());
+            index++;
+        }
+
+        appendMarkdownParagraph(parent, paragraphLines);
+    }
+}
+
+
+function applyBubbleDirection(box, content) {
+
+    const rtl = containsRtlText(content);
+    const direction = rtl ? "rtl" : "ltr";
+    box.dir = direction;
+    box.setAttribute("dir", direction);
+    box.classList.add(direction);
+}
+
+
+function appendMessageContent(box, content, className = "message-content") {
+
+    const body = node("div", className);
+    renderMarkdown(body, content);
+    box.appendChild(body);
+    return body;
+}
+
 
 function bubble(message) {
 
     const kind =
         message.kind || "message";
 
+    const content = String(message.content || "");
+
     const box =
         node(
             "div",
             `bubble ${message.role} ${kind === "message" ? "" : kind}`.trim()
         );
+
+    applyBubbleDirection(box, content);
 
     if (kind === "thinking") {
 
@@ -1134,9 +1714,51 @@ function bubble(message) {
             )
         );
 
-        details.appendChild(node("pre", null, message.content || ""));
+        appendMessageContent(box, content, "thinking-content message-content");
 
+        /* Keep the reasoning details wrapper as the first child for the
+           existing console contract; the rendered markdown sits inside it. */
+        const thinkingBody = box.children[box.children.length - 1];
+        details.appendChild(thinkingBody);
         box.appendChild(details);
+
+        return box;
+    }
+
+    if (kind === "model") {
+
+        box.appendChild(
+            node(
+                "span",
+                "who",
+                `${message.agent || "agent"} · response${
+                    message.iteration
+                        ? ` · iteration ${message.iteration}`
+                        : ""
+                }`
+            )
+        );
+
+        appendMessageContent(box, content);
+
+        if (message.truncated) {
+            box.appendChild(
+                node("span", "truncated", "response preview truncated")
+            );
+        }
+
+        if (message.at) {
+            box.appendChild(
+                node(
+                    "span",
+                    "stamp",
+                    new Date(message.at).toLocaleTimeString(
+                        "en-GB",
+                        { hour12: false }
+                    )
+                )
+            );
+        }
 
         return box;
     }
@@ -1151,9 +1773,7 @@ function bubble(message) {
             )
         );
 
-        box.appendChild(
-            node("span", "text", message.content || "")
-        );
+        appendMessageContent(box, content);
 
         if (message.at) {
 
@@ -1172,7 +1792,7 @@ function bubble(message) {
         return box;
     }
 
-    box.append(
+    box.appendChild(
         node(
             "span",
             "who",
@@ -1181,9 +1801,9 @@ function bubble(message) {
                     ? " · failed"
                     : ""
             }`
-        ),
-        node("span", "text", message.content || "")
+        )
     );
+    appendMessageContent(box, content);
 
     if (message.at) {
 
@@ -1219,11 +1839,46 @@ function describeSession(session) {
 
 async function openHistory() {
 
-    const response =
-        await fetch("/api/sessions");
+    if (state.historyModal && state.historyModal.isOpen()) {
+        return state.historyModal;
+    }
 
-    const payload =
-        await response.json();
+    /* Fetching the list is asynchronous. Ignore double clicks while it is
+       in flight; otherwise two orphaned dialogs are pushed onto the modal
+       stack and the visible one no longer matches state.historyModal. */
+    if (state.historyOpening) {
+        return null;
+    }
+
+    state.historyOpening = true;
+
+    let response;
+
+    try {
+        response = await fetch("/api/sessions");
+    } catch {
+        state.historyOpening = false;
+        return null;
+    }
+
+    if (!response.ok) {
+        state.historyOpening = false;
+        return null;
+    }
+
+    let payload;
+
+    try {
+        payload = await response.json();
+    } catch {
+        state.historyOpening = false;
+        return null;
+    }
+
+    if (!payload || !Array.isArray(payload.sessions)) {
+        state.historyOpening = false;
+        return null;
+    }
 
     state.sessions = payload.sessions;
 
@@ -1300,6 +1955,7 @@ async function openHistory() {
         });
 
     state.historyModal = handle;
+    state.historyOpening = false;
 
     return handle;
 }
@@ -1615,6 +2271,12 @@ async function openMcp() {
         return state.mcpModal;
     }
 
+    if (state.mcpOpening) {
+        return null;
+    }
+
+    state.mcpOpening = true;
+
     const load = async (refresh) => {
 
         const response =
@@ -1623,11 +2285,24 @@ async function openMcp() {
         return response.json();
     };
 
-    const payload = await load(false);
+    let payload;
+
+    try {
+        payload = await load(false);
+    } catch {
+        state.mcpOpening = false;
+        return null;
+    }
 
     const refresh = async (force) => {
 
-        const next = await load(force);
+        let next;
+
+        try {
+            next = await load(force);
+        } catch {
+            return null;
+        }
 
         if (state.mcpModal && state.mcpModal.isOpen()) {
 
@@ -1661,6 +2336,7 @@ async function openMcp() {
         });
 
     state.mcpModal = handle;
+    state.mcpOpening = false;
 
     return handle;
 }
@@ -1728,9 +2404,14 @@ function borrow(nodes) {
 
 function openExecutionModal() {
 
-    if (state.executionModal) {
+    if (state.executionModal && state.executionModal.isOpen()) {
         return state.executionModal;
     }
+
+    /* A modal can be removed by browser/navigation cleanup without the
+       component callback running. Do not let that stale handle block every
+       future Execution click. */
+    state.executionModal = null;
 
     const tree = el("tree");
     const archive = el("executionArchive");
@@ -1778,9 +2459,11 @@ function openExecutionModal() {
 
             onClose: () => {
 
-                restore();
-
-                state.executionModal = null;
+                try {
+                    restore();
+                } finally {
+                    state.executionModal = null;
+                }
             }
         });
 
@@ -1792,9 +2475,11 @@ function openExecutionModal() {
 
 function openEventsModal() {
 
-    if (state.eventsModal) {
+    if (state.eventsModal && state.eventsModal.isOpen()) {
         return state.eventsModal;
     }
+
+    state.eventsModal = null;
 
     const log = el("log");
     const filter = el("logFilter");
@@ -1835,9 +2520,11 @@ function openEventsModal() {
 
             onClose: () => {
 
-                restore();
-
-                state.eventsModal = null;
+                try {
+                    restore();
+                } finally {
+                    state.eventsModal = null;
+                }
             }
         });
 
@@ -1899,7 +2586,7 @@ function applySession(session) {
 
     resetRun(true);
 
-    state.messages = session.messages || [];
+    state.messages = normalizeConversationMessages(session.messages);
 
     state.session = {
         id: session.id,
@@ -1910,6 +2597,7 @@ function applySession(session) {
     el("sessionTitle").textContent =
         session.title || "new conversation";
 
+    state.events = [];
     el("log").innerHTML = "";
 
     for (const event of session.events || []) {
@@ -2290,6 +2978,11 @@ function describeEvent(event) {
                 event.chars
             } chars of reasoning`;
 
+        case "agent:response":
+            return `${event.scope || event.agent} response${
+                event.truncated ? " (preview truncated)" : ""
+            }`;
+
         case "session:message":
             return `${event.message.role} ${event.message.kind}`;
 
@@ -2634,6 +3327,7 @@ function resetRun(clearArchive = false) {
     state.hooks.clear();
     state.hookOrder = [];
     state.currentTask = null;
+    state.openExecutionKeys.clear();
 
     if (clearArchive) {
         el("executionArchive").innerHTML = "";
@@ -2643,7 +3337,9 @@ function resetRun(clearArchive = false) {
 
 function pushMessage(message) {
 
-    state.messages.push(message);
+    state.messages.push(
+        normalizeConversationMessage(message)
+    );
 
     renderChat();
 }
@@ -2671,7 +3367,7 @@ function apply(event) {
     if (
         ["agent:iteration", "agent:action", "tool:start", "tool:end", "run:malformed"].includes(event.type)
     ) {
-        refreshTurnExecution(event.turn_id);
+        refreshTurnExecution(messageExecutionKey(event));
     }
 
     switch (event.type) {
@@ -3151,6 +3847,7 @@ function apply(event) {
 function applySnapshot(snapshot) {
 
     resetRun(true);
+    state.events = [];
     el("log").innerHTML = "";
     renderTree();
 
@@ -3174,10 +3871,7 @@ function applySnapshot(snapshot) {
 
     el("autoContinue").checked = Boolean(snapshot.auto_continue);
 
-    state.messages =
-        Array.isArray(snapshot.messages)
-            ? snapshot.messages
-            : [];
+    state.messages = normalizeConversationMessages(snapshot.messages);
 
     state.session = snapshot.session || null;
 
@@ -3190,11 +3884,15 @@ function applySnapshot(snapshot) {
 
     renderChat();
 
-    for (const event of snapshot.events) {
-        apply(event);
+    for (const event of snapshot.events || []) {
+        /* Messages are already authoritative in snapshot.messages. Replaying
+           their transport events would duplicate every bubble after reload. */
+        if (event.type !== "session:message") {
+            apply(event);
+        }
     }
 
-    for (const approval of snapshot.pending_approvals) {
+    for (const approval of snapshot.pending_approvals || []) {
 
         state.approvals.set(approval.id, approval);
     }

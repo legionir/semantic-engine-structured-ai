@@ -13,10 +13,14 @@ import { createExtractors } from '../../pipeline/ExtractorFactory';
 import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { WatchPipeline } from '../../pipeline/WatchPipeline';
 import { IncrementalEngine } from '../../incremental/IncrementalEngine';
+import { VectorIndexer } from '../../vector/VectorIndexer';
+import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { ProjectIndex } from '../../core/types/project-index.types';
 import { GitInfoCollector } from '../../core/git';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
 import { DEFAULT_OUTPUT_DIR } from './index-command';
+import { normalizeWorkspaceRoot } from '../../core/config/ProjectPaths';
 import { waitForShutdown } from './serve-command';
 
 export const PID_FILE_NAME = 'watch.pid';
@@ -65,10 +69,34 @@ export function releasePidFile(pidPath: string): void {
   }
 }
 
+function loadExistingIndex(indexPath: string): ProjectIndex | null {
+  if (!fs.existsSync(indexPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ProjectIndex;
+  } catch {
+    /* ایندکس خراب است؛ اجرای watch باید یک ایندکس تازه بسازد. */
+    return null;
+  }
+}
+
+function blueprintMode(args: ParsedArgs): 'always' | 'threshold' {
+  const raw = stringOption(args.options, 'blueprintMode');
+  if (raw === undefined || raw === 'always') return 'always';
+  if (raw === 'threshold') return 'threshold';
+  throw new Error('--blueprint-mode must be either "always" or "threshold"');
+}
+
 export async function runWatch(args: ParsedArgs, context: CommandContext): Promise<CommandResult> {
-  const root = path.resolve(stringOption(args.options, 'root') ?? context.cwd);
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? context.cwd);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
     return { code: EXIT.failure, error: `--root does not exist or is not a directory: ${root}` };
+  }
+
+  let mode: 'always' | 'threshold';
+  try {
+    mode = blueprintMode(args);
+  } catch (error) {
+    return { code: EXIT.usage, error: error instanceof Error ? error.message : String(error) };
   }
 
   const outputDir = path.resolve(root, stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR);
@@ -93,30 +121,72 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
   const wantsGit = boolOption(args.options, 'git', true);
   const pretty = boolOption(args.options, 'pretty', true);
 
-  try {
-    const { projectIndex, stats } = await new IndexPipeline({
-      workspaceRoot: root,
-      outputPath: path.join(outputDir, INDEX_FILE_NAME),
-      symbolExtractors: extractors.symbols,
-      dependencyExtractors: extractors.dependencies,
-      logger: context.logger,
-      gitCollector: wantsGit ? new GitInfoCollector(root) : null,
-      vectorIndexer: null,
-      pretty,
-    }).run();
+  const indexPath = path.join(outputDir, INDEX_FILE_NAME);
+  const existingIndex = loadExistingIndex(indexPath);
+  const skipInitialIndex =
+    boolOption(args.options, 'skipInitialIndex', false) ||
+    args.options['initialIndex'] === false;
+  const wantsBlueprint = boolOption(args.options, 'blueprint', true);
+  const wantsVectors = boolOption(
+    args.options,
+    'vectors',
+    Boolean(existingIndex?.vectorChunks)
+  );
+  const wantsSqlite = boolOption(
+    args.options,
+    'sqlite',
+    fs.existsSync(path.join(outputDir, 'project-index.sqlite'))
+  );
+  const vectorIndexer = wantsVectors
+    ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
+    : null;
 
-    await new OutputWriter({
-      outputDir,
-      logger: context.logger,
-      pretty,
-      blueprint: boolOption(args.options, 'blueprint', true),
-      sqlite: boolOption(args.options, 'sqlite', false),
-    }).write(projectIndex);
+  try {
+    let projectIndex: ProjectIndex;
+    let indexedFiles: number;
+
+    if (skipInitialIndex) {
+      if (!existingIndex) {
+        return {
+          code: EXIT.failure,
+          error: `cannot skip the initial index: ${indexPath} does not exist`,
+        };
+      }
+      projectIndex = existingIndex;
+      indexedFiles = projectIndex.files.length;
+    } else {
+      const indexed = await new IndexPipeline({
+        workspaceRoot: root,
+        outputPath: indexPath,
+        symbolExtractors: extractors.symbols,
+        dependencyExtractors: extractors.dependencies,
+        logger: context.logger,
+        gitCollector: wantsGit ? new GitInfoCollector(root) : null,
+        vectorIndexer,
+        ...(existingIndex?.vectorChunks
+          ? { previousVectorChunks: existingIndex.vectorChunks }
+          : {}),
+        pretty,
+      }).run();
+
+      projectIndex = indexed.projectIndex;
+      indexedFiles = indexed.stats.files;
+
+      await new OutputWriter({
+        outputDir,
+        logger: context.logger,
+        pretty,
+        blueprint: wantsBlueprint,
+        sqlite: wantsSqlite,
+        ...(projectIndex.git?.commit ? { gitCommit: projectIndex.git.commit } : {}),
+      }).write(projectIndex);
+    }
 
     const engine = new IncrementalEngine({
       workspaceRoot: root,
       symbolExtractorManager: extractors.symbols,
       dependencyExtractorManager: extractors.dependencies,
+      vectorIndexer,
       logger: context.logger,
     });
     engine.load(projectIndex);
@@ -127,8 +197,9 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
       engine,
       logger: context.logger,
       pretty,
-      blueprint: boolOption(args.options, 'blueprint', true),
-      sqlite: boolOption(args.options, 'sqlite', false),
+      blueprint: wantsBlueprint,
+      blueprintMode: mode,
+      sqlite: wantsSqlite,
       ...(stringOption(args.options, 'debounce')
         ? { debounceMs: Number(stringOption(args.options, 'debounce')) }
         : {}),
@@ -168,7 +239,7 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     });
 
     process.stderr.write(
-      `watching ${root} (${stats.files} files indexed, pid ${process.pid})\n` +
+      `watching ${root} (${indexedFiles} files indexed, pid ${process.pid})\n` +
         `press Ctrl+C to stop\n`
     );
 
