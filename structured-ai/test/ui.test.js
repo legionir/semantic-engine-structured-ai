@@ -1190,6 +1190,43 @@ async function main() {
         assert.equal(bubbles[1].children[0].tagName, "DETAILS");
     });
 
+    await test("markdown is rendered and Persian bubbles use RTL direction", () => {
+
+        console_.send({
+            type: "session:message",
+            message: {
+                role: "user",
+                kind: "message",
+                content: "# سلام\n\n**این متن** را در `src/app.ts` ببین."
+            }
+        });
+
+        console_.send({
+            type: "session:message",
+            message: {
+                role: "assistant",
+                kind: "response",
+                content: "## گزارش\n\n- مورد اول\n- مورد دوم\n\n[مستندات](https://example.com)"
+            }
+        });
+
+        const bubbles = document.getElementById("chat").querySelectorAll("bubble");
+        const user = bubbles[bubbles.length - 2];
+        const assistant = bubbles[bubbles.length - 1];
+
+        assert.equal(user.dir, "rtl");
+        assert.ok(user.classList.contains("rtl"));
+        assert.equal(user.children[1].children[0].tagName, "H1");
+        assert.equal(user.children[1].children[1].children[0].tagName, "STRONG");
+
+        assert.equal(assistant.dir, "rtl");
+        assert.ok(assistant.classList.contains("rtl"));
+        assert.equal(assistant.children[1].children[0].tagName, "H2");
+        assert.equal(assistant.children[1].children[1].tagName, "UL");
+        assert.equal(assistant.children[1].children[2].children[0].tagName, "A");
+        assert.match(assistant.textContent, /مستندات/);
+    });
+
     await test("a user message's execution renders as a stage-by-stage block", () => {
 
         const turn = "turn-abc";

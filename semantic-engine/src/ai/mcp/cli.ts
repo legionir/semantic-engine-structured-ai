@@ -10,10 +10,17 @@
 
 import * as fs from 'fs';
 import * as http from 'http';
+import { ChildProcess, spawn } from 'child_process';
+import * as path from 'path';
 import { SemanticEngineMcpServer } from './SemanticEngineMcpServer';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { loadBlueprintBeside } from '../discovery/loadBlueprint';
 import type { BlueprintIndex } from '../discovery/BlueprintIndex';
+import {
+  normalizeWorkspaceRoot,
+  resolveProjectIndexPath,
+  workspaceRootFromIndex,
+} from '../../core/config/ProjectPaths';
 import {
   HttpGuard,
   DEFAULT_HOST,
@@ -24,26 +31,52 @@ import {
 
 interface ParsedCliArgs {
   readonly projectIndexPath: string;
+  readonly rootPath: string | undefined;
   readonly http: boolean;
   readonly port: number;
   readonly host: string;
   readonly token: string | undefined;
   readonly allowRemote: boolean;
   readonly maxBodyBytes: number;
+  readonly watch: boolean;
 }
 
 function valueAfter(argv: string[], flag: string): string | undefined {
+  const inline = argv.find(token => token.startsWith(`${flag}=`));
+  if (inline) return inline.slice(flag.length + 1);
+
   const at = argv.indexOf(flag);
-  return at !== -1 && at + 1 < argv.length ? argv[at + 1] : undefined;
+  const value = at !== -1 && at + 1 < argv.length ? argv[at + 1] : undefined;
+  return value && !value.startsWith('-') ? value : undefined;
+}
+
+function positionalArgument(argv: string[]): string | undefined {
+  const valueFlags = new Set(['--root', '--index', '--port', '--host', '--token', '--max-body']);
+
+  for (let index = 2; index < argv.length; index++) {
+    const token = argv[index]!;
+    if (valueFlags.has(token)) {
+      index++;
+      continue;
+    }
+    if (!token.startsWith('-')) return token;
+  }
+
+  return undefined;
 }
 
 function parseArgs(argv: string[]): ParsedCliArgs {
-  const projectIndexPath = argv[2];
+  const positional = positionalArgument(argv);
+  const rootPath = valueAfter(argv, '--root');
+  const explicitIndex = valueAfter(argv, '--index') ?? positional;
+  const projectIndexPath = explicitIndex
+    ?? (rootPath ? resolveProjectIndexPath(normalizeWorkspaceRoot(rootPath)) : '');
   const rawPort = valueAfter(argv, '--port');
   const rawMaxBody = valueAfter(argv, '--max-body');
 
   return {
-    projectIndexPath: projectIndexPath ?? '',
+    projectIndexPath,
+    rootPath: rootPath ? normalizeWorkspaceRoot(rootPath) : undefined,
     http: argv.includes('--http'),
     port: rawPort !== undefined ? parseInt(rawPort, 10) : 3000,
     host: valueAfter(argv, '--host') ?? DEFAULT_HOST,
@@ -51,12 +84,78 @@ function parseArgs(argv: string[]): ParsedCliArgs {
     allowRemote: argv.includes('--allow-remote'),
     maxBodyBytes:
       rawMaxBody !== undefined ? parseInt(rawMaxBody, 10) : DEFAULT_MAX_BODY_BYTES,
+    watch: !argv.includes('--no-watch'),
   };
+}
+
+interface StartedWatcher {
+  readonly child: ChildProcess;
+  readonly ready: Promise<void>;
+}
+
+function startWatcher(root: string, indexPath: string): StartedWatcher {
+  const cli = path.resolve(__dirname, '../../..', 'bin', 'semantic-engine.js');
+  const child = spawn(
+    process.execPath,
+    [cli, 'watch', '--root', root, '--out', path.dirname(indexPath), '--skip-initial-index'],
+    { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] }
+  );
+
+  let output = '';
+  let settled = false;
+  let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  child.stderr?.on('data', chunk => {
+    const text = String(chunk);
+    output += text;
+    process.stderr.write(text);
+    if (!settled && /press Ctrl\+C to stop/.test(output)) {
+      settled = true;
+      resolveReady();
+    }
+  });
+  child.once('error', error => {
+    if (!settled) {
+      settled = true;
+      rejectReady(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+  child.once('exit', code => {
+    if (!settled) {
+      settled = true;
+      rejectReady(new Error(`watcher exited before ready (code ${code})`));
+    }
+  });
+
+  return { child, ready };
+}
+
+async function stopWatcher(watcher: StartedWatcher): Promise<void> {
+  if (watcher.child.exitCode !== null || watcher.child.signalCode !== null) return;
+  await new Promise<void>(resolve => {
+    const timer = setTimeout(() => {
+      if (watcher.child.exitCode === null && watcher.child.signalCode === null) {
+        watcher.child.kill('SIGKILL');
+      }
+      resolve();
+    }, 5000);
+    watcher.child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    watcher.child.kill('SIGTERM');
+  });
 }
 
 async function runStdio(
   projectIndex: ProjectIndex,
-  blueprint: BlueprintIndex | null
+  blueprint: BlueprintIndex | null,
+  args: ParsedCliArgs
 ): Promise<void> {
   const server = new SemanticEngineMcpServer({
     projectIndex,
@@ -67,9 +166,23 @@ async function runStdio(
     | پوشه را به‌عنوان workspaceRoot می‌گرفت و هر ابزاری که فایل
     | می‌خواند به مسیری بی‌معنا نگاه می‌کرد.
     */
-    workspaceRoot: projectIndex.rootPath ?? projectIndex.root,
+    workspaceRoot: args.rootPath ?? workspaceRootFromIndex(projectIndex, args.projectIndexPath),
   });
-  await server.start();
+  server.watchIndexFile(args.projectIndexPath);
+  const watcher = args.watch
+    ? startWatcher(
+        args.rootPath ?? workspaceRootFromIndex(projectIndex, args.projectIndexPath),
+        args.projectIndexPath
+      )
+    : null;
+
+  try {
+    if (watcher) await watcher.ready;
+    await server.start();
+  } finally {
+    if (watcher) await stopWatcher(watcher);
+    await server.close();
+  }
 }
 
 /**
@@ -107,14 +220,23 @@ async function runHttp(
     path: '/mcp',
   });
 
-  const workspaceRoot = projectIndex.rootPath ?? projectIndex.root;
+  const workspaceRoot = args.rootPath ?? workspaceRootFromIndex(projectIndex, args.projectIndexPath);
+  const watcher = args.watch ? startWatcher(workspaceRoot, args.projectIndexPath) : null;
 
   const httpServer = http.createServer((req, res) => {
     void guard.handle(req, res, async body => {
+      const currentIndex = (() => {
+        try {
+          return JSON.parse(fs.readFileSync(args.projectIndexPath, 'utf8')) as ProjectIndex;
+        } catch {
+          return projectIndex;
+        }
+      })();
+      const currentBlueprint = loadBlueprintBeside(args.projectIndexPath).index;
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       const mcpServer = new SemanticEngineMcpServer({
-        projectIndex,
-        ...(blueprint ? { blueprint } : {}),
+        projectIndex: currentIndex,
+        ...(currentBlueprint ? { blueprint: currentBlueprint } : blueprint ? { blueprint } : {}),
         workspaceRoot,
       });
       await mcpServer.connectTransport(transport);
@@ -123,14 +245,28 @@ async function runHttp(
         await transport.handleRequest(req, res, JSON.parse(body));
       } finally {
         await transport.close?.();
+        await mcpServer.close();
       }
     });
   });
 
-  await new Promise<void>((resolve, reject) => {
-    httpServer.once('error', reject);
-    httpServer.listen(args.port, args.host, () => resolve());
-  });
+  try {
+    if (watcher) await watcher.ready;
+    await new Promise<void>((resolve, reject) => {
+      httpServer.once('error', reject);
+      httpServer.listen(args.port, args.host, () => resolve());
+    });
+  } catch (error) {
+    if (watcher) await stopWatcher(watcher);
+    throw error;
+  }
+
+  const cleanup = async (): Promise<void> => {
+    await new Promise<void>(resolve => httpServer.close(() => resolve()));
+    if (watcher) await stopWatcher(watcher);
+  };
+  process.once('SIGINT', () => void cleanup().then(() => process.exit(0)));
+  process.once('SIGTERM', () => void cleanup().then(() => process.exit(0)));
 
   const address = httpServer.address();
   const actualPort = typeof address === 'object' && address ? address.port : args.port;
@@ -152,8 +288,9 @@ async function main(): Promise<void> {
   if (!args.projectIndexPath) {
     console.error(
       'Usage: node cli.js <path-to-project-index.json> [--http] [--port 3000]\n' +
+        '       node cli.js --root <project-root> [--http] [--port 3000]\n' +
         '                   [--host 127.0.0.1] [--token <token>] [--allow-remote]\n' +
-        '                   [--max-body <bytes>]'
+        '                   [--max-body <bytes>] [--no-watch]'
     );
     process.exit(1);
   }
@@ -201,7 +338,7 @@ async function main(): Promise<void> {
   if (args.http) {
     await runHttp(projectIndex, args, loaded.index);
   } else {
-    await runStdio(projectIndex, loaded.index);
+    await runStdio(projectIndex, loaded.index, args);
   }
 }
 

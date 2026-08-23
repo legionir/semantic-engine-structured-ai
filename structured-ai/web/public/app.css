@@ -318,6 +318,27 @@ button.link {
   max-height: 240px;
   overflow: auto;
 }
+
+/* A provider response is useful diagnostic information even when its
+   structured action is rejected. Keep it readable without making it look
+   like the user-facing final answer. */
+.bubble.model {
+  align-self: flex-start;
+  max-width: 94%;
+  background: rgba(110, 168, 254, .045);
+  border-color: rgba(110, 168, 254, .28);
+}
+.bubble.model .who { color: var(--accent); }
+.bubble.model pre {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.bubble.model .truncated { color: var(--warn); font-size: 11px; }
 .bubble .stamp { display: block; margin-top: 4px; font-size: 10px; color: var(--muted); }
 
 .sessions { display: flex; flex-direction: column; gap: 6px; }
@@ -341,17 +362,120 @@ button.link {
 
 .answer { padding: 14px; white-space: pre-wrap; }
 
+/* --------------------------------------------------------- markdown chat */
+
+.bubble.rtl {
+  direction: rtl;
+  text-align: right;
+}
+.bubble.ltr {
+  direction: ltr;
+  text-align: left;
+}
+.bubble .message-content {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.bubble .message-content > :first-child { margin-top: 0; }
+.bubble .message-content > :last-child { margin-bottom: 0; }
+.bubble .md-paragraph { margin: 7px 0; }
+.bubble .md-heading {
+  margin: 10px 0 5px;
+  line-height: 1.35;
+  color: var(--text);
+}
+.bubble h1.md-heading { font-size: 1.25em; }
+.bubble h2.md-heading { font-size: 1.15em; }
+.bubble h3.md-heading,
+.bubble h4.md-heading,
+.bubble h5.md-heading,
+.bubble h6.md-heading { font-size: 1em; }
+.bubble .md-list {
+  margin: 7px 0;
+  padding-inline-start: 24px;
+}
+.bubble .md-list li { margin: 3px 0; }
+.bubble .md-table {
+  width: 100%;
+  margin: 9px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.bubble .md-table th,
+.bubble .md-table td {
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  text-align: start;
+  vertical-align: top;
+}
+.bubble .md-table th {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.bubble .md-quote {
+  margin: 8px 0;
+  padding: 2px 12px;
+  border-inline-start: 3px solid var(--accent);
+  color: var(--muted);
+}
+.bubble .md-code-block {
+  direction: ltr;
+  text-align: left;
+  margin: 8px 0;
+  padding: 10px;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.bubble .inline-code {
+  direction: ltr;
+  unicode-bidi: plaintext;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: .92em;
+}
+.bubble .message-content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.bubble .message-content hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 10px 0;
+}
+.bubble.thinking .thinking-content {
+  max-height: 320px;
+  overflow: auto;
+}
+
 /* ------------------------------------------------- turn execution block */
 
 .turn-execution {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
   max-width: 100%;
+  flex: 0 0 auto;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(110, 168, 254, .05);
   overflow: hidden;
-  height: 30px !important;
+  min-height: 30px;
+  height: auto !important;
   display: block;
+}
+.turn-execution[open] {
+  height: auto !important;
+  min-height: 30px;
 }
 .turn-execution > summary {
   cursor: pointer;
@@ -366,12 +490,17 @@ button.link {
 .turn-execution > summary:hover { color: var(--text); background: rgba(110,168,254,.06); }
 
 .turn-execution-body {
+  width: 100%;
   max-height: 280px;
+  min-height: 0;
   overflow: auto;
   border-top: 1px solid var(--line);
   padding: 4px 0;
   display: flex;
   flex-direction: column;
+}
+.turn-execution[open] > .turn-execution-body {
+  display: flex;
 }
 
 .turn-execution-line {

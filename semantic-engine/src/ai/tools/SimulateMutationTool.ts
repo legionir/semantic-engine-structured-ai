@@ -6,6 +6,7 @@ import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
 import { AnalysisGraph } from '../../services/analysis/AnalysisGraph';
 import { MutationSimulator, MutationAction } from '../../services/analysis/MutationSimulator';
+import { resolveSymbolId } from './resolveIndexEntity';
 
 export class SimulateMutationTool implements AiTool {
   readonly name = 'simulate_mutation';
@@ -20,7 +21,7 @@ export class SimulateMutationTool implements AiTool {
       },
       targetSymbolId: {
         type: 'string',
-        description: 'The symbol ID or fully qualified name to mutate',
+        description: 'The symbol ID or fully qualified path::symbol name to mutate',
       },
       newName: {
         type: 'string',
@@ -34,7 +35,16 @@ export class SimulateMutationTool implements AiTool {
 
   async execute(input: AiToolInput): Promise<AiToolOutput> {
     const actionType = input.actionType as MutationAction['type'];
-    const targetSymbolId = input.targetSymbolId as string;
+    const requestedTarget = input.targetSymbolId as string;
+    const targetSymbolId = resolveSymbolId(this.reader, requestedTarget);
+
+    if (!targetSymbolId) {
+      return {
+        success: false,
+        error: `No symbol found for id or fully-qualified name: ${requestedTarget}`,
+        items: [],
+      };
+    }
 
     const graph = new AnalysisGraph();
 
@@ -57,6 +67,19 @@ export class SimulateMutationTool implements AiTool {
         source: dep.from,
         target: dep.to,
         relation: 'depends_on',
+      });
+    }
+
+    /* A rename/delete can break callers even when no import edge changes.
+       The previous implementation forgot the indexed call graph, so every
+       symbol with callers was incorrectly reported as safe. */
+    const callEdges = this.reader.projectIndex.graphs?.callGraph ?? [];
+    for (const [idx, call] of callEdges.entries()) {
+      graph.addEdge({
+        id: `call_${idx}`,
+        source: call.caller,
+        target: call.callee,
+        relation: 'calls',
       });
     }
 

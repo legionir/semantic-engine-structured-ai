@@ -70,6 +70,18 @@ export { ApiMapExtractor } from './blueprint/ApiMapExtractor';
 export type { ExtractedRoute, HttpMethod, ApiFramework } from './blueprint/ApiMapExtractor';
 export { rescoreAfterEnrichment } from './pipeline/rescoreAfterEnrichment';
 export { classifyFileRole, isEntryPointPath } from './core/fileRole';
+export {
+  PROJECT_OUTPUT_DIR,
+  LEGACY_PROJECT_OUTPUT_DIR,
+  LEGACY_FLAT_OUTPUT_DIR,
+  PROJECT_INDEX_FILE,
+  canonicalIndexPath,
+  indexPathCandidates,
+  normalizeWorkspaceRoot,
+  resolveProjectIndexPath,
+  workspaceRootFromIndexPath,
+  workspaceRootFromIndex,
+} from './core/config/ProjectPaths';
 export type { ExploreOptions, ExploredNode, ExplorationResult } from './graphs/SubgraphExplorer';
 export { ExplainSymbolTool } from './ai/tools/ExplainSymbolTool';
 export type { ExplainSymbolInput, SymbolExplanation } from './ai/tools/ExplainSymbolTool';

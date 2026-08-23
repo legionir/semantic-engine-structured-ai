@@ -11,6 +11,7 @@ import { AiToolRegistry } from '../ai/AiToolRegistry';
 import { loadBlueprintBeside } from '../ai/discovery/loadBlueprint';
 import { BlueprintIndex } from '../ai/discovery/BlueprintIndex';
 import { AnalysisGraph } from './analysis/AnalysisGraph';
+import { canonicalIndexPath, normalizeWorkspaceRoot, resolveProjectIndexPath } from '../core/config/ProjectPaths';
 
 const MAX_INDEX_BYTES = 256 * 1024 * 1024;
 const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
@@ -37,6 +38,8 @@ export interface ManagedProject {
 
 export class ProjectService {
   private readonly projects = new Map<string, ManagedProject>();
+  private readonly artifactWatchers = new Map<string, fs.FSWatcher>();
+  private readonly reloadTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly defaultRoot: string = process.cwd()) {}
 
@@ -44,13 +47,15 @@ export class ProjectService {
    * ثبت یا باز کردن یک پروژه بر اساس مسیر.
    */
   registerProject(projectPath: string, customId?: string, customName?: string): ManagedProject {
-    const rootPath = path.resolve(projectPath);
+    const rootPath = normalizeWorkspaceRoot(projectPath);
     const id = customId || `prj-${path.basename(rootPath).toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`;
     const name = customName || path.basename(rootPath);
 
-    const indexPath = path.join(rootPath, '.agent', 'semantic', 'project-index.json');
-    const legacyIndexPath = path.join(rootPath, '.semantic-engine', 'project-index.json');
-    const actualIndexPath = fs.existsSync(indexPath) ? indexPath : (fs.existsSync(legacyIndexPath) ? legacyIndexPath : indexPath);
+    /* `.semantic-engine` is canonical. `resolveProjectIndexPath` keeps the
+       old Structured AI sidecar location readable during migration without
+       ever making it the destination for a new index. */
+    const canonicalPath = canonicalIndexPath(rootPath);
+    const actualIndexPath = resolveProjectIndexPath(rootPath);
 
     /*
     | SE-PERF-01، یک محدودیتِ شناخته‌شده و نه رفع‌شده.
@@ -145,7 +150,10 @@ export class ProjectService {
       id,
       name,
       rootPath,
-      indexPath: actualIndexPath,
+      /* Always expose the write destination. A legacy index may have been
+         read above, but the next UI indexing job must migrate it to the
+         canonical directory instead of refreshing `.agent/semantic`. */
+      indexPath: canonicalPath,
       blueprintPath: blueprint ? path.join(path.dirname(actualIndexPath), 'blueprint.json') : undefined,
       sqlitePath,
       status,
@@ -162,7 +170,60 @@ export class ProjectService {
     };
 
     this.projects.set(id, managed);
+    this.ensureArtifactWatcher(managed);
     return managed;
+  }
+
+  /**
+   * همگام‌سازی cache سرویس با خروجی watcher یا هر indexer خارجی.
+   * watchِ پروژه فقط artifact directory را نگاه می‌کند تا تغییرات سورس
+   * باعث reload بی‌دلیل نشود؛ خود semantic-engine watch بعد از batch
+   * موفق project-index و blueprint را atomic می‌نویسد.
+   */
+  private ensureArtifactWatcher(project: ManagedProject): void {
+    if (this.artifactWatchers.has(project.id)) return;
+
+    const directory = path.dirname(project.indexPath);
+    if (!fs.existsSync(directory)) return;
+
+    try {
+      const watcher = fs.watch(directory, (_event, filename) => {
+        const changed = filename ? String(filename) : '';
+        if (!changed ||
+            changed === path.basename(project.indexPath) ||
+            changed === 'blueprint.json' ||
+            changed === 'project-artifacts.manifest.json' ||
+            changed === 'project-index.sqlite') {
+          this.scheduleReload(project.id);
+        }
+      });
+      watcher.on('error', () => {
+        this.artifactWatchers.delete(project.id);
+      });
+      this.artifactWatchers.set(project.id, watcher);
+    } catch {
+      /* نبودن watcher نباید مانع سرویس‌دهی به index موجود شود. */
+    }
+  }
+
+  private scheduleReload(id: string): void {
+    const previous = this.reloadTimers.get(id);
+    if (previous) clearTimeout(previous);
+
+    const timer = setTimeout(() => {
+      this.reloadTimers.delete(id);
+      this.reloadProject(id);
+    }, 100);
+    timer.unref?.();
+    this.reloadTimers.set(id, timer);
+  }
+
+  /** بستن watcherها در shutdown سرور. */
+  dispose(): void {
+    for (const timer of this.reloadTimers.values()) clearTimeout(timer);
+    this.reloadTimers.clear();
+    for (const watcher of this.artifactWatchers.values()) watcher.close();
+    this.artifactWatchers.clear();
   }
 
   getProject(id: string): ManagedProject | undefined {

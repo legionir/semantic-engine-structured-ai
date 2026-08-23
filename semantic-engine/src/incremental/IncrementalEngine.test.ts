@@ -10,6 +10,8 @@ import { ISymbolExtractor, SymbolExtractionResult } from '../symbols/ISymbolExtr
 import { ExtractionSource, ok, makeConfidence } from '../core/types/common.types';
 import { JsonExporter } from '../export/JsonExporter';
 import { BlueprintExporter } from '../export/BlueprintExporter';
+import { VectorIndexer } from '../vector/VectorIndexer';
+import { HashingEmbeddingGenerator } from '../vector/HashingEmbeddingGenerator';
 
 /**
  * Mock symbol extractor: برای هر فایل TypeScript، توابع/کلاس‌های سطح بالا را
@@ -244,6 +246,49 @@ describe('IncrementalEngine', () => {
     // main.ts را هم دوباره پردازش کرده → hash یا metrics ممکن است تغییر کرده باشد
     const mainFile = result.projectIndex.files.find(f => f.path === 'src/main.ts');
     expect(mainFile).toBeDefined();
+  });
+
+  it('should refresh affected vectors and reuse unchanged embeddings', async () => {
+    const base = createInitialProjectIndex(workspaceRoot);
+    const utilsId = base.files.find(f => f.path === 'src/utils.ts')!.id;
+    const mainId = base.files.find(f => f.path === 'src/main.ts')!.id;
+    const contents = new Map<string, string>([
+      [utilsId, fs.readFileSync(path.join(workspaceRoot, 'src/utils.ts'), 'utf8')],
+      [mainId, fs.readFileSync(path.join(workspaceRoot, 'src/main.ts'), 'utf8')],
+    ]);
+    const vectorIndexer = new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() });
+    const previousVectors = await vectorIndexer.index(base, { contents });
+    const projectIndex: ProjectIndex = { ...base, vectorChunks: previousVectors };
+    const vectorEngine = new IncrementalEngine({
+      workspaceRoot,
+      symbolExtractorManager: symbolManager,
+      dependencyExtractorManager: dependencyManager,
+      vectorIndexer,
+    });
+    vectorEngine.load(projectIndex);
+
+    const oldMainVector = previousVectors.find(
+      chunk => chunk.fileId === mainId && chunk.symbolId === null
+    );
+    fs.writeFileSync(
+      path.join(workspaceRoot, 'src', 'utils.ts'),
+      `export function helper(): string { return 'changed'; }\n`,
+      'utf8'
+    );
+
+    const result = await vectorEngine.applyChanges([{ type: 'modified', path: 'src/utils.ts' }]);
+    const updatedUtilsVector = result.projectIndex.vectorChunks?.find(
+      chunk => chunk.fileId === utilsId && chunk.symbolId === null
+    );
+    const updatedMainVector = result.projectIndex.vectorChunks?.find(
+      chunk => chunk.fileId === mainId && chunk.symbolId === null
+    );
+
+    expect(updatedUtilsVector?.content).toContain("return 'changed'");
+    expect(updatedUtilsVector?.contentHash).not.toBe(
+      previousVectors.find(chunk => chunk.fileId === utilsId && chunk.symbolId === null)?.contentHash
+    );
+    expect(updatedMainVector?.embedding).toEqual(oldMainVector?.embedding);
   });
 
   it('should keep file id stable on rename when content hash is unchanged', async () => {

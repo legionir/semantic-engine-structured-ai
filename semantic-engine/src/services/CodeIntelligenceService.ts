@@ -42,12 +42,14 @@ export class CodeIntelligenceService {
     project: ManagedProject,
     symbol: string,
     maxDepth = 3
-  ): Promise<{ symbol: string; impactedCount: number; items: unknown[] }> {
+  ): Promise<{ symbol: string; targetType: 'module' | 'package' | 'file_or_symbol'; impactedCount: number; items: unknown[] }> {
     if (!project.reader) {
       throw new Error(`Project ${project.id} has no valid index loaded.`);
     }
 
-    const tool = new ImpactAnalysisTool(project.reader);
+    const tool = new ImpactAnalysisTool(project.reader, {
+      ...(project.blueprint ? { blueprint: project.blueprint } : {}),
+    });
 
     const result = await tool.execute({ id: symbol, maxDepth });
     if (!result.success) {
@@ -56,6 +58,11 @@ export class CodeIntelligenceService {
 
     return {
       symbol,
+      targetType: result.metadata?.targetType === 'module'
+        ? 'module'
+        : result.metadata?.targetType === 'package'
+          ? 'package'
+          : 'file_or_symbol',
       impactedCount: result.items.length,
       items: [...result.items],
     };

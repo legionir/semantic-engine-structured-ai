@@ -43,7 +43,7 @@ Semantic Engine یک code-intelligence engine مستقل است که از یک w
 | `semantic-engine/src/cli/args.ts` | parsing flags و exit codes |
 | `semantic-engine/src/cli/commands/index-command.ts` | full index |
 | `semantic-engine/src/cli/commands/query-command.ts` | اجرای AI tool روی index موجود |
-| `semantic-engine/src/cli/commands/serve-command.ts` | UI، REST platform و MCP HTTP/stdio |
+| `semantic-engine/src/cli/commands/serve-command.ts` | UI، REST platform، MCP HTTP/stdio و start یکپارچه |
 | `semantic-engine/src/cli/commands/watch-command.ts` | indexing اولیه و watch تغییرات |
 | `semantic-engine/src/cli/commands/doctor-command.ts` | بررسی محیط |
 
@@ -79,10 +79,28 @@ node bin/semantic-engine.js serve \
   --token "$SEMANTIC_ENGINE_TOKEN" \
   --root /path/to/project
 
-# watch
+# راه‌اندازی هم‌زمان UI و MCP HTTP؛ اگر ایندکس نباشد ساخته می‌شود
+node bin/semantic-engine.js start \
+  --root /path/to/project \
+  --ui-port 4000 \
+  --mcp-port 3000 \
+  --token "$SEMANTIC_ENGINE_TOKEN"
+
+# watch — reindex incremental و به‌روزرسانی artifactها
 node bin/semantic-engine.js watch \
   --root /path/to/project \
-  --out /path/to/project/.semantic-engine
+  --out /path/to/project/.semantic-engine \
+  --vectors \
+  --sqlite
+
+# start — UI + MCP + watcher زیر نظر یک parent
+node bin/semantic-engine.js start \
+  --root /path/to/project \
+  --ui-port 4000 \
+  --mcp-port 3000 \
+  --vectors \
+  --sqlite \
+  --token "$SEMANTIC_ENGINE_TOKEN"
 
 # بررسی محیط
 node bin/semantic-engine.js doctor
@@ -164,6 +182,25 @@ FileProcessor
                 ├── project-index.sqlite (optional)
                 └── project-artifacts.manifest.json
 ```
+
+### رفتار watch و reload
+
+`WatchPipeline` یک batch ترتیبی از رویدادهای create/modify/delete/rename را
+پس از debounce اجرا می‌کند. `IncrementalEngine` فقط فایل‌های affected و
+وابسته‌های لازم را دوباره parse می‌کند، اما graphهای dependency و type را از
+index جاری بازسازی و reverse dependency را دوباره مشتق می‌کند. اگر
+`VectorIndexer` فعال باشد، chunkهای فایل‌های affected دوباره ساخته و
+embeddingهای هم‌محتوا از batch قبلی reuse می‌شوند.
+
+در CLI، `watch` با `--vectors` و `--sqlite` این artifactها را نیز تازه نگه
+می‌دارد؛ اگر artifact از قبل وجود داشته باشد، mode مربوطه به‌طور پیش‌فرض حفظ
+می‌شود. حالت blueprint در CLI پیش‌فرض `always` است و با
+`--blueprint-mode threshold` قابل تغییر است. `start` watcher را زیر نظر
+خودش اجرا می‌کند؛ `--no-watch` آن را خاموش می‌کند.
+
+MCP stdio و هر دو HTTP entry point هنگام تغییر `project-index.json` و
+`blueprint.json` snapshot جدید را load می‌کنند. `ProjectService` نیز cache
+داشبورد را با همان artifactها reload می‌کند.
 
 ### Layerها
 
