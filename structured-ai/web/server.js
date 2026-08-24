@@ -1395,16 +1395,34 @@ function createServer(runtime, options = {}) {
 
                     try {
 
+                        // Normalize UI payload to config shape
+                        // UI may send command_args (old) or args (new), and env as object
+                        const normalizedBody = {
+                            ...body,
+                            name: body.name,
+                            transport: body.transport,
+                            command: body.command,
+                            args: body.args || body.command_args,
+                            env: body.env,
+                            url: body.url,
+                            token: body.token,
+                            headers: body.headers,
+                            cwd: body.cwd,
+                            trust: body.trust,
+                            include: body.include,
+                            exclude: body.exclude
+                        };
+
                         await runtime.policyEngine.enforce(
                             "mcp_add",
-                            body,
+                            normalizedBody,
                             "web_console"
                         );
 
                         const added =
                             await toolRuntime.mcp._manager.add(
-                                body.name,
-                                body,
+                                normalizedBody.name,
+                                normalizedBody,
                                 { persist: body.persist !== false }
                             );
 

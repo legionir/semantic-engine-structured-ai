@@ -2125,6 +2125,19 @@ function mcpAddForm(refresh) {
     field("url", "url", "https://host/mcp (http, sse, websocket)");
     field("token", "token", "bearer token, optional");
 
+    // env field for stdio transport
+    const envWrapper = node("label", "mcp-field");
+    envWrapper.appendChild(node("span", "label", "env (JSON or KEY=VALUE lines)"));
+    const envInput = node("textarea");
+    envInput.placeholder = '{"GITHUB_TOKEN":"${env:GITHUB_TOKEN}"} or\\nGITHUB_TOKEN=ghp_xxx\\nNODE_ENV=production';
+    envInput.rows = 3;
+    envInput.style.width = "100%";
+    envInput.style.resize = "vertical";
+    envInput.style.fontFamily = "monospace";
+    envWrapper.appendChild(envInput);
+    fields.env = envInput;
+    form.appendChild(envWrapper);
+
     const message = node("p", "mcp-message");
 
     form.appendChild(message);
@@ -2140,6 +2153,7 @@ function mcpAddForm(refresh) {
 
         fields.command.parentElement.hidden = !local;
         fields.command_args.parentElement.hidden = !local;
+        fields.env.parentElement.hidden = !local;
         fields.url.parentElement.hidden = local;
         fields.token.parentElement.hidden = local;
     };
@@ -2147,6 +2161,33 @@ function mcpAddForm(refresh) {
     transport.addEventListener("change", applyTransport);
 
     applyTransport();
+
+    function parseEnvInput(raw) {
+        const trimmed = raw.trim();
+        if (!trimmed) return undefined;
+        // Try JSON first
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                return parsed;
+            }
+        } catch {
+            // fall through to KEY=VALUE parser
+        }
+        // Parse KEY=VALUE lines
+        const env = {};
+        const lines = trimmed.split(/\n/);
+        for (const line of lines) {
+            const l = line.trim();
+            if (!l || l.startsWith("#")) continue;
+            const eq = l.indexOf("=");
+            if (eq === -1) continue;
+            const k = l.slice(0, eq).trim();
+            const v = l.slice(eq + 1).trim();
+            if (k) env[k] = v;
+        }
+        return Object.keys(env).length ? env : undefined;
+    }
 
     form.appendChild(
         Modal.row(
@@ -2158,12 +2199,17 @@ function mcpAddForm(refresh) {
                     name: fields.name.value.trim(),
                     transport: transport.value,
                     command: fields.command.value.trim() || undefined,
+                    args:
+                        fields.command_args.value.trim()
+                            ? fields.command_args.value.trim().split(/\s+/)
+                            : undefined,
                     command_args:
                         fields.command_args.value.trim()
                             ? fields.command_args.value.trim().split(/\s+/)
                             : undefined,
                     url: fields.url.value.trim() || undefined,
-                    token: fields.token.value.trim() || undefined
+                    token: fields.token.value.trim() || undefined,
+                    env: parseEnvInput(fields.env.value)
                 };
 
                 const response =
