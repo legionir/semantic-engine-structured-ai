@@ -41,6 +41,110 @@ const DECISIONS = {
 
 let approvalHandler = null;
 
+/* Phase 9: one gateway-level approval for a scope:global MCP server,
+   reused across projects; each use is audited with the consuming
+   project_id. Only engaged when a run actually has a project_id so
+   legacy single-project approval is unchanged. */
+const gatewayApprovals = new Map();
+
+
+function currentProjectId() {
+
+    try {
+
+        const { runManager } = require("../runtime");
+
+        const run =
+            runManager && typeof runManager.current === "function"
+                ? runManager.current()
+                : null;
+
+        return run && run.projectId ? run.projectId : null;
+
+    } catch {
+
+        return null;
+    }
+}
+
+
+function mcpServerOf(toolName, args) {
+
+    if (toolName === "mcp_call") {
+
+        if (args && args.server) {
+            return String(args.server);
+        }
+
+        const requested =
+            args && (args.tool || args.name);
+
+        if (typeof requested === "string") {
+
+            try {
+
+                const { parseToolName } = require("../mcp/manager");
+
+                const parsed = parseToolName(requested);
+
+                return parsed ? parsed.server : null;
+
+            } catch {
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    try {
+
+        const { parseToolName } = require("../mcp/manager");
+
+        const parsed = parseToolName(toolName);
+
+        return parsed ? parsed.server : null;
+
+    } catch {
+
+        return null;
+    }
+}
+
+
+function globalMcpServer(serverName) {
+
+    if (!serverName) {
+        return null;
+    }
+
+    try {
+
+        const { manager } = require("../mcp/manager");
+
+        const client = manager.client(serverName);
+
+        if (!client) {
+            return null;
+        }
+
+        return (client.config.scope || "global") === "global"
+            ? client
+            : null;
+
+    } catch {
+
+        return null;
+    }
+}
+
+
+function resetGatewayApprovals() {
+
+    gatewayApprovals.clear();
+}
+
 
 function getApprovalMode() {
 
@@ -384,6 +488,9 @@ class PolicyEngine {
 
     async requestApproval(evaluation, args) {
 
+        const projectId =
+            evaluation.project_id || currentProjectId();
+
         const record = {
             tool:
                 evaluation.tool,
@@ -394,9 +501,38 @@ class PolicyEngine {
             reason:
                 evaluation.reason,
 
+            project_id:
+                projectId,
+
             at:
                 new Date().toISOString()
         };
+
+        const serverName =
+            mcpServerOf(evaluation.tool, args);
+
+        const globalServer =
+            projectId ? globalMcpServer(serverName) : null;
+
+        if (globalServer && gatewayApprovals.has(serverName)) {
+
+            const cached = gatewayApprovals.get(serverName);
+
+            record.approved = cached.approved;
+            record.mode = "gateway";
+            record.gateway_cached = true;
+
+            this.approvals.push(record);
+
+            if (!cached.approved) {
+
+                throw new Error(
+                    `Tool "${evaluation.tool}" was denied by the operator: ${evaluation.reason}`
+                );
+            }
+
+            return record;
+        }
 
         if (getApprovalMode() === "deny") {
 
@@ -439,6 +575,13 @@ class PolicyEngine {
 
             this.approvals.push(record);
 
+            if (globalServer && serverName) {
+                gatewayApprovals.set(serverName, {
+                    approved: answer,
+                    at: Date.now()
+                });
+            }
+
             if (!answer) {
 
                 throw new Error(
@@ -455,6 +598,13 @@ class PolicyEngine {
             getApprovalMode() === "prompt"
                 ? "auto (no tty)"
                 : "auto";
+
+        if (globalServer && serverName) {
+            gatewayApprovals.set(serverName, {
+                approved: true,
+                at: Date.now()
+            });
+        }
 
         this.approvals.push(record);
 
@@ -480,6 +630,10 @@ class PolicyEngine {
                     evaluation.agent
                 }\n  tool  : ${
                     evaluation.tool
+                }${
+                    evaluation.project_id
+                        ? `\n  project: ${evaluation.project_id}`
+                        : ""
                 }\n  reason: ${
                     evaluation.reason
                 }\n  args  : ${summary}\nAllow? [y/N] `,
@@ -505,6 +659,8 @@ class PolicyEngine {
         const evaluation =
             this.evaluate(toolName, args, agent);
 
+        evaluation.project_id = currentProjectId();
+
         if (evaluation.decision === DECISIONS.DENY) {
 
             this.onDecision(evaluation);
@@ -529,7 +685,10 @@ class PolicyEngine {
                     approval.approved,
 
                 approval_mode:
-                    approval.mode
+                    approval.mode,
+
+                gateway_cached:
+                    approval.gateway_cached === true
             });
 
             return evaluation;
@@ -565,5 +724,6 @@ module.exports = {
     DECISIONS,
     getApprovalMode,
     setApprovalMode,
-    setApprovalHandler
+    setApprovalHandler,
+    resetGatewayApprovals
 };

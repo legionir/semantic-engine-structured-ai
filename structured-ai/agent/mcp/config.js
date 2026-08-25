@@ -332,6 +332,19 @@ function normalize(name, rawDefinition, context) {
         exclude:
             normalizeStringList(definition.exclude),
 
+        /*
+        | Phase 9: a server is either global (visible to every project,
+        | default — today's behaviour) or project-scoped to an explicit
+        | list of project ids. tools/list and tools/call honour this.
+        */
+        scope:
+            definition.scope === "project"
+                ? "project"
+                : "global",
+
+        projects:
+            normalizeStringList(definition.projects),
+
         timeouts: {
             connect:
                 Number(definition.connectTimeoutMs) ||
@@ -636,6 +649,29 @@ function persist(workspaceRoot, config) {
 }
 
 
+/* Phase 9: without a projectId (legacy run) every server stays
+   visible. A project-scoped server is visible only to the ids in
+   its `projects` list; global is visible to every project. */
+function serverVisibleTo(config, projectId) {
+
+    if (!config) {
+        return false;
+    }
+
+    if (!projectId) {
+        return true;
+    }
+
+    if ((config.scope || "global") !== "project") {
+        return true;
+    }
+
+    const list = config.projects || [];
+
+    return list.includes(projectId);
+}
+
+
 function forget(workspaceRoot, name) {
 
     const file =
@@ -677,6 +713,7 @@ module.exports = {
     normalizeOne,
     persist,
     forget,
+    serverVisibleTo,
     registryFile,
     projectFile,
     workspaceFile,

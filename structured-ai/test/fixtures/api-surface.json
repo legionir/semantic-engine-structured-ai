@@ -27,6 +27,13 @@
     "GET  /api/events": "SSE event stream; consumed by the console",
     "GET  /api/discussion/personas": "lists selectable discussion personas (discussion.test.js)",
     "POST /api/discussion": "starts a discussion; validates its request (discussion.test.js)",
-    "POST /api/projects/:projectId/tasks": "runs a task scoped to the named project (project-run.test.js); 202 {accepted, project_id} / 404 unknown / 409 modes required"
+    "POST /api/projects/:projectId/tasks": "runs a task scoped to the named project (project-run.test.js); 202 {accepted, project_id} / 404 unknown / 409 modes required",
+    "GET  /api/projects": "lists registered projects, filtered by token scope (project-api.test.js)",
+    "POST /api/projects": "registers a project (master token); 400 without rootPath",
+    "GET  /api/projects/:projectId": "returns one project; 403 if token cannot access it; 404 unknown",
+    "GET  /api/projects/:projectId/state": "project-scoped console state (events/sessions/approvals filtered)",
+    "POST /api/projects/:projectId/chat": "same acceptance contract as /tasks with body.message or body.task",
+    "POST /api/projects/:projectId/cancel": "cancels only runs of that project",
+    "GET  /api/events?projectId=": "SSE filtered to one project; 403 if token cannot access it"
   }
 }

@@ -68,6 +68,26 @@ function parseToolName(name) {
 }
 
 
+function currentProjectId() {
+
+    try {
+
+        const { runManager } = require("../runtime");
+
+        const run =
+            runManager && typeof runManager.current === "function"
+                ? runManager.current()
+                : null;
+
+        return run && run.projectId ? run.projectId : null;
+
+    } catch {
+
+        return null;
+    }
+}
+
+
 function matchesFilter(name, include, exclude) {
 
     if (exclude && exclude.includes(name)) {
@@ -371,9 +391,23 @@ class McpManager {
     | building a prompt must not wait on a network round trip.
     */
 
-    catalogueEntries() {
+    catalogueEntries(projectId) {
 
-        return [...this.catalogue.values()];
+        const entries = [...this.catalogue.values()];
+
+        if (!projectId) {
+            return entries;
+        }
+
+        return entries.filter(entry => {
+
+            const client = this.clients.get(entry.server);
+
+            return config.serverVisibleTo(
+                client ? client.config : { scope: "global" },
+                projectId
+            );
+        });
     }
 
 
@@ -433,9 +467,9 @@ class McpManager {
     }
 
 
-    toolDeclarations() {
+    toolDeclarations(projectId) {
 
-        return this.catalogueEntries().map(
+        return this.catalogueEntries(projectId).map(
             entry => this.toolDeclaration(entry)
         );
     }
@@ -487,6 +521,19 @@ class McpManager {
 
             throw new Error(
                 `MCP server "${serverName}" is disabled.`
+            );
+        }
+
+        const projectId =
+            options.projectId || currentProjectId();
+
+        if (
+            projectId &&
+            !config.serverVisibleTo(client.config, projectId)
+        ) {
+
+            throw new Error(
+                `MCP server "${serverName}" is not in scope for project ${projectId}.`
             );
         }
 

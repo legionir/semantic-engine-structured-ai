@@ -152,10 +152,45 @@ function resetSequence() {
 }
 
 
+/* Phase 9: a project stream sees that project's events in full and
+   global (unscoped) events as aggregate metadata only. Another
+   project's events are omitted entirely. */
+function aggregateMetadata(event) {
+
+    return {
+        seq: event.seq,
+        type: event.type,
+        at: event.at,
+        run_id: event.run_id,
+        turn_id: event.turn_id,
+        scope: event.scope,
+        iteration: event.iteration,
+        project_id: event.project_id ?? null,
+        aggregate: true
+    };
+}
+
+
+function visibleOnProjectStream(event, projectId) {
+
+    if (event.project_id === projectId) {
+        return event;
+    }
+
+    if (event.project_id) {
+        return null;
+    }
+
+    return aggregateMetadata(event);
+}
+
+
 module.exports = {
     bus,
     emit,
     setContext,
     runWithScope,
-    resetSequence
+    resetSequence,
+    aggregateMetadata,
+    visibleOnProjectStream
 };

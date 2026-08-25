@@ -68,6 +68,14 @@ const DEFINITIONS = [
         description: "Bearer token for the web console control plane. Empty generates a token at startup."
     },
     {
+        key: "AGENT_CONSOLE_TOKENS",
+        group: "endpoint",
+        type: STRING,
+        default: "",
+        secret: true,
+        description: "JSON map of extra console tokens to { allowedProjects, permissions } (Phase 9). The AGENT_CONSOLE_TOKEN itself remains a master token."
+    },
+    {
         key: "AGENT_TEMPERATURE",
         group: "endpoint",
         type: NUMBER,

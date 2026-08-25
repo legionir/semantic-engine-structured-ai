@@ -173,3 +173,24 @@
 | **مجموع** | **501/501 passed** |
 
 *نکته:* رفتار legacy بیت‌به‌بیت قفل است (هر ۲۴ فایل قبلی بدون تغییر سبز؛ تنها اصلاح تستی existent، خواندن eventstore مرکزی برای پروژهٔ ثبت‌شده در `test/project-run.test.js` بود که مستقیماً از routing جدید فاز ۸ ناشی می‌شود). جداسازی per-project حافظه/پلن/session/archive/journal/eventstore، overlay تنظیمات (floor+cap) و migration ایدم‌پوتنت با ۹ تست جدید اثبات شد.
+
+## suite پایان فاز ۹ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` (جدید فاز ۹) | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| ۱۴ فایل اصلی (مانند جدول اول) | 415/415 passed |
+| **مجموع** | **518/518 passed** |
+
+*نکته:* `web.test.js` 28/28 و `mcp.test.js` 37/37 بدون تغییر سبز ماندند. توکن master رفتار قبلی را حفظ می‌کند؛ ایزوله‌سازی API/event/MCP/approval با ۱۷ تست جدید قفل شد.

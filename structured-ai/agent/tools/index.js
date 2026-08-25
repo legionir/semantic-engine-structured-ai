@@ -125,7 +125,24 @@ function callableToolNames() {
 
 function mcpToolDeclarations() {
 
-    return mcp._manager.toolDeclarations();
+    let projectId = null;
+
+    try {
+
+        const { runManager } = require("../runtime");
+
+        const run =
+            runManager && typeof runManager.current === "function"
+                ? runManager.current()
+                : null;
+
+        projectId = run && run.projectId ? run.projectId : null;
+
+    } catch {
+        /* outside a run the catalogue is unfiltered (legacy) */
+    }
+
+    return mcp._manager.toolDeclarations(projectId);
 }
 
 

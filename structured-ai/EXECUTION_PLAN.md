@@ -362,23 +362,33 @@ state موجود `<workspace>/.agent/` (memory، sessions، archive، journal، 
 
 ---
 
-## [🔴] فاز ۹: Web APIها، events، authorization و MCP scoping پروژه‌ای
+## [🟢] فاز ۹: Web APIها، events، authorization و MCP scoping پروژه‌ای
 
 **هدف و scope:** تفکیک کامل سطح دسترسی وب: endpointهای project-scoped، جداسازی event streamها، token scope با `allowedProjects`، approval per-project و scope دادن به MCP serverهای خارجی. خروجی: مجموعهٔ endpointها، event envelope جدید، middleware authorization.
 
-### [🔴] گام ۱: endpointهای مدیریت و استفادهٔ پروژه
+**تکمیل 2026-08-26:** گام‌های ۱ تا ۴ — ۱۷ تست جدید در `test/projects/project-api.test.js` سبز؛ `web.test.js` 28/28 و `mcp.test.js` 37/37 بدون regression. توکن master بیت‌به‌بیت رفتار قبلی را دارد؛ توکن‌های `AGENT_CONSOLE_TOKENS` محدود به `allowedProjects`/`permissions` هستند. تصمیم ۲۳ در پیوست ب.
+
+### [🟢] گام ۱: endpointهای مدیریت و استفادهٔ پروژه
+
+**انجام شد (2026-08-26):** مسیرهای `GET/POST /api/projects`، `GET/PATCH/DELETE /api/projects/:id`، `GET .../state`، `GET .../sessions`، `POST .../chat` و `POST .../cancel` به `web/server.js` اضافه شدند. `POST .../tasks` فاز ۷ حفظ شد. `/api/state` برای توکن master بدون تغییر قرارداد است.
 
 `GET/POST /api/projects`، `GET/PATCH/DELETE /api/projects/:projectId`، `GET /api/projects/:projectId/state`، `GET /api/projects/:projectId/sessions`، `POST /api/projects/:projectId/chat`، `POST /api/projects/:projectId/cancel` را پیاده کن (cancel فقط Runهای همان پروژه). رفتار state لاین‌فیلم `/api/state` فعلی برای default project حفظ شود.
 
-### [🔴] گام ۲: event envelope و استریم‌های project-scoped
+### [🟢] گام ۲: event envelope و استریم‌های project-scoped
+
+**انجام شد (2026-08-26):** `visibleOnProjectStream`/`aggregateMetadata` در `agent/lib/events.js`. استریم `GET /api/projects/:id/events` و `GET /api/events?projectId=` رویداد پروژهٔ دیگر را حذف و رویداد global را به metadata تجمیعی تقلیل می‌دهند. `run_id`/`turn_id` از قبل روی envelope بودند؛ `project_id` additive در Runهای modular و در payload صریح.
 
 تمام eventهای runtime به‌صورت additive حامل `projectId`، `runId` و `turnId` شوند. **تعریف `turn_id` (رسمی‌شده پس از بررسی کد در 2026-08-25):** `turn_id` از قبل یک مفهوم runtime است: هر پیام/task کاربر در یک session مکالمه‌ای یک turn تازه می‌سازد؛ قالب `<run_id>_t<N>` با شمارندهٔ افزایشی در هر session، یا مقدار تأمین‌شده توسط caller (مثل web server برای هم‌تراز‌کردن پیام مکالمه با رویدادها). envelope موجود `(run_id, turn_id, scope, iteration)` در `agent/lib/events.js` حفظ می‌شود. سلسله‌مراتب رسمی شناسه‌ها: `project_id` ⊃ `run_id` ⊃ `turn_id` ⊃ `iteration`؛ فیلد additive جدید `project_id` به همان قرارداد snake_case رویدادها اضافه می‌شود (در پاسخ JSON وب با camelCase اسناد مرجع). endpointهای `GET /api/projects/:projectId/events` و `GET /api/events?projectId=...` پیاده شوند؛ event پروژهٔ الف در استریم ب دیده نشود؛ event global فقط metadata تجمیعی نشان دهد.
 
-### [🔴] گام ۳: authorization با token scope
+### [🟢] گام ۳: authorization با token scope
+
+**انجام شد (2026-08-26):** `agent/lib/consoleAuth.js` — توکن `AGENT_CONSOLE_TOKEN` master است؛ `AGENT_CONSOLE_TOKENS` JSON توکن‌های محدود را تعریف می‌کند (permissionهای `project:read|write` و `semantic:query|index`). زنجیره authenticate → resolve → authorize → execute؛ `403` برای پروژهٔ غیرمجاز. `redact()` توکن را در لاگ mask می‌کند.
 
 زنجیرهٔ `authenticate → resolve projectId → authorize project access → load ProjectContext → execute` را برای endpointهای پروژه‌ای پیاده کن. مدل token: `allowedProjects` + `permissions` (`project:read`، `project:write`، `semantic:query`، `semantic:index`). token بدون دسترسی `403` بگیرد. logها token و source content را mask کنند.
 
-### [🔴] گام ۴: approval per-project و scoping MCP خارجی
+### [🟢] گام ۴: approval per-project و scoping MCP خارجی
+
+**انجام شد (2026-08-26):** approvalها `project_id` می‌گیرند (رویداد + pending + prompt). سرور MCP فیلد additive `scope`/`projects` دارد؛ `tools/list` و `call` per-project فیلتر می‌شوند. approval سرور `scope: global` در سطح gateway cache می‌شود و هر استفاده با `project_id` مصرف‌کننده audit می‌گردد (`gateway_cached`) — فقط وقتی Run دارای project_id است تا رفتار legacy حفظ شود.
 
 approvalها به‌صورت per-project ذخیره/نمایش داده شوند و approval prompt شامل `projectId` باشد. برای serverهای خارجی در `mcp_servers.json` فیلد `scope: "project"|"global"` (و لیست `projects`) پذیرفته شود؛ `tools/list` فقط ابزارهای مجاز پروژهٔ context را بدهد؛ MCP server پروژهٔ الف به ب دسترسی نداشته باشد. **تصمیم تأییدشده (2026-08-25):** approval برای serverهای `scope: global` در سطح **gateway-level** نگهداری می‌شود و در رویداد/audit با attribution به پروژهٔ درخواست‌کننده (`project_id` در رویداد approval) ثبت می‌شود؛ یعنی یک تأیید global برای پروژه‌های مجاز token کافی است و هر استفاده با شناسهٔ پروژهٔ مصرف‌کننده audit می‌شود.
 
@@ -390,6 +400,8 @@ approvalها به‌صورت per-project ذخیره/نمایش داده شوند
 - approval برای ابزارهای filesystem/terminal/MCP شامل `projectId` است و pendingها در UI فعلی (تا پیش از فاز ۱۱) خراب نمی‌شوند.
 - approval سرورهای `scope: global` یک‌بار در سطح gateway صادر و هر استفاده با `project_id` مصرف‌کننده audit می‌شود (تست).
 - `tools/list` per-project فیلتر می‌شود؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** همهٔ بندها اثبات شد — توکن محدود به الف نمی‌تواند ب را بخواند/اجرا/کنسل کند (`403`)؛ state/event استریم الف رویداد ب را ندارد؛ cancel پروژه‌ای run_idهای همان پروژه را برمی‌گرداند؛ `project_id` additive روی approval و رویدادها؛ gateway approval یک‌بار با audit per-project؛ catalogue/call MCP برای scope:project جداست؛ `web.test.js` و `mcp.test.js` بدون تغییر سبز.
 
 ---
 
@@ -886,5 +898,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 20. **گیت ابزار پس از تبدیل فاز ۸ (تکمیل ثبت ۱۸):** خانواده‌های plan/memory/search_* پس از تبدیل به routing دیتاروت از `PENDING_PROJECT_AWARENESS` خارج شدند؛ `runtime_stats` عمداً gated می‌ماند چون telemetry process-global است و root پروژه‌ای صادقانه‌ای ندارد. متن خطای «not yet project-aware» برای runtime_stats حفظ شده است.
 21. **overlay تنظیمات (فاز ۸ گام ۲؛ اجرای تصمیم ۲):** خواندن = floor ورک‌اسپیس (`.agent/project.json`) + cap مرکزی (`projects/<id>/project.json`) با پیروزی per-key برای cap؛ نوشتن = مرکزی وقتی پروژه registered و mode modular است، وگرنه مسیر legacy؛ فایل floor برای نوشتارهای جدید فقط‌خواندنی می‌ماند (مرجع replay/سازگاری).
 22. **معناشناسی migration (فاز ۸ گام ۳):** copy-missing-only (target موجود = skipped، هرگز overwrite) تا re-run ایدم‌پوتنت و غیرتکراری باشد؛ فایل‌های legacy هرگز حذف نمی‌شوند؛ خطای هر فایل جداگانه در گزارش `{copied, skipped, errors}` ثبت و مهاجرت متوقف نمی‌شود؛ auto-register با `-w` اختیاری است و root همواره از registry/`-w` عملگر می‌آید (قانون ۹).
+23. **توکن کنسول (فاز ۹ گام ۳):** `AGENT_CONSOLE_TOKEN` (تولیدشده یا تنظیم‌شده) توکن master باقی می‌ماند تا کنسول فعلی بدون تغییر کار کند. توکن‌های محدود از `AGENT_CONSOLE_TOKENS` (JSON) می‌آیند. permission ثبت‌نشده در توکن محدود = نبود آن permission (fail closed). ثبت پروژهٔ جدید فقط با توکن master / `allowedProjects: ["*"]`.
+24. **فیلتر استریم SSE (فاز ۹ گام ۲):** کلاینت‌های SSE حالا `{res, projectId, claims}` هستند نه raw `ServerResponse`؛ توکن master بدون query همان payload قبلی را می‌گیرد. رویداد بدون `project_id` روی استریم پروژه‌ای فقط metadata تجمیعی است (`aggregate: true`) نه payload کامل.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
