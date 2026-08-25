@@ -141,14 +141,19 @@ async function discoverMcpTools(options) {
 | as the run's project shares the workspace root (then the two roots are
 | the same directory); on a project rooted ELSEWHERE, executing one would
 | silently mis-scope it, so the gate below makes that a loud error with the
-| phase where each family becomes project-aware (search/semantic in 6,
-| plan/memory in 8). Derived from the modules themselves so a converted
-| tool can never stay listed by accident.
+| phase where each family becomes project-aware (plan/memory in 8).
+|
+| The code family left this list in Phase 6: code tools now route through
+| the semantic pool resolver, which carries the same loud-failure rule
+| internally (a scoped foreign root without SEMANTIC_POOL_MODE=modular is
+| refused instead of answered from the wrong index).
+|
+| Derived from the modules themselves so a converted tool can never stay
+| listed by accident.
 */
 
 const PENDING_PROJECT_AWARENESS =
     new Set([
-        ...Object.keys(publicTools(code)),
         ...Object.keys(publicTools(plan)),
         ...Object.keys(publicTools(memory)),
         "search_start",
@@ -298,7 +303,7 @@ function startRunScope(runId) {
 
     telemetry.reset(runId);
 
-    const semanticScope = code._startRunScope();
+    const semanticScope = code._startRunScope(runId);
 
     const mcpScope = mcp._startRunScope();
 

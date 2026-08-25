@@ -243,7 +243,7 @@
 **انجام شد (2026-08-25):** `RequestBuilder` بدنهٔ درخواست را با همان منطق تاریخی می‌سازد (tool request با tools/parallel_tool_calls/response_format و variant خالی برای Summarizer)؛ `buildAgentRequest` ضمن حفظ امضا wrapper شد و حالا از `agent.js` export هم می‌شود (additive — رفع شکاف مستند refactor). رفتار dynamic با تست زنده قفل شد: ویرایش `system_prompt.txt` و `skills.json` بدون restart در هر دو حالت دیده می‌شود (readTextLive و loadSkills مبتنی بر mtime)؛ gate فعال‌سازی semantic_engine در هر دو حالت با `isActiveSkill` سنخرو است (معنا در این فاز همان اتصال single Semantic Engine — مستند Unknown تا فاز ۶).
 
 
-بدنهٔ request OpenAI-compatible (model، messages، temperature، tools، `parallel_tool_calls`، `response_format`) را از `RequestBuilder` بساز؛ Summarizer همچنان با `responseFormat: null` و بدون tool schema. رفتار dynamic حفظ شود: خواندن مجدد `system_prompt.txt`/`execution_rules.txt` و registryها با live mtime؛ فیلتر execution rules بر اساس ابزارهای agent؛ کشف ابزارهای MCP قبل از اولین request؛ فعال‌بودن `semantic_engine` skill فقط وقتی Semantic MCPِ **پروژهٔ فعال** ready است؛ skills با `skill_get` on-demand؛ settings جدید از iteration بعدی اثر کنند. **Unknown / Requires Verification:** تا قبل از فاز ۶ که pool ساخته شود، «Semantic MCP پروژهٔ فعال» همان اتصال فعلی single Semantic Engine است.
+بدنهٔ request OpenAI-compatible (model، messages، temperature، tools، `parallel_tool_calls`، `response_format`) را از `RequestBuilder` بساز؛ Summarizer همچنان با `responseFormat: null` و بدون tool schema. رفتار dynamic حفظ شود: خواندن مجدد `system_prompt.txt`/`execution_rules.txt` و registryها با live mtime؛ فیلتر execution rules بر اساس ابزارهای agent؛ کشف ابزارهای MCP قبل از اولین request؛ فعال‌بودن `semantic_engine` skill فقط وقتی Semantic MCPِ **پروژهٔ فعال** ready است؛ skills با `skill_get` on-demand؛ settings جدید از iteration بعدی اثر کنند. **Unknown / Requires Verification:** تا قبل از فاز ۶ که pool ساخته شود، «Semantic MCP پروژهٔ فعال» همان اتصال فعلی single Semantic Engine است. **حل شد در فاز ۶ (2026-08-25):** در `SEMANTIC_POOL_MODE=modular` گیت مهارت per-project است (`isEndpointActiveFor` — endpoint یا fallback root ورک‌اسپیس) و در legacy همان probe قبلی.
 
 **معیار پذیرش:**
 
@@ -256,23 +256,32 @@
 
 ---
 
-## [🔴] فاز ۶: Semantic Client Pool و routing پروژه‌ای
+## [🟢] فاز ۶: Semantic Client Pool و routing پروژه‌ای
 
 **هدف و scope:** اتصال هر پروژه به Semantic Worker خودش و project-aware کردن ابزارهای code. **مرز دامنه (تصمیم تأییدشدهٔ 2026-08-25):** پیاده‌سازی Worker Supervisor / Gateway سمت **Semantic Engine** طبق `MULTI_PROJECT_GATEWAY_PLAN.md` انجام می‌شود، اما آن کار **هنوز شروع نشده است**. بنابراین این فاز وابستگی خود را با یک **stub مستند** از قرارداد `/mcp/:projectId` (گام ۴) تأمین می‌کند (قانون ثابت ۱۰) تا توسعه و تست مسدود نشود؛ پس از آماده‌شدن gateway واقعی، یکپارچه‌سازی فقط با تعویض endpoint در registry انجام می‌شود. خروجی: `agent/mcp/SemanticClient.js`، `agent/mcp/SemanticClientPool.js`، `agent/mcp/ProjectSemanticResolver.js` + stub تستی.
+**تکمیل 2026-08-25:** گام‌های ۱ تا ۴ — ۹ تست جدید سبز؛ suite کامل 484/484. پیاده‌سازی در همان سه فایل تعهدشده + `test/helpers/stubSemanticGateway.js` (قرارداد `/mcp/:projectId` با ۳ projectId و پاسخ‌های متمایز + gateway دوم برای تست تعویض endpoint). flagهای `SEMANTIC_POOL_MODE` و `SEMANTIC_POOL_CACHE_LIMIT` در schema تنظیمات اعلان شدند (پیش‌فرض legacy / ۲۰۰). تصمیمات اجرا در پیوست ب (ثبت ۱۴ تا ۱۷).
 
-### [🔴] گام ۱: استخراج SemanticClient از tools/code.js
+### [🟢] گام ۱: استخراج SemanticClient از tools/code.js
+**انجام شد (2026-08-25):** برخلاف متن قدیمی سند، منطق اتصال دیگر در `tools/code.js` نیست — از بازنویسی قبلی در `agent/mcp/semantic.js` + پشتهٔ `manager.call` زندگی می‌کند (شکاف سند، بدون حدس: فقط محل واقعی منطق سرو شد). استخراج گام ۱ در کلاس جدید `agent/mcp/SemanticClient.js` انجام شد: lifecycle کامل (`definition`/`ensureClient`/`connect`/`call`/`checkStaleness`/`disconnect`/`reload`/`shutdown`)، خطای کنترل‌شده (همان متن‌های legacy برای disabled/binary-missing + پیام پروژه‌محور برای endpoint-less)، timeout از همان زنجیرهٔ تنظیمات، degradation per-client (`lastError`/`failedAt`/`health()`). سطح عمومی عمداً آینهٔ `mcp/semantic.js` است تا code tools هر دو را از یک resolver مصرف کنند؛ `lib/semantic.js` و `mcp/semantic.js` دست‌نخورده ماندند.
+
 
 منطق اتصال و فراخوانی Semantic Engine (در `agent/tools/code.js`، ‎~۲۲KB) را به کلاس client مستقل با lifecycle روشن (connect/call/disconnect، timeout، خطای کنترل‌شده) منتقل کن. رفتار فعلی (پالت ابزارها، fallback، index sessionها) حفظ شود.
 
-### [🔴] گام ۲: پیاده‌سازی SemanticClientPool
+### [🟢] گام ۲: پیاده‌سازی SemanticClientPool
+**انجام شد (2026-08-25):** `agent/mcp/SemanticClientPool.js` با `get(projectId)`، `connect(project)` (بازاستفاده در صورت تطابق endpoint/root، بازسازی هنگام تغییر)، `disconnect(projectId)`، `disconnectAll()`، `reload(projectId)` (خواندن تازهٔ registry و اتصال مجدد — تعویض gateway فقط یک ویرایش داده در registry است)، `projectIds()` و `health()` پیاده شد. endpoint از `ProjectContext.semanticEndpoint` (registry) خوانده می‌شود. routing در `agent/mcp/ProjectSemanticResolver.js` پشت `SEMANTIC_POOL_MODE` است؛ در legacy هرگز به pool نمی‌رسد و همان client تکی استفاده می‌شود (تست identity سخت‌گیرانه). تغییر تنظیمات SEMANTIC_* از طریق settings bus کل pool را disconnect می‌کند (معادل invalidate در legacy).
+
 
 Pool با `get(projectId)`، `connect(project)`، `disconnect(projectId)`، `reload(projectId)` پیاده شود؛ endpoint از `project.semanticEndpoint` (registry) خوانده شود. **پشت flag:** `SEMANTIC_POOL_MODE`؛ در حالت legacy همان client تکیِ فعلی استفاده شود.
 
-### [🔴] گام ۳: project-aware کردن ابزارهای code
+### [🟢] گام ۳: project-aware کردن ابزارهای code
+**انجام شد (2026-08-25):** هر ۱۹ ابزار code امضای `(args, context)` گرفتند و از طریق `resolver.semanticFor(ToolContext)` client را برمی‌گیرند (پارامتر دوم همان قرارداد فاز ۴؛ خروجی legacy بدون تغییر). staleness از root پروژهٔ context خوانده می‌شود (`checkStaleness(root)` از قبل پارامتردار بود)، `codeRename` به `ctx.resolvePath` مهاجرت کرد (همان مرز امنیتی، root حالا پروژه)، sessionهای index per-client شدند (getIndexSession پروژهٔ دیگر «unknown» می‌گیرد — تست). cache نتایج با کلید `projectId + indexGeneration + method + args` فقط برای ۸ متد read-only و فقط وقتی endpoint پروتکل generation را گزارش کند؛ حد از `SEMANTIC_POOL_CACHE_LIMIT` و ابطال با گزارش generation جدید یا reload/disconnect است. خانوادهٔ code از `PENDING_PROJECT_AWARENESS` خارج شد و loud-failure ریشهٔ خارجی در حالت legacy به خود resolver منتقل شد (همان الگوی «not yet project-aware»). snapshot اسکوپ run و gate مهارت semantic_engine حالا per-project‌اند (`isEndpointActiveFor`).
+
 
 ابزارهای `code_index_status`، `code_index_start`، `code_index_get`، `code_find_symbol`، `code_search`، `code_file_summary`، `code_dependencies`، `code_impact`، `code_find_tests`، `code_config_usage`، `code_context`، `code_diagnostics`، `code_callers`، `code_definition` و `code_rename` client را از pool با `projectId`ِ context اجرا بگیرند. cache نتایج Semantic با کلید `projectId` + index generation جدا شود. رفتار degradation (Worker down برای یک پروژه) کنترل‌شده و منحصر به همان پروژه باشد.
 
-### [🔴] گام ۴: ساخت Stub Gateway/Worker برای توسعه و تست
+### [🟢] گام ۴: ساخت Stub Gateway/Worker برای توسعه و تست
+**انجام شد (2026-08-25):** `test/helpers/stubSemanticGateway.js` مسیرهای `POST /mcp/:projectId` را با پروتکل MCP سرو می‌کند (initialize + notifications/initialized با 202 + حداقل `tools/list` و `tools/call`)، سه projectId با catalogue و پاسخ‌های متمایز دارد، پاسخ‌ها marker افزودنی `{projectId, indexGeneration}` می‌گیرند، شمارش درخواست per project/tool برای تست cache نگه داشته می‌شود و `bumpIndexGeneration` شبیه‌سازی reindex می‌کند. production هرگز این فایل را لود نمی‌کند (زیر test/). تست تعویض endpoint با `registry.update` + `pool.reload` و gateway دوم سبز است — اثبات همان تعهد «تعویض، داده‌ای است نه کدی».
+
 
 چون gateway سمت engine هنوز پیاده نشده (تصمیم 2026-08-25)، یک server تستی حداقلی بساز که مسیرهای `/mcp/:projectId` را با پاسخ‌های تقلیدیِ قرارداد Semantic MCP (دست‌کم `tools/list` و `tools/call`) سرو کند و حداقل دو `projectId` متفاوت را با پاسخ‌های متمایز جواب دهد. stub در محیط تست نگه داشته می‌شود و در production استفاده نمی‌شود. هدف: اجرای تست‌های isolation pool و فازهای ۷ و ۱۳ بدون انتظار برای gateway واقعی. پس از آماده‌شدن gateway واقعی، تست یکپارچه‌سازی در برابر آن اضافه و stub صرفاً به‌عنوان ابزار unit/regression باقی می‌ماند.
 
@@ -851,5 +860,9 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 11. **نام API پروژه‌ای workspace (فاز ۴ گام ۲):** به‌جای overload `resolveWorkspacePath` (نقض قانون ۵ روی export موجود)، نام‌های `resolveProjectPath`/`isInsideProject`/`toProjectRelative`/`assertProjectPathSafe` با همان الگوریتم مرز انتخاب شدند.
 12. **الگوی wiring سازه‌های lazy (فاز ۵):** facade و resolverهای جدید در `agent.js` lazily نمونه‌سازی می‌شوند — قانون repo در برابر capture سطح ماژول و مشکل TDZ constهای registry را هم‌زمان حل می‌کند؛ وابستگی‌ها همیشه closure روی state زنده‌اند.
 13. **`buildAgentRequest` حالا export می‌شود (فاز ۵):** رفع شکاف شناخته‌شدهٔ سند refactor؛ additive و بدون تغییر رفتار.
+14. **نام سرور سمت pool (فاز ۶):** نرمالایزر MCP تنها حروف/رقم/dot/dash/underscore را می‌پذیرد؛ clientهای پروژه‌ای نام `semantic-engine.project.<id>` می‌گیرند (رویدادهای `mcp:call`/`mcp:result` حالت modular همین نام را دارند — additive).
+15. **پروژهٔ بدون semanticEndpoint در حالت pool (فاز ۶):** root مشترک با ورک‌اسپیس → client قدیمی (یک درخت = یک ایندکس؛ isolation بدیهی)؛ root خارجی → client مخصوص همان پروژه در وضعیت غیرقابل‌استفاده (degradation کنترل‌شدهٔ per-project، نه fallback سکوت‌آمیز به ایندکس پروژهٔ دیگر یا سراسری).
+16. **cache نتایج Semantic (فاز ۶):** فقط برای متدهای read-only ایندکس‌محور (۸ متد)، فقط وقتی endpoint پروتکل index generation را گزارش کند (در غیر این صورت هیچ memoizationای — freshness حالت legacy حفظ می‌شود)؛ کلید `projectId + generation + method + args`؛ حد `SEMANTIC_POOL_CACHE_LIMIT`؛ ابطال با گزارش generation جدید یا reload/disconnect.
+17. **انتقال gate خانوادهٔ code (فاز ۶):** ابزارهای code از مجموعهٔ `PENDING_PROJECT_AWARENESS` خارج شدند؛ loud-failure ریشهٔ خارجی در `SEMANTIC_POOL_MODE=legacy` حالا در `ProjectSemanticResolver` زندگی می‌کند (پیام با همان الگوی «not yet project-aware») تا رفتار مهاجرت‌نکرده‌ها در دو حالت یکسان بماند.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

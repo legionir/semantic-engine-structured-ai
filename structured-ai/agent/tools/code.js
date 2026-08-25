@@ -1,9 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const semantic = require("../lib/semantic");
+const ToolContext = require("./ToolContext");
+const resolver = require("../mcp/ProjectSemanticResolver");
 const settings = require("../lib/storage");
-const { WORKSPACE_ROOT, resolveWorkspacePath } = require("../lib/workspace");
 
 
 /*
@@ -48,9 +48,9 @@ function truncate(text, maxChars) {
 }
 
 
-function unavailableResult(toolName) {
+function unavailableResult(toolName, engine) {
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
 
     return {
         ok: false,
@@ -64,10 +64,26 @@ function unavailableResult(toolName) {
 }
 
 
-async function ensureEngine(toolName) {
+/* The engine a tool talks to is chosen by the run's context, not by the
+   process: in SEMANTIC_POOL_MODE=modular a scoped ToolContext routes to
+   that project's pool client; every other case keeps the historical
+   process-wide client (bit-identical legacy behaviour). ToolContext.from
+   is an identity no-op on the normalized context executeTool hands in. */
+function engineFor(context) {
 
-    if (!semantic.isAvailable()) {
-        return { ok: false, result: unavailableResult(toolName) };
+    const ctx = ToolContext.from(context);
+
+    return {
+        ctx,
+        engine: resolver.semanticFor(ctx)
+    };
+}
+
+
+async function ensureEngine(toolName, engine) {
+
+    if (!engine.isAvailable()) {
+        return { ok: false, result: unavailableResult(toolName, engine) };
     }
 
     return { ok: true };
@@ -80,16 +96,18 @@ async function ensureEngine(toolName) {
 |--------------------------------------------------------------------------
 */
 
-async function codeFindSymbol(args = {}) {
+async function codeFindSymbol(args = {}, context) {
 
-    const check = await ensureEngine("code_find_symbol");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_find_symbol", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
     const limit = maxItems(args.limit);
 
     try {
-        const raw = await semantic.call("find_symbol", {
+        const raw = await engine.call("find_symbol", {
             name: args.name || "",
             kind: args.kind,
             limit
@@ -123,16 +141,18 @@ async function codeFindSymbol(args = {}) {
 }
 
 
-async function codeSearch(args = {}) {
+async function codeSearch(args = {}, context) {
 
-    const check = await ensureEngine("code_search");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_search", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
     const limit = maxItems(args.limit);
 
     try {
-        const raw = await semantic.call("semantic_search", {
+        const raw = await engine.call("semantic_search", {
             query: args.query || "",
             limit,
             mode: args.mode || "hybrid"
@@ -164,15 +184,17 @@ async function codeSearch(args = {}) {
 }
 
 
-async function codeFileSummary(args = {}) {
+async function codeFileSummary(args = {}, context) {
 
-    const check = await ensureEngine("code_file_summary");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_file_summary", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
 
     try {
-        const raw = await semantic.call("get_file_summary", {
+        const raw = await engine.call("get_file_summary", {
             path: args.path || ""
         });
 
@@ -197,16 +219,18 @@ async function codeFileSummary(args = {}) {
 }
 
 
-async function codeDependencies(args = {}) {
+async function codeDependencies(args = {}, context) {
 
-    const check = await ensureEngine("code_dependencies");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_dependencies", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
     const limit = maxItems(args.limit);
 
     try {
-        const raw = await semantic.call("get_dependencies", {
+        const raw = await engine.call("get_dependencies", {
             path: args.path || "",
             depth: args.depth || 1,
             direction: args.direction || "both"
@@ -238,16 +262,18 @@ async function codeDependencies(args = {}) {
 }
 
 
-async function codeImpact(args = {}) {
+async function codeImpact(args = {}, context) {
 
-    const check = await ensureEngine("code_impact");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_impact", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
     const limit = maxItems(args.limit);
 
     try {
-        const raw = await semantic.call("impact_analysis", {
+        const raw = await engine.call("impact_analysis", {
             symbol: args.symbol,
             path: args.path,
             maxDepth: args.max_depth || 3
@@ -278,15 +304,17 @@ async function codeImpact(args = {}) {
 }
 
 
-async function codeFindTests(args = {}) {
+async function codeFindTests(args = {}, context) {
 
-    const check = await ensureEngine("code_find_tests");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_find_tests", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
 
     try {
-        const raw = await semantic.call("find_tests", {
+        const raw = await engine.call("find_tests", {
             path: args.path,
             symbol: args.symbol
         });
@@ -314,15 +342,17 @@ async function codeFindTests(args = {}) {
 }
 
 
-async function codeConfigUsage(args = {}) {
+async function codeConfigUsage(args = {}, context) {
 
-    const check = await ensureEngine("code_config_usage");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_config_usage", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
 
     try {
-        const raw = await semantic.call("get_config_usage", {
+        const raw = await engine.call("get_config_usage", {
             key: args.key,
             path: args.path
         });
@@ -350,15 +380,17 @@ async function codeConfigUsage(args = {}) {
 }
 
 
-async function codeContext(args = {}) {
+async function codeContext(args = {}, context) {
 
-    const check = await ensureEngine("code_context");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_context", engine);
     if (!check.ok) return check.result;
 
-    const staleness = semantic.checkStaleness();
+    const staleness = engine.checkStaleness();
 
     try {
-        const raw = await semantic.call("assemble_context", {
+        const raw = await engine.call("assemble_context", {
             task: args.task || "",
             files: args.files || [],
             maxTokens: args.max_tokens || 2000
@@ -391,10 +423,12 @@ async function codeContext(args = {}) {
 |--------------------------------------------------------------------------
 */
 
-async function codeIndexStatus() {
+async function codeIndexStatus(args = {}, context) {
 
-    const staleness = semantic.checkStaleness();
-    const available = semantic.isAvailable();
+    const { ctx, engine } = engineFor(context);
+
+    const staleness = engine.checkStaleness();
+    const available = engine.isAvailable();
 
     return {
         available,
@@ -408,14 +442,16 @@ async function codeIndexStatus() {
 }
 
 
-async function codeIndexStart(args = {}) {
+async function codeIndexStart(args = {}, context) {
 
-    const check = await ensureEngine("code_index_start");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_index_start", engine);
     if (!check.ok) return check.result;
 
     const sessionId = "idx-" + Math.random().toString(36).slice(2, 9);
 
-    semantic.startIndexSession(sessionId, {
+    engine.startIndexSession(sessionId, {
         id: sessionId,
         started_at: Date.now(),
         status: "running",
@@ -425,18 +461,18 @@ async function codeIndexStart(args = {}) {
     /* Fire indexing in background */
     (async () => {
         try {
-            const res = await semantic.call("index_workspace", {
+            const res = await engine.call("index_workspace", {
                 incremental: Boolean(args.incremental)
             }, { timeoutMs: settings.get("SEMANTIC_INDEX_TIMEOUT_MS") || 600000 });
 
-            semantic.startIndexSession(sessionId, {
+            engine.startIndexSession(sessionId, {
                 id: sessionId,
                 started_at: Date.now(),
                 status: "completed",
                 result: res
             });
         } catch (err) {
-            semantic.startIndexSession(sessionId, {
+            engine.startIndexSession(sessionId, {
                 id: sessionId,
                 started_at: Date.now(),
                 status: "failed",
@@ -453,13 +489,15 @@ async function codeIndexStart(args = {}) {
 }
 
 
-async function codeIndexGet(args = {}) {
+async function codeIndexGet(args = {}, context) {
+
+    const { ctx, engine } = engineFor(context);
 
     if (!args.session_id) {
         throw new Error("code_index_get requires a session_id argument.");
     }
 
-    const session = semantic.getIndexSession(args.session_id);
+    const session = engine.getIndexSession(args.session_id);
 
     if (!session) {
         return {
@@ -485,15 +523,17 @@ async function codeIndexGet(args = {}) {
 |--------------------------------------------------------------------------
 */
 
-async function codeDiagnostics(args = {}) {
+async function codeDiagnostics(args = {}, context) {
 
-    const check = await ensureEngine("code_diagnostics");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_diagnostics", engine);
     if (!check.ok) return check.result;
 
     const limit = maxItems(args.limit);
 
     try {
-        const raw = await semantic.call("diagnostics", {
+        const raw = await engine.call("diagnostics", {
             paths: args.paths || (args.path ? [args.path] : [])
         });
 
@@ -524,15 +564,17 @@ async function codeDiagnostics(args = {}) {
 }
 
 
-async function codeCallers(args = {}) {
+async function codeCallers(args = {}, context) {
 
-    const check = await ensureEngine("code_callers");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_callers", engine);
     if (!check.ok) return check.result;
 
     const limit = maxItems(args.limit);
 
     try {
-        const raw = await semantic.call("incoming_calls", {
+        const raw = await engine.call("incoming_calls", {
             symbol: args.symbol,
             path: args.path,
             line: args.line,
@@ -564,13 +606,15 @@ async function codeCallers(args = {}) {
 }
 
 
-async function codeDefinition(args = {}) {
+async function codeDefinition(args = {}, context) {
 
-    const check = await ensureEngine("code_definition");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_definition", engine);
     if (!check.ok) return check.result;
 
     try {
-        const raw = await semantic.call("definition", {
+        const raw = await engine.call("definition", {
             symbol: args.symbol,
             path: args.path,
             line: args.line,
@@ -595,13 +639,15 @@ async function codeDefinition(args = {}) {
 }
 
 
-async function codeOrganizeImports(args = {}) {
+async function codeOrganizeImports(args = {}, context) {
 
-    const check = await ensureEngine("code_organize_imports");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_organize_imports", engine);
     if (!check.ok) return check.result;
 
     try {
-        const raw = await semantic.call("organize_imports", {
+        const raw = await engine.call("organize_imports", {
             path: args.path
         });
 
@@ -621,15 +667,17 @@ async function codeOrganizeImports(args = {}) {
 }
 
 
-async function codeRename(args = {}) {
+async function codeRename(args = {}, context) {
 
-    const check = await ensureEngine("code_rename");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_rename", engine);
     if (!check.ok) return check.result;
 
     const dryRun = args.dry_run !== false && !args.apply;
 
     try {
-        const raw = await semantic.call("rename", {
+        const raw = await engine.call("rename", {
             path: args.path,
             line: args.line,
             character: args.character,
@@ -642,7 +690,7 @@ async function codeRename(args = {}) {
         if (!dryRun) {
             /* Apply edits to disk within workspace boundary */
             for (const [filePath, fileEdits] of Object.entries(changes)) {
-                const fullPath = resolveWorkspacePath(filePath);
+                const fullPath = ctx.resolvePath(filePath);
                 if (fs.existsSync(fullPath)) {
                     let content = fs.readFileSync(fullPath, "utf8");
                     /* Apply sorted in reverse line order */
@@ -690,13 +738,15 @@ async function codeRename(args = {}) {
 |--------------------------------------------------------------------------
 */
 
-async function codeSimulateMutation(args = {}) {
+async function codeSimulateMutation(args = {}, context) {
 
-    const check = await ensureEngine("code_simulate_mutation");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_simulate_mutation", engine);
     if (!check.ok) return check.result;
 
     try {
-        const raw = await semantic.call("simulate_mutation", {
+        const raw = await engine.call("simulate_mutation", {
             actionType: args.action_type || args.actionType || "delete_symbol",
             targetSymbolId: args.target_symbol_id || args.targetSymbolId,
             newName: args.new_name || args.newName
@@ -716,13 +766,15 @@ async function codeSimulateMutation(args = {}) {
 }
 
 
-async function codeArchitectureViolations(args = {}) {
+async function codeArchitectureViolations(args = {}, context) {
 
-    const check = await ensureEngine("code_architecture_violations");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_architecture_violations", engine);
     if (!check.ok) return check.result;
 
     try {
-        const raw = await semantic.call("detect_architecture_violations", {});
+        const raw = await engine.call("detect_architecture_violations", {});
         return {
             ok: true,
             summary: raw.context || raw.summary,
@@ -737,13 +789,15 @@ async function codeArchitectureViolations(args = {}) {
 }
 
 
-async function codeGitHotspots(args = {}) {
+async function codeGitHotspots(args = {}, context) {
 
-    const check = await ensureEngine("code_git_hotspots");
+    const { ctx, engine } = engineFor(context);
+
+    const check = await ensureEngine("code_git_hotspots", engine);
     if (!check.ok) return check.result;
 
     try {
-        const raw = await semantic.call("get_git_hotspots", {
+        const raw = await engine.call("get_git_hotspots", {
             limit: args.limit || 10
         });
 
@@ -763,13 +817,13 @@ async function codeGitHotspots(args = {}) {
 
 function shutdown() {
 
-    semantic.shutdown();
+    resolver.shutdown();
 }
 
 
-function startRunScope() {
+function startRunScope(runId) {
 
-    return semantic.startRunScope();
+    return resolver.startRunScope(runId);
 }
 
 

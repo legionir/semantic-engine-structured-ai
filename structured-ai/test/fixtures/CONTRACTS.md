@@ -142,3 +142,12 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - `buildAgentRequest` اکنون از `agent/agent.js` export می‌شود (additive؛ شکل امضا آبجکت واحد `{messages, agentDefinition, tools, responseFormat, role, withSchema}` در هر دو حالت یکسان).
 - پیام رویدادنما `project_context` (system+JSON) فقط در اجرای دارای پروژه (modular) به prompt افزوده می‌شود: Main پس از runtime_context و Sub-Agent پس از agent_profile. بدون پروژه هیچ کلید/پیام افزوده‌ای وجود ندارد (شکل prompt تاریخی دست‌نخورده — قانون ۵).
 - در اجرای modular با پروژه، فیلدهای `workspace.root` و `runtime.workspace_root` و بخش `repository` پیام runtime_context **root پروژهٔ فعال** را گزارش می‌کنند (در legacy همان WORKSPACE_ROOT فرایند).
+
+## ۱۱. تغییرات additive فاز ۶ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
+
+- دو تنظیم schema اعلان شد: `SEMANTIC_POOL_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) برای routing پروژه‌ای Semantic و `SEMANTIC_POOL_CACHE_LIMIT` (NUMBER، پیش‌فرض ۲۰۰، ۰ = غیرفعال) برای سقف cache نتایج per-client.
+- `agent/mcp/SemanticClient.js` / `SemanticClientPool.js` / `ProjectSemanticResolver.js` ساخته شدند؛ سطح export ماژول‌های قبلی (`lib/semantic.js`، `mcp/semantic.js`، `mcp/manager.js`، `mcp/client.js`) هیچ تغییری نکرده و در `SEMANTIC_POOL_MODE=legacy` رفتار بیت‌به‌بیت baseline است (تست identity: resolver همان آبجکت ماژول قدیمی را برمی‌گرداند).
+- پیاده‌سازی ابزارهای code امضای `(args, context)` گرفت (قرارداد پارامتر دوم فاز ۴)؛ شکل نتایج ابزارها در هر دو حالت یکسان است. در حالت modular ابزار با `projectId`ِ ToolContext از pool client می‌گیرد؛ staleness از root پروژه و sessionهای index per-client است (جست‌وجوی session پروژهٔ دیگر «unknown» برمی‌گرداند).
+- خانوادهٔ code از `PENDING_PROJECT_AWARENESS` خارج شد؛ رفتار خطای ریشهٔ خارجی در حالت legacy با همان الگوی «not yet project-aware» در resolver حفظ می‌شود (متن دقیق خطا مکمل است، الگوی اصلی ثابت).
+- در حالت modular رویدادهای `mcp:call`/`mcp:result` با نام سرور پروژه‌محور `semantic-engine.project.<id>` منتشر می‌شوند (کلیدها همان envelope فاز ۱ + مقدار متفاوت `server` — افزودنی رفتاری، فقط در حالت pool).
+- قراردادی که stub تستی و gateway آینده هر دو سرو می‌کنند: `POST /mcp/:projectId` با `initialize`/`tools/list`/`tools/call` روی Streamable HTTP؛ پاسخ tool در `structuredContent` است و marker افزودنی `{projectId, indexGeneration}` دارد؛ گزارش `indexGeneration` جدید cache سمت client را باطل می‌کند؛ endpoint ناشناخته/پروژه ناشناخته خطای HTTP کنترل‌شده است. تعویض gateway واقعی فقط با ویرایش `semanticEndpoint` در registry + `pool.reload(projectId)` انجام می‌شود.

@@ -1334,11 +1334,26 @@ const DEFINITIONS = [
         description: "How many settled runs the RunManager keeps queryable after they finish."
     },
     {
+        key: "SEMANTIC_POOL_CACHE_LIMIT",
+        group: "runtime",
+        type: NUMBER,
+        default: 200,
+        min: 0,
+        description: "How many memoized query results one SemanticClient pool entry keeps per project (0 disables memoization). Entries are additionally invalidated on an index-generation change reported by the worker."
+    },
+    {
         key: "PROMPT_BUILDER_MODE",
         group: "runtime",
         type: STRING,
         default: "legacy",
         description: "Prompt assembly mode: 'legacy' uses the inline builders in agent.js; 'modular' uses the injected agent/prompt builders with project_context support (EXECUTION_PLAN phase 5 flag)."
+    },
+    {
+        key: "SEMANTIC_POOL_MODE",
+        group: "runtime",
+        type: STRING,
+        default: "legacy",
+        description: "Semantic engine routing mode: 'legacy' uses the single process-wide engine client; 'modular' routes code tools through the per-project SemanticClientPool keyed by projectId (EXECUTION_PLAN phase 6 flag)."
     }
 ];
 

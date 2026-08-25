@@ -116,3 +116,21 @@
 | **مجموع** | **475/475 passed** |
 
 *نکته:* برابری prompt در سه لایه قفل است: (۱) تست differential legacy/modular پیام‌به‌پیام در همان فرایند؛ (۲) ارضای fixture فاز ۱ توسط خروجی modular؛ (۳) `prompt.contract.test.js` بدون تغییر روی مسیر legacy سبز.
+
+## suite پایان فاز ۶ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-25 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/semantic-pool.test.js` (جدید فاز ۶) | 9/9 passed |
+| ۱۴ فایل اصلی (مانند جدول اول) | 415/415 passed |
+| **مجموع** | **484/484 passed** |
+
+*نکته:* برابری routing حالت legacy با baseline توسط `test/semantic.test.js` (۱۴ تست بدون تغییر) و تست identity مستقیم resolver (برگشت همان آبجکت `mcp/semantic.js`) قفل است؛ ایزوله‌بودن دو پروژه، degradation per-project، cache کلید generation و تعویض endpoint از registry توسط suite جدید روی stub قرارداد `/mcp/:projectId` اثبات می‌شود.

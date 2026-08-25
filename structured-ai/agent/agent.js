@@ -2085,6 +2085,7 @@ function cancelRunById(runId, reason) {
 
         events.emit("run:deadline", {
             run_id: context.runId,
+            project_id: context.projectId,
             agent: "main_agent",
             max_run_ms: settings.get("MAX_RUN_MS"),
             elapsed_ms:
