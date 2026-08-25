@@ -40,6 +40,27 @@ function createDocument() {
                 );
         }
 
+        toggle(name, force) {
+
+            /* mirrors DOMTokenList.toggle: with a second argument the
+               flag decides, without it the class flips */
+
+            const has =
+                this.owner._classes.includes(name);
+
+            const wanted =
+                force === undefined ? !has : Boolean(force);
+
+            if (wanted && !has) {
+                this.owner._classes.push(name);
+            } else if (!wanted && has) {
+                this.owner._classes =
+                    this.owner._classes.filter(n => n !== name);
+            }
+
+            return wanted;
+        }
+
         contains(name) {
 
             return this.owner._classes.includes(name);
@@ -269,7 +290,13 @@ function createDocument() {
                 const handler
                 of this._listeners.get(type) || []
             ) {
-                handler({ target: this, ...event });
+                /* form submissions and friends are cancellable in the
+                   browser, so the shim offers the same */
+                handler({
+                    target: this,
+                    preventDefault() {},
+                    ...event
+                });
             }
         }
 
@@ -1972,6 +1999,117 @@ async function main() {
         handle.close("test");
     });
 
+    /*
+    | Discussion lives in the composer: the toggle reveals the persona
+    | picker under the task box, renames Run task to Start discussion,
+    | posts to /api/discussion, and hands the button back when the
+    | panel finishes.
+    */
+
+    const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    await test("discussion mode lives in the composer and renames the run button", async () => {
+
+        console_.reply("/api/discussion/personas", {
+            personas: [
+                { id: "security", name: "Security Agent", description: "security lens" },
+                { id: "frontend", name: "Frontend Agent", description: "frontend lens" }
+            ]
+        });
+
+        const toggle =
+            document.getElementById("discussionButton");
+        const options =
+            document.getElementById("discussionOptions");
+        const run =
+            document.getElementById("runButton");
+
+        assert.equal(options.hidden, true);
+        assert.equal(run.textContent, "Run task");
+
+        toggle.dispatch("click");
+
+        await tick();
+
+        assert.equal(options.hidden, false, "the options row appears");
+        assert.equal(run.textContent, "Start discussion");
+        assert.equal(
+            options.querySelectorAll(".persona-box").length,
+            2,
+            "every persona is selectable"
+        );
+
+        /* nothing selected, nothing sent */
+
+        for (const box of options.querySelectorAll(".persona-box")) {
+            box.checked = false;
+        }
+
+        document.getElementById("task").value = "design auth";
+        document.getElementById("taskForm").dispatch("submit");
+
+        await tick();
+
+        assert.equal(
+            console_.posted.filter(post => post.url === "/api/discussion").length,
+            0,
+            "an empty persona selection is refused locally"
+        );
+
+        /* a selection goes to the discussion endpoint, not /api/tasks */
+
+        options.querySelectorAll(".persona-box")[0].checked = true;
+
+        document.getElementById("taskForm").dispatch("submit");
+
+        await tick();
+
+        const posts =
+            console_.posted.filter(post => post.url === "/api/discussion");
+
+        assert.equal(posts.length, 1);
+        assert.equal(posts[0].body.task, "design auth");
+        assert.deepEqual(posts[0].body.personas, ["security"]);
+        assert.equal(posts[0].body.max_rounds, 5);
+        assert.equal(run.disabled, true, "the button is busy while it runs");
+
+        /* the modal opened for the live view, so the test closes it */
+
+        if (Modal.openCount > 0) {
+            Modal.closeTop("test");
+        }
+
+        /* finishing hands the button back, still in discussion mode */
+
+        console_.send({
+            type: "discussion:finish",
+            id: null,
+            total_rounds: 2,
+            hit_max_rounds: false,
+            stopped_reason: null,
+            final_report: {
+                summary: "s",
+                agreed_points: [],
+                unresolved: [],
+                next_steps: []
+            }
+        });
+
+        await tick();
+
+        assert.equal(run.disabled, false);
+        assert.equal(run.textContent, "Start discussion");
+
+        /* and toggling off restores the ordinary task flow */
+
+        toggle.dispatch("click");
+
+        await tick();
+
+        assert.equal(options.hidden, true);
+        assert.equal(run.textContent, "Run task");
+    });
+
     const failed =
         results.filter(item => !item.ok);
 
@@ -1993,7 +2131,7 @@ function loadConsole() {
     for (const id of [
         "statusDot", "statusText", "workspace", "model", "turns",
         "runTimer", "execSummary", "tree", "executionArchive", "chat", "sessionTitle",
-        "plan", "planSummary", "log", "approvalsCount"
+        "plan", "planSummary", "log", "approvalsCount", "discussionOptions"
     ]) {
         document.register(id, "div");
     }
@@ -2001,10 +2139,16 @@ function loadConsole() {
     for (const id of [
         "runButton", "cancelButton", "clearButton",
         "settingsButton", "mcpButton", "approvalsButton", "clearLog",
-        "historyButton", "executionButton", "eventsButton"
+        "historyButton", "executionButton", "eventsButton",
+        "discussionButton"
     ]) {
         document.register(id, "button");
     }
+
+    /* index.html ships the row hidden and the run button labelled;
+       the shim has no parser, so the initial state is declared here */
+    document.getElementById("discussionOptions").hidden = true;
+    document.getElementById("runButton").textContent = "Run task";
 
     for (const id of ["task", "logFilter", "autoContinue"]) {
         document.register(id, "input");

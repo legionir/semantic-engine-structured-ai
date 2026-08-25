@@ -10,6 +10,7 @@ const net = require("./net");
 const telemetry = require("./telemetry");
 const code = require("./code");
 const mcp = require("./mcp");
+const discussion = require("./discussion");
 
 const {
     capResult,
@@ -55,6 +56,7 @@ const IMPLEMENTATIONS = {
     ...publicTools(net),
     ...publicTools(code),
     ...publicTools(mcp),
+    ...publicTools(discussion),
 
     search_start: search.search_start,
     search_get: search.search_get,

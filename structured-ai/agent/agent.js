@@ -688,6 +688,28 @@ const AGENT_REGISTRY_OF = () => registry().AGENT_REGISTRY;
 
 
 /*
+| The personas the discussion_* profiles point at. They exist in the
+| registries for validation and tool mapping, but the prompt catalogues
+| stay focused on delegation, so call sites that build those catalogues
+| filter them out with this set.
+*/
+
+function discussionPersonaNames() {
+
+    const names = new Set();
+
+    for (const agent of AGENTS_OF()) {
+
+        if (agent.name.startsWith("discussion_") && agent.persona) {
+            names.add(agent.persona);
+        }
+    }
+
+    return names;
+}
+
+
+/*
 |--------------------------------------------------------------------------
 | Policy Engine
 |--------------------------------------------------------------------------
@@ -2948,6 +2970,12 @@ function createMainAgentMessages(task) {
         | Personas exist so an ad-hoc agent can be composed. An agent
         | that may not delegate has no use for the catalogue, so it is
         | added below only when it can.
+        |
+        | Discussion personas are left out on purpose: they are not
+        | delegation targets, they are run by the discussion engine
+        | through discussion_start, and advertising all sixteen of
+        | them would tax every request for a flow the orchestrator
+        | reaches with a single tool call.
         */
 
         mayDelegate(mainAgentProfile())
@@ -2962,15 +2990,22 @@ function createMainAgentMessages(task) {
                             "For composing an ad-hoc agent when no profile fits.",
 
                         personas:
-                            PERSONAS_OF().map(
-                                persona => ({
-                                    name:
-                                        persona.name,
+                            PERSONAS_OF()
+                                .filter(
+                                    persona =>
+                                        !discussionPersonaNames().has(
+                                            persona.name
+                                        )
+                                )
+                                .map(
+                                    persona => ({
+                                        name:
+                                            persona.name,
 
-                                    description:
-                                        persona.description
-                                })
-                            )
+                                        description:
+                                            persona.description
+                                    })
+                                )
                     })
             }
             : null,
@@ -2987,7 +3022,10 @@ function createMainAgentMessages(task) {
                             .filter(
                                 agent =>
                                     agent.name !==
-                                    "main_agent"
+                                        "main_agent" &&
+                                    !agent.name.startsWith(
+                                        "discussion_"
+                                    )
                             )
                             .map(
                             /*
@@ -9899,6 +9937,15 @@ if (require.main === module) {
 module.exports = {
     runAgent,
     main,
+
+    /*
+    | A plain model call through the role-based endpoint resolution,
+    | with the runtime's retries and request budget. The discussion
+    | engine and its callers use it instead of reimplementing fetch,
+    | so personas and observer speak the same endpoint configuration
+    | as every other agent.
+    */
+    callAI,
 
     parseStructuredResponse,
     adaptNativeToolCalls,

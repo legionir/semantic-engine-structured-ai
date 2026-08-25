@@ -72,9 +72,13 @@
 
       <form id="taskForm" class="composer">
         <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
+        <div id="discussionOptions" class="discussion-options-row" hidden></div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
           <button type="button" id="cancelButton" class="ghost" disabled>Cancel</button>
+          <button type="button" id="discussionButton" class="ghost" title="Multi-agent discussion: specialist personas deliberate in rounds and an observer writes the synthesis">
+            Discussion
+          </button>
           <button type="button" id="clearButton" class="ghost">New conversation</button>
           <span class="muted grow-right" id="runTimer"></span>
         </div>
