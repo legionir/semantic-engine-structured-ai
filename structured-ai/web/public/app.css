@@ -918,3 +918,111 @@ body.modal-open { overflow: hidden; }
 }
 .mcp-message { color: var(--warn); font-size: 11px; min-height: 14px; margin: 6px 0 0; }
 .modal-row button.danger:hover { border-color: var(--bad); color: var(--bad); }
+
+/* ------------------------------------------------------------- discussion */
+
+.discussion { display: flex; flex-direction: column; gap: 10px; }
+
+.discussion-status {
+  font-family: var(--mono); font-size: 11px; color: var(--accent);
+  border-bottom: 1px solid var(--line); padding-bottom: 6px;
+}
+
+.discussion-task { margin: 0; color: var(--text); font-size: 13px; }
+
+.discussion-persona-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted);
+}
+
+.discussion-persona-head .link { margin-left: auto; }
+.discussion-persona-head .link:last-child { margin-left: 6px; }
+
+.discussion-personas {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+}
+
+.discussion-persona {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; cursor: pointer;
+  font-family: var(--mono); font-size: 11px;
+}
+
+.discussion-persona:hover { border-color: var(--accent); }
+
+.discussion-round-head {
+  margin: 8px 0 0; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+  border-top: 1px solid var(--line); padding-top: 8px;
+}
+
+.discussion-message {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; margin: 4px 0;
+}
+
+.discussion-message > summary {
+  cursor: pointer; padding: 5px 10px;
+  font-family: var(--mono); font-size: 11px; color: var(--text);
+}
+
+.discussion-message-body {
+  padding: 0 10px 8px; font-size: 12px; color: var(--text);
+  max-height: 320px; overflow: auto;
+}
+
+.discussion-observer {
+  background: rgba(110, 168, 254, .08); border: 1px solid rgba(110, 168, 254, .3);
+  border-radius: 6px; padding: 6px 10px; margin: 6px 0; font-size: 12px;
+}
+
+.discussion-observer.finish {
+  background: rgba(78, 201, 165, .08); border-color: rgba(78, 201, 165, .35);
+}
+
+.discussion-observer p { margin: 3px 0; }
+.discussion-observer .muted { color: var(--muted); font-size: 11px; }
+
+.discussion-report {
+  border-top: 1px solid var(--line); padding-top: 10px;
+}
+
+.discussion-report h3 { margin: 0 0 8px; font-size: 14px; }
+.discussion-report h4 {
+  margin: 12px 0 4px; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+.discussion-summary { margin: 0 0 4px; font-size: 13px; }
+.discussion-points { margin: 4px 0; padding-left: 20px; font-size: 12px; }
+.discussion-unresolved { margin: 6px 0; font-size: 12px; }
+.discussion-unresolved p { margin: 2px 0 2px 12px; color: var(--muted); }
+.discussion-step { margin: 3px 0; font-size: 12px; font-family: var(--mono); }
+
+/* the options row that appears under the task textarea in discussion mode */
+
+.discussion-options-row {
+  margin-top: 10px; padding: 8px 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+.discussion-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted);
+}
+
+.discussion-meta input { width: 56px; }
+
+.discussion-status-line { margin-left: auto; }
+
+.discussion-status-line.bad { color: var(--bad); }
+
+button.ghost.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}

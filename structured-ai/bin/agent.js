@@ -51,6 +51,13 @@ Options
   -u, --until-done          Keep starting runs while the plan has open steps,
                             until it is complete or Ctrl-C stops it
       --max-cycles <n>      Safety limit for --until-done (default 20)
+      --discussion          Run a multi-agent discussion instead of a run:
+                            selected specialist personas deliberate in rounds
+                            and an observer writes the final synthesis
+      --personas <ids>      Comma-separated personas for --discussion,
+                            e.g. security,backend,frontend
+      --max-rounds <n>      Discussion round limit for --discussion (1-10,
+                            default 5)
   -i, --interactive         Start a session: history is kept between tasks,
                             approvals are answered inline, Ctrl-C cancels
                             the running task instead of the session
@@ -219,6 +226,23 @@ function parseArguments(argv) {
 
             case "--max-cycles":
                 options.maxCycles =
+                    requireNumber(argument, argv[++index]);
+                break;
+
+            case "--discussion":
+                options.discussion = true;
+                break;
+
+            case "--personas":
+                options.personas =
+                    requireValue(argument, argv[++index])
+                        .split(",")
+                        .map(id => id.trim())
+                        .filter(id => id !== "");
+                break;
+
+            case "--max-rounds":
+                options.maxRounds =
                     requireNumber(argument, argv[++index]);
                 break;
 
@@ -671,6 +695,205 @@ async function runUntilDone(runtime, options, task) {
 }
 
 
+/*
+| Discussion mode: the task goes to a group of specialist personas
+| instead of the delegation tree. Round progress prints on stderr, the
+| observer's final report on stdout, and --json switches the report to
+| the machine-readable result.
+*/
+
+async function runDiscussion(runtime, options) {
+
+    /* ---------------------------------------------------------------- */
+
+    let task =
+        options.positional.join(" ").trim();
+
+    if (options.file) {
+
+        const resolved =
+            path.resolve(options.file);
+
+        if (!fs.existsSync(resolved)) {
+            fail(`task file not found: ${options.file}`);
+        }
+
+        task =
+            fs.readFileSync(resolved, "utf8").trim();
+    }
+
+    if (!task) {
+
+        const piped =
+            (await readStdin()).trim();
+
+        if (piped) {
+            task = piped;
+        }
+    }
+
+    if (!task && process.env.AGENT_TASK) {
+        task = process.env.AGENT_TASK.trim();
+    }
+
+    if (!task) {
+        fail("no task given: pass it as an argument, on stdin, with --file, or in AGENT_TASK");
+    }
+
+    if (!options.personas || options.personas.length === 0) {
+        fail("--discussion needs --personas, e.g. --personas security,backend,frontend");
+    }
+
+    const {
+        DiscussionEngine,
+        createLlmCaller,
+        PERSONAS
+    } =
+        require(path.join(REPO_ROOT, "agent", "discussion"));
+
+    const available = PERSONAS.map(persona => persona.id);
+
+    for (const persona of options.personas) {
+
+        if (!available.includes(persona)) {
+            fail(`unknown persona "${persona}"; available: ${available.join(", ")}`);
+        }
+    }
+
+    const maxRounds =
+        options.maxRounds || 5;
+
+    /*
+    | The workspace summary is the one context the personas share, so
+    | they do not need tools in the MVP: the report is reasoning, and
+    | the main run can act on it afterwards.
+    */
+
+    const workspace =
+        runtime.createRuntimeContext().runtime.workspace_root;
+
+    const workspaceContext =
+        `Workspace root: ${workspace}\n` +
+        `Platform: ${process.platform} (${process.version})`;
+
+    if (!options.quiet) {
+        process.stderr.write(
+            `agent: discussion started, ${options.personas.length} personas, max ${maxRounds} rounds\n`
+        );
+    }
+
+    const engine =
+        new DiscussionEngine({
+            task,
+            personas: options.personas,
+            maxRounds,
+            /* the panel shares the runtime's parallel-agent budget */
+            maxParallel: runtime.settings.get("MAX_PARALLEL_AGENTS"),
+            llmCaller: createLlmCaller({ callAI: runtime.callAI }),
+            workspaceContext,
+            onMessage: message => {
+
+                if (!options.quiet) {
+                    process.stderr.write(
+                        `  round ${message.round}: ${message.persona} contributed ${message.content.length} chars\n`
+                    );
+                }
+            },
+            onRound: (round, observerDecision) => {
+
+                if (!options.quiet) {
+                    process.stderr.write(
+                        `agent: round ${round.round} complete, observer says ${
+                            observerDecision
+                                ? observerDecision.decision
+                                : "pending"
+                        }\n`
+                    );
+                }
+            }
+        });
+
+    let result;
+
+    try {
+
+        result =
+            await engine.run();
+
+    } catch (error) {
+
+        process.stderr.write(
+            `\nagent: discussion failed\n${error.stack || error.message}\n`
+        );
+
+        return EXIT.FAILED;
+    }
+
+    if (options.json) {
+
+        process.stdout.write(
+            `${JSON.stringify(result, null, 2)}\n`
+        );
+
+        return EXIT.SUCCESS;
+    }
+
+    const report = result.final_report || {};
+
+    process.stdout.write(
+        `\nDiscussion complete: ${result.total_rounds} round${result.total_rounds === 1 ? "" : "s"}${
+            result.stopped_reason
+                ? ` (stopped: ${result.stopped_reason})`
+                : result.hit_max_rounds
+                    ? " (max rounds reached)"
+                    : ""
+        }\n\n`
+    );
+
+    if (report.summary) {
+        process.stdout.write(`Summary\n  ${report.summary}\n\n`);
+    }
+
+    if (report.agreed_points?.length) {
+        process.stdout.write("Agreed\n");
+
+        for (const point of report.agreed_points) {
+            process.stdout.write(`  - ${point}\n`);
+        }
+
+        process.stdout.write("\n");
+    }
+
+    if (report.unresolved?.length) {
+        process.stdout.write("Unresolved\n");
+
+        for (const item of report.unresolved) {
+            process.stdout.write(`  - ${item.topic}\n`);
+
+            for (const side of item.sides || []) {
+                process.stdout.write(
+                    `      ${side.persona}: ${side.reasoning}\n`
+                );
+            }
+        }
+
+        process.stdout.write("\n");
+    }
+
+    if (report.next_steps?.length) {
+        process.stdout.write("Next steps\n");
+
+        for (const step of report.next_steps) {
+            process.stdout.write(
+                `  ${step.order}. [${step.layer}] ${step.action}\n`
+            );
+        }
+    }
+
+    return EXIT.SUCCESS;
+}
+
+
 async function main() {
 
     const options =
@@ -857,6 +1080,14 @@ async function main() {
 
         const code =
             await startSession(runtime, options);
+
+        process.exit(code);
+    }
+
+    if (options.discussion) {
+
+        const code =
+            await runDiscussion(runtime, options);
 
         process.exit(code);
     }

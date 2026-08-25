@@ -6,7 +6,7 @@
   "main": "agent/agent.js",
   "scripts": {
     "start": "node bin/agent.js",
-    "test": "node test/tools.test.js && node test/hooks.test.js && node test/journal.test.js && node test/eventstore.test.js && node test/runtime.test.js && node test/semantic.test.js && node test/mcp.test.js && node test/archive.test.js && node test/e2e.test.js && node test/cli.test.js && node test/interactive.test.js && node test/ui.test.js && node test/web.test.js",
+    "test": "node test/tools.test.js && node test/hooks.test.js && node test/journal.test.js && node test/eventstore.test.js && node test/runtime.test.js && node test/semantic.test.js && node test/mcp.test.js && node test/archive.test.js && node test/e2e.test.js && node test/cli.test.js && node test/interactive.test.js && node test/ui.test.js && node test/discussion.test.js && node test/web.test.js",
     "check": "node --check agent/agent.js",
     "test:tools": "node test/tools.test.js",
     "test:runtime": "node test/runtime.test.js",
@@ -19,6 +19,7 @@
     "test:interactive": "node test/interactive.test.js",
     "serve": "node bin/agent.js --serve",
     "test:web": "node test/web.test.js",
+    "test:discussion": "node test/discussion.test.js",
     "test:archive": "node test/archive.test.js",
     "test:ui": "node test/ui.test.js",
     "backfill:eventstore": "node bin/backfill-eventstore.js"

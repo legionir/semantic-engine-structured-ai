@@ -194,5 +194,14 @@
       "mcp_add",
       "mcp_remove"
     ]
+  },
+  "discussion": {
+    "description": "Run a structured multi-agent discussion: specialist personas deliberate in rounds and an observer decides when to finish and writes the final synthesis.",
+    "note": "Personas reason, they do not act on the workspace, so no approval is needed; the cost is in model calls, bounded by max_rounds.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "discussion_start"
+    ]
   }
 }

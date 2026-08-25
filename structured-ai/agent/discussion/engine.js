@@ -20,6 +20,31 @@ const { LoopDetector } = require("./loopDetector");
  *   const result = await engine.run();
  */
 
+/*
+ * Runs fn over items with at most limit in flight, preserving order in
+ * the results. The discussion borrows the runtime's MAX_PARALLEL_AGENTS
+ * budget for this, so a 15-persona panel does not open 15 connections
+ * at once.
+ */
+async function mapLimited(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+
+  const workers = Array.from(
+    { length: Math.max(1, Math.min(limit, items.length)) },
+    async () => {
+      while (next < items.length) {
+        const index = next++;
+        results[index] = await fn(items[index], index);
+      }
+    }
+  );
+
+  await Promise.all(workers);
+
+  return results;
+}
+
 class DiscussionEngine {
   constructor(opts) {
     if (!opts.task) throw new Error("task is required");
@@ -29,10 +54,12 @@ class DiscussionEngine {
     this.task = opts.task;
     this.personaIds = opts.personas;
     this.maxRounds = opts.maxRounds || 5;
+    this.maxParallel = opts.maxParallel || 4;
     this.llmCaller = opts.llmCaller;
     this.workspaceContext = opts.workspaceContext || "";
     this.onRound = opts.onRound || null; // callback(round, observerDecision)
     this.onMessage = opts.onMessage || null; // callback(message)
+    this.onObserver = opts.onObserver || null; // callback(decision, round)
 
     // Resolve persona definitions
     this.personas = this.personaIds.map(id => {
@@ -54,9 +81,10 @@ class DiscussionEngine {
     const startedAt = Date.now();
     const messages = [];
 
-    // For round 1, run in parallel with isolation
-    // For round 2+, also parallel but each gets prior transcript + instruction
-    const promises = this.personas.map(async (personaDef) => {
+    // Round 1 runs with isolation; round 2+ runs in parallel as well,
+    // but each persona then gets the prior transcript and its targeted
+    // instruction.
+    const results = await mapLimited(this.personas, this.maxParallel, async (personaDef) => {
       const instruction = observerInstructions[personaDef.id] || observerInstructions[personaDef.name] || null;
       let msg;
       if (isFirstRound) {
@@ -78,10 +106,6 @@ class DiscussionEngine {
       if (this.onMessage) this.onMessage(msg);
       return msg;
     });
-
-    // Respect max parallel - for simplicity, run all in parallel with Promise.all
-    // In production, chunk by settings.get("MAX_PARALLEL_AGENTS")
-    const results = await Promise.all(promises);
     messages.push(...results);
 
     const round = {
@@ -109,6 +133,7 @@ class DiscussionEngine {
       previousDecisions: this.observerDecisions
     });
     this.observerDecisions.push(observerDecision);
+    if (this.onObserver) this.onObserver(observerDecision, 1);
 
     if (observerDecision.decision === "FINISH") {
       return {
@@ -131,6 +156,7 @@ class DiscussionEngine {
           maxRounds: this.maxRounds
         });
         this.observerDecisions.push(forced);
+        if (this.onObserver) this.onObserver(forced, r - 1);
         return {
           rounds: this.transcript.rounds,
           observer_decisions: this.observerDecisions,
@@ -153,6 +179,7 @@ class DiscussionEngine {
         previousDecisions: this.observerDecisions
       });
       this.observerDecisions.push(observerDecision);
+      if (this.onObserver) this.onObserver(observerDecision, r);
 
       if (observerDecision.decision === "FINISH") {
         return {
@@ -175,6 +202,7 @@ class DiscussionEngine {
         maxRounds: this.maxRounds
       });
       this.observerDecisions.push(forced);
+      if (this.onObserver) this.onObserver(forced, this.maxRounds);
       return {
         rounds: this.transcript.rounds,
         observer_decisions: this.observerDecisions,

@@ -138,7 +138,9 @@ function createServer(runtime, options = {}) {
 
         startedAt: null,
 
-        finishedAt: null
+        finishedAt: null,
+
+        discussion: null
     };
 
     const clients = new Set();
@@ -844,6 +846,9 @@ function createServer(runtime, options = {}) {
                     })
                 ),
 
+            discussion:
+                state.discussion,
+
             agents:
                 runtime.registries.AGENTS.map(
                     agent => ({
@@ -1114,6 +1119,193 @@ function createServer(runtime, options = {}) {
                 ).length;
 
             saveSession();
+        }
+    }
+
+
+    /*
+    | A discussion is its own run: it does not go through the
+    | delegation tree, so it keeps a separate status in state while
+    | the conversation still records what was asked and what the
+    | observer concluded. Rounds stream to the browser through the
+    | same event bus the delegation tree uses, which is what makes
+    | the live panel possible.
+    */
+
+    const DISCUSSION_MODULE =
+        require(
+            path.join(
+                path.resolve(__dirname, ".."),
+                "agent",
+                "discussion"
+            )
+        );
+
+
+    async function startDiscussion({ task, personas, maxRounds }) {
+
+        const {
+            DiscussionEngine,
+            createLlmCaller,
+            PERSONAS
+        } = DISCUSSION_MODULE;
+
+        const available = PERSONAS.map(persona => persona.id);
+
+        const unknown = personas.filter(id => !available.includes(id));
+
+        if (unknown.length > 0) {
+            throw Object.assign(
+                new Error(
+                    `unknown persona: ${unknown[0]}; available: ${available.join(", ")}`
+                ),
+                { status: 400 }
+            );
+        }
+
+        const caller =
+            typeof runtime.callAI === "function"
+                ? createLlmCaller({ callAI: runtime.callAI })
+                : createLlmCaller({ endpointFor: runtime.endpointFor });
+
+        const discussion = {
+            id:
+                `discussion-${Date.now().toString(36)}`,
+            status: "running",
+            task,
+            personas,
+            max_rounds: maxRounds,
+            started_at: Date.now(),
+            finished_at: null,
+            rounds: [],
+            observer_decisions: [],
+            final_report: null,
+            total_rounds: 0,
+            hit_max_rounds: false,
+            stopped_reason: null,
+            error: null
+        };
+
+        state.discussion = discussion;
+
+        addMessage({
+            role: "user",
+            kind: "discussion-request",
+            content: task,
+            personas
+        });
+
+        runtime.events.emit("discussion:start", {
+            id: discussion.id,
+            task,
+            personas,
+            max_rounds: maxRounds
+        });
+
+        const engine =
+            new DiscussionEngine({
+                task,
+                personas,
+                maxRounds,
+                /* the panel shares the runtime's parallel-agent budget */
+                maxParallel: runtime.settings.get("MAX_PARALLEL_AGENTS"),
+                llmCaller: caller,
+                workspaceContext:
+                    `Workspace root: ${runtime.createRuntimeContext().runtime.workspace_root}`,
+                onMessage: message => {
+
+                    runtime.events.emit("discussion:message", {
+                        id: discussion.id,
+                        round: message.round,
+                        persona: message.persona,
+                        persona_name: message.persona_name,
+                        content: message.content.slice(0, 8000)
+                    });
+                },
+                onRound: round => {
+
+                    discussion.rounds.push({
+                        round: round.round,
+                        messages: round.messages.map(message => ({
+                            persona: message.persona,
+                            persona_name: message.persona_name,
+                            content: message.content.slice(0, 8000)
+                        }))
+                    });
+
+                    runtime.events.emit("discussion:round", {
+                        id: discussion.id,
+                        round: round.round,
+                        messages: round.messages.length
+                    });
+                },
+                onObserver: (observerDecision, round) => {
+
+                    discussion.observer_decisions.push({
+                        round,
+                        decision: observerDecision.decision,
+                        agreements: observerDecision.agreements || [],
+                        open_points: observerDecision.open_points || [],
+                        unaddressed: observerDecision.unaddressed || [],
+                        instructions: observerDecision.instructions || {}
+                    });
+
+                    runtime.events.emit("discussion:observer", {
+                        id: discussion.id,
+                        round,
+                        decision: observerDecision.decision,
+                        agreements: observerDecision.agreements || [],
+                        open_points: observerDecision.open_points || [],
+                        unaddressed: observerDecision.unaddressed || [],
+                        instructions: observerDecision.instructions || {}
+                    });
+                }
+            });
+
+        try {
+
+            const result =
+                await engine.run();
+
+            discussion.status = "done";
+            discussion.final_report = result.final_report;
+            discussion.total_rounds = result.total_rounds;
+            discussion.hit_max_rounds = result.hit_max_rounds;
+            discussion.stopped_reason = result.stopped_reason || null;
+            discussion.finished_at = Date.now();
+
+            runtime.events.emit("discussion:finish", {
+                id: discussion.id,
+                total_rounds: result.total_rounds,
+                hit_max_rounds: result.hit_max_rounds,
+                stopped_reason: result.stopped_reason || null,
+                final_report: result.final_report
+            });
+
+            if (result.final_report?.summary) {
+                addMessage({
+                    role: "assistant",
+                    kind: "discussion-report",
+                    content: result.final_report.summary
+                });
+            }
+
+        } catch (error) {
+
+            discussion.status = "failed";
+            discussion.error = error.message;
+            discussion.finished_at = Date.now();
+
+            runtime.events.emit("discussion:error", {
+                id: discussion.id,
+                error: error.message
+            });
+
+            addMessage({
+                role: "assistant",
+                kind: "error",
+                content: `discussion failed: ${error.message}`
+            });
         }
     }
 
@@ -1858,10 +2050,19 @@ function createServer(runtime, options = {}) {
                         return;
                     }
 
-                    if (state.status === "running") {
+                    if (
+                        state.status === "running" ||
+                        (
+                            state.discussion &&
+                            state.discussion.status === "running"
+                        )
+                    ) {
 
                         sendJson(res, 409, {
-                            error: "a task is already running"
+                            error:
+                                state.status === "running"
+                                    ? "a task is already running"
+                                    : "a discussion is already running"
                         });
 
                         return;
@@ -1872,6 +2073,127 @@ function createServer(runtime, options = {}) {
                     startTask(task).catch(() => {});
 
                     sendJson(res, 202, { accepted: true });
+
+                    return;
+                }
+
+                /* ----------------------------------------- discussion */
+
+                if (
+                    pathname === "/api/discussion/personas" &&
+                    req.method === "GET"
+                ) {
+
+                    sendJson(res, 200, {
+                        personas: DISCUSSION_MODULE.listPersonas()
+                    });
+
+                    return;
+                }
+
+                if (
+                    pathname === "/api/discussion" &&
+                    req.method === "POST"
+                ) {
+
+                    const body =
+                        await readBody(req);
+
+                    const task =
+                        typeof body.task === "string"
+                            ? body.task.trim()
+                            : "";
+
+                    const personas =
+                        Array.isArray(body.personas)
+                            ? body.personas
+                                .filter(id => typeof id === "string")
+                                .map(id => id.trim())
+                                .filter(id => id !== "")
+                            : [];
+
+                    const maxRounds =
+                        Number.isInteger(body.max_rounds)
+                            ? body.max_rounds
+                            : 5;
+
+                    if (task === "") {
+                        sendJson(res, 400, { error: "task is required" });
+                        return;
+                    }
+
+                    if (personas.length === 0) {
+                        sendJson(res, 400, {
+                            error:
+                                "personas is required: a non-empty array of persona ids"
+                        });
+                        return;
+                    }
+
+                    if (maxRounds < 1 || maxRounds > 10) {
+                        sendJson(res, 400, {
+                            error: "max_rounds must be between 1 and 10"
+                        });
+                        return;
+                    }
+
+                    const known =
+                        DISCUSSION_MODULE.listPersonas()
+                            .map(persona => persona.id);
+
+                    const unknown =
+                        personas.filter(id => !known.includes(id));
+
+                    if (unknown.length > 0) {
+                        sendJson(res, 400, {
+                            error:
+                                `unknown persona: ${unknown[0]}; available: ${known.join(", ")}`
+                        });
+                        return;
+                    }
+
+                    if (
+                        state.status === "running" ||
+                        (
+                            state.discussion &&
+                            state.discussion.status === "running"
+                        )
+                    ) {
+                        sendJson(res, 409, {
+                            error:
+                                "a task or discussion is already running"
+                        });
+                        return;
+                    }
+
+                    /* the rounds continue in the background, their
+                       events stream out through /api/events */
+
+                    startDiscussion({ task, personas, maxRounds })
+                        .catch(error => {
+                            /*
+                            | A rejection before the discussion was
+                            | registered has nothing to mark failed;
+                            | the request was already answered.
+                            */
+                            const discussion = state.discussion;
+
+                            if (discussion) {
+                                discussion.status = "failed";
+                                discussion.error = error.message;
+                                discussion.finished_at = Date.now();
+
+                                runtime.events.emit("discussion:error", {
+                                    id: discussion.id,
+                                    error: error.message
+                                });
+                            }
+                        });
+
+                    sendJson(res, 202, {
+                        accepted: true,
+                        id: state.discussion.id
+                    });
 
                     return;
                 }
