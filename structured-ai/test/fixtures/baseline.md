@@ -238,3 +238,26 @@
 | **مجموع** | **534/534 passed** |
 
 *نکته:* `web.test.js` 28/28 بدون تغییر سبز ماند. ۵ تست UI جدید switcher، task scoped، dashboard deep-link، فیلتر event بین پروژه‌ها و صف labelدار چندپروژه‌ای را قفل می‌کنند.
+
+## suite پایان فاز ۱۲ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` (جدید فاز ۱۲) | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| ۱۴ فایل اصلی (ui.test.js ۴۰/۴۰) | 420/420 passed |
+| **مجموع** | **539/539 passed** |
+
+*نکته:* `projectId` اختیاری روی `delegate` additive است و فقط با هر دو flag modular اعمال می‌شود. دو Sub-Agent روی دو root هم‌زمان بدون نشت ابزار/پیام اجرا می‌شوند؛ شکست `Unknown project` فقط همان فرزند را می‌گیرد؛ writeهای cross/multi approval جدا علاوه بر policy می‌گیرند. در legacy فیلد پذیرفته و نادیده گرفته می‌شود و envelope رویدادها شکل تاریخی را حفظ می‌کند.

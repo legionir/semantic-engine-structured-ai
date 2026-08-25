@@ -197,3 +197,13 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Composer:** radios `current|specific|multiple`. یک هدف → `POST /api/projects/:id/tasks`؛ چند هدف → صف ترتیبی labelدار. `POST /api/tasks` بدون پروژهٔ انتخاب‌شده دست‌نخورده است.
 - **Events در UI:** استریم با `?projectId=` دوباره وصل می‌شود؛ رویداد دارای `project_id` ناسازگار وارد نما نمی‌شود؛ رویداد بدون `project_id` همچنان دیده می‌شود (سازگاری legacy).
 - **Cancel:** با پروژهٔ فعال، `POST /api/projects/:id/cancel` علاوه بر `POST /api/cancel` صدا زده می‌شود.
+
+## ۱۷. تغییرات additive فاز ۱۲ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **Action `delegate`:** آیتم‌های `delegations[]` فیلد اختیاری additive `projectId` (و alias `project_id`) را می‌پذیرند. نبود/null یعنی پروژهٔ فعال. فیلدهای ناشناخته همچنان رد می‌شوند. در schema غیرسخت `projectId` required نیست؛ در schema سخت (`response_format.strict.json`) با `anyOf: [string, null]` در `required` است.
+- **اعمال سوئیچ:** فقط وقتی `PROJECT_CONTEXT_MODE=modular` و `RUN_CONTEXT_MODE=modular`. در legacy فیلد پذیرفته و نادیده گرفته می‌شود (ابزارها همان workspace فرایند را می‌بینند).
+- **ایزوله‌سازی Sub-Agent:** `agent/runtime/ProjectOverride.js` با ALS؛ `effectiveProject()` = frame جاری یا پروژهٔ Run. هر فرزند داخل `runWithProject` + `events.withProjectId` اجرا می‌شود تا دو فرزند هم‌زمان `currentRun().project` را mutate نکنند. پروژهٔ یک Sub-Agent در میانهٔ loop عوض نمی‌شود؛ delegation تو در تو با `projectId` متفاوت frame تازه می‌سازد.
+- **نتیجهٔ labelدار:** خروجی `executeDelegations` فیلدهای additive `projectId` و `findings` دارد (علاوه بر `id`/`success`/`result`/`agent`/`error`). گزارش موفق Sub-Agent هم `projectId`/`findings` دارد. id ناشناخته فقط همان فرزند را با `Unknown project` شکست می‌دهد.
+- **Approval نوشتن:** ابزارهای `fs_write`/`fs_edit`/`fs_mkdir`/`fs_move`/`fs_delete` روی پروژه‌ای غیر از پروژهٔ Run → approval جدا با `rule: "cross_project_write"`؛ هر write پس از delegation به بیش از یک پروژه → `rule: "multi_project_write"`. این approval علاوه بر تصمیم عادی policy است.
+- **Events:** `delegation:start`/`delegation:graph`/`delegation:end` فیلد additive `projectId` روی آیتم‌ها دارند. envelope `project_id` رویدادهای scoped فرزند، پروژهٔ همان Sub-Agent است. `policy:decision` فقط وقتی `project_id` دارد که پروژه‌ای واقعاً در scope باشد (مقدار null روی رویداد legacy stamp نمی‌شود).
+- **Exports additive:** `effectiveProject`, `effectiveProjectId`, `runWithProject`, `isMultiProjectTask` از `agent/agent.js`؛ `events.withProjectId`.

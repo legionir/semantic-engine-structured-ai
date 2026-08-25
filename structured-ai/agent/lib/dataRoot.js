@@ -117,12 +117,20 @@ function currentRoot() {
 
     try {
 
-        const { runManager } = require("../runtime");
+        const runtime = require("../runtime");
+
+        const overrideProject =
+            typeof runtime.effectiveProject === "function"
+                ? runtime.effectiveProject()
+                : null;
+
+        if (fromProject(overrideProject)) {
+            return fromProject(overrideProject);
+        }
 
         const run =
-
-            runManager && typeof runManager.current === "function"
-                ? runManager.current()
+            runtime.runManager && typeof runtime.runManager.current === "function"
+                ? runtime.runManager.current()
                 : null;
 
         return (

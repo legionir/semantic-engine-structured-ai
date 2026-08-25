@@ -95,6 +95,18 @@ function setContext(patch = {}) {
             target[key] = patch[key];
         }
     }
+
+    /* project_id lives only on a scoped (modular) envelope; a nested
+       Sub-Agent may retarget it for its own async chain without
+       touching the process-global context. */
+    if (
+        scoped &&
+        Object.prototype.hasOwnProperty.call(patch, "project_id")
+    ) {
+
+        scoped.project_id = patch.project_id;
+
+    }
 }
 
 
@@ -171,6 +183,32 @@ function aggregateMetadata(event) {
 }
 
 
+/* Phase 12: a Sub-Agent may run under a different project than the
+   parent run. Nest a scope that keeps the parent's run/turn and
+   replaces only project_id. Outside a scope (legacy) this is a no-op
+   so envelopes stay historically shaped. */
+function withProjectId(projectId, fn) {
+
+    const scoped = currentScope();
+
+    if (!scoped) {
+        return fn();
+    }
+
+    return runWithScope({
+        run_id: scoped.run_id,
+        turn_id: scoped.turn_id,
+        scope: scoped.scope,
+        iteration: scoped.iteration,
+        project_id:
+            projectId === undefined
+                ? scoped.project_id
+                : projectId
+    }, fn);
+
+}
+
+
 function visibleOnProjectStream(event, projectId) {
 
     if (event.project_id === projectId) {
@@ -190,6 +228,7 @@ module.exports = {
     emit,
     setContext,
     runWithScope,
+    withProjectId,
     resetSequence,
     aggregateMetadata,
     visibleOnProjectStream

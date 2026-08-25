@@ -30,7 +30,13 @@ const {
     runManager,
     runContextMode,
     runScheduler,
-    observability
+    observability,
+    runWithProject,
+    effectiveProject,
+    effectiveProjectId,
+    projectIdOf,
+    noteDelegationProject,
+    isMultiProjectTask
 } = projectRuntime;
 
 const promptKit = require("./prompt");
@@ -119,13 +125,13 @@ function promptFacade() {
                     detectEnvironment: () => detectEnvironment(),
                     detectRepository: () =>
                         detectRepository(
-                            currentRun().project
-                                ? currentRun().project.workspaceRoot
+                            effectiveProject(currentRun().project)
+                                ? effectiveProject(currentRun().project).workspaceRoot
                                 : undefined
                         ),
                     workspaceRoot: () =>
-                        currentRun().project
-                            ? currentRun().project.workspaceRoot
+                        effectiveProject(currentRun().project)
+                            ? effectiveProject(currentRun().project).workspaceRoot
                             : WORKSPACE_ROOT,
                     planSummary: () => currentPlanSummary(),
                     memorySizeChars: () =>
@@ -2983,6 +2989,69 @@ function canModifyWorkspace(agentDefinition) {
 }
 
 
+/* Phase 12: extra approval for writes that leave the Sub-Agent's
+   project or that happen inside a task that already spans more than
+   one project. Policy's own decision (if any) still runs first. */
+async function enforceCrossProjectWrite(toolName, args, agent) {
+
+    if (!delegationProjectSwitchEnabled()) {
+        return null;
+    }
+
+    if (!FILE_MUTATING_TOOLS.includes(toolName)) {
+        return null;
+    }
+
+    const run = currentRun();
+
+    const effective = effectiveProject(run.project);
+
+    const effectiveId =
+        projectIdOf(effective) || run.projectId || null;
+
+    const parentId =
+        run.projectId || projectIdOf(run.project) || null;
+
+    const cross =
+        Boolean(effectiveId && parentId && effectiveId !== parentId);
+
+    const multi = isMultiProjectTask(run);
+
+    if (!cross && !multi) {
+        return null;
+    }
+
+    const evaluation = {
+        tool: toolName,
+        agent: agent || "main_agent",
+        groups: POLICY_ENGINE.groupsFor(toolName),
+        decision: "require_approval",
+        reason:
+            cross
+                ? `cross-project write on "${effectiveId}" (run project is "${parentId}")`
+                : `write in a multi-project task (project "${effectiveId || parentId}")`,
+        rule:
+            cross
+                ? "cross_project_write"
+                : "multi_project_write",
+        project_id: effectiveId
+    };
+
+    const approval =
+        await POLICY_ENGINE.requestApproval(evaluation, args);
+
+    POLICY_ENGINE.onDecision({
+        ...evaluation,
+        approved: approval.approved,
+        approval_mode: approval.mode,
+        gateway_cached: approval.gateway_cached === true
+    });
+
+    return approval;
+
+}
+
+
 /*
 | The root profile, as configured, without running a whole agent to ask
 | whether it may delegate.
@@ -3176,7 +3245,7 @@ function createMainAgentMessages(task) {
     if (promptBuilderMode() === "modular") {
 
         return promptFacade().mainMessages(task, {
-            project: currentRun().project
+            project: effectiveProject(currentRun().project)
         });
 
     }
@@ -4198,6 +4267,12 @@ async function executeToolGraph(
                         scope || "main_agent"
                     );
 
+                    await enforceCrossProjectWrite(
+                        call.name,
+                        resolvedArguments,
+                        scope || "main_agent"
+                    );
+
                     logObject(
                         scope,
                         `Tool ${call.id} -> ${call.name}`,
@@ -4256,12 +4331,23 @@ async function executeToolGraph(
                                 */
                                 (
                                     currentRun() instanceof AgentRunContext
-                                        ? {
-                                              agent: scope || "main_agent",
-                                              runId: currentRun().runId,
-                                              projectId: currentRun().projectId ?? undefined,
-                                              projectContext: currentRun().project ?? undefined
-                                          }
+                                        ? (() => {
+
+                                              const project =
+                                                  effectiveProject(currentRun().project);
+
+                                              return {
+                                                  agent: scope || "main_agent",
+                                                  runId: currentRun().runId,
+                                                  projectId:
+                                                      projectIdOf(project) ??
+                                                      currentRun().projectId ??
+                                                      undefined,
+                                                  projectContext:
+                                                      project ?? undefined
+                                              };
+
+                                          })()
                                         : {
                                               agent: scope || "main_agent"
                                           }
@@ -6566,6 +6652,133 @@ function requireNullFields(action, fields) {
 }
 
 
+/* Phase 12: a delegation may name a project. Missing / null means
+   inherit the active project. Both camelCase (implementation plan)
+   and snake_case are accepted; conflicting values are rejected. */
+function requestedDelegationProjectId(delegation) {
+
+    if (!delegation || typeof delegation !== "object") {
+
+        return { value: null, error: null };
+
+    }
+
+    const hasCamel =
+        Object.prototype.hasOwnProperty.call(delegation, "projectId");
+
+    const hasSnake =
+        Object.prototype.hasOwnProperty.call(delegation, "project_id");
+
+    const rawCamel = hasCamel ? delegation.projectId : undefined;
+
+    const rawSnake = hasSnake ? delegation.project_id : undefined;
+
+    const normalize = value => {
+
+        if (value === undefined || value === null) {
+            return null;
+        }
+
+        if (typeof value !== "string") {
+
+            return { error: "delegation.projectId must be a string or null." };
+
+        }
+
+        const trimmed = value.trim();
+
+        if (trimmed === "") {
+
+            return { error: "delegation.projectId must be a non-empty string when set." };
+
+        }
+
+        return { value: trimmed };
+
+    };
+
+    const camel = normalize(rawCamel);
+
+    if (camel && camel.error) {
+        return { value: null, error: camel.error };
+    }
+
+    const snake = normalize(rawSnake);
+
+    if (snake && snake.error) {
+        return { value: null, error: snake.error };
+    }
+
+    const camelValue = camel ? camel.value : null;
+
+    const snakeValue = snake ? snake.value : null;
+
+    if (
+        hasCamel &&
+        hasSnake &&
+        camelValue &&
+        snakeValue &&
+        camelValue !== snakeValue
+    ) {
+
+        return {
+            value: null,
+            error: "delegation.projectId and project_id disagree."
+        };
+
+    }
+
+    return {
+        value: camelValue || snakeValue || null,
+        error: null
+    };
+
+}
+
+
+function delegationProjectSwitchEnabled() {
+
+    return (
+        projects.projectContextMode() === "modular" &&
+        runContextMode() === "modular"
+    );
+
+}
+
+
+function findingsFromReport(report) {
+
+    if (!report || typeof report !== "object") {
+        return [];
+    }
+
+    if (Array.isArray(report.findings)) {
+        return report.findings;
+    }
+
+    const content =
+        report.response &&
+        typeof report.response.content === "string"
+            ? report.response.content.trim()
+            : "";
+
+    if (content !== "") {
+        return [report.response.content];
+    }
+
+    if (Array.isArray(report.data)) {
+        return report.data;
+    }
+
+    if (report.data !== undefined && report.data !== null) {
+        return [report.data];
+    }
+
+    return [];
+
+}
+
+
 function validateAction(
     action
 ) {
@@ -6834,6 +7047,14 @@ function validateAction(
                 "depends_on"
             ];
 
+            /* Phase 12: optional additive project selector. camelCase
+               matches the implementation-plan contract; project_id is
+               accepted as an alias. Neither is required. */
+            const optionalDelegationFields = [
+                "projectId",
+                "project_id"
+            ];
+
             const missing =
                 delegationFields.filter(
                     field =>
@@ -6852,7 +7073,9 @@ function validateAction(
 
             const extras =
                 Object.keys(delegation).filter(
-                    field => !delegationFields.includes(field)
+                    field =>
+                        !delegationFields.includes(field) &&
+                        !optionalDelegationFields.includes(field)
                 );
 
             if (extras.length > 0) {
@@ -6860,6 +7083,15 @@ function validateAction(
                 throw new Error(
                     `Delegation contains unknown field(s): ${extras.join(", ")}.`
                 );
+            }
+
+            const requestedProject =
+                requestedDelegationProjectId(delegation);
+
+            if (requestedProject.error) {
+
+                throw new Error(requestedProject.error);
+
             }
 
             const hasAgent =
@@ -7563,7 +7795,7 @@ function createSubAgentMessages(
             agentDefinition,
             task,
             context,
-            { project: currentRun().project }
+            { project: effectiveProject(currentRun().project) }
         );
 
     }
@@ -8029,7 +8261,16 @@ async function runSubAgentLoop({
                 performed: {
                     tools: progress.tools,
                     delegations: progress.delegations
-                }
+                },
+
+                projectId:
+                    effectiveProjectId(currentRun().project),
+
+                findings:
+                    findingsFromReport({
+                        response: action.response,
+                        data: action.data
+                    })
             };
         }
 
@@ -8193,7 +8434,9 @@ async function runSubAgentLoop({
                         id: item.id,
                         agent: item.agent || `adhoc:${item.persona}`,
                         task: item.task,
-                        depends_on: item.depends_on
+                        depends_on: item.depends_on,
+                        projectId:
+                            requestedDelegationProjectId(item).value
                     }))
             });
 
@@ -8366,7 +8609,9 @@ async function executeDelegations(
             tasks.map(task => ({
                 id: task.id,
                 agent: task.agent,
-                depends_on: task.depends_on
+                depends_on: task.depends_on,
+                projectId:
+                    requestedDelegationProjectId(task.delegation).value
             }))
     });
 
@@ -8392,6 +8637,56 @@ async function executeDelegations(
                 | reports how it ended, whoever failed it.
                 */
 
+                const switchEnabled =
+                    delegationProjectSwitchEnabled();
+
+                const requested =
+                    requestedDelegationProjectId(task.delegation).value;
+
+                const inherited =
+                    effectiveProject(currentRun().project);
+
+                const inheritedId =
+                    projectIdOf(inherited) ||
+                    currentRun().projectId ||
+                    null;
+
+                let scopedProject = inherited;
+
+                if (switchEnabled && requested) {
+
+                    try {
+
+                        scopedProject =
+                            projects.createProjectContext(
+                                projects.registry().get(requested)
+                            );
+
+                    } catch {
+
+                        const unknown =
+                            new Error(`Unknown project: ${requested}`);
+
+                        unknown.name = "UNKNOWN_PROJECT";
+
+                        throw unknown;
+
+                    }
+
+                }
+
+                /* In legacy the requested id is accepted but ignored,
+                   so it must not become the child's label, the ALS
+                   frame, or a multi-project mark. */
+                const scopedProjectId =
+                    projectIdOf(scopedProject) ||
+                    (switchEnabled ? requested : null) ||
+                    inheritedId;
+
+                if (switchEnabled) {
+                    noteDelegationProject(currentRun(), scopedProjectId);
+                }
+
                 try {
 
                     const agentProfile =
@@ -8412,8 +8707,8 @@ async function executeDelegations(
                             })
                         );
 
-                    const report =
-                        await runSubAgent({
+                    const runChild = () =>
+                        runSubAgent({
                             agentProfile,
 
                             task:
@@ -8441,6 +8736,34 @@ async function executeDelegations(
                             }
                         });
 
+                    /* Each Sub-Agent gets its own project ALS frame so
+                       two concurrent children cannot mix tools or
+                       event project_id. Nested delegations may start a
+                       new frame; this one is fixed for the child.
+                       Legacy never enters the frame, so envelopes
+                       stay historically shaped. */
+                    const report =
+                        switchEnabled
+                            ? await runWithProject(
+                                scopedProject,
+                                () =>
+                                    events.withProjectId(
+                                        scopedProjectId,
+                                        runChild
+                                    )
+                            )
+                            : await runChild();
+
+                    const labeled = {
+                        ...report,
+                        projectId:
+                            report.projectId ?? scopedProjectId,
+                        findings:
+                            Array.isArray(report.findings)
+                                ? report.findings
+                                : findingsFromReport(report)
+                    };
+
                     events.emit("delegation:end", {
                         parent:
                             parentAgent?.name || "main_agent",
@@ -8456,11 +8779,13 @@ async function executeDelegations(
 
                         success: true,
 
+                        projectId: labeled.projectId,
+
                         duration_ms:
                             Date.now() - startedAt
                     });
 
-                    return report;
+                    return labeled;
 
                 } catch (error) {
 
@@ -8479,6 +8804,8 @@ async function executeDelegations(
 
                         success: false,
 
+                        projectId: scopedProjectId,
+
                         error: error.message,
 
                         duration_ms:
@@ -8492,6 +8819,8 @@ async function executeDelegations(
                         } failed: ${error.message}`
                     );
 
+                    error.projectId = scopedProjectId;
+
                     throw error;
                 }
             }
@@ -8502,15 +8831,49 @@ async function executeDelegations(
                 /*
                 | Each result carries the agent name so a failed
                 | delegation is attributable without id correlation.
+                | Phase 12 adds projectId + findings so synthesis can
+                | only cite labeled, per-project reports.
                 */
 
                 results.map(
-                    (result, index) => ({
-                        ...result,
+                    (result, index) => {
 
-                        agent:
-                            tasks[index].agent
-                    })
+                        const requested =
+                            requestedDelegationProjectId(
+                                tasks[index].delegation
+                            ).value;
+
+                        const projectId =
+                            result.projectId ||
+                            (result.result && result.result.projectId) ||
+                            result.error?.projectId ||
+                            (delegationProjectSwitchEnabled()
+                                ? requested
+                                : null) ||
+                            projectIdOf(effectiveProject(currentRun().project)) ||
+                            currentRun().projectId ||
+                            null;
+
+                        const findings =
+                            result.success
+                                ? (
+                                    result.findings ||
+                                    findingsFromReport(result.result)
+                                )
+                                : [];
+
+                        return {
+                            ...result,
+
+                            agent:
+                                tasks[index].agent,
+
+                            projectId,
+
+                            findings
+                        };
+
+                    }
                 )
         );
 }
@@ -10092,7 +10455,9 @@ async function runAgentCore(options = {}) {
                         id: item.id,
                         agent: item.agent || `adhoc:${item.persona}`,
                         task: item.task,
-                        depends_on: item.depends_on
+                        depends_on: item.depends_on,
+                        projectId:
+                            requestedDelegationProjectId(item).value
                     }))
             });
 
@@ -10495,6 +10860,10 @@ module.exports = {
     runScheduler,
     observability,
     cancelRunById,
+    effectiveProject,
+    effectiveProjectId,
+    runWithProject,
+    isMultiProjectTask,
 
     settings,
 

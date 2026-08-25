@@ -475,15 +475,21 @@ event stream، replay، history، chat و approvals در UI مطابق پروژ�
 
 ---
 
-## [🔴] فاز ۱۲: Cross-Project Delegation
+## [🟢] فاز ۱۲: Cross-Project Delegation
 
 **هدف و scope:** پشتیبانی امن از taskهای عمداً چندپروژه‌ای با Sub-Agentهای مستقل per-project و synthesis فقط از خروجی labelدار. خروجی: پشتیبانی delegation از `projectId` و قرارداد نتیجهٔ labelدار.
 
-### [🔴] گام ۱: پشتیبانی `projectId` در delegation
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۵ تست جدید در `test/runs/delegation-projects.test.js` سبز. `projectId` اختیاری روی action `delegate` (و alias `project_id`) additive است؛ اعمال سوئیچ فقط وقتی هر دو flag `PROJECT_CONTEXT_MODE` و `RUN_CONTEXT_MODE` modular باشند. تصمیم ۳۱ در پیوست ب.
+
+### [🟢] گام ۱: پشتیبانی `projectId` در delegation
+
+**انجام شد (2026-08-26):** فیلد اختیاری `projectId` به `validateAction` و هر دو schema (`response_format.json` / `.strict.json`) افزوده شد. نبود آن یعنی پروژهٔ فعال. هر Sub-Agent داخل `runWithProject` + `events.withProjectId` با ProjectContext ثابت اجرا می‌شود (ALS جدا از `currentRun().project` تا دو فرزند هم‌زمان قاطی نشوند). delegation تو در تو با `projectId` متفاوت frame تازه می‌سازد؛ پروژهٔ Sub-Agent جاری در میانهٔ loop عوض نمی‌شود. budget/depth delegation دست‌نخورده است. id ناشناخته فقط همان فرزند را با خطای کنترل‌شده `Unknown project` شکست می‌دهد.
 
 action `delegate` بتواند `projectId` بگیرد؛ نبود آن یعنی «پروژهٔ فعال». Sub-Agent با ProjectContext مستقل (fاز ۵: project context به ارث رسیده/تنظیم‌شده) اجرا شود و تغییر آن در میانهٔ Sub-Agent ممنوع باشد. budget/depth لاین‌فیلم delegation (max depth، بودجهٔ Sub-Agentها) بدون تغییر.
 
-### [🔴] گام ۲: قرارداد نتیجهٔ labelدار و قواعد نوشتن
+### [🟢] گام ۲: قرارداد نتیجهٔ labelدار و قواعد نوشتن
+
+**انجام شد (2026-08-26):** نتیجهٔ هر delegation فیلدهای additive `projectId` و `findings` دارد (در کنار `id`/`success`/`result`/`agent`). ابزارهای `FILE_MUTATING_TOOLS` روی پروژه‌ای غیر از پروژهٔ Run و هر write پس از delegation به بیش از یک پروژه approval جدا (`cross_project_write` / `multi_project_write`) می‌گیرند — علاوه بر تصمیم عادی policy.
 
 نتیجهٔ هر delegation شامل `projectId`، `success` و یافته‌ها باشد؛ synthesis (گزارش نهایی Main Agent) فقط به نتایج labelدار ارجاع دهد. نوشتنِ cross-project (ابزار write روی پروژه‌ای غیر از پروژهٔ Sub-Agent — عملاً غیرممکن مگر با delegation جدید) و هر عمل write در task چندپروژه‌ای نیازمند approval جدا باشد.
 
@@ -493,6 +499,8 @@ action `delegate` بتواند `projectId` بگیرد؛ نبود آن یعنی �
 - خرابی Sub-Agent یک پروژه مانع گزارش پروژهٔ دیگر نمی‌شود (partial failure کنترل‌شده).
 - گزارش نهایی منشأ پروژه‌ای هر یافته را مشخص می‌کند (تست روی خروجی).
 - approval برای عملیات write cross-project مجزا صادر می‌شود؛ suite + تست delegation جدید سبز.
+
+**وضعیت معیارها (2026-08-26):** هر چهار بند با `test/runs/delegation-projects.test.js` اثبات شد — دو Sub-Agent هم‌زمان روی دو root بدون نشت marker/tool، شکست `Unknown project` فقط همان فرزند را می‌گیرد، `sub_agent_results` و پاسخ نهایی هر یافته را با `projectId` برچسب می‌زنند، و writeهای cross/multi approval جدا علاوه بر policy صادر می‌کنند. در legacy فیلد پذیرفته و نادیده گرفته می‌شود.
 
 ---
 
@@ -926,5 +934,6 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 28. **قفل busy وب (فاز ۱۰):** `POST /api/tasks` و state کنسول همچنان یک task سراسری دارند (قرارداد `web.test.js`). هم‌زمانی چند پروژه از `runAgent`/CLI است؛ UI چند-run موضوع فاز ۱۱ است. overflow صف در مسیر پروژه‌ای HTTP `429`/`RUN_QUEUE_FULL` می‌دهد.
 29. **Composer چندپروژه‌ای (فاز ۱۱):** به‌خاطر قفل busy سراسری تصمیم ۲۸، scope «Multiple projects» چند Run موازی نیست — صف ترتیبی labelدار (`[Name] task`) است. synthesis واقعی در فاز ۱۲.
 30. **Dashboard (فاز ۱۱):** همان SPA کنسول است؛ سرور `GET /projects` و `GET /projects/:id` را با `index.html` جواب می‌دهد و تب با `?tab=` انتخاب می‌شود. Visualizer `?projectId=` را به `/api/graph/*` می‌فرستد.
+31. **سوئیچ پروژه در delegation (فاز ۱۲):** فیلد مدل `projectId` است (camelCase، مطابق گام ۹ سند پیاده‌سازی) و `project_id` به‌عنوان alias پذیرفته می‌شود. سوئیچ فقط وقتی هر دو flag modular باشند اعمال می‌شود؛ در legacy فیلد validate می‌شود ولی نادیده گرفته می‌شود. ایزوله بودن دو Sub-Agent هم‌زمان با ALS (`runWithProject`) است نه با mutate کردن `currentRun().project`. approval write اضافی (`cross_project_write` / `multi_project_write`) جدا از تصمیم policy صادر می‌شود.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

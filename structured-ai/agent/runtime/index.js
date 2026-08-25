@@ -18,6 +18,15 @@ const { RunBudget, AgentSpawnBudget } = require("./RunBudget");
 const { RunManager, runManager } = require("./RunManager");
 const { RunScheduler, runScheduler, schedulerEnabled } = require("./RunScheduler");
 const { Observability, observability } = require("./Observability");
+const {
+    runWithProject,
+    overrideActive,
+    effectiveProject,
+    effectiveProjectId,
+    projectIdOf,
+    noteDelegationProject,
+    isMultiProjectTask
+} = require("./ProjectOverride");
 
 observability.attach();
 
@@ -52,5 +61,12 @@ module.exports = {
     schedulerEnabled,
     Observability,
     observability,
-    runContextMode
+    runContextMode,
+    runWithProject,
+    overrideActive,
+    effectiveProject,
+    effectiveProjectId,
+    projectIdOf,
+    noteDelegationProject,
+    isMultiProjectTask
 };

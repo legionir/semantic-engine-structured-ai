@@ -52,11 +52,21 @@ function currentProjectId() {
 
     try {
 
-        const { runManager } = require("../runtime");
+        const runtime = require("../runtime");
+
+        if (typeof runtime.effectiveProjectId === "function") {
+
+            const overridden = runtime.effectiveProjectId();
+
+            if (overridden) {
+                return overridden;
+            }
+
+        }
 
         const run =
-            runManager && typeof runManager.current === "function"
-                ? runManager.current()
+            runtime.runManager && typeof runtime.runManager.current === "function"
+                ? runtime.runManager.current()
                 : null;
 
         return run && run.projectId ? run.projectId : null;
@@ -659,7 +669,14 @@ class PolicyEngine {
         const evaluation =
             this.evaluate(toolName, args, agent);
 
-        evaluation.project_id = currentProjectId();
+        /* Additive project attribution only when a project is actually
+           in scope. Stamping `project_id: null` would change the
+           historical shape of every legacy policy:decision. */
+        const projectId = currentProjectId();
+
+        if (projectId) {
+            evaluation.project_id = projectId;
+        }
 
         if (evaluation.decision === DECISIONS.DENY) {
 
