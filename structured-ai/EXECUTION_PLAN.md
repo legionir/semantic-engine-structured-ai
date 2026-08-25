@@ -73,23 +73,33 @@
 
 ---
 
-## [🔴] فاز ۱: ثبت Baseline و قراردادهای Regression
+## [🟢] فاز ۱: ثبت Baseline و قراردادهای Regression
 
 **هدف و scope:** قبل از هر تغییر، رفتار فعلی single-project به‌صورت قابل‌تکرار ثبت شود تا در تمام فازهای بعدی بتوان «refactor یا رفتار جدید» را از «شکستن قرارداد» تفکیک کرد. خروجی: fixtureهای deterministic، normalizer، contract testهای اولیه و مستندات قرارداد رویداد/API/action.
 
-### [🔴] گام ۱: اجرای کامل suite فعلی و ثبت نتیجه
+**تکمیل 2026-08-25:** suite کامل سبز (437/437)؛ شواهد در `test/fixtures/baseline.md` و کامیت فاز.
+
+### [🟢] گام ۱: اجرای کامل suite فعلی و ثبت نتیجه
+
+**انجام شد (2026-08-25):** `npm run check` و `npm test` هر دو exit 0؛ ۱۴ فایل / ۴۱۵ تست سبز؛ ثبت کامل در `test/fixtures/baseline.md`.
 
 کل تست‌های موجود (`test/*.test.js` — ۱۴ سری شامل tools، hooks، journal، eventstore، runtime، semantic، mcp، archive، e2e، cli، interactive، ui، discussion، web) با `npm test` اجرا شود. خروجی (command، exit code، تعداد تست‌ها، مدت‌زمان) در `test/fixtures/baseline.md` یا معادل آن ثبت شود. **پیش‌نیاز همهٔ فازها:** suite باید قبل از شروع هر تغییری سبز باشد؛ اگر سبز نیست، علت قبل از هر کاری رفع و در همین سند ثبت شود.
 
-### [🔴] گام ۲: ساخت fixtureهای deterministic و normalizer
+### [🟢] گام ۲: ساخت fixtureهای deterministic و normalizer
+
+**انجام شد (2026-08-25):** normalizer در `test/helpers/normalize.js` با تست واحد `test/helpers/normalize.test.js` (6/6)؛ fixtureهای action/prompt/events/api در `test/fixtures/` — همه از روی خروجی واقعی runtime capture شده‌اند (بدون حدس). fixtureهای compaction/delegation/MCP/UI با ارجاع مستند به پوشش موجود در `baseline.md` ثبت شدند و تبدیل به fixture مستقل به فاز ۲۹ موکول شد (تصمیم مستند، نه حذف scope).
 
 در `structured-ai/test/fixtures/` فیکسچر بساز: prompt Main Agent، prompt Sub-Agent، tool requestها، action parsing، context compaction، delegation، MCP discovery، UI state و یک default project ثابت. در `test/helpers/normalize.js` نرمالایزر بساز که timestamp، PID، duration و ترتیب keyهای object را حذف/نرمال کند؛ متن‌ها و فیلدهای قراردادی باید دقیقاً برابر بمانند.
 
-### [🔴] گام ۳: ثبت قرارداد event، API و action
+### [🟢] گام ۳: ثبت قرارداد event، API و action
+
+**انجام شد (2026-08-25):** `test/fixtures/CONTRACTS.md` — سیاست additive-only (بخش ۱)، قرارداد event با envelope و inventory (بخش ۲)، قرارداد action (بخش ۳)، قرارداد prompt/request (بخش ۴)، API (بخش ۵)، persistence/CLI (بخش ۶). یافتهٔ باارزش: `turn_id` از قبل مفهوم runtime است و معنایش ثبت شد.
 
 رویدادهای فعلی (نام‌ها و payloadها: `run:start`، `run:end`، `agent:*`، `tool:start/end`، `policy:decision`، `approval:*`، `context:compacted` و سایر موارد موجود)، پاسخ endpointهای Web Console و قرارداد actionهای `tool_call`/`delegate`/`final` را inventory و مستند کن. **سیاست additive-only** (قانون ثابت ۵) به‌صورت صریح در مستند قرارداد درج شود؛ فیلدهای افزودنیِ آینده (`projectId`، `runId`، `turnId`) به‌عنوان تغییر مجاز additive تعریف شوند.
 
-### [🔴] گام ۴: ساخت contract testهای اولیه
+### [🟢] گام ۴: ساخت contract testهای اولیه
+
+**انجام شد (2026-08-25):** سه فایل قرارداد + تست normalizer به زنجیرهٔ `npm test` متصل شدند (اسکریپت `test:contracts` نیز موجود): `test/contracts/events.contract.test.js` (5/5)، `test/contracts/prompt.contract.test.js` (5/5)، `test/contracts/actions.contract.test.js` (6/6). نکتهٔ capture واقعی: request مدل با stub server زنده capture و قفل شد (نه بازسازی فرضی body).
 
 `test/contracts/events.contract.test.js` و `test/contracts/prompt.contract.test.js` را بساز که خروجی فعلی را در برابر fixtureها قفل کنند. این تست‌ها در تمام فازهای بعدی اسکلت regression هستند و با تکمیل هر فاز گسترش می‌یابند (action، tool، api، persistence).
 

@@ -1,0 +1,30 @@
+{
+  "description": "Web Console API path literals extracted from web/server.js (EXECUTION_PLAN, Phase 1). Method-level detail is documented in CONTRACTS.md only where evidenced by tests; full route inventory with methods is Phase 23 scope.",
+  "paths": [
+    "/api/",
+    "/api/approval-mode",
+    "/api/approvals/",
+    "/api/calls",
+    "/api/calls/",
+    "/api/cancel",
+    "/api/clear",
+    "/api/discussion",
+    "/api/discussion/personas",
+    "/api/events",
+    "/api/graph/",
+    "/api/mcp",
+    "/api/mcp/",
+    "/api/sessions",
+    "/api/sessions/",
+    "/api/settings",
+    "/api/state",
+    "/api/stats",
+    "/api/tasks"
+  ],
+  "evidenced": {
+    "POST /api/tasks": "submit a task; used by web.test.js with a stubbed model",
+    "GET  /api/events": "SSE event stream; consumed by the console",
+    "GET  /api/discussion/personas": "lists selectable discussion personas (discussion.test.js)",
+    "POST /api/discussion": "starts a discussion; validates its request (discussion.test.js)"
+  }
+}
