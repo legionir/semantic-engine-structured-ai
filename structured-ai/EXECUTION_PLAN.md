@@ -409,7 +409,7 @@ approvalها به‌صورت per-project ذخیره/نمایش داده شوند
 
 **هدف و scope:** اجرای parallel پایدارِ چند پروژه بدون قفل‌شدن runtime توسط یک پروژهٔ پرمصرف + دید کامل per-project/global. خروجی: محدودیت‌های قابل‌تنظیم، صف per-project، metrics و health surface.
 
-**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۸ تست جدید در `test/runs/concurrency.test.js` سبز. Scheduler فقط در `RUN_CONTEXT_MODE=modular` + `PROJECT_CONTEXT_MODE=modular` و فقط برای Run دارای projectId فعال است (bypass برای تست‌های فاز ۳). تصمیم ۲۵–۲۶ در پیوست ب.
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۱۱ تست جدید در `test/runs/concurrency.test.js` سبز. Scheduler فقط در `RUN_CONTEXT_MODE=modular` + `PROJECT_CONTEXT_MODE=modular` و فقط برای Run دارای projectId فعال است (bypass برای Run بدون پروژه). تصمیم ۲۵–۲۸ در پیوست ب.
 
 ### [🟢] گام ۱: محدودیت‌ها و صف اجرا
 
