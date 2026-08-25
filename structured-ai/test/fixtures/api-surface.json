@@ -17,6 +17,7 @@
     "/api/mcp/",
     "/api/metrics",
     "/api/projects/",
+    "/projects",
     "/api/sessions",
     "/api/sessions/",
     "/api/settings",
@@ -36,6 +37,8 @@
     "GET  /api/projects/:projectId/state": "project-scoped console state (events/sessions/approvals filtered)",
     "POST /api/projects/:projectId/chat": "same acceptance contract as /tasks with body.message or body.task",
     "POST /api/projects/:projectId/cancel": "cancels only runs of that project",
-    "GET  /api/events?projectId=": "SSE filtered to one project; 403 if token cannot access it"
+    "GET  /api/events?projectId=": "SSE filtered to one project; 403 if token cannot access it",
+    "GET  /projects": "serves the console SPA so /projects/:id?tab= is a dashboard deep-link (ui.test.js)",
+    "GET  /api/graph/?projectId=": "graph views resolve the named project's root (visualizer.js)"
   }
 }

@@ -51,8 +51,30 @@ const state = {
     settings: [],
     logFilter: "",
     logType: "",
-    openExecutionKeys: new Set()
+    openExecutionKeys: new Set(),
+    projects: [],
+    currentProjectId: null,
+    dashboard: { open: false, projectId: null, tab: "overview" },
+    eventSource: null,
+    multiQueue: [],
+    gatewayHealth: null
 };
+
+const PROJECT_STORAGE_KEY = "structured-ai.currentProjectId";
+
+const DASHBOARD_TABS = [
+    ["overview", "Overview"],
+    ["runs", "Agent Runs"],
+    ["sessions", "Sessions"],
+    ["memory", "Memory"],
+    ["plan", "Plan"],
+    ["events", "Events"],
+    ["approvals", "Approvals"],
+    ["semantic", "Semantic Engine"],
+    ["mcp", "MCP"],
+    ["logs", "Logs"],
+    ["settings", "Settings"]
+];
 
 
 /* ---------------------------------------------------------------- helpers */
@@ -4009,7 +4031,25 @@ function pushMessage(message) {
 }
 
 
+function eventVisibleForCurrentProject(event) {
+
+    if (!state.currentProjectId) {
+        return true;
+    }
+
+    if (!event || !event.project_id) {
+        return true;
+    }
+
+    return event.project_id === state.currentProjectId;
+}
+
+
 function apply(event) {
+
+    if (!eventVisibleForCurrentProject(event)) {
+        return;
+    }
 
     if (event.plan) {
         state.plan = event.plan;
@@ -4418,6 +4458,13 @@ function apply(event) {
             state.waitingTimer = null;
 
             renderChat();
+
+            /* Phase 11: a multi-project composer run is a sequence of
+               labelled single-project tasks, not a parallel fan-out. */
+            if (event.status !== "running") {
+                drainProjectTaskQueue();
+            }
+
             break;
 
         case "request:start":
@@ -4858,12 +4905,988 @@ function openSettings() {
 }
 
 
+/* ----------------------------------------------------------- projects UI */
+
+function browserLocation() {
+
+    try {
+
+        if (typeof globalThis !== "undefined" && globalThis.location) {
+            return globalThis.location;
+        }
+
+    } catch {
+        /* tests / workers */
+    }
+
+    return { pathname: "/", search: "" };
+}
+
+
+function browserHistory() {
+
+    try {
+
+        if (typeof globalThis !== "undefined" && globalThis.history) {
+            return globalThis.history;
+        }
+
+    } catch {
+        /* tests */
+    }
+
+    return null;
+}
+
+
+function browserStorage() {
+
+    try {
+
+        if (typeof globalThis !== "undefined" && globalThis.localStorage) {
+            return globalThis.localStorage;
+        }
+
+    } catch {
+        /* private mode */
+    }
+
+    return null;
+}
+
+
+function readStoredProjectId() {
+
+    const storage = browserStorage();
+
+    if (!storage) {
+        return null;
+    }
+
+    try {
+        return storage.getItem(PROJECT_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+
+function writeStoredProjectId(projectId) {
+
+    const storage = browserStorage();
+
+    if (!storage) {
+        return;
+    }
+
+    try {
+
+        if (projectId) {
+            storage.setItem(PROJECT_STORAGE_KEY, projectId);
+        } else {
+            storage.removeItem(PROJECT_STORAGE_KEY);
+        }
+
+    } catch {
+        /* private mode */
+    }
+}
+
+
+function parseProjectRoute() {
+
+    const location = browserLocation();
+    const pathname = location.pathname || "/";
+    const search = location.search || "";
+    const params = new URLSearchParams(search);
+    const match = /^\/projects\/([^/]+)\/?$/.exec(pathname);
+    const tab = params.get("tab") || "overview";
+
+    return {
+        projectId: match ? decodeURIComponent(match[1]) : params.get("project"),
+        dashboard: Boolean(match),
+        tab
+    };
+}
+
+
+function navigateConsole(projectId, tab, replace) {
+
+    const dashboard = Boolean(tab);
+    const path =
+        projectId && dashboard
+            ? `/projects/${encodeURIComponent(projectId)}${
+                tab && tab !== "overview"
+                    ? `?tab=${encodeURIComponent(tab)}`
+                    : ""
+            }`
+            : projectId
+                ? `/?project=${encodeURIComponent(projectId)}`
+                : "/";
+
+    try {
+
+        const history = browserHistory();
+        const method = replace ? "replaceState" : "pushState";
+
+        if (history && typeof history[method] === "function") {
+            history[method]({ projectId, tab }, "", path);
+        }
+
+        const location = browserLocation();
+        const url = new URL(path, "http://localhost");
+        location.pathname = url.pathname;
+        location.search = url.search;
+
+    } catch {
+        /* tests */
+    }
+}
+
+
+function projectById(id) {
+
+    return state.projects.find(item => item.id === id) || null;
+}
+
+
+function fillProjectSelect(select, selectedId) {
+
+    if (!select) {
+        return;
+    }
+
+    select.innerHTML = "";
+
+    const empty = node("option", null, "workspace default");
+    empty.value = "";
+    select.appendChild(empty);
+
+    for (const project of state.projects) {
+
+        const option = node("option", null, project.name || project.id);
+        option.value = project.id;
+        select.appendChild(option);
+    }
+
+    select.value = selectedId || "";
+}
+
+
+function renderProjectSwitcher() {
+
+    fillProjectSelect(el("projectSwitcher"), state.currentProjectId);
+    fillProjectSelect(el("taskScopeProject"), el("taskScopeProject")?.value);
+
+    const list = el("taskScopeList");
+
+    if (list) {
+
+        list.innerHTML = "";
+
+        for (const project of state.projects) {
+
+            const label = node("label");
+            const box = node("input", "scope-box");
+            box.type = "checkbox";
+            box.value = project.id;
+            label.append(box, node("span", null, project.name || project.id));
+            list.appendChild(label);
+        }
+    }
+
+    const link = el("visualizerLink");
+
+    if (link) {
+
+        link.href =
+            state.currentProjectId
+                ? `/visualizer.html?projectId=${encodeURIComponent(state.currentProjectId)}`
+                : "/visualizer.html";
+    }
+}
+
+
+function selectedTaskScope() {
+
+    const radios =
+        typeof document !== "undefined" &&
+        typeof document.getElementsByName === "function"
+            ? document.getElementsByName("taskScope")
+            : [];
+
+    for (const radio of radios) {
+
+        if (radio.checked) {
+            return radio.value;
+        }
+    }
+
+    return "current";
+}
+
+
+function selectedTaskProjectIds() {
+
+    const scope = selectedTaskScope();
+
+    if (scope === "specific") {
+
+        const value = el("taskScopeProject")?.value;
+        return value ? [value] : [];
+    }
+
+    if (scope === "multiple") {
+
+        const boxes = el("taskScopeList")?.querySelectorAll(".scope-box") || [];
+        return [...boxes].filter(box => box.checked).map(box => box.value);
+    }
+
+    return state.currentProjectId ? [state.currentProjectId] : [];
+}
+
+
+function labelChatForProject(projectId) {
+
+    const project = projectById(projectId);
+    const name = project ? project.name : projectId;
+
+    pushMessage({
+        role: "system",
+        kind: "message",
+        content: `Project · ${name}`,
+        at: Date.now()
+    });
+}
+
+
+function startLabeledProjectQueue(task, projectIds) {
+
+    state.multiQueue = projectIds.map(id => ({
+        projectId: id,
+        task: `[${(projectById(id) || { name: id }).name}] ${task}`
+    }));
+
+    drainProjectTaskQueue();
+}
+
+
+async function drainProjectTaskQueue() {
+
+    if (state.status === "running" || state.multiQueue.length === 0) {
+        return;
+    }
+
+    const next = state.multiQueue.shift();
+
+    setStatus("running");
+    labelChatForProject(next.projectId);
+
+    const response =
+        await fetch(
+            `/api/projects/${encodeURIComponent(next.projectId)}/tasks`,
+            {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ task: next.task })
+            }
+        );
+
+    if (!response.ok) {
+        setStatus("idle");
+        pushMessage({
+            role: "assistant",
+            kind: "error",
+            content: `Could not start ${next.projectId}`
+        });
+        drainProjectTaskQueue();
+    }
+}
+
+
+async function loadProjects() {
+
+    try {
+
+        const response = await fetch("/api/projects");
+
+        if (!response.ok) {
+            return;
+        }
+
+        const payload = await response.json();
+        state.projects = payload.projects || [];
+        renderProjectSwitcher();
+
+    } catch {
+        state.projects = [];
+    }
+}
+
+
+function setCurrentProject(projectId, options = {}) {
+
+    const next = projectId || null;
+
+    if (state.currentProjectId === next && !options.force) {
+
+        if (options.dashboard) {
+            openProjectDashboard(next, options.tab || "overview");
+        }
+
+        return;
+    }
+
+    state.currentProjectId = next;
+    writeStoredProjectId(next);
+    renderProjectSwitcher();
+
+    const switcher = el("projectSwitcher");
+
+    if (switcher) {
+        switcher.value = next || "";
+    }
+
+    if (!options.skipNavigate) {
+        navigateConsole(next, options.dashboard ? (options.tab || "overview") : null, options.replace);
+    }
+
+    /* Drop the previous project's live cards so B cannot linger in A
+       while the new stream snapshot is in flight. */
+    resetRun(true);
+    state.messages = [];
+    state.events = [];
+    state.approvals.clear();
+
+    const log = el("log");
+
+    if (log) {
+        log.innerHTML = "";
+    }
+
+    renderChat();
+    renderTree();
+    renderApprovals();
+
+    connect();
+
+    if (options.dashboard && next) {
+        openProjectDashboard(next, options.tab || "overview");
+    } else if (!options.keepDashboard) {
+        closeProjectDashboard();
+    }
+}
+
+
+function refreshGatewayHealthChip(health) {
+
+    const chip = el("gatewayHealth");
+
+    if (!chip) {
+        return;
+    }
+
+    const status = health?.status || health?.gateway?.status || "unknown";
+    chip.textContent = `health · ${status}`;
+    chip.classList.remove("health-ok", "health-degraded", "health-down");
+
+    if (status === "ok") {
+        chip.classList.add("health-ok");
+    } else if (status === "down") {
+        chip.classList.add("health-down");
+    } else {
+        chip.classList.add("health-degraded");
+    }
+
+    chip.href = state.currentProjectId
+        ? `/projects/${encodeURIComponent(state.currentProjectId)}?tab=overview`
+        : "/api/health";
+}
+
+
+async function loadGatewayHealth() {
+
+    try {
+
+        const response = await fetch("/api/health");
+
+        if (!response.ok) {
+            return;
+        }
+
+        state.gatewayHealth = await response.json();
+        refreshGatewayHealthChip(state.gatewayHealth);
+
+    } catch {
+        /* health is optional */
+    }
+}
+
+
+function closeProjectDashboard() {
+
+    state.dashboard.open = false;
+
+    const dash = el("projectDashboard");
+    const main = el("consoleMain");
+
+    if (dash) {
+        dash.hidden = true;
+    }
+
+    if (main) {
+        main.hidden = false;
+    }
+}
+
+
+function renderDashboardTabs(active) {
+
+    const nav = el("dashboardTabs");
+
+    if (!nav) {
+        return;
+    }
+
+    nav.innerHTML = "";
+
+    for (const [id, label] of DASHBOARD_TABS) {
+
+        const button = node("button", id === active ? "active" : "", label);
+        button.type = "button";
+        button.dataset.tab = id;
+        button.addEventListener("click", () => openProjectDashboard(state.dashboard.projectId, id));
+        nav.appendChild(button);
+    }
+}
+
+
+function dashboardCard(title, value) {
+
+    const card = node("div", "dashboard-card");
+    card.append(node("h3", null, title), node("div", null, String(value ?? "—")));
+    return card;
+}
+
+
+async function renderDashboardBody(projectId, tab) {
+
+    const body = el("dashboardBody");
+
+    if (!body) {
+        return;
+    }
+
+    body.innerHTML = "";
+    body.appendChild(node("p", "empty", "Loading…"));
+
+    let record = projectById(projectId);
+    let projectState = null;
+    let metrics = null;
+    let health = null;
+    let sessions = [];
+
+    try {
+
+        const [projectRes, stateRes, metricsRes, healthRes, sessionsRes] =
+            await Promise.all([
+                fetch(`/api/projects/${encodeURIComponent(projectId)}`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/state`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/metrics`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/health`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/sessions`)
+            ]);
+
+        if (projectRes.ok) {
+            record = (await projectRes.json()).project || record;
+        }
+
+        if (stateRes.ok) {
+            projectState = await stateRes.json();
+        }
+
+        if (metricsRes.ok) {
+            metrics = await metricsRes.json();
+        }
+
+        if (healthRes.ok) {
+            health = await healthRes.json();
+        }
+
+        if (sessionsRes.ok) {
+            sessions = (await sessionsRes.json()).sessions || [];
+        }
+
+    } catch {
+        /* render what we have */
+    }
+
+    body.innerHTML = "";
+
+    const title = el("dashboardTitle");
+    const subtitle = el("dashboardSubtitle");
+
+    if (title) {
+        title.textContent = record?.name || projectId;
+    }
+
+    if (subtitle) {
+        subtitle.textContent = `${record?.rootPath || ""} · ${health?.status || "unknown"}`;
+    }
+
+    if (tab === "overview") {
+
+        const grid = node("div", "dashboard-grid");
+        grid.append(
+            dashboardCard("status", health?.status || projectState?.status),
+            dashboardCard("runs", metrics?.metrics?.project_runs_total ?? 0),
+            dashboardCard("active", metrics?.metrics?.project_active_runs ?? 0),
+            dashboardCard("index", metrics?.metrics?.project_index_state || "unknown"),
+            dashboardCard("root", record?.rootPath)
+        );
+        body.appendChild(grid);
+        return;
+    }
+
+    if (tab === "runs") {
+
+        const runs = projectState?.active_runs || [];
+
+        if (runs.length === 0) {
+            body.appendChild(node("p", "empty", "No active runs for this project."));
+            return;
+        }
+
+        for (const run of runs) {
+            body.appendChild(
+                node("div", "labeled-run", `${run.status} · ${run.run_id} · ${run.task || ""}`)
+            );
+        }
+
+        return;
+    }
+
+    if (tab === "sessions") {
+
+        if (sessions.length === 0) {
+            body.appendChild(node("p", "empty", "No saved sessions for this project."));
+            return;
+        }
+
+        for (const session of sessions) {
+            body.appendChild(
+                node("div", "labeled-run", session.title || session.id)
+            );
+        }
+
+        return;
+    }
+
+    if (tab === "memory") {
+
+        body.appendChild(
+            node(
+                "p",
+                "empty",
+                "Memory is stored in this project's data root. Inspect it with memory_get during a scoped run."
+            )
+        );
+        body.appendChild(
+            dashboardCard("last activity", metrics?.metrics?.project_last_activity || "none")
+        );
+        return;
+    }
+
+    if (tab === "plan") {
+
+        if (state.plan && state.currentProjectId === projectId) {
+            const holder = node("div", "plan-view");
+            holder.id = "dashboardPlan";
+            body.appendChild(holder);
+            const previous = el("plan");
+            /* reuse live plan card text when this is the active project */
+            if (previous) {
+                holder.appendChild(node("div", null, previous.textContent));
+            }
+            return;
+        }
+
+        body.appendChild(
+            node("p", "empty", "Plan appears here while this project is the active console run.")
+        );
+        return;
+    }
+
+    if (tab === "events" || tab === "logs") {
+
+        const events = (projectState?.events || []).slice(-80);
+
+        if (events.length === 0) {
+            body.appendChild(node("p", "empty", "No events recorded for this project."));
+            return;
+        }
+
+        const list = node("ul", "log");
+
+        for (const event of events) {
+
+            if (tab === "logs" && !/error|failed|deadline/i.test(event.type || "")) {
+                continue;
+            }
+
+            list.appendChild(
+                node("li", null, `${event.type} · ${describeEvent(event)}`)
+            );
+        }
+
+        body.appendChild(list);
+        return;
+    }
+
+    if (tab === "approvals") {
+
+        const pending = projectState?.pending_approvals || [];
+
+        if (pending.length === 0) {
+            body.appendChild(node("p", "empty", "No pending approvals for this project."));
+            return;
+        }
+
+        for (const item of pending) {
+            body.appendChild(
+                node("div", "labeled-run", `${item.tool} · ${item.agent}`)
+            );
+        }
+
+        return;
+    }
+
+    if (tab === "semantic") {
+
+        body.append(
+            dashboardCard("index", metrics?.metrics?.project_index_state || "unknown"),
+            dashboardCard("health", health?.index_state || health?.status)
+        );
+        return;
+    }
+
+    if (tab === "mcp") {
+
+        body.appendChild(
+            dashboardCard("mcp calls", metrics?.metrics?.project_mcp_calls_total ?? 0)
+        );
+        return;
+    }
+
+    if (tab === "settings") {
+
+        const form = node("div", "mcp-add");
+        const name = node("input");
+        name.value = record?.name || "";
+        const enabled = node("input");
+        enabled.type = "checkbox";
+        enabled.checked = record?.enabled !== false;
+
+        form.append(
+            node("label", "mcp-field"),
+        );
+
+        const nameField = node("label", "mcp-field");
+        nameField.append(node("span", "label", "name"), name);
+        const enabledField = node("label", "mcp-field");
+        enabledField.append(node("span", "label", "enabled"), enabled);
+        form.append(nameField, enabledField);
+
+        form.appendChild(
+            Modal.button("Save", "", async () => {
+
+                await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+                    method: "PATCH",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        name: name.value,
+                        enabled: enabled.checked
+                    })
+                });
+
+                await loadProjects();
+                renderDashboardBody(projectId, "settings");
+            })
+        );
+
+        body.appendChild(form);
+    }
+}
+
+
+function openProjectDashboard(projectId, tab) {
+
+    if (!projectId) {
+        return;
+    }
+
+    state.dashboard = { open: true, projectId, tab: tab || "overview" };
+    setCurrentProject(projectId, { skipNavigate: true, keepDashboard: true });
+    navigateConsole(projectId, state.dashboard.tab, false);
+
+    const dash = el("projectDashboard");
+    const main = el("consoleMain");
+
+    if (dash) {
+        dash.hidden = false;
+    }
+
+    if (main) {
+        main.hidden = true;
+    }
+
+    renderDashboardTabs(state.dashboard.tab);
+    renderDashboardBody(projectId, state.dashboard.tab);
+}
+
+
+function openNewProjectModal() {
+
+    const name = node("input");
+    name.placeholder = "Display name";
+    const root = node("input");
+    root.placeholder = "/absolute/path/to/workspace";
+    const message = node("p", "mcp-message");
+
+    const form = node("div", "mcp-add");
+    const nameField = node("label", "mcp-field");
+    nameField.append(node("span", "label", "name"), name);
+    const rootField = node("label", "mcp-field");
+    rootField.append(node("span", "label", "rootPath"), root);
+    form.append(nameField, rootField, message);
+
+    const handle = Modal.open({
+        title: "New Project",
+        subtitle: "Registers a workspace. Root comes from you, never from the model.",
+        body: form,
+        footer: Modal.row(
+            Modal.button("Create", "", async () => {
+
+                const response = await fetch("/api/projects", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        name: name.value.trim() || undefined,
+                        rootPath: root.value.trim()
+                    })
+                });
+
+                const payload = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    message.textContent = payload.error || "could not register";
+                    return;
+                }
+
+                await loadProjects();
+                setCurrentProject(payload.project.id);
+                handle.close("created");
+            }),
+            Modal.button("Cancel", "ghost", () => handle.close("cancel"))
+        )
+    });
+}
+
+
+async function openProjectsManager() {
+
+    await loadProjects();
+
+    const body = node("div", "sessions");
+
+    if (state.projects.length === 0) {
+        body.appendChild(node("p", "empty", "No registered projects yet."));
+    }
+
+    for (const project of state.projects) {
+
+        const row = node("div", "project-row");
+        row.appendChild(node("span", "name", project.name || project.id));
+        row.appendChild(node("span", "muted", project.rootPath || ""));
+
+        row.appendChild(
+            Modal.button("Open", "ghost", () => {
+
+                handle.close("open");
+                openProjectDashboard(project.id, "overview");
+            })
+        );
+
+        row.appendChild(
+            Modal.button("Use", "ghost", () => {
+
+                handle.close("use");
+                setCurrentProject(project.id);
+            })
+        );
+
+        row.appendChild(
+            Modal.button("Delete", "ghost danger", async () => {
+
+                await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+                    method: "DELETE"
+                });
+
+                await loadProjects();
+
+                if (state.currentProjectId === project.id) {
+                    setCurrentProject(null);
+                }
+
+                handle.close("deleted");
+                openProjectsManager();
+            })
+        );
+
+        body.appendChild(row);
+    }
+
+    const handle = Modal.open({
+        title: "Projects",
+        subtitle: `${state.projects.length} registered`,
+        size: "medium",
+        body,
+        footer: Modal.row(
+            Modal.button("New Project", "ghost", () => {
+
+                handle.close("new");
+                openNewProjectModal();
+            }),
+            Modal.button("Close", "", () => handle.close("footer"))
+        )
+    });
+}
+
+
+function bindProjectControls() {
+
+    const switcher = el("projectSwitcher");
+
+    if (switcher) {
+
+        switcher.addEventListener("change", event => {
+            setCurrentProject(event.target.value || null);
+        });
+    }
+
+    el("newProjectButton")?.addEventListener("click", openNewProjectModal);
+    el("projectsButton")?.addEventListener("click", openProjectsManager);
+    el("dashboardBack")?.addEventListener("click", () => {
+
+        closeProjectDashboard();
+        navigateConsole(state.currentProjectId, null, false);
+    });
+
+    const scope = el("taskScope");
+
+    if (scope) {
+
+        scope.addEventListener("change", () => {
+
+            const mode = selectedTaskScope();
+            const specific = el("taskScopeProject");
+            const list = el("taskScopeList");
+
+            if (specific) {
+                specific.hidden = mode !== "specific";
+            }
+
+            if (list) {
+                list.hidden = mode !== "multiple";
+            }
+        });
+    }
+
+    try {
+
+        const win =
+            typeof globalThis !== "undefined"
+                ? globalThis.window
+                : undefined;
+
+        if (win && typeof win.addEventListener === "function") {
+
+            win.addEventListener("popstate", () => {
+                applyProjectRoute(true);
+            });
+        }
+
+    } catch {
+        /* tests */
+    }
+}
+
+
+function applyProjectRoute(fromPop) {
+
+    const route = parseProjectRoute();
+    const stored = readStoredProjectId();
+    const projectId = route.projectId || stored || null;
+
+    if (route.dashboard && projectId) {
+
+        setCurrentProject(projectId, {
+            force: true,
+            dashboard: true,
+            tab: route.tab,
+            skipNavigate: true,
+            replace: !fromPop
+        });
+        return;
+    }
+
+    if (projectId) {
+        setCurrentProject(projectId, { force: true, skipNavigate: true, replace: true });
+    }
+}
+
+
+async function initProjects() {
+
+    if (!el("projectSwitcher") && !el("projectDashboard")) {
+        return;
+    }
+
+    bindProjectControls();
+    await loadProjects();
+    applyProjectRoute(false);
+    loadGatewayHealth();
+}
+
+
 /* ------------------------------------------------------------------ wire */
+
+function eventsUrl() {
+
+    if (state.currentProjectId) {
+
+        return `/api/events?projectId=${encodeURIComponent(state.currentProjectId)}`;
+    }
+
+    return "/api/events";
+}
+
 
 function connect() {
 
+    if (state.eventSource && typeof state.eventSource.close === "function") {
+
+        try {
+            state.eventSource.close();
+        } catch {
+            /* the shim EventSource has no close */
+        }
+    }
+
     const source =
-        new EventSource("/api/events");
+        new EventSource(eventsUrl());
+
+    state.eventSource = source;
 
     source.onmessage = message => {
 
@@ -4882,7 +5905,11 @@ function connect() {
 
     source.onerror = () => {
 
-        el("statusText").textContent = "reconnecting";
+        const status = el("statusText");
+
+        if (status) {
+            status.textContent = "reconnecting";
+        }
     };
 }
 
@@ -4979,10 +6006,25 @@ el("taskForm").addEventListener("submit", async submitEvent => {
         return;
     }
 
+    const targets = selectedTaskProjectIds();
+
+    if (targets.length > 1) {
+
+        startLabeledProjectQueue(task, targets);
+        el("task").value = "";
+        return;
+    }
+
     setStatus("running");
 
+    const projectId = targets[0] || null;
+    const url =
+        projectId
+            ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
+            : "/api/tasks";
+
     const response =
-        await fetch("/api/tasks", {
+        await fetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ task })
@@ -4991,6 +6033,10 @@ el("taskForm").addEventListener("submit", async submitEvent => {
     if (response.ok) {
 
         el("task").value = "";
+
+        if (projectId) {
+            labelChatForProject(projectId);
+        }
 
         const snapshot =
             await (await fetch("/api/state")).json();
@@ -5005,6 +6051,16 @@ el("taskForm").addEventListener("submit", async submitEvent => {
 
 
 el("cancelButton").addEventListener("click", () => {
+
+    state.multiQueue = [];
+
+    if (state.currentProjectId) {
+
+        fetch(
+            `/api/projects/${encodeURIComponent(state.currentProjectId)}/cancel`,
+            { method: "POST" }
+        );
+    }
 
     fetch("/api/cancel", { method: "POST" });
 });
@@ -5110,3 +6166,5 @@ el("task").addEventListener("keydown", event => {
 connect();
 
 loadSettings();
+
+initProjects();

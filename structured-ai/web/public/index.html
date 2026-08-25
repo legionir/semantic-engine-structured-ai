@@ -16,6 +16,21 @@
   </div>
 
   <div class="meta">
+    <label class="chip select" id="projectSwitcherWrap" title="active project">
+      project
+      <select id="projectSwitcher">
+        <option value="">workspace default</option>
+      </select>
+    </label>
+    <button type="button" id="newProjectButton" class="chip button" title="register a project">
+      New Project
+    </button>
+    <button type="button" id="projectsButton" class="chip button" title="manage projects and open a dashboard">
+      Projects
+    </button>
+    <a id="gatewayHealth" class="chip button" href="/api/health" title="Gateway health">
+      health · —
+    </a>
     <span class="chip" id="workspace" title="workspace"></span>
     <span class="chip" id="model" title="model"></span>
     <label class="chip select">
@@ -33,7 +48,7 @@
     <button type="button" id="approvalsButton" class="chip alert" hidden>
       approvals <span id="approvalsCount">0</span>
     </button>
-    <a href="/visualizer.html" class="chip button" title="Open Code Intelligence Visualizer" style="text-decoration: none; color: inherit;">
+    <a href="/visualizer.html" id="visualizerLink" class="chip button" title="Open Code Intelligence Visualizer" style="text-decoration: none; color: inherit;">
       Visualizer 🧭
     </a>
     <button type="button" id="historyButton" class="chip button" title="open saved conversations">
@@ -54,7 +69,7 @@
   </div>
 </header>
 
-<main>
+<main id="consoleMain">
 
   <!-- row 1: the conversation, full width -->
   <section class="row conversation-grid">
@@ -72,6 +87,22 @@
 
       <form id="taskForm" class="composer">
         <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
+        <div id="taskScope" class="task-scope">
+          <label>
+            <input type="radio" name="taskScope" value="current" checked>
+            Current project
+          </label>
+          <label>
+            <input type="radio" name="taskScope" value="specific">
+            Specific project
+          </label>
+          <select id="taskScopeProject" hidden></select>
+          <label>
+            <input type="radio" name="taskScope" value="multiple">
+            Multiple projects
+          </label>
+          <div id="taskScopeList" class="task-scope-list" hidden></div>
+        </div>
         <div id="discussionOptions" class="discussion-options-row" hidden></div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
@@ -128,6 +159,18 @@
   </section>
 
 </main>
+
+<section id="projectDashboard" class="project-dashboard" hidden>
+  <div class="dashboard-head">
+    <div class="head-tools">
+      <button type="button" id="dashboardBack" class="ghost">Back to console</button>
+    </div>
+    <h2 id="dashboardTitle">Project</h2>
+    <p id="dashboardSubtitle" class="muted"></p>
+  </div>
+  <nav id="dashboardTabs" class="dashboard-tabs" aria-label="Project dashboard"></nav>
+  <div id="dashboardBody" class="dashboard-body"></div>
+</section>
 
 <script src="/modal.js"></script>
 <script src="/app.js"></script>

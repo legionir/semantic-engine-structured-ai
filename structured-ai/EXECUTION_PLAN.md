@@ -434,23 +434,33 @@ metricهای `project_runs_total`، `project_active_runs`، `project_failed_runs
 
 ---
 
-## [🔴] فاز ۱۱: UI چندپروژه‌ای (Web Console)
+## [🟢] فاز ۱۱: UI چندپروژه‌ای (Web Console)
 
 **هدف و scope:** تجربهٔ کاربری کامل مدیریت و استفادهٔ چند پروژه در Web Console موجود (بدون بازطراحی کلی؛ refactor فرانت‌اند در فاز ۲۴ است). خروجی: Project Switcher، صفحهٔ Projects، Task Composer با انتخاب scope، Project Dashboard با تب‌ها.
 
-### [🔴] گام ۱: Project Switcher و مدیریت پروژه‌ها
+**تکمیل 2026-08-26:** گام‌های ۱ تا ۴ — ۵ تست UI جدید در `test/ui.test.js` سبز (`40/40`). انتخاب پروژه در `localStorage` و `/?project=` حفظ می‌شود؛ dashboard همان SPA است که `GET /projects/:id` آن را سرو می‌کند. تصمیم ۲۹–۳۰ در پیوست ب.
+
+### [🟢] گام ۱: Project Switcher و مدیریت پروژه‌ها
+
+**انجام شد (2026-08-26):** در header `#projectSwitcher`، `#newProjectButton`، `#projectsButton` و `#gatewayHealth` اضافه شد. ایجاد/ویرایش/حذف از UI به `POST/PATCH/DELETE /api/projects` فاز ۹ وصل است. انتخاب در `structured-ai.currentProjectId` و query `?project=` نگه داشته می‌شود.
 
 در header کنسول `[ Project فعال ▼ ] [New Project] [Gateway Health]` اضافه شود. ایجاد/ویرایش/حذف پروژه از UI به API فاز ۹ وصل شود. انتخاب پروژه در store فرانت نگه‌داری و در refresh (localStorage یا URL) حفظ شود.
 
-### [🔴] گام ۲: Task Composer با انتخاب scope
+### [🟢] گام ۲: Task Composer با انتخاب scope
+
+**انجام شد (2026-08-26):** radios `current|specific|multiple` در `#taskScope`. یک پروژه → `POST /api/projects/:id/tasks`؛ چند پروژه → صف ترتیبی labelدار (`[Name] task`) چون قفل busy سراسری `/api/tasks` حفظ شد (تصمیم ۲۸). پیام سیستم `Project · Name` نتیجه را گروه‌بندی می‌کند.
 
 امکان ارسال task با scope «Current project / Specific project / Multiple projects (checkbox لیست)» پیاده شود. حالت چندپروژه‌ای در این فاز فقط به‌عنوان چند Run مستند labelدار (synthesis واقعی در فاز ۱۲) است؛ نتایج per-project گروه‌بندی و labelدار نمایش داده شوند.
 
-### [🔴] گام ۳: Project Dashboard
+### [🟢] گام ۳: Project Dashboard
+
+**انجام شد (2026-08-26):** `#projectDashboard` با تب‌های Overview، Agent Runs، Sessions، Memory، Plan، Events، Approvals، Semantic Engine، MCP، Logs و Settings. `GET /projects` و `GET /projects/:id` همان `index.html` را سرو می‌کنند؛ `?tab=` تب را باز می‌کند. Visualizer `projectId` را از query می‌خواند و به `/api/graph/*` می‌فرستد.
 
 مسیر `/projects/:projectId` با تب‌های Overview، Agent Runs، Sessions، Memory، Plan، Events، Approvals، Semantic Engine، MCP، Logs و Settings پیاده شود. deep-link مستقیم کار کند؛ Visualizer و Semantic Dashboardِ لینک‌شده `projectId` درست بگیرند.
 
-### [🔴] گام ۴: جداسازی state نمایشی و events در UI
+### [🟢] گام ۴: جداسازی state نمایشی و events در UI
+
+**انجام شد (2026-08-26):** SSE هنگام انتخاب پروژه به `/api/events?projectId=` وصل می‌شود؛ `apply()` رویداد `project_id` ناسازگار را دور می‌ریزد و تعویض پروژه کارت‌های زنده را خالی می‌کند. idهای HTML موجود و رفتار markdown/RTL/modal دست‌نخورده ماند.
 
 event stream، replay، history، chat و approvals در UI مطابق پروژهٔ فعلی فیلتر شوند (مصرف از endpointهای فاز ۹)؛ هیچ دادهٔ پروژهٔ ب در نمایش A ظاهر نشود. رفتارهای فعلی UI (markdown امن، RTL/LTR خودکار، modal lifecycle، execution blockها) بدون تغییر بماند.
 
@@ -460,6 +470,8 @@ event stream، replay، history، chat و approvals در UI مطابق پروژ�
 - dashboard پروژهٔ الف دادهٔ ب را نشان نمی‌دهد؛ deep-link به تب مشخص کار می‌کند.
 - نتیجهٔ task چندپروژه‌ای per-project و labelدار نمایش داده می‌شود.
 - تست‌های UI/web فعلی بدون تغییر user-facing سبزند؛ حداقل تست UI جدید برای switcher و dashboard وجود دارد.
+
+**وضعیت معیارها (2026-08-26):** هر چهار بند با `test/ui.test.js` اثبات شد — switcher انتخاب را در localStorage و EventSource نگه می‌دارد؛ task scoped به `/api/projects/:id/tasks` می‌رود؛ deep-link `?tab=events` تب درست را باز می‌کند؛ رویداد پروژهٔ ب وارد نمای الف نمی‌شود؛ صف چندپروژه‌ای دو POST labelدار ترتیبی می‌سازد.
 
 ---
 
@@ -912,5 +924,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 26. **سقف حافظه/CPU (فاز ۱۰):** پیش‌فرض ۰ = بدون اعمال سخت. مقدارها روی `/api/metrics` قابل مشاهده‌اند؛ `PROJECT_MEMORY_LIMIT>0` فقط وقتی estimate ثبت‌شده از سقف بگذرد Run جدید را رد می‌کند (تست با `observability.recordMemory`).
 27. **رزرو run id در createRun (فاز ۱۰):** `issueRunId` شناسه را همان لحظه در مجموعهٔ `issued` ثبت می‌کند تا دو `createRun` در یک میلی‌ثانیه (`Promise.all`) شناسهٔ یکسان نگیرند. قبلاً فقط `active`/`finished` چک می‌شد و `createRun` قبل از `execute` ثبت نمی‌کرد — flake تست فاز ۳.
 28. **قفل busy وب (فاز ۱۰):** `POST /api/tasks` و state کنسول همچنان یک task سراسری دارند (قرارداد `web.test.js`). هم‌زمانی چند پروژه از `runAgent`/CLI است؛ UI چند-run موضوع فاز ۱۱ است. overflow صف در مسیر پروژه‌ای HTTP `429`/`RUN_QUEUE_FULL` می‌دهد.
+29. **Composer چندپروژه‌ای (فاز ۱۱):** به‌خاطر قفل busy سراسری تصمیم ۲۸، scope «Multiple projects» چند Run موازی نیست — صف ترتیبی labelدار (`[Name] task`) است. synthesis واقعی در فاز ۱۲.
+30. **Dashboard (فاز ۱۱):** همان SPA کنسول است؛ سرور `GET /projects` و `GET /projects/:id` را با `index.html` جواب می‌دهد و تب با `?tab=` انتخاب می‌شود. Visualizer `?projectId=` را به `/api/graph/*` می‌فرستد.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

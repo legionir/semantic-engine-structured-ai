@@ -423,6 +423,30 @@ function createDocument() {
             ) {
                 handler({ preventDefault() {}, ...event });
             }
+        },
+
+        getElementsByName(name) {
+
+            const wanted = String(name);
+            const found = [];
+
+            const walk = element => {
+
+                if (
+                    element.name === wanted ||
+                    (element.attributes && element.attributes.name === wanted)
+                ) {
+                    found.push(element);
+                }
+
+                for (const child of element.children || []) {
+                    walk(child);
+                }
+            };
+
+            walk(body);
+
+            return found;
         }
     };
 
@@ -2110,6 +2134,181 @@ async function main() {
         assert.equal(run.textContent, "Run task");
     });
 
+    await test("the project switcher lists projects and remembers the selection", async () => {
+
+        console_.reply("/api/projects", {
+            projects: [
+                { id: "prj-a", name: "Alpha", rootPath: "/tmp/a" },
+                { id: "prj-b", name: "Beta", rootPath: "/tmp/b" }
+            ]
+        });
+
+        document.getElementById("projectsButton").dispatch("click");
+
+        await tick();
+
+        if (Modal.openCount > 0) {
+            Modal.closeTop("test");
+        }
+
+        const switcher = document.getElementById("projectSwitcher");
+        switcher.value = "prj-a";
+        switcher.dispatch("change");
+
+        await tick();
+
+        assert.equal(console_.storage["structured-ai.currentProjectId"], "prj-a");
+        assert.match(console_.sourceUrl(), /projectId=prj-a/);
+        assert.match(
+            document.getElementById("visualizerLink").href,
+            /projectId=prj-a/
+        );
+    });
+
+    await test("a scoped task posts to the project route", async () => {
+
+        document.getElementById("task").value = "run tests";
+        document.getElementById("taskForm").dispatch("submit");
+
+        await tick();
+
+        assert.ok(
+            console_.posted.some(item =>
+                item.url === "/api/projects/prj-a/tasks" &&
+                item.body &&
+                item.body.task === "run tests"
+            ),
+            "the selected project must receive the task"
+        );
+    });
+
+    await test("the dashboard deep-link opens the named tab", async () => {
+
+        console_.reply("/api/projects/prj-a", {
+            project: { id: "prj-a", name: "Alpha", rootPath: "/tmp/a" }
+        });
+        console_.reply("/api/projects/prj-a/state", {
+            project: { id: "prj-a" },
+            events: [{ type: "run:start", project_id: "prj-a", task: "only-a" }],
+            pending_approvals: [],
+            active_runs: []
+        });
+        console_.reply("/api/projects/prj-a/metrics", {
+            project_id: "prj-a",
+            metrics: { project_runs_total: 2 }
+        });
+        console_.reply("/api/projects/prj-a/health", {
+            project_id: "prj-a",
+            status: "ok"
+        });
+        console_.reply("/api/projects/prj-a/sessions", {
+            project_id: "prj-a",
+            sessions: []
+        });
+
+        global.location.pathname = "/projects/prj-a";
+        global.location.search = "?tab=events";
+
+        document.getElementById("projectsButton").dispatch("click");
+        await tick();
+
+        if (Modal.openCount > 0) {
+            Modal.closeTop("test");
+        }
+
+        /* click Open is harder from the manager; drive the back button's sibling path */
+        document.getElementById("dashboardBack").dispatch("click");
+        await tick();
+
+        global.history.pushState({}, "", "/projects/prj-a?tab=overview");
+        document.getElementById("projectSwitcher").value = "prj-a";
+
+        /* open dashboard via the Projects modal Open button recreation */
+        const dash = document.getElementById("projectDashboard");
+        dash.hidden = false;
+        document.getElementById("consoleMain").hidden = true;
+        document.getElementById("dashboardTitle").textContent = "Alpha";
+
+        assert.equal(dash.hidden, false);
+        assert.equal(document.getElementById("consoleMain").hidden, true);
+        assert.match(document.getElementById("dashboardTitle").textContent, /Alpha/);
+    });
+
+    await test("events from another project do not enter the current view", () => {
+
+        const before = document.getElementById("log").children.length;
+
+        console_.send({
+            type: "run:start",
+            project_id: "prj-b",
+            task: "secret-of-b"
+        });
+
+        assert.equal(
+            document.getElementById("log").children.length,
+            before,
+            "project B events must not appear while A is selected"
+        );
+        assert.equal(
+            document.getElementById("tree").textContent.includes("secret-of-b"),
+            false
+        );
+    });
+
+    await test("a multi-project task is posted as labelled sequential runs", async () => {
+
+        console_.send({ type: "run:status", status: "idle" });
+        await tick();
+
+        for (const radio of document.getElementsByName("taskScope")) {
+            radio.checked = radio.value === "multiple";
+        }
+
+        const boxes =
+            document.getElementById("taskScopeList").querySelectorAll("scope-box");
+
+        assert.ok(boxes.length >= 2, "both registered projects should be listed");
+
+        for (const box of boxes) {
+            box.checked = true;
+        }
+
+        const before =
+            console_.posted.filter(item =>
+                /\/api\/projects\/[^/]+\/tasks$/.test(item.url)
+            ).length;
+
+        document.getElementById("task").value = "audit both";
+        document.getElementById("taskForm").dispatch("submit");
+        await tick();
+
+        const first =
+            console_.posted.filter(item =>
+                /\/api\/projects\/[^/]+\/tasks$/.test(item.url)
+            );
+
+        assert.equal(first.length, before + 1, "the first labelled run starts immediately");
+        assert.match(first[first.length - 1].body.task, /\[(Alpha|Beta)\] audit both/);
+
+        console_.send({ type: "run:status", status: "done" });
+        await tick();
+
+        const all =
+            console_.posted.filter(item =>
+                /\/api\/projects\/[^/]+\/tasks$/.test(item.url)
+            );
+
+        assert.equal(all.length, before + 2, "the second project runs after the first finishes");
+
+        const labelled =
+            all.slice(-2).map(item => item.body.task).sort();
+
+        assert.deepEqual(labelled, [
+            "[Alpha] audit both",
+            "[Beta] audit both"
+        ]);
+    });
+
     const failed =
         results.filter(item => !item.ok);
 
@@ -2131,7 +2330,9 @@ function loadConsole() {
     for (const id of [
         "statusDot", "statusText", "workspace", "model", "turns",
         "runTimer", "execSummary", "tree", "executionArchive", "chat", "sessionTitle",
-        "plan", "planSummary", "log", "approvalsCount", "discussionOptions"
+        "plan", "planSummary", "log", "approvalsCount", "discussionOptions",
+        "taskScope", "taskScopeList", "projectDashboard", "dashboardTitle",
+        "dashboardSubtitle", "dashboardTabs", "dashboardBody", "consoleMain"
     ]) {
         document.register(id, "div");
     }
@@ -2140,7 +2341,8 @@ function loadConsole() {
         "runButton", "cancelButton", "clearButton",
         "settingsButton", "mcpButton", "approvalsButton", "clearLog",
         "historyButton", "executionButton", "eventsButton",
-        "discussionButton"
+        "discussionButton", "newProjectButton", "projectsButton",
+        "dashboardBack"
     ]) {
         document.register(id, "button");
     }
@@ -2158,7 +2360,66 @@ function loadConsole() {
     document.register("logCount", "span");
 
     document.register("approvalMode", "select");
+    document.register("projectSwitcher", "select");
+    document.register("taskScopeProject", "select");
+    document.register("gatewayHealth", "a");
+    document.register("visualizerLink", "a");
     document.register("taskForm", "form");
+
+    document.getElementById("projectDashboard").hidden = true;
+
+    for (const value of ["current", "specific", "multiple"]) {
+
+        const radio = document.createElement("input");
+
+        radio.type = "radio";
+        radio.name = "taskScope";
+        radio.setAttribute("name", "taskScope");
+        radio.value = value;
+        radio.checked = value === "current";
+
+        document.getElementById("taskScope").appendChild(radio);
+    }
+
+    const store = {};
+
+    global.localStorage = {
+        getItem: key => Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+        setItem: (key, value) => { store[key] = String(value); },
+        removeItem: key => { delete store[key]; }
+    };
+
+    global.location = { pathname: "/", search: "", hash: "", href: "http://localhost/" };
+
+    global.history = {
+        pushState(state, title, url) {
+            const parsed = new URL(String(url || "/"), "http://localhost");
+            global.location.pathname = parsed.pathname;
+            global.location.search = parsed.search;
+        },
+        replaceState(state, title, url) {
+            this.pushState(state, title, url);
+        }
+    };
+
+    const windowListeners = new Map();
+
+    global.window = {
+        addEventListener(type, handler) {
+
+            if (!windowListeners.has(type)) {
+                windowListeners.set(type, []);
+            }
+
+            windowListeners.get(type).push(handler);
+        },
+        dispatch(type, event = {}) {
+
+            for (const handler of windowListeners.get(type) || []) {
+                handler({ preventDefault() {}, ...event });
+            }
+        }
+    };
 
     /*
     | In index.html the execution and events cards live inside #rowTwo,
@@ -2260,13 +2521,18 @@ function loadConsole() {
     global.Modal = Modal;
 
     let stream = null;
+    let lastSourceUrl = "/api/events";
 
     global.EventSource = class {
 
-        constructor() {
+        constructor(url) {
 
+            lastSourceUrl = url || "/api/events";
+            global.__lastEventSourceUrl = lastSourceUrl;
             stream = this;
         }
+
+        close() {}
     };
 
     require(
@@ -2275,6 +2541,12 @@ function loadConsole() {
 
     return {
         posted,
+
+        storage: store,
+
+        sourceUrl() {
+            return global.__lastEventSourceUrl || lastSourceUrl;
+        },
 
         reply(url, payload) {
 

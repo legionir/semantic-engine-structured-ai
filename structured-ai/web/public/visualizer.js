@@ -10,9 +10,22 @@
 |--------------------------------------------------------------------------
 */
 
+function projectIdFromPage() {
+
+  try {
+
+    const params = new URLSearchParams(window.location.search);
+    return params.get("projectId") || "current";
+
+  } catch {
+
+    return "current";
+  }
+}
+
 const state = {
   currentView: "architecture",
-  projectId: "current",
+  projectId: projectIdFromPage(),
   nodes: [],
   edges: [],
   selectedNodeId: null,
@@ -137,7 +150,7 @@ async function loadView(viewType) {
 
 async function loadNeighborhood(nodeId) {
   try {
-    const res = await fetch(`/api/graph/neighborhood?seedId=${encodeURIComponent(nodeId)}&depth=${state.focusDepth}`);
+    const res = await fetch(`/api/graph/neighborhood?seedId=${encodeURIComponent(nodeId)}&depth=${state.focusDepth}&projectId=${encodeURIComponent(state.projectId)}`);
     if (!res.ok) throw new Error();
     const data = await res.json();
     setGraphData(data.nodes || [], data.edges || []);
@@ -149,7 +162,7 @@ async function loadNeighborhood(nodeId) {
 
 async function loadImpact(nodeId) {
   try {
-    const res = await fetch(`/api/graph/impact?symbol=${encodeURIComponent(nodeId)}`);
+    const res = await fetch(`/api/graph/impact?symbol=${encodeURIComponent(nodeId)}&projectId=${encodeURIComponent(state.projectId)}`);
     if (!res.ok) throw new Error();
     const data = await res.json();
     setGraphData(data.nodes || [], data.edges || []);

@@ -188,3 +188,12 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Observability:** سری‌های `project_*` و `gateway_*` از event bus جمع می‌شوند. crash یک پروژه health آن را `down` و gateway را حداکثر `degraded` می‌کند — هرگز `down`.
 - **Index:** `code_index_start` سقف `MAX_CONCURRENT_INDEX_RUNS` را با `INDEX_LIMIT` اعمال می‌کند.
 - **Exports additive:** `runScheduler` و `observability` از `agent/agent.js`.
+
+## ۱۶. تغییرات additive فاز ۱۱ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **صفحهٔ کنسول:** header `#projectSwitcher` / `#newProjectButton` / `#projectsButton` / `#gatewayHealth` را دارد. انتخاب پروژه در `localStorage` کلید `structured-ai.currentProjectId` و query `?project=` حفظ می‌شود.
+- **Static route (additive):** `GET /projects` و `GET /projects/:id` همان `index.html` کنسول را سرو می‌کنند تا deep-link داشبورد کار کند. قرارداد مسیرهای `/api/*` تغییر نکرد.
+- **Graph:** `GET /api/graph/*?projectId=` ریشه و نام پروژه را از registry می‌خواند و `project:read` را اعمال می‌کند؛ بدون query همان workspace سرور است.
+- **Composer:** radios `current|specific|multiple`. یک هدف → `POST /api/projects/:id/tasks`؛ چند هدف → صف ترتیبی labelدار. `POST /api/tasks` بدون پروژهٔ انتخاب‌شده دست‌نخورده است.
+- **Events در UI:** استریم با `?projectId=` دوباره وصل می‌شود؛ رویداد دارای `project_id` ناسازگار وارد نما نمی‌شود؛ رویداد بدون `project_id` همچنان دیده می‌شود (سازگاری legacy).
+- **Cancel:** با پروژهٔ فعال، `POST /api/projects/:id/cancel` علاوه بر `POST /api/cancel` صدا زده می‌شود.

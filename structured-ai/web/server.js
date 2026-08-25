@@ -2092,6 +2092,43 @@ function createServer(runtime, options = {}) {
                 ) {
                     const viewType = pathname.slice("/api/graph/".length);
                     let root = path.resolve(runtime.workspaceRoot || process.cwd());
+                    let projectName = path.basename(root);
+                    const graphProjectId = url.searchParams.get("projectId");
+
+                    if (
+                        graphProjectId &&
+                        graphProjectId !== "current" &&
+                        runtime.projects &&
+                        typeof runtime.projects.registry === "function"
+                    ) {
+
+                        const allowed =
+                            consoleAuth.authorize(claims, {
+                                projectId: graphProjectId,
+                                permission: "project:read"
+                            });
+
+                        if (!allowed.ok) {
+
+                            sendJson(res, allowed.status, { error: allowed.error });
+                            return;
+                        }
+
+                        try {
+
+                            const record =
+                                runtime.projects.registry().get(graphProjectId);
+
+                            root = path.resolve(record.rootPath);
+                            projectName = record.name;
+
+                        } catch {
+
+                            sendJson(res, 404, { error: "Unknown project" });
+                            return;
+                        }
+                    }
+
                     const rootBase = path.basename(root).toLowerCase();
                     const rootParent = path.basename(path.dirname(root)).toLowerCase();
 
@@ -2112,7 +2149,6 @@ function createServer(runtime, options = {}) {
 
                     let nodes = [];
                     let edges = [];
-                    let projectName = path.basename(root);
 
                     if (fs.existsSync(indexPath)) {
                         try {
@@ -3012,6 +3048,17 @@ function createServer(runtime, options = {}) {
                 }
 
                 /* ---------------------------------------------- static */
+
+                if (
+                    req.method === "GET" &&
+                    (pathname === "/projects" || pathname.startsWith("/projects/"))
+                ) {
+
+                    /* Phase 11: the console owns /projects/:id so a
+                       dashboard deep-link loads the same page. */
+                    serveStatic(req, res, "/");
+                    return;
+                }
 
                 if (req.method === "GET") {
 
