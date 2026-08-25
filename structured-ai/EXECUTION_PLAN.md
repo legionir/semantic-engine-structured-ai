@@ -2,6 +2,7 @@
 
 **وضعیت:** برنامهٔ اجرایی فعال؛ وضعیت گام‌ها و فازها در همین سند به‌روز می‌شود.
 **تاریخ:** 2026-08-25
+**بازبینی:** 2026-08-25 — ثبت ۶ تصمیم تکمیلی (پیوست ب)
 **پروژه:** `structured-ai`
 
 **منابع مرجع (دمایهٔ کامل نیازمندی‌ها):**
@@ -116,7 +117,7 @@
 
 ### [🔴] گام ۳: تعیین تکلیف `agent/lib/project.js` موجود (تداخل نام‌گذاری)
 
-ماژول فعلی `agent/lib/project.js` مسئول `.agent/project.json` (تنظیمات per-workspace) است و با مفهوم جدید «Project» تداخل مفهومی/نام‌گذاری دارد. تصمیم مستند شود و اجرا شود: نام‌گذاری ماژول‌های جدید باید از این فایل قابل‌تفکیک باشد (مثلاً نام‌گذاری `WorkspaceProfile` برای موجودی قدیمی یا نگهداری آن به‌عنوان بخشی از project settings جدید). **Unknown / Requires Verification:** آیا محتوای `.agent/project.json` موجود به `projects/<id>/project.json` مرکزی migrate می‌شود یا با مدل overlay (global ← workspace ← run) ادغام می‌شود؟ تصمیم در فاز ۸ (persistence/migration) نهایی می‌شود؛ در این فاز فقط تداخل نام و boundary مشخص شود. رفتار فعلی `project.openProject()`/`persist()` و exportهای `project`/`openProject`/`persistProject` از `agent.js` بدون تغییر باقی بماند.
+ماژول فعلی `agent/lib/project.js` مسئول `.agent/project.json` (تنظیمات per-workspace) است و با مفهوم جدید «Project» تداخل مفهومی/نام‌گذاری دارد. **تصمیم تأییدشده (2026-08-25) — مدل Overlay:** فایل legacy `.agent/project.json` در workspace به‌عنوان لایهٔ overlay تنظیمات همچنان **خوانده** می‌شود و در زنجیرهٔ اولویت (global ← project ← run) جای خود را حفظ می‌کند؛ اما مقصد **نوشتنِ** جدید `projects/<id>/project.json` مرکزی است. اجرای کامل این ادغام در فاز ۸ گام ۲ انجام می‌شود؛ در این فاز فقط نام‌گذاری ماژول‌های جدید از این فایل قابل‌تفکیک انتخاب شود (مثلاً `WorkspaceProfile` برای موجودی قدیمی در صورت rename) و boundary دو مفهوم مستند شود. رفتار فعلی `project.openProject()`/`persist()` و exportهای `project`/`openProject`/`persistProject` از `agent.js` بدون تغییر باقی بماند.
 
 **معیار پذیرش:**
 
@@ -166,9 +167,9 @@
 
 ابزارهای `fs_read`، `fs_read_many`، `fs_list`، `fs_tree`، `fs_stat`، `fs_info`، `fs_write`، `fs_edit`، `fs_mkdir`، `fs_move`، `fs_delete`؛ ابزارهای process (`terminal_exec`، `process_start`، `process_read`، `process_write`، `process_terminate`، `process_list`) با `cwd` گرفته‌شده از `projectContext.workspaceRoot` و sessionهای per-project؛ و ابزارهای git (`git_status`، `git_diff`، `git_log`، `git_branch`، `git_checkout`، `git_add`، `git_commit`) در repository پروژهٔ context.
 
-### [🔴] گام ۴: تصمیم دربارهٔ ماژول ابزار `project.js` (تضاد امنیتی)
+### [🔴] گام ۴: مرز ماژول داخلی پروژه در tools (بدون ابزار model-facing)
 
-ساختار پیشنهادی اسناد مرجع `agent/tools/project.js` را فهرست کرده است. **Unknown / Requires Verification:** آیا ابزار model-facingای برای project وجود خواهد داشت؟ طبق قانون ثابت ۹، پیش‌فرضِ این پلن: وجود ندارد — `project.js` (در صورت ساخت) ماژول داخلی runtime است و در tools registry مدل قرار نمی‌گیرد؛ لیست/انتخاب پروژه فقط از طریق Web API فاز ۹ انجام می‌شود. اگر نیاز model-facingای اثبات شود، با قابلیت read-only و بدون امکان تعویض root، به‌صورت مستند به همین فاز اضافه می‌شود.
+**تصمیم تأییدشده (2026-08-25):** هیچ ابزار model-facingای برای پروژه ساخته نمی‌شود. در صورت نیاز به منطق مشترک پروژه در لایهٔ tools، یک ماژول **داخلی runtime** (مثل `agent/tools/project.js` در ساختار پیشنهادی اسناد مرجع) قابل ساخت است، اما هرگز در `tools registry` مدل قرار نمی‌گیرد و به‌عنوان tool schema در prompt/request ارسال نمی‌شود. لیست، انتخاب و تعویض پروژهٔ فعال فقط از طریق Web API فاز ۹ و UI فاز ۱۱ انجام می‌شود (قانون ثابت ۹). این گام صرفاً مستندسازی این مرز و افزودن تست منفی (عدم وجود ابزار پروژه در خروجی `resolveTools()`) است.
 
 **معیار پذیرش:**
 
@@ -213,7 +214,7 @@
 
 ## [🔴] فاز ۶: Semantic Client Pool و routing پروژه‌ای
 
-**هدف و scope:** اتصال هر پروژه به Semantic Worker خودش و project-aware کردن ابزارهای code. **مرز دامنه (Assumption، صریح):** پیاده‌سازی Worker Supervisor / Gateway / health-monitor سمت **Semantic Engine** طبق `MULTI_PROJECT_GATEWAY_PLAN.md` و مسیرهای MCP به شکل `/mcp/:projectId` انجام می‌شود؛ این فاز فقط سمت client در structured-ai را پوشش می‌دهد و یکپارچه‌سازی با آن gateway را فرض می‌کند. خروجی: `agent/mcp/SemanticClient.js`، `agent/mcp/SemanticClientPool.js`، `agent/mcp/ProjectSemanticResolver.js`.
+**هدف و scope:** اتصال هر پروژه به Semantic Worker خودش و project-aware کردن ابزارهای code. **مرز دامنه (تصمیم تأییدشدهٔ 2026-08-25):** پیاده‌سازی Worker Supervisor / Gateway سمت **Semantic Engine** طبق `MULTI_PROJECT_GATEWAY_PLAN.md` انجام می‌شود، اما آن کار **هنوز شروع نشده است**. بنابراین این فاز وابستگی خود را با یک **stub مستند** از قرارداد `/mcp/:projectId` (گام ۴) تأمین می‌کند (قانون ثابت ۱۰) تا توسعه و تست مسدود نشود؛ پس از آماده‌شدن gateway واقعی، یکپارچه‌سازی فقط با تعویض endpoint در registry انجام می‌شود. خروجی: `agent/mcp/SemanticClient.js`، `agent/mcp/SemanticClientPool.js`، `agent/mcp/ProjectSemanticResolver.js` + stub تستی.
 
 ### [🔴] گام ۱: استخراج SemanticClient از tools/code.js
 
@@ -227,11 +228,16 @@ Pool با `get(projectId)`، `connect(project)`، `disconnect(projectId)`، `rel
 
 ابزارهای `code_index_status`، `code_index_start`، `code_index_get`، `code_find_symbol`، `code_search`، `code_file_summary`، `code_dependencies`، `code_impact`، `code_find_tests`، `code_config_usage`، `code_context`، `code_diagnostics`، `code_callers`، `code_definition` و `code_rename` client را از pool با `projectId`ِ context اجرا بگیرند. cache نتایج Semantic با کلید `projectId` + index generation جدا شود. رفتار degradation (Worker down برای یک پروژه) کنترل‌شده و منحصر به همان پروژه باشد.
 
+### [🔴] گام ۴: ساخت Stub Gateway/Worker برای توسعه و تست
+
+چون gateway سمت engine هنوز پیاده نشده (تصمیم 2026-08-25)، یک server تستی حداقلی بساز که مسیرهای `/mcp/:projectId` را با پاسخ‌های تقلیدیِ قرارداد Semantic MCP (دست‌کم `tools/list` و `tools/call`) سرو کند و حداقل دو `projectId` متفاوت را با پاسخ‌های متمایز جواب دهد. stub در محیط تست نگه داشته می‌شود و در production استفاده نمی‌شود. هدف: اجرای تست‌های isolation pool و فازهای ۷ و ۱۳ بدون انتظار برای gateway واقعی. پس از آماده‌شدن gateway واقعی، تست یکپارچه‌سازی در برابر آن اضافه و stub صرفاً به‌عنوان ابزار unit/regression باقی می‌ماند.
+
 **معیار پذیرش:**
 
 - `code_search` در project الف نتیجهٔ ب را نمی‌دهد؛ index update الف اثری روی ب ندارد.
 - اتصال MCP برای هر پروژه مستقل است؛ crash/unavailable شدن Worker یک پروژه فقط ابزارهای code همان پروژه را degrade می‌کند (خطای کنترل‌شده، نه crash runtime).
 - در حالت legacy رفتار دقیقاً برابر baseline است؛ در حالت pool، suite سبز و تست‌های isolation برای دو پروژه عبور می‌کند.
+- تست‌های pool روی stub با قرارداد `/mcp/:projectId` سبز است و تعویض endpoint در registry (به gateway واقعی در آینده) بدون هیچ تغییری در کد client کافی است.
 - cache نتایج بین دو پروژه با root/ID مشابه قاطی نمی‌شود (تست باضافهٔ index generation).
 
 ---
@@ -296,7 +302,7 @@ state موجود `<workspace>/.agent/` (memory، sessions، archive، journal، 
 
 ### [🔴] گام ۲: event envelope و استریم‌های project-scoped
 
-تمام eventهای runtime به‌صورت additive حامل `projectId`، `runId` و (در صورت اعتبار) `turnId` شوند. **تعریف مفهومی موردنیاز — Unknown / Requires Verification:** در کد فعلی `turnId` فقط سمت frontend (`web/public/app.js`) دیده می‌شود؛ در این گام معنای دقیق آن سمت runtime تعریف و مستند شود (پیشنهاد: turn = یک تبادل کاربر↔agent درون یک Run/session) و در eventها و replay لحاظ شود. endpointهای `GET /api/projects/:projectId/events` و `GET /api/events?projectId=...` پیاده شوند؛ event پروژهٔ الف در استریم ب دیده نشود؛ event global فقط metadata تجمیعی نشان دهد.
+تمام eventهای runtime به‌صورت additive حامل `projectId`، `runId` و `turnId` شوند. **تعریف `turn_id` (رسمی‌شده پس از بررسی کد در 2026-08-25):** `turn_id` از قبل یک مفهوم runtime است: هر پیام/task کاربر در یک session مکالمه‌ای یک turn تازه می‌سازد؛ قالب `<run_id>_t<N>` با شمارندهٔ افزایشی در هر session، یا مقدار تأمین‌شده توسط caller (مثل web server برای هم‌تراز‌کردن پیام مکالمه با رویدادها). envelope موجود `(run_id, turn_id, scope, iteration)` در `agent/lib/events.js` حفظ می‌شود. سلسله‌مراتب رسمی شناسه‌ها: `project_id` ⊃ `run_id` ⊃ `turn_id` ⊃ `iteration`؛ فیلد additive جدید `project_id` به همان قرارداد snake_case رویدادها اضافه می‌شود (در پاسخ JSON وب با camelCase اسناد مرجع). endpointهای `GET /api/projects/:projectId/events` و `GET /api/events?projectId=...` پیاده شوند؛ event پروژهٔ الف در استریم ب دیده نشود؛ event global فقط metadata تجمیعی نشان دهد.
 
 ### [🔴] گام ۳: authorization با token scope
 
@@ -304,7 +310,7 @@ state موجود `<workspace>/.agent/` (memory، sessions، archive، journal، 
 
 ### [🔴] گام ۴: approval per-project و scoping MCP خارجی
 
-approvalها به‌صورت per-project ذخیره/نمایش داده شوند و approval prompt شامل `projectId` باشد. برای serverهای خارجی در `mcp_servers.json` فیلد `scope: "project"|"global"` (و لیست `projects`) پذیرفته شود؛ `tools/list` فقط ابزارهای مجاز پروژهٔ context را بدهد؛ MCP server پروژهٔ الف به ب دسترسی نداشته باشد. **Unknown / Requires Verification:** مالکیت و محل نگهداری approval برای serverهای `scope: global` (gateway-level با attribution به پروژهٔ درخواست‌کننده) در همین گام مستند و پیاده شود.
+approvalها به‌صورت per-project ذخیره/نمایش داده شوند و approval prompt شامل `projectId` باشد. برای serverهای خارجی در `mcp_servers.json` فیلد `scope: "project"|"global"` (و لیست `projects`) پذیرفته شود؛ `tools/list` فقط ابزارهای مجاز پروژهٔ context را بدهد؛ MCP server پروژهٔ الف به ب دسترسی نداشته باشد. **تصمیم تأییدشده (2026-08-25):** approval برای serverهای `scope: global` در سطح **gateway-level** نگهداری می‌شود و در رویداد/audit با attribution به پروژهٔ درخواست‌کننده (`project_id` در رویداد approval) ثبت می‌شود؛ یعنی یک تأیید global برای پروژه‌های مجاز token کافی است و هر استفاده با شناسهٔ پروژهٔ مصرف‌کننده audit می‌شود.
 
 **معیار پذیرش:**
 
@@ -312,6 +318,7 @@ approvalها به‌صورت per-project ذخیره/نمایش داده شوند
 - cancel پروژه‌ای Runهای پروژهٔ دیگر را متوقف نمی‌کند.
 - eventهای additive با قرارداد فاز ۱ سازگارند؛ replay، project context را حفظ می‌کند؛ تعریف `turnId` مستند شده است.
 - approval برای ابزارهای filesystem/terminal/MCP شامل `projectId` است و pendingها در UI فعلی (تا پیش از فاز ۱۱) خراب نمی‌شوند.
+- approval سرورهای `scope: global` یک‌بار در سطح gateway صادر و هر استفاده با `project_id` مصرف‌کننده audit می‌شود (تست).
 - `tools/list` per-project فیلتر می‌شود؛ suite سبز.
 
 ---
@@ -683,7 +690,7 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 ### [🔴] گام ۲: سازگاری Multi-Project
 
-discussion باید ProjectContext/RunContext فعلی را مصرف کند: `workspaceContext` و endpoint resolution از context پروژه؛ eventهای آن `projectId`/`runId` حمل کنند؛ اگر state/transcript به‌صورت پایدار ذخیره می‌شود، مسیر آن per-project (فاز ۸) شود. **Unknown / Requires Verification:** آیا transcript discussion persistence پایدار دارد یا فقط در حافظه است؟ (مشاهدهٔ فعلی: `TranscriptStore` در حافظه است.) در همین گام با اسکن کامل server.js جواب مستند و در صورت نیاز repository ساخته شود.
+discussion باید ProjectContext/RunContext فعلی را مصرف کند: `workspaceContext` و endpoint resolution از context پروژه؛ eventهای آن `projectId`/`runId` حمل کنند. **تصمیم تأییدشده (2026-08-25):** transcript discussion به‌صورت **per-project پایدار** می‌شود — علاوه‌بر `TranscriptStore` فعلیِ درون‌حافظه‌ای، خلاصه/خروجی هر session بحث در `dataRoot` پروژه (فاز ۸) با repository ساخته‌شده در فاز ۱۸ ذخیره و قابل مرور/replay شود؛ این تفاوت رفتاری به‌عنوان بهبود محصول تعمدی در همین گام مستند می‌گردد (قانون ثابت ۴).
 
 ### [🔴] گام ۳: ورود به ساختار هدف
 
@@ -692,6 +699,7 @@ discussion باید ProjectContext/RunContext فعلی را مصرف کند: `wo
 **معیار پذیرش:**
 
 - `discussion.test.js` بدون تغییر رفتار سبز؛ discussion همراه Runهای پروژه‌ای درست (context صحیح، event labelدار) کار می‌کند.
+- transcript هر بحث در `dataRoot` همان پروژه ذخیره و بازیابی می‌شود؛ transcript پروژهٔ الف در ب دیده نمی‌شود (تست isolation).
 - contract testهای discussion (tool + API) موجود؛ وابستگی جهتی تمیز (بدون require چرخه‌ای به `agent.js`)؛ suite سبز.
 
 ---
@@ -777,11 +785,18 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 | Refactor گام ۱۷ | Test Suite | فاز ۲۹ |
 | Refactor گام ۱۸ + معیارهای نهایی هر سه سند | Rollout/حذف wrapper/پذیرش | فاز ۳۰ |
 
-**موارد تصمیم‌نشده ردی‌پیگیری‌شده در پلن (Unknown/Assumption):**
-1. سمت Semantic Engine (Supervisor/Gateway) → سند `MULTI_PROJECT_GATEWAY_PLAN.md` (Assumption — فاز ۶).
-2. سرنوشت محتوای `.agent/project.json` (migrate در برابر overlay) → فاز ۲ گام ۳ / نهایی در فاز ۸.
-3. ابزار model-facing پروژه → پیش‌فرض عدم وجود (قانون ۹) — فاز ۴ گام ۴.
-4. تعریف runtimeای `turnId` → فاز ۹ گام ۲.
-5. مالکیت approval برای MCPهای `scope: global` → فاز ۹ گام ۴.
-6. قالب ماژول فرانت‌اند (ESM نیتیو در برابر bundler) → فاز ۲۴ گام ۱ (Assumption: ESM).
-7. persistence پایدار transcript discussion → فاز ۲۸ گام ۲.
+---
+
+# پیوست ب: ثبت تصمیم‌ها (Decision Log)
+
+تصمیم‌های اخذشدهٔ 2026-08-25 که متون فازهای مربوط بر اساس آن‌ها به‌روز شد:
+
+1. **Gateway سمت Semantic Engine:** جداگانه طبق `MULTI_PROJECT_GATEWAY_PLAN.md` پیاده می‌شود اما هنوز شروع نشده؛ فاز ۶ با stub قرارداد `/mcp/:projectId` اجرا می‌شود (فاز ۶ گام ۴) و تعویض به gateway واقعی فقط با endpoint در registry است.
+2. **`.agent/project.json` موجود:** مدل overlay — خواندن از workspace حفظ و نوشتن جدید در `projects/<id>/project.json` مرکزی (فاز ۲ گام ۳؛ اجرا در فاز ۸ گام ۲).
+3. **ابزار model-facing پروژه:** ساخته نمی‌شود؛ لیست/انتخاب پروژه فقط از طریق Web API و UI (فاز ۴ گام ۴).
+4. **`turn_id`:** معنای موجود در کد رسمی و حفظ می‌شود — هر پیام کاربر در session مکالمه‌ای = یک turn (`<run_id>_t<N>` یا caller-supplied)؛ سلسله‌مراتب `project_id ⊃ run_id ⊃ turn_id ⊃ iteration`؛ رویدادها snake_case (فاز ۹ گام ۲، فاز ۲۷).
+5. **Approval برای MCPهای `scope: global`:** gateway-level با attribution به پروژهٔ درخواست‌کننده؛ یک‌بار تأیید، audit per-project (فاز ۹ گام ۴).
+6. **Transcript discussion:** per-project پایدار در `dataRoot` پروژه و قابل replay (فاز ۲۸ گام ۲) — تغییر رفتاری تعمدی و مستند.
+
+**موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
+7. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
