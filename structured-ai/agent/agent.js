@@ -28,7 +28,9 @@ const projectRuntime = require("./runtime");
 const {
     AgentRunContext,
     runManager,
-    runContextMode
+    runContextMode,
+    runScheduler,
+    observability
 } = projectRuntime;
 
 const promptKit = require("./prompt");
@@ -10172,7 +10174,13 @@ async function runAgentModular(options = {}) {
             project: projectContext
         });
 
-    return await runManager.execute(context, async () => {
+    const projectId =
+        projectContext && projectContext.projectId
+            ? projectContext.projectId
+            : null;
+
+    return await runScheduler.schedule(projectId, () =>
+        runManager.execute(context, async () => {
 
         try {
             return await runAgentCore(options);
@@ -10208,7 +10216,7 @@ async function runAgentModular(options = {}) {
 
         /* Leaving the async scopes restores the correlation context:
            nothing process-global needs the legacy wrapper's cleanup. */
-    });
+    }));
 }
 
 
@@ -10484,6 +10492,8 @@ module.exports = {
     AgentRunContext,
     runManager,
     runContextMode,
+    runScheduler,
+    observability,
     cancelRunById,
 
     settings,

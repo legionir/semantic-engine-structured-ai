@@ -405,15 +405,21 @@ approvalها به‌صورت per-project ذخیره/نمایش داده شوند
 
 ---
 
-## [🔴] فاز ۱۰: Concurrency، Resource Limits و Observability
+## [🟢] فاز ۱۰: Concurrency، Resource Limits و Observability
 
 **هدف و scope:** اجرای parallel پایدارِ چند پروژه بدون قفل‌شدن runtime توسط یک پروژهٔ پرمصرف + دید کامل per-project/global. خروجی: محدودیت‌های قابل‌تنظیم، صف per-project، metrics و health surface.
 
-### [🔴] گام ۱: محدودیت‌ها و صف اجرا
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۸ تست جدید در `test/runs/concurrency.test.js` سبز. Scheduler فقط در `RUN_CONTEXT_MODE=modular` + `PROJECT_CONTEXT_MODE=modular` و فقط برای Run دارای projectId فعال است (bypass برای تست‌های فاز ۳). تصمیم ۲۵–۲۶ در پیوست ب.
+
+### [🟢] گام ۱: محدودیت‌ها و صف اجرا
+
+**انجام شد (2026-08-26):** `agent/runtime/RunScheduler.js` با صف per-project و dispatch round-robin. تنظیمات schema با پیش‌فرض مستند: `MAX_CONCURRENT_PROJECT_RUNS=4`، `MAX_RUNS_PER_PROJECT=1`، `MAX_CONCURRENT_INDEX_RUNS=2`، `MAX_WORKERS_PER_USER=8`، `RUN_QUEUE_LIMIT=16`، `PROJECT_MEMORY_LIMIT=0`، `PROJECT_CPU_LIMIT=0`. overflow → `RUN_QUEUE_FULL` / HTTP 429. cancel یک پروژه صف دیگران را لمس نمی‌کند.
 
 تنظیمات `MAX_CONCURRENT_PROJECT_RUNS`، `MAX_RUNS_PER_PROJECT`، `MAX_CONCURRENT_INDEX_RUNS`، `MAX_WORKERS_PER_USER`، `RUN_QUEUE_LIMIT`، `PROJECT_MEMORY_LIMIT` و `PROJECT_CPU_LIMIT` را با **مقادیر پیش‌فرض مستند** پیاده کن. صف اجرا per-project و سیاست عادلانهٔ تقسیم ظرفیت (مثلاً round-robin بین پروژه‌ها) پیاده و مستند شود. cancellation/خرابی یک پروژه صف دیگران را خراب نکند.
 
-### [🔴] گام ۲: metrics و health per-project/global
+### [🟢] گام ۲: metrics و health per-project/global
+
+**انجام شد (2026-08-26):** `agent/runtime/Observability.js` سری‌های `project_*` و `gateway_*` را از event bus جمع می‌کند. `GET /api/metrics`، `GET /api/health` و معادل per-project. crash شبیه‌سازی‌شدهٔ یک پروژه health آن را `down` می‌کند و gateway حداکثر `degraded` می‌ماند.
 
 metricهای `project_runs_total`، `project_active_runs`، `project_failed_runs`، `project_tool_calls_total`، `project_index_state`، `project_last_activity`، `project_memory_bytes`، `project_process_count`، `project_mcp_calls_total` و مجموعهٔ global `gateway_*` را expose کن (endpoint یا فایل telemetry موجود — مسیر دقیق در گام تعیین شود). health یک پروژه خراب، health کل را خراب نکند.
 
@@ -423,6 +429,8 @@ metricهای `project_runs_total`، `project_active_runs`، `project_failed_runs
 - عبور از حدّ صف، task را با خطا/وضعیت واضح queue/reject می‌کند، نه hang.
 - هر event/log Run شامل `projectId` است؛ metrics بین project و global تفکیک‌شده و در API قابل‌خواندن است.
 - crash یک پروژه (شبیه‌سازی) در metricها/health پروژهٔ دیگر اثری ندارد؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر چهار بند با `test/runs/concurrency.test.js` اثبات شد — سه پروژه با سقف ۲ concurrent (سومی queue سپس finish)، overflow صف با 429/`RUN_QUEUE_FULL` (هم runAgent و هم HTTP)، تفکیک metrics project/gateway، crash الف بدون down کردن ب یا gateway، سقف حافظه فقط همان پروژه را رد می‌کند، دو createRun در یک میلی‌ثانیه id متمایز می‌گیرند.
 
 ---
 
@@ -900,5 +908,9 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 22. **معناشناسی migration (فاز ۸ گام ۳):** copy-missing-only (target موجود = skipped، هرگز overwrite) تا re-run ایدم‌پوتنت و غیرتکراری باشد؛ فایل‌های legacy هرگز حذف نمی‌شوند؛ خطای هر فایل جداگانه در گزارش `{copied, skipped, errors}` ثبت و مهاجرت متوقف نمی‌شود؛ auto-register با `-w` اختیاری است و root همواره از registry/`-w` عملگر می‌آید (قانون ۹).
 23. **توکن کنسول (فاز ۹ گام ۳):** `AGENT_CONSOLE_TOKEN` (تولیدشده یا تنظیم‌شده) توکن master باقی می‌ماند تا کنسول فعلی بدون تغییر کار کند. توکن‌های محدود از `AGENT_CONSOLE_TOKENS` (JSON) می‌آیند. permission ثبت‌نشده در توکن محدود = نبود آن permission (fail closed). ثبت پروژهٔ جدید فقط با توکن master / `allowedProjects: ["*"]`.
 24. **فیلتر استریم SSE (فاز ۹ گام ۲):** کلاینت‌های SSE حالا `{res, projectId, claims}` هستند نه raw `ServerResponse`؛ توکن master بدون query همان payload قبلی را می‌گیرد. رویداد بدون `project_id` روی استریم پروژه‌ای فقط metadata تجمیعی است (`aggregate: true`) نه payload کامل.
+25. **فعال‌شدن scheduler (فاز ۱۰):** فقط وقتی هر دو flag modular باشند و Run یک `projectId` داشته باشد. Run بدون پروژه (از جمله تست‌های هم‌زمانی فاز ۳) بدون صف/سقف جدید interleave می‌شود.
+26. **سقف حافظه/CPU (فاز ۱۰):** پیش‌فرض ۰ = بدون اعمال سخت. مقدارها روی `/api/metrics` قابل مشاهده‌اند؛ `PROJECT_MEMORY_LIMIT>0` فقط وقتی estimate ثبت‌شده از سقف بگذرد Run جدید را رد می‌کند (تست با `observability.recordMemory`).
+27. **رزرو run id در createRun (فاز ۱۰):** `issueRunId` شناسه را همان لحظه در مجموعهٔ `issued` ثبت می‌کند تا دو `createRun` در یک میلی‌ثانیه (`Promise.all`) شناسهٔ یکسان نگیرند. قبلاً فقط `active`/`finished` چک می‌شد و `createRun` قبل از `execute` ثبت نمی‌کرد — flake تست فاز ۳.
+28. **قفل busy وب (فاز ۱۰):** `POST /api/tasks` و state کنسول همچنان یک task سراسری دارند (قرارداد `web.test.js`). هم‌زمانی چند پروژه از `runAgent`/CLI است؛ UI چند-run موضوع فاز ۱۱ است. overflow صف در مسیر پروژه‌ای HTTP `429`/`RUN_QUEUE_FULL` می‌دهد.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

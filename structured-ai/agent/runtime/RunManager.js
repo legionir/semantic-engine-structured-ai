@@ -40,6 +40,12 @@ class RunManager {
 
         this.finished = new Map();
 
+        /* Ids handed out by createRun, including runs that have not
+           entered execute yet. Two Promise.all callers create both
+           contexts in the same millisecond; without this set they
+           would share a run id and mix their events. */
+        this.issued = new Set();
+
     }
 
 
@@ -85,6 +91,7 @@ class RunManager {
         let collision = 0;
 
         while (
+            this.issued.has(candidate) ||
             this.active.has(candidate) ||
             this.finished.has(candidate)
         ) {
@@ -94,6 +101,8 @@ class RunManager {
             candidate = `${base}-r${collision}`;
 
         }
+
+        this.issued.add(candidate);
 
         return candidate;
 
@@ -182,9 +191,10 @@ class RunManager {
                 settings.get("RUN_HISTORY_LIMIT")
             ) {
 
-                this.finished.delete(
-                    this.finished.keys().next().value
-                );
+                const oldest = this.finished.keys().next().value;
+
+                this.finished.delete(oldest);
+                this.issued.delete(oldest);
 
             }
 

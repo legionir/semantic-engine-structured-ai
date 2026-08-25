@@ -4,6 +4,7 @@ const path = require("path");
 const ToolContext = require("./ToolContext");
 const resolver = require("../mcp/ProjectSemanticResolver");
 const settings = require("../lib/storage");
+const { observability } = require("../runtime/Observability");
 
 
 /*
@@ -449,6 +450,17 @@ async function codeIndexStart(args = {}, context) {
     const check = await ensureEngine("code_index_start", engine);
     if (!check.ok) return check.result;
 
+    if (!observability.beginIndex()) {
+
+        return {
+            ok: false,
+            error: "INDEX_LIMIT",
+            message:
+                `Too many concurrent index runs ` +
+                `(MAX_CONCURRENT_INDEX_RUNS=${settings.get("MAX_CONCURRENT_INDEX_RUNS")}).`
+        };
+    }
+
     const sessionId = "idx-" + Math.random().toString(36).slice(2, 9);
 
     engine.startIndexSession(sessionId, {
@@ -478,6 +490,8 @@ async function codeIndexStart(args = {}, context) {
                 status: "failed",
                 error: err.message
             });
+        } finally {
+            observability.endIndex();
         }
     })();
 

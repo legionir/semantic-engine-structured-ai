@@ -16,6 +16,17 @@ const AgentRunContext = require("./AgentRunContext");
 const RunCancellation = require("./RunCancellation");
 const { RunBudget, AgentSpawnBudget } = require("./RunBudget");
 const { RunManager, runManager } = require("./RunManager");
+const { RunScheduler, runScheduler, schedulerEnabled } = require("./RunScheduler");
+const { Observability, observability } = require("./Observability");
+
+observability.attach();
+
+runScheduler.memoryFor = key => {
+
+    const bucket = observability.projects.get(key);
+
+    return bucket ? bucket.project_memory_bytes : 0;
+};
 
 
 function runContextMode() {
@@ -36,5 +47,10 @@ module.exports = {
     AgentSpawnBudget,
     RunManager,
     runManager,
+    RunScheduler,
+    runScheduler,
+    schedulerEnabled,
+    Observability,
+    observability,
     runContextMode
 };

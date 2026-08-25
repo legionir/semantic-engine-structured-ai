@@ -2515,10 +2515,17 @@ function createServer(runtime, options = {}) {
                             runtime.cancelRun("web console");
                         }
 
+                        const dropped =
+                            runtime.runScheduler &&
+                            typeof runtime.runScheduler.cancelQueued === "function"
+                                ? runtime.runScheduler.cancelQueued(projectId, "web console")
+                                : 0;
+
                         sendJson(res, 200, {
                             cancelled: true,
                             project_id: projectId,
-                            run_ids: cancelled
+                            run_ids: cancelled,
+                            queued_dropped: dropped
                         });
                         return;
                     }
@@ -2579,12 +2586,53 @@ function createServer(runtime, options = {}) {
                             return;
                         }
 
+                        const admission =
+                            runtime.runScheduler &&
+                            typeof runtime.runScheduler.admit === "function"
+                                ? runtime.runScheduler.admit(record.id)
+                                : "start";
+
+                        if (admission === "reject") {
+
+                            sendJson(res, 429, {
+                                error: "run queue is full",
+                                code: "RUN_QUEUE_FULL",
+                                project_id: record.id
+                            });
+                            return;
+                        }
+
                         startTask(task, { projectId: record.id }).catch(() => {});
 
                         sendJson(res, 202, {
                             accepted: true,
-                            project_id: record.id
+                            project_id: record.id,
+                            queued: admission === "queue"
                         });
+                        return;
+                    }
+
+                    if (suffix === "/metrics" && req.method === "GET") {
+
+                        requireAccess(projectId, "project:read");
+                        requireRecord(projectId);
+
+                        sendJson(res, 200, {
+                            project_id: projectId,
+                            metrics:
+                                runtime.observability.projectSnapshot(projectId),
+                            scheduler:
+                                runtime.runScheduler.snapshot()
+                        });
+                        return;
+                    }
+
+                    if (suffix === "/health" && req.method === "GET") {
+
+                        requireAccess(projectId, "project:read");
+                        requireRecord(projectId);
+
+                        sendJson(res, 200, runtime.observability.healthOf(projectId));
                         return;
                     }
 
@@ -2910,6 +2958,56 @@ function createServer(runtime, options = {}) {
                         })
                     );
 
+                    return;
+                }
+
+                if (
+                    pathname === "/api/metrics" &&
+                    req.method === "GET"
+                ) {
+
+                    const snap = runtime.observability.snapshot();
+
+                    if (!consoleAuth.allowsAllProjects(claims)) {
+
+                        const allowed = {};
+
+                        for (const [id, metrics] of Object.entries(snap.projects)) {
+
+                            if (consoleAuth.allowsProject(claims, id)) {
+                                allowed[id] = metrics;
+                            }
+                        }
+
+                        snap.projects = allowed;
+                    }
+
+                    sendJson(res, 200, snap);
+                    return;
+                }
+
+                if (
+                    pathname === "/api/health" &&
+                    req.method === "GET"
+                ) {
+
+                    const health = runtime.observability.health();
+
+                    if (!consoleAuth.allowsAllProjects(claims)) {
+
+                        const allowed = {};
+
+                        for (const [id, item] of Object.entries(health.projects)) {
+
+                            if (consoleAuth.allowsProject(claims, id)) {
+                                allowed[id] = item;
+                            }
+                        }
+
+                        health.projects = allowed;
+                    }
+
+                    sendJson(res, 200, health);
                     return;
                 }
 

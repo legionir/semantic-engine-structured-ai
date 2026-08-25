@@ -178,3 +178,13 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Approval:** رکورد و رویداد `approval:request`/`approval:resolved` فیلد additive `project_id` دارند؛ prompt ترمینال در صورت وجود پروژه آن را نشان می‌دهد. pendingهای `/api/state` فیلد `project_id` می‌گیرند (UI فعلی نادیده می‌گیرد).
 - **MCP scope:** فیلدهای additive `scope: "project"|"global"` (پیش‌فرض `global`) و `projects: [...]` در نرمالایز کانفیگ. `tools/list` و `catalogueEntries(projectId)` فقط سرورهای مجاز آن پروژه را می‌دهند؛ `call` ریشهٔ خارجی را با خطای کنترل‌شده رد می‌کند. در اجرای بدون projectId (legacy) همهٔ سرورها مانند قبل دیده‌ می‌شوند.
 - **Gateway MCP approval:** برای سرور `scope: global` در Run دارای `project_id`، یک تأیید کافی است و استفاده‌های بعدی `gateway_cached: true` دارند و با `project_id` مصرف‌کننده audit می‌شوند. بدون `project_id` رفتار approval تاریخی است.
+
+## ۱۵. تغییرات additive فاز ۱۰ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **تنظیمات schema:** `MAX_CONCURRENT_PROJECT_RUNS` (پیش‌فرض ۴)، `MAX_RUNS_PER_PROJECT` (۱)، `MAX_CONCURRENT_INDEX_RUNS` (۲)، `MAX_WORKERS_PER_USER` (۸)، `RUN_QUEUE_LIMIT` (۱۶)، `PROJECT_MEMORY_LIMIT` (۰ = بدون سقف سخت)، `PROJECT_CPU_LIMIT` (۰ = فقط observational).
+- **Scheduler:** `agent/runtime/RunScheduler.js` فقط وقتی هر دو flag `RUN_CONTEXT_MODE` و `PROJECT_CONTEXT_MODE` modular باشند و Run یک `projectId` داشته باشد فعال است. overflow صف → خطای `RUN_QUEUE_FULL` با `status=429`. عبور از `PROJECT_MEMORY_LIMIT` → خطای `PROJECT_MEMORY_LIMIT` با `status=429` (صف نمی‌شود).
+- **Run id:** `createRun` شناسه را همان لحظه در مجموعهٔ issued رزرو می‌کند تا دو Run هم‌زمان در یک میلی‌ثانیه شناسهٔ یکسان نگیرند (پسوند `-r<N>` مثل فاز ۳).
+- **Web API (additive):** `GET /api/metrics`، `GET /api/health`، `GET /api/projects/:id/metrics`، `GET /api/projects/:id/health`. پاسخ `POST /api/projects/:id/cancel` فیلد additive `queued_dropped` دارد. `POST /api/projects/:id/tasks` و `/chat` در overflow صف `429 {code: RUN_QUEUE_FULL}` می‌دهند و در پذیرش فیلد additive `queued` دارند. `POST /api/tasks` بدون تغییر قرارداد است (قفل busy سراسری کنسول حفظ شد).
+- **Observability:** سری‌های `project_*` و `gateway_*` از event bus جمع می‌شوند. crash یک پروژه health آن را `down` و gateway را حداکثر `degraded` می‌کند — هرگز `down`.
+- **Index:** `code_index_start` سقف `MAX_CONCURRENT_INDEX_RUNS` را با `INDEX_LIMIT` اعمال می‌کند.
+- **Exports additive:** `runScheduler` و `observability` از `agent/agent.js`.
