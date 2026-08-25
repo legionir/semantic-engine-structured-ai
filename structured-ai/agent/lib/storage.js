@@ -1332,6 +1332,13 @@ const DEFINITIONS = [
         default: 100,
         min: 1,
         description: "How many settled runs the RunManager keeps queryable after they finish."
+    },
+    {
+        key: "PROMPT_BUILDER_MODE",
+        group: "runtime",
+        type: STRING,
+        default: "legacy",
+        description: "Prompt assembly mode: 'legacy' uses the inline builders in agent.js; 'modular' uses the injected agent/prompt builders with project_context support (EXECUTION_PLAN phase 5 flag)."
     }
 ];
 

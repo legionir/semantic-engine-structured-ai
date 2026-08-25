@@ -216,23 +216,32 @@
 
 ---
 
-## [🔴] فاز ۵: استخراج Prompt Builder (به‌همراه Project-Awareness)
+## [🟢] فاز ۵: استخراج Prompt Builder (به‌همراه Project-Awareness)
 
 **هدف و scope:** استخراج کامل ساخت prompt از `agent/agent.js` به ماژول‌های مستقلِ تزریق‌پذیر — طبق گام ۳ سند refactor، اما با افزودن `ProjectContextBuilder` — که از این پس به‌جای اجرای دوباره در بخش refactor، **همین‌جا و زودتر** انجام می‌شود (تصمیم سند ترتیب). خروجی: دایرکتوری `agent/prompt/`.
+**تکمیل 2026-08-25:** ۷ تست جدید سبز؛ suite کامل ۴۷۵/۴۷۵. ماژول‌ها در `agent/prompt/`؛ مسیر modular پشت flag `PROMPT_BUILDER_MODE` (اعلان‌شده در schema تنظیمات). برابری پیام‌به‌پیام legacy/modular در همان فرایند قفل شد (تست differential) و خروجی modular fixture فاز ۱ را هم ارضا می‌کند.
 
-### [🔴] گام ۱: ساختار prompt/ و facade تزریق‌پذیر
+### [🟢] گام ۱: ساختار prompt/ و facade تزریق‌پذیر
+**انجام شد (2026-08-25):** `agent/prompt/` با هر ۱۰ فایل خواسته‌شده ساخته شد. `PromptBuilder` facade فقط از روی closureهای تزریق‌شده کار می‌کند (هیچ import از `agent.js` در ماژول‌ها نیست؛ تنها `lib/storage` برای settings خوانده می‌شود). facade و resolverها در `agent.js` lazily ساخته می‌شوند تا constهای زمان‌بندی‌دار (TDZ) مسیر رجیستری نقض نشود و هیچ stateیی سطح ماژول capture نشود. `resolveTools`/`mcpToolRegistry` به `ToolResolver` و `resolveSkills` به `SkillResolver` منتقل شدند — انتقال واقعی با wrapper سازگار (نه کپی) تا همهٔ call siteهای runtime loop هم از همان نسخهٔ واحد استفاده کنند.
+
 
 `agent/prompt/` را با `PromptBuilder.js`، `MainPromptBuilder.js`، `SubAgentPromptBuilder.js`، `RuntimeContextBuilder.js`، `ProjectContextBuilder.js`، `RequestBuilder.js`، `ToolResolver.js`، `SkillResolver.js`، `PromptMessages.js` و `index.js` بساز. `PromptBuilder` هیچ وابستگی مستقیم به globalهای `agent.js` نداشته باشد؛ وابستگی‌ها (settings، registry، builders، resolvers، providers) تزریق شوند. **پشت flag:** `PROMPT_BUILDER_MODE`.
 
-### [🔴] گام ۲: انتقال منطق Main و Sub-Agent prompt
+### [🟢] گام ۲: انتقال منطق Main و Sub-Agent prompt
+**انجام شد (2026-08-25):** ترتیب دقیق پیام‌ها در `MainPromptBuilder` (system ← rules ← runtime_context ← **project_context** ← skills ← personas ← agents ← task؛ `filter(Boolean)` تاریخی حفظ شد) و `SubAgentPromptBuilder` (متن system چندبخشی با join "\n\n" ← runtime_context ← agent_profile ← **project_context** ← available_tools ← task) بازتولید شد؛ درج project_context فقط وقتی پیام غیر null است، پس خروجی بدون پروژه با legacy بیت‌به‌بیت برابر است (تست). Sub-Agent پروژه را از `currentRun().project` می‌گیرد — به ارث از والد، چون زنجیرهٔ delegation در scope async همان Run اجرا می‌شود.
+
 
 منطق فعلی `createMainAgentMessages` و `buildAgentSystemPrompt`/`createSubAgentMessages` را با ترتیب دقیق پیام‌ها به builderهای جدید منتقل کن. Main: system prompt ← execution rules ← runtime context ← **project context** ← skills ← personas ← agents ← task. Sub-Agent: persona ← execution rules فیلترشده ← agent rules ← skills ← output contract ← delegation policy ← **project context** (به ارث رسیده از والد) ← task/context والد.
 
-### [🔴] گام ۳: RuntimeContextBuilder و ProjectContextBuilder
+### [🟢] گام ۳: RuntimeContextBuilder و ProjectContextBuilder
+**انجام شد (2026-08-25):** `RuntimeContextBuilder` فیلد‌به‌فیلد همان ساختار تاریخی را می‌سازد و `refresh()` همان جایگزینی in-place پیام runtime_context را دارد؛ خوانده‌هایبudget/root از closureهای تزریقی می‌آیند (`agentsSpawned`، `runStartedAt`، `runRemainingMs` از context واقعی Run در هر دو حالت). در اجرای modular با پروژه، `workspace.root` و `runtime.workspace_root` و تشخیص repository **root پروژهٔ فعال** را نشان می‌دهند (`detectRepository(root)` پارامتردار شد؛ فراخوانی بدون آرگومان legacy دست‌نخورده). `ProjectContextBuilder` پیام additive `project_context` را با پروژهٔ فعال (id/name/workspace_root)، فهرست `available_projects` به‌جز خودی و سه قاعدهٔ رسمی می‌سازد و بدون پروژه null برمی‌گرداند.
+
 
 `RuntimeContextBuilder` اطلاعات workspace، repository، plan، memory، archive، policy، endpoints، budget و MCP state را dynamic بسازد و `refreshRuntimeContext()` در ابتدای هر iteration به‌روز کند. `ProjectContextBuilder` پیام `project_context` را با project فعال، فهرست `availableProjects` (در صورت وجود) و قواعد سه‌گانهٔ اسناد مرجع بسازد («فقط project فعال»، «حدس مسیر پروژهٔ دیگر ممنوع»، «attribute به پروژه»).
 
-### [🔴] گام ۴: RequestBuilder و حفظ رفتار dynamic
+### [🟢] گام ۴: RequestBuilder و حفظ رفتار dynamic
+**انجام شد (2026-08-25):** `RequestBuilder` بدنهٔ درخواست را با همان منطق تاریخی می‌سازد (tool request با tools/parallel_tool_calls/response_format و variant خالی برای Summarizer)؛ `buildAgentRequest` ضمن حفظ امضا wrapper شد و حالا از `agent.js` export هم می‌شود (additive — رفع شکاف مستند refactor). رفتار dynamic با تست زنده قفل شد: ویرایش `system_prompt.txt` و `skills.json` بدون restart در هر دو حالت دیده می‌شود (readTextLive و loadSkills مبتنی بر mtime)؛ gate فعال‌سازی semantic_engine در هر دو حالت با `isActiveSkill` سنخرو است (معنا در این فاز همان اتصال single Semantic Engine — مستند Unknown تا فاز ۶).
+
 
 بدنهٔ request OpenAI-compatible (model، messages، temperature، tools، `parallel_tool_calls`، `response_format`) را از `RequestBuilder` بساز؛ Summarizer همچنان با `responseFormat: null` و بدون tool schema. رفتار dynamic حفظ شود: خواندن مجدد `system_prompt.txt`/`execution_rules.txt` و registryها با live mtime؛ فیلتر execution rules بر اساس ابزارهای agent؛ کشف ابزارهای MCP قبل از اولین request؛ فعال‌بودن `semantic_engine` skill فقط وقتی Semantic MCPِ **پروژهٔ فعال** ready است؛ skills با `skill_get` on-demand؛ settings جدید از iteration بعدی اثر کنند. **Unknown / Requires Verification:** تا قبل از فاز ۶ که pool ساخته شود، «Semantic MCP پروژهٔ فعال» همان اتصال فعلی single Semantic Engine است.
 
@@ -840,6 +849,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 9. **قالب run id در modular:** همان قالب legacy؛ پسوند `-r<N>` تنها هنگام برخورد دو Run در یک میلی‌ثانیه (additive؛ normalized بودن run id در fixtureها حفظ می‌شود).
 10. **فعال‌شدن cross-root (فاز ۴):** اجرای پروژه روی root متفاوت از WORKSPACE_ROOT فقط وقتی مجاز است که `RUN_CONTEXT_MODE=modular` و `PROJECT_CONTEXT_MODE=modular` باشند (یعنی context ابزار per-run تضمین‌شده است). در غیر این صورت `assertWorkspaceMatch` فاز ۲ ساری می‌ماند. ابزارهای هنوز project-aware‌نشده (code_* → فاز ۶، plan/memory/archive → فاز ۸، search/runtime_stats به‌همراهان) روی root خارجی خطای صریح «not yet project-aware» می‌دهند تا سکوتِ mis-scope هرگز رخ ندهد.
 11. **نام API پروژه‌ای workspace (فاز ۴ گام ۲):** به‌جای overload `resolveWorkspacePath` (نقض قانون ۵ روی export موجود)، نام‌های `resolveProjectPath`/`isInsideProject`/`toProjectRelative`/`assertProjectPathSafe` با همان الگوریتم مرز انتخاب شدند.
-
+12. **الگوی wiring سازه‌های lazy (فاز ۵):** facade و resolverهای جدید در `agent.js` lazily نمونه‌سازی می‌شوند — قانون repo در برابر capture سطح ماژول و مشکل TDZ constهای registry را هم‌زمان حل می‌کند؛ وابستگی‌ها همیشه closure روی state زنده‌اند.
+13. **`buildAgentRequest` حالا export می‌شود (فاز ۵):** رفع شکاف شناخته‌شدهٔ سند refactor؛ additive و بدون تغییر رفتار.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

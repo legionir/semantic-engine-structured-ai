@@ -23,11 +23,140 @@ const eventstore = require("./lib/eventstore");
 
 const projects = require("./projects");
 
+const projectRuntime = require("./runtime");
+
 const {
     AgentRunContext,
     runManager,
     runContextMode
-} = require("./runtime");
+} = projectRuntime;
+
+const promptKit = require("./prompt");
+
+/*
+| Prompt kit wiring (EXECUTION_PLAN Phase 5). The injected builders and
+| resolvers are created lazily on first use: every dependency they take
+| is a closure over live registry/settings/run state, so nothing ages,
+| and in PROMPT_BUILDER_MODE=legacy they are never constructed at all.
+*/
+
+let TOOL_RESOLVER = null;
+
+let SKILL_RESOLVER = null;
+
+let PROMPT_FACADE = null;
+
+
+function toolResolver() {
+
+    if (!TOOL_RESOLVER) {
+
+        TOOL_RESOLVER =
+            promptKit.createToolResolver({
+                TOOL_REGISTRY_OF: () => TOOL_REGISTRY_OF(),
+                mcpToolDeclarations: () => mcpToolDeclarations()
+            });
+
+    }
+
+    return TOOL_RESOLVER;
+
+}
+
+
+function skillResolver() {
+
+    if (!SKILL_RESOLVER) {
+
+        SKILL_RESOLVER =
+            promptKit.createSkillResolver({
+                SKILL_REGISTRY_OF: () => SKILL_REGISTRY_OF(),
+                isActiveSkill: skill => isActiveSkill(skill)
+            });
+
+    }
+
+    return SKILL_RESOLVER;
+
+}
+
+
+function promptFacade() {
+
+    if (!PROMPT_FACADE) {
+
+        PROMPT_FACADE =
+            promptKit.createPromptBuilder({
+                listProjects:
+                    () => projects.registry().list(),
+
+                main: {
+                    systemPrompt: () => systemPrompt(),
+                    executionRules: () => executionRules(),
+                    skillIndex: () => skillIndex(),
+                    PERSONAS_OF: () => PERSONAS_OF(),
+                    AGENTS_OF: () => AGENTS_OF(),
+                    discussionPersonaNames: () => discussionPersonaNames(),
+                    describeCapability: agent => describeCapability(agent),
+                    mayDelegate: () => mayDelegate(mainAgentProfile()),
+                    readTask: () => readTask()
+                },
+
+                subAgent: {
+                    resolveAgentCapabilities:
+                        agentDefinition =>
+                            resolveAgentCapabilities(agentDefinition),
+                    executionRules:
+                        agentDefinition => executionRules(agentDefinition),
+                    mayDelegate:
+                        agentDefinition => mayDelegate(agentDefinition)
+                },
+
+                runtimeContext: {
+                    CONFIGURED_RUNTIME_OF: () => CONFIGURED_RUNTIME_OF(),
+                    detectEnvironment: () => detectEnvironment(),
+                    detectRepository: () =>
+                        detectRepository(
+                            currentRun().project
+                                ? currentRun().project.workspaceRoot
+                                : undefined
+                        ),
+                    workspaceRoot: () =>
+                        currentRun().project
+                            ? currentRun().project.workspaceRoot
+                            : WORKSPACE_ROOT,
+                    planSummary: () => currentPlanSummary(),
+                    memorySizeChars: () =>
+                        memoryStore.memorySize(memoryStore.loadMemory()),
+                    archiveStats: () => archive.stats(),
+                    policySummary: () => POLICY_ENGINE.summary(),
+                    endpointOverview: () => endpointOverview(),
+                    agentsSpawned: () => currentAgentBudget().spawned,
+                    runStartedAt: () => currentRun().started_at,
+                    runRemainingMs: () => runRemainingMs(),
+                    mcpContext: () => mcpContext()
+                },
+
+                request: {
+                    endpointFor:
+                        (role, agentDefinition) =>
+                            endpointFor(role, agentDefinition),
+                    RESPONSE_FORMAT_OF: () => RESPONSE_FORMAT_OF()
+                }
+            });
+
+    }
+
+    return PROMPT_FACADE;
+
+}
+
+
+function promptBuilderMode() {
+
+    return promptKit.promptBuilderMode();
+
+}
 
 journal.attach(events.bus);
 eventstore.attach(events.bus);
@@ -982,7 +1111,16 @@ function detectEnvironment() {
 | not, and never has to guess the branch.
 */
 
-function detectRepository() {
+/* The repository is discovered from the workspace rather than declared,
+| so the model is never told there is a git repository when there is
+| not, and never has to guess the branch. In modular mode the runtime
+| passes the calling run's project root, so a cross-root project sees
+| its own repository rather than the process workspace's.
+*/
+
+function detectRepository(root) {
+
+    const detectRoot = root || WORKSPACE_ROOT;
 
     const declared =
         CONFIGURED_RUNTIME_OF().repository || {};
@@ -996,7 +1134,7 @@ function detectRepository() {
                     "git",
                     argv,
                     {
-                        cwd: WORKSPACE_ROOT,
+                        cwd: detectRoot,
                         stdio: ["ignore", "pipe", "ignore"],
                         timeout: settings.get("REPO_DETECT_TIMEOUT_MS")
                     }
@@ -1010,10 +1148,10 @@ function detectRepository() {
         }
     };
 
-    const root =
+    const toplevel =
         run(["rev-parse", "--show-toplevel"]);
 
-    if (!root) {
+    if (!toplevel) {
 
         return {
             ...declared,
@@ -1036,10 +1174,10 @@ function detectRepository() {
 
         available: true,
 
-        root,
+        root: toplevel,
 
         is_workspace_root:
-            root === WORKSPACE_ROOT,
+            toplevel === detectRoot,
 
         branch:
             run(["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -1498,6 +1636,13 @@ async function maintainContext(messages, scope) {
 
 function refreshRuntimeContext(messages) {
 
+    if (promptBuilderMode() === "modular") {
+
+        return promptFacade().refreshRuntimeContext(messages);
+
+    }
+
+
     for (const message of messages) {
 
         if (
@@ -1581,6 +1726,13 @@ function currentPlanView() {
 
 
 function createRuntimeContext() {
+
+    if (promptBuilderMode() === "modular") {
+
+        return promptFacade().runtimeContextMessage();
+
+    }
+
 
     return {
         ...CONFIGURED_RUNTIME_OF(),
@@ -2221,11 +2373,8 @@ function mcpToolDeclarations() {
 
 function mcpToolRegistry() {
 
-    return new Map(
-        mcpToolDeclarations().map(
-            tool => [tool.function.name, tool]
-        )
-    );
+    /* Moved to agent/prompt/ToolResolver.js (Phase 5). */
+    return toolResolver().mcpRegistry();
 }
 
 
@@ -2276,33 +2425,9 @@ async function discoverMcpTools() {
 
 function resolveTools(toolNames) {
 
-    /*
-    | "*" grants every registered tool. Used by the root orchestrator
-    | profile; sub-agent profiles should list tools explicitly.
-    */
-
-    if (toolNames === "*") {
-
-        return [
-            ...TOOL_REGISTRY_OF().values(),
-            ...mcpToolDeclarations()
-        ];
-    }
-
-    if (!Array.isArray(toolNames)) {
-        return [];
-    }
-
-    const fromMcp =
-        mcpToolRegistry();
-
-    return toolNames
-        .map(
-            name =>
-                TOOL_REGISTRY_OF().get(name) ||
-                fromMcp.get(name)
-        )
-        .filter(Boolean);
+    /* Moved to agent/prompt/ToolResolver.js (Phase 5); the wrapper keeps
+       every call site and the live-registry behavior identical. */
+    return toolResolver().resolve(toolNames);
 }
 
 
@@ -2314,19 +2439,8 @@ function resolveTools(toolNames) {
 
 function resolveSkills(skillNames) {
 
-    if (!Array.isArray(skillNames)) {
-        return [];
-    }
-
-    return skillNames
-        .map(
-            name =>
-                SKILL_REGISTRY_OF().get(name)
-        )
-        .filter(
-            skill =>
-                skill && isActiveSkill(skill)
-        );
+    /* Moved to agent/prompt/SkillResolver.js (Phase 5). */
+    return skillResolver().resolve(skillNames);
 }
 
 
@@ -2579,6 +2693,13 @@ function buildAgentSystemPrompt(
     agentDefinition
 ) {
 
+    if (promptBuilderMode() === "modular") {
+
+        return promptFacade().subAgentSystemPrompt(agentDefinition);
+
+    }
+
+
     const capabilities =
         resolveAgentCapabilities(
             agentDefinition
@@ -2671,14 +2792,24 @@ function buildAgentSystemPrompt(
 |--------------------------------------------------------------------------
 */
 
-function buildAgentRequest({
-    messages,
-    agentDefinition,
-    tools,
-    responseFormat,
-    role,
-    withSchema = true
-}) {
+function buildAgentRequest(options) {
+
+    /* Phase 5: the modular RequestBuilder produces the same body from
+       injected closures. */
+    if (promptBuilderMode() === "modular") {
+
+        return promptFacade().request(options);
+
+    }
+
+    const {
+        messages,
+        agentDefinition,
+        tools,
+        responseFormat,
+        role,
+        withSchema = true
+    } = options;
 
     const profile =
         endpointFor(role, agentDefinition);
@@ -3036,6 +3167,17 @@ function checkPerformedClaim(action, progress, scope) {
 
 
 function createMainAgentMessages(task) {
+
+    /* Phase 5: the injected builders assemble the same messages; the
+       legacy branch below stays the reference until rollout. */
+    if (promptBuilderMode() === "modular") {
+
+        return promptFacade().mainMessages(task, {
+            project: currentRun().project
+        });
+
+    }
+
 
     return [
 
@@ -7412,6 +7554,18 @@ function createSubAgentMessages(
     context
 ) {
 
+    if (promptBuilderMode() === "modular") {
+
+        return promptFacade().subAgentMessages(
+            agentDefinition,
+            task,
+            context,
+            { project: currentRun().project }
+        );
+
+    }
+
+
     const systemPrompt =
         buildAgentSystemPrompt(
             agentDefinition
@@ -10275,6 +10429,12 @@ module.exports = {
     canModifyWorkspace,
     describeCapability,
     buildAgentSystemPrompt,
+
+    /*
+    | The request body builder (Phase 5 wrapper: inline in legacy, the
+    | injected agent/prompt/RequestBuilder in modular).
+    */
+    buildAgentRequest,
     executionRules,
     filterExecutionRules,
     systemPrompt,

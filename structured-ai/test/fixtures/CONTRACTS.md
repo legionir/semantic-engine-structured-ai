@@ -135,3 +135,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - `agent/lib/workspace.js` additive گسترش یافت: `resolvePathInRoot`/`assertPathSafeInRoot`/`toRelativeInRoot` و API پروژه‌ای `resolveProjectPath`/`isInsideProject`/`toProjectRelative`/`assertProjectPathSafe`/`projectRootOf`؛ امضای exportهای قبلی پین‌شده به WORKSPACE_ROOT دست‌نخورده.
 - telemetry: رکوردها در حالت contextدار حامل `run_id`/`project_id` (additive، فقط در bucket per-run) هستند؛ `executedToolNames(runId?)` و `reset(runId?)` پارامتر اختیاری گرفتند؛ فرم خروجی runtime_stats جهانی تغییر نکرده است.
 - sessionهای search با `run_id` علامت‌گذاری می‌شوند و `resetSessions(runId)` فقط همان Run را پاک می‌کند؛ فراخوانی بدون آرگومان رفتار جهانی تاریخی را دارد. sessionهای process دارای `run_id`/`project_id`/`root` هستند و در حالت scoped فقط برای پروژهٔ مالک قابل‌مشاهده/کنترل‌اند.
+
+## ۱۰. تغییرات additive فاز ۵ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
+
+- flag `PROMPT_BUILDER_MODE` (پیش‌فرض `legacy`) در schema تنظیمات اعلان شد؛ مسیر modular از builderهای تزریق‌پذیر `agent/prompt/` استفاده می‌کند و خروجی normalized آن با مسیر legacy برابر است (قانون ۸).
+- `buildAgentRequest` اکنون از `agent/agent.js` export می‌شود (additive؛ شکل امضا آبجکت واحد `{messages, agentDefinition, tools, responseFormat, role, withSchema}` در هر دو حالت یکسان).
+- پیام رویدادنما `project_context` (system+JSON) فقط در اجرای دارای پروژه (modular) به prompt افزوده می‌شود: Main پس از runtime_context و Sub-Agent پس از agent_profile. بدون پروژه هیچ کلید/پیام افزوده‌ای وجود ندارد (شکل prompt تاریخی دست‌نخورده — قانون ۵).
+- در اجرای modular با پروژه، فیلدهای `workspace.root` و `runtime.workspace_root` و بخش `repository` پیام runtime_context **root پروژهٔ فعال** را گزارش می‌کنند (در legacy همان WORKSPACE_ROOT فرایند).
