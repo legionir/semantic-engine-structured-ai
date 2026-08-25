@@ -3,6 +3,8 @@ const archive = require("../lib/archive");
 
 const { toWorkspaceRelative } = require("../lib/workspace");
 
+const ToolContext = require("./ToolContext");
+
 
 /*
 |--------------------------------------------------------------------------
@@ -26,10 +28,14 @@ const { toWorkspaceRelative } = require("../lib/workspace");
 |--------------------------------------------------------------------------
 */
 
-function memory_get(args = {}) {
+function memory_get(args = {}, context) {
+
+    /* Phase 8: memory and the archive are per-project stores; the run
+       context names the project, legacy mode keeps the workspace file. */
+    const ctx = ToolContext.from(context);
 
     const memory =
-        memoryStore.loadMemory();
+        memoryStore.loadMemory(ctx);
 
     const fields =
         Array.isArray(args.fields) && args.fields.length > 0
@@ -38,9 +44,14 @@ function memory_get(args = {}) {
             )
             : memoryStore.FIELDS;
 
+    const file =
+        memoryStore.memoryPath(ctx);
+
     return {
         path:
-            toWorkspaceRelative(memoryStore.memoryPath()),
+            toWorkspaceRelative(file).startsWith("..")
+                ? file
+                : toWorkspaceRelative(file),
 
         updated_at:
             memory.updated_at,
@@ -59,12 +70,14 @@ function memory_get(args = {}) {
         archive:
             args.include_archive === false
                 ? undefined
-                : archive.stats()
+                : archive.stats({ root: ctx })
     };
 }
 
 
-function archive_search(args = {}) {
+function archive_search(args = {}, context) {
+
+    const ctx = ToolContext.from(context);
 
     const found =
         archive.searchArchive(
@@ -74,7 +87,8 @@ function archive_search(args = {}) {
                 kind: args.kind,
                 agent: args.agent,
                 tool: args.tool,
-                min_importance: args.min_importance
+                min_importance: args.min_importance,
+                root: ctx
             }
         );
 
@@ -114,7 +128,7 @@ function archive_search(args = {}) {
 }
 
 
-function archive_get(args = {}) {
+function archive_get(args = {}, context) {
 
     const ids =
         Array.isArray(args.ids)
@@ -130,8 +144,10 @@ function archive_get(args = {}) {
         );
     }
 
+    const ctx = ToolContext.from(context);
+
     const found =
-        archive.getRecords(ids);
+        archive.getRecords(ids, { root: ctx });
 
     return {
         records:

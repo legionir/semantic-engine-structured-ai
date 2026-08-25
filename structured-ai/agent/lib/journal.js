@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const settings = require("./storage");
-const { WORKSPACE_ROOT } = require("./workspace");
+const dataRoot = require("./dataRoot");
 
 
 /*
@@ -33,9 +33,79 @@ const STATE = {
     last_error: null
 };
 
+/*
+| Phase 8 (گام ۱): attribution state is bucketed per run_id, so two
+| concurrent modular runs never overwrite each other's task/agent/
+| model maps. STATE stays the ambient (legacy) bucket and always
+| mirrors the most recent run's bucket, which keeps the historical
+| single-run semantics — and the exported _state view — bit-identical.
+*/
+const RUN_BUCKETS = new Map();
 
-function journalRoot() {
-    return path.join(WORKSPACE_ROOT, ".agent", "journal");
+
+/* Phase 8: the journal lives under the active project's data root. */
+function journalRoot(root) {
+    return path.join(dataRoot.resolveRoot(root), "journal");
+}
+
+
+function newBucket(runId, task) {
+
+    const agents = new Map();
+
+    agents.set("main_agent", {
+        agent: "main_agent",
+        depth: 0,
+        parent: null,
+        parent_scope: null
+    });
+
+    return {
+        run_id: runId,
+        task: task || null,
+        agents,
+        models: new Map(),
+        pending_tools: new Map(),
+        root: null
+    };
+}
+
+
+/* The bucket an event belongs to: its own run's if one was opened,
+   otherwise the ambient legacy bucket (events without a run keep the
+   historical behavior of writing through STATE). */
+function bucketFor(event) {
+
+    const runId = event && event.run_id;
+
+    if (runId && RUN_BUCKETS.has(runId)) {
+        return RUN_BUCKETS.get(runId);
+    }
+
+    return STATE;
+}
+
+
+/* Where a record lands: the bucket root pinned at run:start wins
+   (every record of a run stays together), then the event envelope's
+   registered project (modular), then ambient resolution. */
+function rootFor(event, bucket) {
+
+    if (bucket && bucket.root) {
+        return bucket.root;
+    }
+
+    if (event && typeof event === "object") {
+
+        const scoped = dataRoot.dataRootForProjectId(event.project_id);
+
+        if (scoped) {
+            return scoped;
+        }
+
+    }
+
+    return dataRoot.currentRoot();
 }
 
 
@@ -65,12 +135,12 @@ function clock(at) {
 }
 
 
-function fileFor(agent, at) {
+function fileFor(agent, at, root) {
 
     const stamp = clock(at);
 
     return path.join(
-        journalRoot(),
+        journalRoot(root),
         stamp.date,
         `${safeName(agent)}.jsonl`
     );
@@ -106,9 +176,9 @@ function bounded(value) {
 }
 
 
-function profileFor(scope, fallback) {
+function profileFor(scope, fallback, bucket) {
 
-    const known = STATE.agents.get(scope);
+    const known = bucket.agents.get(scope);
 
     if (known?.agent) {
         return known.agent;
@@ -122,15 +192,15 @@ function profileFor(scope, fallback) {
 }
 
 
-function identity(event) {
+function identity(event, bucket) {
 
     const scope =
         event.scope ||
         event.agent ||
         "main_agent";
 
-    const known = STATE.agents.get(scope) || {};
-    const agent = profileFor(scope, event.agent);
+    const known = bucket.agents.get(scope) || {};
+    const agent = profileFor(scope, event.agent, bucket);
     const depth =
         event.depth ??
         known.depth ??
@@ -162,13 +232,13 @@ function identity(event) {
 }
 
 
-function append(agent, record, at) {
+function append(agent, record, at, root) {
 
     if (settings.get("JOURNAL_ENABLED") !== true) {
         return Promise.resolve(null);
     }
 
-    const file = fileFor(agent, at);
+    const file = fileFor(agent, at, root);
     const line = `${JSON.stringify(record)}\n`;
     pendingJournalWrites = pendingJournalWrites
         .then(async () => {
@@ -187,7 +257,8 @@ function append(agent, record, at) {
 
 function write(kind, event, fields = {}) {
 
-    const who = identity(event);
+    const bucket = bucketFor(event);
+    const who = identity(event, bucket);
     const stamp = clock(event.at);
 
     const record = {
@@ -195,8 +266,8 @@ function write(kind, event, fields = {}) {
         ...stamp,
         kind,
         event_seq: event.seq ?? null,
-        run_id: STATE.run_id,
-        task: STATE.task,
+        run_id: bucket.run_id,
+        task: bucket.task,
         role: who.role,
         agent: who.agent,
         scope: who.scope,
@@ -206,19 +277,19 @@ function write(kind, event, fields = {}) {
         iteration: event.iteration ?? null,
         model:
             event.model ||
-            STATE.models.get(who.scope)?.model ||
-            STATE.models.get(who.agent)?.model ||
+            bucket.models.get(who.scope)?.model ||
+            bucket.models.get(who.agent)?.model ||
             null,
         endpoint_role:
             event.endpoint_role ||
-            STATE.models.get(who.scope)?.role ||
-            STATE.models.get(who.agent)?.role ||
+            bucket.models.get(who.scope)?.role ||
+            bucket.models.get(who.agent)?.role ||
             null,
         hook: who.hook,
         ...fields
     };
 
-    append(who.agent, record, event.at);
+    append(who.agent, record, event.at, rootFor(event, bucket));
 
     return record;
 }
@@ -238,17 +309,26 @@ function onEvent(event) {
 
     if (event.type === "run:start") {
 
-        STATE.run_id = event.run_id || `run-event-${event.seq || Date.now()}`;
-        STATE.task = event.task || null;
-        STATE.agents.clear();
-        STATE.models.clear();
-        STATE.pending_tools.clear();
-        STATE.agents.set("main_agent", {
-            agent: "main_agent",
-            depth: 0,
-            parent: null,
-            parent_scope: null
-        });
+        const runId = event.run_id || `run-event-${event.seq || Date.now()}`;
+
+        const bucket = newBucket(runId, event.task);
+
+        /* The run's data root is pinned once, at open: every record of
+           this run lands together even when a single event's envelope
+           lacks the project id (Phase 8 per-project separation). */
+        bucket.root =
+            dataRoot.dataRootForProjectId(event.project_id) ||
+            dataRoot.currentRoot();
+
+        RUN_BUCKETS.set(runId, bucket);
+
+        /* Legacy mirror: STATE aliases the newest run's maps, so the
+           exported _state view and single-run consumers are unchanged. */
+        STATE.run_id = bucket.run_id;
+        STATE.task = bucket.task;
+        STATE.agents = bucket.agents;
+        STATE.models = bucket.models;
+        STATE.pending_tools = bucket.pending_tools;
 
         write("run_start", {
             ...event,
@@ -265,7 +345,7 @@ function onEvent(event) {
 
     if (event.type === "request:start") {
 
-        STATE.models.set(event.agent || "main_agent", {
+        bucketFor(event).models.set(event.agent || "main_agent", {
             model: event.model || null,
             role: event.role || null
         });
@@ -277,7 +357,7 @@ function onEvent(event) {
 
         const scope = event.scope || event.agent;
 
-        STATE.agents.set(scope, {
+        bucketFor(event).agents.set(scope, {
             agent: event.agent,
             depth: event.depth,
             parent: event.parent,
@@ -308,7 +388,7 @@ function onEvent(event) {
 
     if (event.type === "tool:start") {
 
-        STATE.pending_tools.set(toolKey(event), {
+        bucketFor(event).pending_tools.set(toolKey(event), {
             id: event.id,
             name: event.name,
             graph_id: event.graph_id || null,
@@ -325,9 +405,11 @@ function onEvent(event) {
 
     if (event.type === "tool:end") {
 
+        const bucket = bucketFor(event);
+
         const key = toolKey(event);
-        const started = STATE.pending_tools.get(key) || {};
-        STATE.pending_tools.delete(key);
+        const started = bucket.pending_tools.get(key) || {};
+        bucket.pending_tools.delete(key);
 
         write("tool", event, {
             thinking: null,
@@ -396,6 +478,17 @@ function onEvent(event) {
             thinking: null,
             tools: []
         });
+
+        /* The run is finished, so its bucket can be retired; STATE
+           still mirrors it until the next run starts (the historical
+           view of "the last run"), but a later event for a NEW run id
+           can never inherit this run's task or agent map. */
+        if (
+            (event.type === "run:end" || event.type === "run:error") &&
+            event.run_id
+        ) {
+            RUN_BUCKETS.delete(event.run_id);
+        }
     }
 }
 
@@ -460,5 +553,6 @@ module.exports = {
     },
 
     _state: STATE,
+    _buckets: RUN_BUCKETS,
     _safeName: safeName
 };

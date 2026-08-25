@@ -148,27 +148,22 @@ async function discoverMcpTools(options) {
 | internally (a scoped foreign root without SEMANTIC_POOL_MODE=modular is
 | refused instead of answered from the wrong index).
 |
+| Phase 8 took the plan, memory and search families out too: their
+| stores now resolve through lib/dataRoot.js to the active project's
+| data root (central for registered projects, the historical .agent
+| root otherwise), and search resolves its tree against the
+| ToolContext's project root. runtime_stats STAYS gated: process-wide
+| telemetry has no project data root it could honestly claim.
+|
 | Derived from the modules themselves so a converted tool can never stay
 | listed by accident.
 */
 
 const PENDING_PROJECT_AWARENESS =
     new Set([
-        ...Object.keys(publicTools(plan)),
-        ...Object.keys(publicTools(memory)),
-        "search_start",
-        "search_get",
-        "search_list",
-        "search_stop",
         "runtime_stats"
     ]);
 
-/* Phase 4: the code/telemetry/search families are project-aware now
-   whenever the running context actually requires scoping (modular
-   cross-root), so they leave the static gate. plan/memory are NOT
-   converted yet — their stores are workspace-absolute and rewriting
-   them silently for a foreign root would corrupt data; they stay gated
-   until Phase 8. */
 const CONTEXT_AWARE_OVERRIDE = new Set(["code_simulate_mutation"]);
 
 

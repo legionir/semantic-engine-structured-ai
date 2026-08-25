@@ -19,6 +19,7 @@ const {
     resolveProjectForRun,
     assertWorkspaceMatch
 } = require("./ProjectResolver");
+const ProjectMigration = require("./ProjectMigration");
 
 let defaultRegistry = null;
 
@@ -38,6 +39,7 @@ function registry() {
 module.exports = {
     ProjectRegistry,
     ProjectStore,
+    ProjectMigration,
     createProjectContext,
     projectContextMode,
     resolveProjectForRun,

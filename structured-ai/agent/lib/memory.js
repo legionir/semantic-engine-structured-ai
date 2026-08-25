@@ -2,8 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const settings = require("./storage");
-
-const { WORKSPACE_ROOT } = require("./workspace");
+const dataRoot = require("./dataRoot");
 
 
 /*
@@ -49,9 +48,16 @@ const FIELDS = [
 ];
 
 
-function memoryPath() {
+/*
+| Phase 8: the file lives under the active project's data root (central
+| for registered projects, the legacy .agent directory otherwise); the
+| explicit parameter is how out-of-run callers (tools with a
+| ToolContext) name their root directly.
+*/
+function memoryPath(root) {
 
-    return path.join(WORKSPACE_ROOT, ".agent", "memory.json");
+    return path.join(dataRoot.resolveRoot(root), "memory.json");
+
 }
 
 
@@ -71,9 +77,9 @@ function emptyMemory() {
 }
 
 
-function loadMemory() {
+function loadMemory(root) {
 
-    const file = memoryPath();
+    const file = memoryPath(root);
 
     if (!fs.existsSync(file)) {
         return emptyMemory();
@@ -109,9 +115,9 @@ function loadMemory() {
 }
 
 
-function saveMemory(memory) {
+function saveMemory(memory, root) {
 
-    const file = memoryPath();
+    const file = memoryPath(root);
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
 

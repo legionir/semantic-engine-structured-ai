@@ -327,19 +327,27 @@ Pool با `get(projectId)`، `connect(project)`، `disconnect(projectId)`، `rel
 
 ---
 
-## [🔴] فاز ۸: Persistence per-project و migration از single-project
+## [🟢] فاز ۸: Persistence per-project و migration از single-project
 
 **هدف و scope:** جداسازی کامل stateهای ذخیره‌شدهٔ هر پروژه و مهاجرت بدون‌تلفات state فعلی. **تصمیم سند (پذیرفته‌شده):** ذخیره‌سازی متمرکز در `{{USER_DATA}}/.structured-ai/` — trade-off در برابر نگه‌داشتن state در `.agent/` داخل هر workspace بررسی و در اسناد مرجع به نفع متمرکز (سازگاری با gateway و مستقل‌بودن از حذف workspace) تصمیم‌گیری شده است. خروجی: ساختار data root پروژه‌ای + اسکریپت/مسیر migration.
 
-### [🔴] گام ۱: ساختار ذخیره‌سازی پروژه‌ای
+**تکمیل 2026-08-25:** گام‌های ۱ تا ۳ — ۹ تست isolation جدید در `test/persistence/project-stores.test.js` سبز؛ suite کامل 501/501 و `npm run check` سبز. تک resolver `agent/lib/dataRoot.js` مرجع مسیر تمام storeهاست؛ memory/plan/sessions/archive/journal/eventstore و جست‌وجو تبدیل شدند؛ overlay تنظیمات (floor workspace + cap مرکزی) و migration ایدم‌پوتنت با `--migrate` پیاده شد. تصمیم‌های ۱۹ تا ۲۲ در پیوست ب ثبت‌اند؛ `test/project-run.test.js` فاز ۷ برای خواندن رویداد از store مرکزی پروژهٔ ثبت‌شده به‌روز شد.
+
+### [🟢] گام ۱: ساختار ذخیره‌سازی پروژه‌ای
+
+**انجام شد (2026-08-25):** ماژول واحد `agent/lib/dataRoot.js` ساخته شد — یک resolver تمام مسیرهای ذخیره‌سازی را با ترتیب «root صریح ← context (ToolContext/AgentRunContext) ← پروژهٔ Run جاری از ALS ← legacy `.agent/`» می‌دهد و routing فقط در `PROJECT_CONTEXT_MODE=modular` فعال است (در legacy مسیرها بیت‌به‌بیت قبل‌اند). تبدیل‌ها: `memory.js` (پارامتر root)، `tools/plan.js` (ثابت‌های `PLAN_PATH`/`PLAN_DIRECTORY` به توابع `planPath(root)`/`planDirectory(root)` بدل شدند؛ export `_planPath` با همان مقدار باقی)، `sessions.js`، `archive.js` (root اختیاری در تمام توابع IO)، `eventstore.js` (نویسنده با envelope `project_id` route می‌کند — ثبت‌شدهٔ registry به مرکزی، بقیه به legacy؛ خواننده‌ها root اختیاری گرفتند)، `journal.js` (`journalRoot(root)` + bucket جدا per `run_id` برای جداسازی attribution اجراهای هم‌زمان؛ STATE به‌عنوان mirror آخرین Run حفظ و `_state` سازگار ماند) و `tools/search.js` (ریشهٔ جست‌وجو و نمایش نسبی از ToolContext/root همان session). scaffold مرکزی با `dataRoot.ensureRoot` (شش دایرکتوری sessions/archive/journal/eventstore/searches/processes/logs). گیت `PENDING_PROJECT_AWARENESS` حالا فقط `runtime_stats` را دارد (خانواده‌های plan/memory/search_* به‌رسمیت project-aware شدند؛ runtime_stats چون telemetry process-global است عمداً gated می‌ماند). wrapper سازگار پلن رعایت است: default/synthetic project همان مسیر legacy را می‌دهد و state موجود قابل‌خواندن می‌ماند.
 
 ساختار `{{USER_DATA}}/.structured-ai/{registry.json, projects/<id>/{project.json, memory.json, plan.json, sessions/, archive/, journal/, eventstore/, searches/, processes/, logs/}, runtime/}` را بساز. ماژول‌های `agent/lib/memory.js`، `sessions.js`، `archive.js`، `journal.js`، `eventstore.js`، `plan` و sessionهای search/process مسیرهای خود را از `projectContext.dataRoot` بگیرند (wrapper سازگار: default project به مسیر resolve‌شده از تنظیمات کنونی اشاره می‌کند تا state موجود قابل‌خواندن بماند).
 
-### [🔴] گام ۲: لایهٔ overlay تنظیمات
+### [🟢] گام ۲: لایهٔ overlay تنظیمات
+
+**انجام شد (2026-08-25):** در `agent/lib/project.js` مدل overlay پیاده شد: `loadOverlay(projectId)` فایل legacy workspace (floor) را با `projects/<id>/project.json` مرکزی (cap) ادغام می‌کند — cap per-key پیروز است و floor بقیه را پُر می‌کند؛ سنجهٔ یکتا: `overlayFor`/`centralProjectPath`. `openProject(projectId?)` زنجیرهٔ `global ← project(overlay) ← run` را حفظ کرد — مقادیر ادغام‌شده apply می‌شوند و بازدید فقط روی **مقصد مرکزی** نوشته می‌شود (registered + modular)، وگرنه مسیر legacy؛ فایل floor بایت‌به‌بایت دست‌نخورده می‌ماند (اثبات در تست). `persist()` (و watch debounce) به همان مقصدِ پروژهٔ بازشده می‌نویسد. پاسخ `openProject` به‌صورت additive فیلد `overlay_path` دارد (فقط وقتی لایهٔ مرکزی هست) و رفتار بدون cap دقیقاً legacy است. مطابق تصمیم فاز ۲، رفتار `runtime.project`/`openProject()` قدیمی و exportها حفظ شد (پارامتر اختیاری جدید سازگار).
 
 اولویت `global settings ← project settings ← run override` را پیاده کن؛ `agent/lib/project.js` (gام ۳ فاز ۲) در همین‌جا با تصمیم مستند ادغام/نگاشت شود: خواندن `.agent/project.json` قدیمی حفظ، مقصد نوشتن جدید مشخص، و رفتار overlay (ENV، فایل، runtime override فعلی) دست‌نخورده بماند.
 
-### [🔴] گام ۳: Migration idempotent از `.agent/`
+### [🟢] گام ۳: Migration idempotent از `.agent/`
+
+**انجام شد (2026-08-25):** ماژول `agent/projects/ProjectMigration.js` (export از `agent/projects`) state موجود `.agent/` (memory/plan/project.json + دایرکتوری‌های sessions/archive/journal/eventstore/searches/processes/logs) را به data root مرکزی پروژه می‌کند: copy-missing-only (هرگز overwrite → ماجرای دوباره امن و غیرتکراری)، فایل‌های قدیمی هرگز حذف نمی‌شوند، خرابی یک فایل یک ورودی در `errors` است و بقیه ادامه می‌یابد، گزارش `{project_id, source, target, source_present, copied, skipped, errors}` برمی‌گردد و scaffold مرکزی پس از مهاجرت کامل است. CLI با فلگ `--migrate <id>` آن را عرضه می‌کند: root از رکورد registry خوانده می‌شود (قانون ۹)؛ id ناشناخته بدون `-w` خطای واضح (exit 2)؛ با `-w <dir>` همان id در همان dir ثبت و سپس مهاجرت می‌شود (پذیرش workspace قدیمی در یک گام)؛ ترکیب با `--project/-i/-s/--until-done/--discussion` خطای usage است؛ اجرای دوباره «nothing new to migrate» گزارش می‌دهد.
 
 state موجود `<workspace>/.agent/` (memory، sessions، archive، journal، eventstore و project.json) به default project/پروژه‌های ثبت‌شده map شود، بدون حذف فایل‌های قدیمی. migration دوباره‌پذیر (idempotent) و با گزارش واضح باشد؛ corruption در یک فایل مهاجرت کل را متوقف نکند.
 
@@ -349,6 +357,8 @@ state موجود `<workspace>/.agent/` (memory، sessions، archive، journal، 
 - sessionهای قدیمی و memory/archive قبلی پس از migration بدون نقص load می‌شوند؛ اجرای مجدد migration چیزی را تکرار/خراب نمی‌کند.
 - restart runtime هیچ state پروژه‌ای را از بین نمی‌برد.
 - suite فعلی + تست‌های isolation persistence سبز است؛ `npm run check` سبز.
+
+**وضعیت معیارها (2026-08-25):** همهٔ چهار بند اثبات شد — جداسازی کامل storeها با تست‌های isolation (memory الف در ب دیده نمی‌شود؛ session/archive per-project؛ رویداد envelope‌دار → store مرکزی و رویداد بدون scope → legacy؛ journal با attribution per-run بیت‌به‌بیت جدا)، بارگذاری state مهاجرت‌یافته + re-run غیرتکراری + خطای per-file، پایداری restart (registry object تازه روی همان data home همان state را می‌بیند) و suite 501/501 سبز با `npm run check` سبز. (searches/processes در این نسخه store درون‌حافظه‌ای run-scopedاند و دایرکتوری‌های scaffold آن‌ها در هر data root ساخته می‌شود؛ پایداری‌سازی محتوای آن‌ها scope فازهای ۱۸ است.)
 
 ---
 
@@ -872,5 +882,9 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 16. **cache نتایج Semantic (فاز ۶):** فقط برای متدهای read-only ایندکس‌محور (۸ متد)، فقط وقتی endpoint پروتکل index generation را گزارش کند (در غیر این صورت هیچ memoizationای — freshness حالت legacy حفظ می‌شود)؛ کلید `projectId + generation + method + args`؛ حد `SEMANTIC_POOL_CACHE_LIMIT`؛ ابطال با گزارش generation جدید یا reload/disconnect.
 17. **انتقال gate خانوادهٔ code (فاز ۶):** ابزارهای code از مجموعهٔ `PENDING_PROJECT_AWARENESS` خارج شدند؛ loud-failure ریشهٔ خارجی در `SEMANTIC_POOL_MODE=legacy` حالا در `ProjectSemanticResolver` زندگی می‌کند (پیام با همان الگوی «not yet project-aware») تا رفتار مهاجرت‌نکرده‌ها در دو حالت یکسان بماند.
 18. **bundle فلگ اجرای پروژه‌آگاه (فاز ۷):** انتخاب پروژه توسط CLI (`--project`) سه فلگ `PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE` را یکجا modular می‌کند — context، ایزوله‌سازی run و پیام project_context یک واحد قابلیت‌اند؛ `SEMANTIC_POOL_MODE` عمداً بیرون از bundle است چون root اجرای CLI تضمین‌شده همان root ثبت‌شده است (engine محلی ایندکس همان درخت را سرو می‌کند). مسیر API برعکس: modular بودن را از env عملگر می‌خواند و نبودنش را با 409 صریح گزارش می‌کند؛ ریشهٔ متفاوتِ پروژه (نسبت به WORKSPACE_ROOT سرور) فقط در RUN_CONTEXT_MODE=modular مجاز است و خانواده‌های pending (plan/memory/search/runtime_stats) همان‌جا خطای «not yet project-aware» می‌دهند تا فاز ۸/به‌همراهان.
+19. **ترتیب resolve شدن data root (فاز ۸):** root صریح ← context صریح (ToolContext/AgentRunContext) ← پروژهٔ Run جاری از scope ALS ← legacy `.agent/`؛ routing فقط در `PROJECT_CONTEXT_MODE=modular` فعال است و در legacy ماژول `dataRoot` ثابت است (مسیرها بیت‌به‌بیت قبل). storeهای رویدادمحور (eventstore/journal) هویت را از envelope رویداد می‌گیرند: `project_id` ثبت‌شده در registry → data root مرکزی؛ synthetic/ناشناخته → ریشهٔ legacy. journal علاوه‌بر مسیر، state attribution را per `run_id` bucket می‌کند تا دو Run هم‌زمان task/agent-map همدیگر را به‌هم نریزند و STATE به‌عنوان mirror آخرین Run برای سازگاری `_state` باقی می‌ماند.
+20. **گیت ابزار پس از تبدیل فاز ۸ (تکمیل ثبت ۱۸):** خانواده‌های plan/memory/search_* پس از تبدیل به routing دیتاروت از `PENDING_PROJECT_AWARENESS` خارج شدند؛ `runtime_stats` عمداً gated می‌ماند چون telemetry process-global است و root پروژه‌ای صادقانه‌ای ندارد. متن خطای «not yet project-aware» برای runtime_stats حفظ شده است.
+21. **overlay تنظیمات (فاز ۸ گام ۲؛ اجرای تصمیم ۲):** خواندن = floor ورک‌اسپیس (`.agent/project.json`) + cap مرکزی (`projects/<id>/project.json`) با پیروزی per-key برای cap؛ نوشتن = مرکزی وقتی پروژه registered و mode modular است، وگرنه مسیر legacy؛ فایل floor برای نوشتارهای جدید فقط‌خواندنی می‌ماند (مرجع replay/سازگاری).
+22. **معناشناسی migration (فاز ۸ گام ۳):** copy-missing-only (target موجود = skipped، هرگز overwrite) تا re-run ایدم‌پوتنت و غیرتکراری باشد؛ فایل‌های legacy هرگز حذف نمی‌شوند؛ خطای هر فایل جداگانه در گزارش `{copied, skipped, errors}` ثبت و مهاجرت متوقف نمی‌شود؛ auto-register با `-w` اختیاری است و root همواره از registry/`-w` عملگر می‌آید (قانون ۹).
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

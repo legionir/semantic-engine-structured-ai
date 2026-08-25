@@ -2,11 +2,11 @@ const fs = require("fs");
 const path = require("path");
 
 const hooks = require("../lib/hooks");
+const dataRoot = require("../lib/dataRoot");
 
-const {
-    WORKSPACE_ROOT,
-    toWorkspaceRelative
-} = require("../lib/workspace");
+const { toWorkspaceRelative } = require("../lib/workspace");
+
+const ToolContext = require("./ToolContext");
 
 
 /*
@@ -27,11 +27,24 @@ const {
 |--------------------------------------------------------------------------
 */
 
-const PLAN_DIRECTORY =
-    path.join(WORKSPACE_ROOT, ".agent");
+/*
+| Phase 8: the plan file lives under the active project's data root
+| (central for registered projects, the historical .agent directory in
+| every other mode), so constants become functions of the resolution
+| root. The explicit parameter carries a ToolContext or an absolute
+| root from out-of-run callers; without one the in-scope run's project
+| wins, then the legacy path — the گام ۱ resolution order.
+*/
+function planDirectory(root) {
 
-const PLAN_PATH =
-    path.join(PLAN_DIRECTORY, "plan.json");
+    return dataRoot.resolveRoot(root);
+}
+
+
+function planPath(root) {
+
+    return path.join(planDirectory(root), "plan.json");
+}
 
 const STATUSES = [
     "pending",
@@ -58,9 +71,11 @@ function emptyPlan() {
 }
 
 
-function loadPlan() {
+function loadPlan(root) {
 
-    if (!fs.existsSync(PLAN_PATH)) {
+    const file = planPath(root);
+
+    if (!fs.existsSync(file)) {
         return emptyPlan();
     }
 
@@ -68,7 +83,7 @@ function loadPlan() {
 
         const parsed =
             JSON.parse(
-                fs.readFileSync(PLAN_PATH, "utf8")
+                fs.readFileSync(file, "utf8")
             );
 
         return {
@@ -99,22 +114,22 @@ function loadPlan() {
 
         throw new Error(
             `The plan file is not valid JSON: ${
-                toWorkspaceRelative(PLAN_PATH)
+                toWorkspaceRelative(file)
             } (${error.message})`
         );
     }
 }
 
 
-function savePlan(plan) {
+function savePlan(plan, root) {
 
-    fs.mkdirSync(PLAN_DIRECTORY, { recursive: true });
+    fs.mkdirSync(planDirectory(root), { recursive: true });
 
     plan.updated_at =
         new Date().toISOString();
 
     fs.writeFileSync(
-        PLAN_PATH,
+        planPath(root),
         `${JSON.stringify(plan, null, 2)}\n`,
         "utf8"
     );
@@ -411,23 +426,25 @@ function assertUniqueIds(plan) {
 |--------------------------------------------------------------------------
 */
 
-async function planGet(args) {
+async function planGet(args, context) {
 
-    const plan = loadPlan();
+    const ctx = ToolContext.from(context);
+
+    const plan = loadPlan(ctx);
 
     const summary = summarise(plan);
 
     if (args && args.summary_only === true) {
 
         return {
-            path: toWorkspaceRelative(PLAN_PATH),
+            path: displayPath(planPath(ctx)),
             summary
         };
     }
 
     return {
         path:
-            toWorkspaceRelative(PLAN_PATH),
+            displayPath(planPath(ctx)),
 
         objective:
             plan.objective,
@@ -452,7 +469,9 @@ async function planGet(args) {
 |--------------------------------------------------------------------------
 */
 
-async function planSet(args) {
+async function planSet(args, context) {
+
+    const ctx = ToolContext.from(context);
 
     if (
         typeof args.objective !== "string" ||
@@ -474,7 +493,7 @@ async function planSet(args) {
         );
     }
 
-    const existing = loadPlan();
+    const existing = loadPlan(ctx);
 
     const plan = {
         objective:
@@ -528,11 +547,11 @@ async function planSet(args) {
 
     assertUniqueIds(plan);
 
-    savePlan(plan);
+    savePlan(plan, ctx);
 
     return {
         path:
-            toWorkspaceRelative(PLAN_PATH),
+            displayPath(planPath(ctx)),
 
         summary:
             summarise(plan)
@@ -613,9 +632,11 @@ function normaliseUpdateArguments(args) {
 }
 
 
-async function planUpdate(args) {
+async function planUpdate(args, context) {
 
-    const plan = loadPlan();
+    const ctx = ToolContext.from(context);
+
+    const plan = loadPlan(ctx);
 
     if (plan.phases.length === 0) {
 
@@ -783,11 +804,11 @@ async function planUpdate(args) {
 
     assertUniqueIds(plan);
 
-    savePlan(plan);
+    savePlan(plan, ctx);
 
     return {
         path:
-            toWorkspaceRelative(PLAN_PATH),
+            displayPath(planPath(ctx)),
 
         updated:
             applied,
@@ -795,6 +816,20 @@ async function planUpdate(args) {
         summary:
             summarise(plan)
     };
+}
+
+
+/* A path the model can read: workspace-relative when the plan lives in
+   the workspace, the absolute central path when it lives in the
+   project data home (toWorkspaceRelative on a far-away file would print
+   a maze of ../ segments, which is worse than absolute). */
+function displayPath(file) {
+
+    const relative = toWorkspaceRelative(file);
+
+    return relative.startsWith("..")
+        ? file
+        : relative;
 }
 
 
@@ -806,5 +841,5 @@ module.exports = {
     _loadPlan: loadPlan,
     _normaliseUpdateArguments: normaliseUpdateArguments,
     _summarise: summarise,
-    _planPath: PLAN_PATH
+    _planPath: path.join(dataRoot.legacyDataRoot(), "plan.json")
 };

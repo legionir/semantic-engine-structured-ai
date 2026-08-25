@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const settings = require("./storage");
+const dataRoot = require("./dataRoot");
 
 const { WORKSPACE_ROOT } = require("./workspace");
 
@@ -31,21 +32,23 @@ const { WORKSPACE_ROOT } = require("./workspace");
 const SESSION_VERSION = "1";
 
 
-function sessionsDirectory() {
+/* Phase 8: the directory lives under the active project's data root;
+   the root argument is how out-of-run callers name it directly. */
+function sessionsDirectory(root) {
 
-    return path.join(WORKSPACE_ROOT, ".agent", "sessions");
+    return path.join(dataRoot.resolveRoot(root), "sessions");
 }
 
 
-function indexPath() {
+function indexPath(root) {
 
-    return path.join(sessionsDirectory(), "index.json");
+    return path.join(sessionsDirectory(root), "index.json");
 }
 
 
-function sessionPath(id) {
+function sessionPath(id, root) {
 
-    return path.join(sessionsDirectory(), `${safeId(id)}.json`);
+    return path.join(sessionsDirectory(root), `${safeId(id)}.json`);
 }
 
 
@@ -104,10 +107,10 @@ function readJson(file, fallback) {
 }
 
 
-function loadIndex() {
+function loadIndex(root) {
 
     const parsed =
-        readJson(indexPath(), { sessions: [] });
+        readJson(indexPath(root), { sessions: [] });
 
     return {
         sessions:
@@ -118,12 +121,12 @@ function loadIndex() {
 }
 
 
-function saveIndex(index) {
+function saveIndex(index, root) {
 
-    fs.mkdirSync(sessionsDirectory(), { recursive: true });
+    fs.mkdirSync(sessionsDirectory(root), { recursive: true });
 
     fs.writeFileSync(
-        indexPath(),
+        indexPath(root),
         `${JSON.stringify(index, null, 2)}\n`,
         "utf8"
     );
@@ -183,10 +186,10 @@ function titleFrom(session) {
 }
 
 
-function loadSession(id) {
+function loadSession(id, root) {
 
     const parsed =
-        readJson(sessionPath(id), null);
+        readJson(sessionPath(id, root), null);
 
     if (!parsed) {
         return null;
@@ -238,13 +241,13 @@ function trim(session) {
 }
 
 
-function saveSession(session) {
+function saveSession(session, root) {
 
     if (settings.get("SESSIONS_ENABLED") !== true) {
         return session;
     }
 
-    fs.mkdirSync(sessionsDirectory(), { recursive: true });
+    fs.mkdirSync(sessionsDirectory(root), { recursive: true });
 
     session.updated_at = new Date().toISOString();
 
@@ -254,12 +257,12 @@ function saveSession(session) {
     trim(session);
 
     fs.writeFileSync(
-        sessionPath(session.id),
+        sessionPath(session.id, root),
         `${JSON.stringify(session, null, 2)}\n`,
         "utf8"
     );
 
-    const index = loadIndex();
+    const index = loadIndex(root);
 
     const summary = summarise(session);
 
@@ -296,7 +299,7 @@ function saveSession(session) {
 
         try {
 
-            fs.unlinkSync(sessionPath(dropped.id));
+            fs.unlinkSync(sessionPath(dropped.id, root));
 
         } catch {
 
@@ -306,21 +309,21 @@ function saveSession(session) {
 
     index.sessions = index.sessions.slice(0, limit);
 
-    saveIndex(index);
+    saveIndex(index, root);
 
     return session;
 }
 
 
-function listSessions() {
+function listSessions(root) {
 
-    return loadIndex().sessions;
+    return loadIndex(root).sessions;
 }
 
 
-function deleteSession(id) {
+function deleteSession(id, root) {
 
-    const index = loadIndex();
+    const index = loadIndex(root);
 
     const before = index.sessions.length;
 
@@ -329,14 +332,14 @@ function deleteSession(id) {
 
     try {
 
-        fs.unlinkSync(sessionPath(id));
+        fs.unlinkSync(sessionPath(id, root));
 
     } catch {
 
         /* already gone */
     }
 
-    saveIndex(index);
+    saveIndex(index, root);
 
     return index.sessions.length !== before;
 }

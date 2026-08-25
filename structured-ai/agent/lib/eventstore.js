@@ -2,8 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const settings = require("./storage");
-
-const { WORKSPACE_ROOT } = require("./workspace");
+const dataRoot = require("./dataRoot");
 
 
 /*
@@ -26,9 +25,34 @@ const STORE_VERSION = "1";
 const pendingWrites = new Map();
 
 
-function storeRoot() {
+/* Phase 8: readers may name a root explicitly (a project dataRoot, a
+   ToolContext); without one the in-scope run's project wins, then the
+   legacy root — exactly the dataRoot resolution order of گام ۱. */
+function storeRoot(root) {
 
-    return path.join(WORKSPACE_ROOT, ".agent", "eventstore");
+    return path.join(dataRoot.resolveRoot(root), "eventstore");
+}
+
+
+/* Writers route by the event's identity instead of ambient context:
+   an envelope carrying a REGISTERED project_id (modular scoped runs)
+   lands in that project's central store; anything else — legacy events,
+   synthetic projects, ids the registry does not know — keeps the
+   historical root, which is also what keeps Phase 1-7 behavior
+   bit-identical in legacy mode. */
+function eventRoot(event) {
+
+    if (event && typeof event === "object") {
+
+        const scoped = dataRoot.dataRootForProjectId(event.project_id);
+
+        if (scoped) {
+            return scoped;
+        }
+
+    }
+
+    return dataRoot.currentRoot();
 }
 
 
@@ -43,9 +67,9 @@ function dayOf(at) {
 }
 
 
-function fileFor(at) {
+function fileFor(at, root) {
 
-    return path.join(storeRoot(), `${dayOf(at)}.jsonl`);
+    return path.join(storeRoot(root), `${dayOf(at)}.jsonl`);
 }
 
 
@@ -61,10 +85,12 @@ function append(event) {
 
     try {
 
-        fs.mkdirSync(storeRoot(), { recursive: true });
+        const root = eventRoot(event);
+
+        fs.mkdirSync(storeRoot(root), { recursive: true });
 
         fs.appendFileSync(
-            fileFor(event.at),
+            fileFor(event.at, root),
             `${JSON.stringify(event)}\n`,
             "utf8"
         );
@@ -83,11 +109,12 @@ async function appendQueued(event) {
     if (!event || typeof event.type !== "string") return false;
     if (settings.get("EVENTSTORE_ENABLED") !== true) return false;
 
-    const file = fileFor(event.at);
+    const root = eventRoot(event);
+    const file = fileFor(event.at, root);
     const previous = pendingWrites.get(file) || Promise.resolve();
     const next = previous
         .then(async () => {
-            await fs.promises.mkdir(storeRoot(), { recursive: true });
+            await fs.promises.mkdir(storeRoot(root), { recursive: true });
             await fs.promises.appendFile(
                 file,
                 `${JSON.stringify(event)}\n`,
@@ -155,7 +182,8 @@ function query({
     types = null,
     date = null,
     date_from = null,
-    date_to = null
+    date_to = null,
+    root = null
 } = {}) {
 
     const result = [];
@@ -172,7 +200,7 @@ function query({
         const end = dayOf(new Date(date_to || date_from));
         days = enumerateDays(start, end);
     } else {
-        days = listDays();
+        days = listDays(root);
     }
 
     const typeSet =
@@ -182,7 +210,7 @@ function query({
 
     for (const day of days) {
 
-        for (const event of readDay(day)) {
+        for (const event of readDay(day, root)) {
 
             if (run_id !== null && event.run_id !== run_id) {
                 continue;
@@ -222,12 +250,12 @@ function query({
 | explicit day keys.
 */
 
-function readDay(day) {
+function readDay(day, root) {
 
     const file =
         typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)
-            ? path.join(storeRoot(), `${day}.jsonl`)
-            : fileFor(day);
+            ? path.join(storeRoot(root), `${day}.jsonl`)
+            : fileFor(day, root);
 
     if (!fs.existsSync(file)) return [];
 
@@ -291,13 +319,13 @@ function enumerateDays(start, end) {
 }
 
 
-function listDays() {
+function listDays(root) {
 
-    if (!fs.existsSync(storeRoot())) {
+    if (!fs.existsSync(storeRoot(root))) {
         return [];
     }
 
-    return fs.readdirSync(storeRoot())
+    return fs.readdirSync(storeRoot(root))
         .filter(name => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
         .map(name => name.replace(/\.jsonl$/, ""))
         .sort();

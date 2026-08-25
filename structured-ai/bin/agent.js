@@ -67,6 +67,10 @@ Options
       --project <id>      Run inside the registered project <id>: the root
                           comes from the project registry (-w must match it
                           or be omitted), and the run becomes project-aware
+      --migrate <id>      Copy the legacy .agent/ state of registered
+                          project <id> into the central project store
+                          (idempotent, old files are kept; with -w the id
+                          is registered at that directory first)
   -f, --file <path>         Read the task from a file
   -a, --approve <mode>      auto | prompt | deny (default: prompt)
       --dry-run             Refuse anything needing approval, so nothing is changed
@@ -208,6 +212,11 @@ function parseArguments(argv) {
 
             case "--project":
                 options.project =
+                    requireValue(argument, argv[++index]);
+                break;
+
+            case "--migrate":
+                options.migrate =
                     requireValue(argument, argv[++index]);
                 break;
 
@@ -985,6 +994,116 @@ async function runDiscussion(runtime, options) {
 }
 
 
+/*
+| EXECUTION_PLAN Phase 8 گام ۳: --migrate <id> copies the legacy .agent/
+| state of a registered project into its central data root (idempotent,
+| old files kept). The source root comes from the registry record —
+| never from a flag (rule 9); with -w an id the registry does not know
+| is REGISTERED at that directory first, so adopting a legacy workspace
+| as a project plus migrating its state is one step.
+*/
+function runMigration(projectId, options) {
+
+    if (options.project) {
+
+        fail("--migrate and --project are separate operations");
+
+    }
+
+    if (
+        options.interactive ||
+        options.serve ||
+        options.untilDone ||
+        options.discussion
+    ) {
+
+        fail("--migrate is a one-shot operation and cannot be combined with -i, -s, --until-done or --discussion");
+
+    }
+
+    const projects =
+        require(path.join(REPO_ROOT, "agent", "projects", "index.js"));
+
+    const registry = projects.registry();
+
+    let record;
+
+    try {
+
+        record = registry.get(projectId);
+
+    } catch {
+
+        /* An id the registry does not know can still be adopted: -w
+           names the directory it should be registered at. Without -w
+           there is no source root we are allowed to assume. */
+
+        if (!options.workspace) {
+
+            fail(
+                `Unknown project: ${projectId} ` +
+                "(--migrate names a record of the central project registry; " +
+                "pass -w <dir> to register that directory under the id first)"
+            );
+
+        }
+
+        record = registry.register({
+            id: projectId,
+            name: projectId,
+            rootPath: options.workspace
+        });
+
+        process.stderr.write(
+            `agent: registered project ${record.id} at ${record.rootPath}\n`
+        );
+
+    }
+
+    const report =
+        projects.ProjectMigration.migrateProject(record);
+
+    const summary =
+        `agent: migration for ${report.project_id}\n` +
+        `  source : ${report.source}${report.source_present ? "" : " (no legacy state found)"}\n` +
+        `  target : ${report.target}\n` +
+        `  copied : ${report.copied.length} file(s), ` +
+        `skipped ${report.skipped.length} (already migrated), ` +
+        `errors ${report.errors.length}\n`;
+
+    process.stderr.write(summary);
+
+    for (const entry of report.errors) {
+
+        process.stderr.write(
+            `  error : ${entry.file || "target"} — ${entry.error}\n`
+        );
+
+    }
+
+    if (report.copied.length > 0) {
+
+        process.stderr.write(
+            `  files : ${report.copied.join(", ")}\n`
+        );
+
+    } else if (report.errors.length === 0) {
+
+        process.stderr.write(
+            "  nothing new to migrate (idempotent re-run)\n"
+        );
+
+    }
+
+    process.exit(
+        report.errors.length > 0
+            ? EXIT.FAILED
+            : EXIT.SUCCESS
+    );
+
+}
+
+
 async function main() {
 
     const options =
@@ -1021,6 +1140,14 @@ async function main() {
 
     const flags =
         applyEnvironment(options);
+
+    /* گام ۳ migration is handled before the runtime is loaded: it only
+       needs the registry and the two data roots. */
+    if (options.migrate) {
+
+        runMigration(options.migrate, options);
+
+    }
 
     if (
         !options.interactive &&

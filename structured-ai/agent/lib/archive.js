@@ -3,8 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const settings = require("./storage");
-
-const { WORKSPACE_ROOT } = require("./workspace");
+const dataRoot = require("./dataRoot");
 
 
 /*
@@ -85,21 +84,22 @@ const COMMAND_TOOLS = [
 ];
 
 
-function archiveDirectory() {
+/* Phase 8: the directory lives under the active project's data root. */
+function archiveDirectory(root) {
 
-    return path.join(WORKSPACE_ROOT, ".agent", "archive");
+    return path.join(dataRoot.resolveRoot(root), "archive");
 }
 
 
-function indexPath() {
+function indexPath(root) {
 
-    return path.join(archiveDirectory(), "index.json");
+    return path.join(archiveDirectory(root), "index.json");
 }
 
 
-function segmentPath(name) {
+function segmentPath(name, root) {
 
-    return path.join(archiveDirectory(), name);
+    return path.join(archiveDirectory(root), name);
 }
 
 
@@ -115,9 +115,9 @@ function emptyIndex() {
 }
 
 
-function loadIndex() {
+function loadIndex(root) {
 
-    const file = indexPath();
+    const file = indexPath(root);
 
     if (!fs.existsSync(file)) {
         return emptyIndex();
@@ -157,14 +157,14 @@ function loadIndex() {
 }
 
 
-function saveIndex(index) {
+function saveIndex(index, root) {
 
-    fs.mkdirSync(archiveDirectory(), { recursive: true });
+    fs.mkdirSync(archiveDirectory(root), { recursive: true });
 
     index.updated_at = new Date().toISOString();
 
     fs.writeFileSync(
-        indexPath(),
+        indexPath(root),
         `${JSON.stringify(index, null, 2)}\n`,
         "utf8"
     );
@@ -447,12 +447,12 @@ function currentSegment(index) {
 }
 
 
-function appendBody(segment, record, body) {
+function appendBody(segment, record, body, root) {
 
-    fs.mkdirSync(archiveDirectory(), { recursive: true });
+    fs.mkdirSync(archiveDirectory(root), { recursive: true });
 
     fs.appendFileSync(
-        segmentPath(segment),
+        segmentPath(segment, root),
         `${JSON.stringify({ id: record.id, body })}\n`,
         "utf8"
     );
@@ -490,7 +490,7 @@ function archiveEvents(events, options = {}) {
     }
 
     const index =
-        options.index || loadIndex();
+        options.index || loadIndex(options.root);
 
     const byHash = new Map();
 
@@ -551,7 +551,7 @@ function archiveEvents(events, options = {}) {
             segment
         };
 
-        appendBody(segment, record, body);
+        appendBody(segment, record, body, options.root);
 
         index.records.push(record);
 
@@ -560,9 +560,9 @@ function archiveEvents(events, options = {}) {
         added++;
     }
 
-    const maintained = maintain(index);
+    const maintained = maintain(index, options.root);
 
-    saveIndex(index);
+    saveIndex(index, options.root);
 
     return {
         enabled: true,
@@ -702,7 +702,7 @@ function rollUpBody(group, kind, agent) {
 }
 
 
-function rollUp(index) {
+function rollUp(index, root) {
 
     const limit =
         settings.get("ARCHIVE_MAX_RECORDS");
@@ -843,7 +843,8 @@ function rollUp(index) {
             clip(
                 body,
                 settings.get("ARCHIVE_ROLLUP_BODY_CHARS")
-            )
+            ),
+            root
         );
 
         index.records.push(record);
@@ -864,9 +865,9 @@ function rollUp(index) {
 | all of it is.
 */
 
-function compactSegments(index) {
+function compactSegments(index, root) {
 
-    const directory = archiveDirectory();
+    const directory = archiveDirectory(root);
 
     if (!fs.existsSync(directory)) {
         return { compacted: 0, removed: 0 };
@@ -910,7 +911,7 @@ function compactSegments(index) {
 
         if (alive.size === 0 && keep.size === 0) {
 
-            fs.unlinkSync(segmentPath(name));
+            fs.unlinkSync(segmentPath(name, root));
 
             removed++;
 
@@ -918,7 +919,7 @@ function compactSegments(index) {
         }
 
         const lines =
-            fs.readFileSync(segmentPath(name), "utf8")
+            fs.readFileSync(segmentPath(name, root), "utf8")
                 .split("\n")
                 .filter(line => line.trim() !== "");
 
@@ -946,7 +947,7 @@ function compactSegments(index) {
         }
 
         fs.writeFileSync(
-            segmentPath(name),
+            segmentPath(name, root),
             `${kept.join("\n")}\n`,
             "utf8"
         );
@@ -958,11 +959,11 @@ function compactSegments(index) {
 }
 
 
-function maintain(index) {
+function maintain(index, root) {
 
-    const rolled = rollUp(index);
+    const rolled = rollUp(index, root);
 
-    const files = compactSegments(index);
+    const files = compactSegments(index, root);
 
     return {
         ...rolled,
@@ -991,7 +992,7 @@ function tokenise(text) {
 function searchArchive(query, options = {}) {
 
     const index =
-        options.index || loadIndex();
+        options.index || loadIndex(options.root);
 
     const terms = tokenise(query);
 
@@ -1103,9 +1104,9 @@ function searchArchive(query, options = {}) {
 }
 
 
-function readBody(record) {
+function readBody(record, root) {
 
-    const file = segmentPath(record.segment);
+    const file = segmentPath(record.segment, root);
 
     if (!fs.existsSync(file)) {
         return null;
@@ -1145,9 +1146,9 @@ function readBody(record) {
 | trying rather than answering "unknown".
 */
 
-function findOrphanBody(id) {
+function findOrphanBody(id, root) {
 
-    const directory = archiveDirectory();
+    const directory = archiveDirectory(root);
 
     if (!fs.existsSync(directory)) {
         return null;
@@ -1161,7 +1162,7 @@ function findOrphanBody(id) {
 
         for (
             const line
-            of fs.readFileSync(segmentPath(name), "utf8").split("\n")
+            of fs.readFileSync(segmentPath(name, root), "utf8").split("\n")
         ) {
 
             if (line.trim() === "" || !line.includes(`"${id}"`)) {
@@ -1196,7 +1197,7 @@ function findOrphanBody(id) {
 function getRecords(ids, options = {}) {
 
     const index =
-        options.index || loadIndex();
+        options.index || loadIndex(options.root);
 
     const wanted =
         (Array.isArray(ids) ? ids : [ids])
@@ -1212,7 +1213,7 @@ function getRecords(ids, options = {}) {
 
         if (!record) {
 
-            const orphan = findOrphanBody(id);
+            const orphan = findOrphanBody(id, options.root);
 
             if (orphan) {
 
@@ -1233,7 +1234,7 @@ function getRecords(ids, options = {}) {
 
         found.push({
             ...record,
-            body: readBody(record)
+            body: readBody(record, options.root)
         });
     }
 
@@ -1244,7 +1245,7 @@ function getRecords(ids, options = {}) {
 function stats(options = {}) {
 
     const index =
-        options.index || loadIndex();
+        options.index || loadIndex(options.root);
 
     const byKind = {};
 
@@ -1263,7 +1264,7 @@ function stats(options = {}) {
             settings.get("ARCHIVE_ENABLED") === true,
 
         path:
-            archiveDirectory(),
+            archiveDirectory(options.root),
 
         records:
             index.records.length,

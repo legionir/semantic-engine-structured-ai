@@ -157,10 +157,11 @@ function registerProject(id, rootPath) {
 }
 
 
-/* Read every event the run left in the workspace event store. */
-function readStoredEvents(workspace) {
-
-    const dir = path.join(workspace, ".agent", "eventstore");
+/* Read every event a run left in the given event store directory.
+   Phase 8: a REGISTERED project's events land in its central store
+   (<DATA_HOME>/projects/<id>/eventstore); the workspace .agent store
+   now only sees legacy (unscoped) runs. */
+function readStoredEvents(dir) {
 
     if (!fs.existsSync(dir)) {
         return [];
@@ -342,9 +343,15 @@ async function main() {
             "the request sent to the model must carry the prj-a project_context"
         );
 
-        /* the run's events are attributed to the project and run id */
+        /* the run's events are attributed to the project and run id;
+           Phase 8 routes a registered project's events to its central
+           store, so that is the store this test reads */
 
-        const stored = readStoredEvents(WORKSPACE);
+        const stored =
+
+            readStoredEvents(
+                path.join(DATA_HOME, "projects", "prj-a", "eventstore")
+            );
 
         assert.ok(
             stored.some(
