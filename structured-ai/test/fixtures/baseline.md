@@ -83,3 +83,19 @@
 | **مجموع** | **459/459 passed** |
 
 *نکته:* تست parity فاز ۳ خروجی normalize‌شدهٔ اجرای single-Run در حالت `RUN_CONTEXT_MODE=modular` را در همان فرایند با حالت legacy (baseline این سند) مقایسه و برابر اعلام کرد؛ تنها تفاوت مجاز، فیلد additive `project_id` روی envelope رویدادهای scoped است (CONTRACTS.md §۸).
+
+## suite پایان فاز ۴ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-25 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` (جدید فاز ۴) | 9/9 passed |
+| ۱۴ فایل اصلی (مانند جدول اول) | 415/415 passed |
+| **مجموع** | **468/468 passed** |
+
+*نکته:* برابری خروجی ابزارها در حالت legacy با baseline همچنان توسط `test/tools.test.js` (۵۶ تست بدون تغییر) و suite runtime قفل است؛ در حالت modular نیز خروجی pathها نسبت به root همان context با همان شکل گزارش می‌شود.

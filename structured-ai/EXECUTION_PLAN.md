@@ -176,23 +176,33 @@
 
 ---
 
-## [🔴] فاز ۴: Tool Runtime و ابزارهای project-aware (File/Process/Git)
+## [🟢] فاز ۴: Tool Runtime و ابزارهای project-aware (File/Process/Git)
 
 **هدف و scope:** انتقال امن ProjectContext/RunContext به ابزارها و project-aware کردن ابزارهای filesystem، process و git به‌جای اتکای به `WORKSPACE_ROOT` سراسری. خروجی: `agent/tools/ToolContext.js`، API کار در workspace و تبدیل کامل ابزارهای لیست‌شده.
 
-### [🔴] گام ۱: اصلاح نقطهٔ اجرای ابزار
+**تکمیل 2026-08-25:** ۹ تست جدید سبز؛ suite کامل ۴۶۸/۴۶۸. اجرای cross-root وقتی فعال می‌شود که هر دو flag `RUN_CONTEXT_MODE=modular` و `PROJECT_CONTEXT_MODE=modular` باشند (در بقیهٔ حالت‌ها guard فاز ۲ ساری است). ابزارهای هنوز تبدیل‌نشده (code_*، plan_*، memory/archive، search_*، runtime_stats) روی root خارج از workspace خطای صریح «not yet project-aware» می‌دهند (فازهای ۶/۸).
+
+### [🟢] گام ۱: اصلاح نقطهٔ اجرای ابزار
+
+**انجام شد (2026-08-25):** `agent/tools/ToolContext.js` ساخته شد — context اجرای ابزار (`{agent, runId, projectId, projectContext}`) را normalize می‌کند، در مفطوم identity را از روی context می‌سازد و helperهای `resolvePath/assertSafe/isInside/relative/root/scoped` را به root مؤثر متصل می‌کند؛ در legacy دقیقاً همان توابع pinned روی WORKSPACE_ROOT صدا زده می‌شوند (رفتار بیت‌به‌بیت قبلی؛ بازگشت context پین‌شده، هرگز null). قانون ۹ به‌صورت مکانیکی اجرا شد: `assertNoIdentityArguments` هر projectId/project/root ورودی از سمت آرگومان‌ها را رد می‌کند و context متناقض (projectId بدون context، context بدون workspaceRoot) خطای صریح دارد؛ در `PROJECT_CONTEXT_MODE=modular` اجرای ابزار بدون context معتبر خطاست. امضای `executeTool(name, args, context)` حفظ و context به implementation به‌عنوان پارامتر دوم رسید (`implementation(args, toolContext)`؛ context.raw همیشه با `{agent}` سازگار است). نقطهٔ فراخوانی در `agent.js` در حالت Run modular از روی `currentRun()` context کامل می‌سازد، در legacy دقیقاً شکل قبلی `{agent}`.
 
 امضای اجرا به `executeTool(name, args, { agent, runId, projectId, projectContext })` تغییر کند؛ implementationها به شکل `implementation(args, context)` سازمان‌دهی شوند. `projectId` در آرگومان‌های کاربر/مدل تزریق نشود (قانون ثابت ۹). ابزار بدون context معتبر اجرا نشود. در حالت `legacy` همان امضای فعلی حفظ شود؛ schema ابزارها و نام آن‌ها در هر دو حالت بدون تغییر.
 
-### [🔴] گام ۲: ساخت Workspace API پروژه‌ای
+### [🟢] گام ۲: ساخت Workspace API پروژه‌ای
+
+**انجام شد (2026-08-25):** هستهٔ مرز در `agent/lib/workspace.js` به توابع پارامتردار root استخراج شد (`resolvePathInRoot`، `assertPathSafeInRoot`، `toRelativeInRoot`) و wrapperهای legacy با همان امضای قبلی روی WORKSPACE_ROOT پین ماندند. **انحراف نام‌گذاری مستندشده:** به‌جای overload کردن `resolveWorkspacePath` (که تغییر شکل امضای export موجود = نقض قانون ۵ بود)، API پروژه‌ای با نام‌های جدید افزوده شد: `resolveProjectPath`، `isInsideProject`، `toProjectRelative`، `assertProjectPathSafe` (+ `projectRootOf`) که «project» را هر شیء دارای `workspaceRoot` می‌پذیرند و نبود root خطای صریح است. canonicalization و جلوگیری از escape (با realpath عمیق‌ترین جدِ موجود) عیناً به API پروژه‌ای رسید — تست امنیتی symlink بین دو پروژه سبز است.
 
 `resolveWorkspacePath(projectContext, inputPath)`، `isInsideProject(projectContext, targetPath)` و `toProjectRelative(projectContext, targetPath)` را در لایهٔ workspace پیاده کن (با canonicalization و جلوگیری از path/symlink escape). `agent/lib/workspace.js` و استفاده‌کنندگانش به‌تدریج به این API مسیر شوند.
 
-### [🔴] گام ۳: project-aware کردن ابزارهای فایل، process و git
+### [🟢] گام ۳: project-aware کردن ابزارهای فایل، process و git
+
+**انجام شد (2026-08-25):** هر ۱۱ ابزار `fs_*` + `fs_info`؛ هر ۶ ابزار process با `cwd` از root مؤثر context (bwrap نیز همان root را bind می‌کند) و sessionهای دارای مالکیت (`run_id`/`project_id`/`root`; `process_list` در حالت scoped فقط sessionهای همان پروژه، دسترسی متقابل به session پروژهٔ دیگر = «Unknown process»)؛ هر ۷ ابزار git در repository پروژهٔ context. خروجی path نسبی همیشه نسبت به root همان context است. guard حذف root در `fs_delete` و پیام cd در `terminal_exec` به root مؤثر منتقل شدند. state اشتراکی باقی‌مانده از فاز ۳ نیز تثبیت شد: telemetry به bucketهای per-run (+ رکوردهای global با شکل تاریخی؛ `executedToolNames(runId)`) و search sessions با برچسب `run_id` و `resetSessions(runId)`؛ `startRunScope(runId)` فقط scope همان Run را ریست می‌کند و `checkPerformedClaim` هر Run را با تاریخچهٔ ابزار خودش می‌سنجد. ابزارهای تبدیل‌نشده (code_*، plan_*، memory_get/archive_*، search_*، runtime_stats) با gate مکانیکی (از روی کلیدهای خود ماژول‌ها ساخته می‌شود) روی root خارج از workspace خطای phase-tagged می‌دهند؛ معیار «مسیر امن» نه سکوت.
 
 ابزارهای `fs_read`، `fs_read_many`، `fs_list`، `fs_tree`، `fs_stat`، `fs_info`، `fs_write`، `fs_edit`، `fs_mkdir`، `fs_move`، `fs_delete`؛ ابزارهای process (`terminal_exec`، `process_start`، `process_read`، `process_write`، `process_terminate`، `process_list`) با `cwd` گرفته‌شده از `projectContext.workspaceRoot` و sessionهای per-project؛ و ابزارهای git (`git_status`، `git_diff`، `git_log`، `git_branch`، `git_checkout`، `git_add`، `git_commit`) در repository پروژهٔ context.
 
-### [🔴] گام ۴: مرز ماژول داخلی پروژه در tools (بدون ابزار model-facing)
+### [🟢] گام ۴: مرز ماژول داخلی پروژه در tools (بدون ابزار model-facing)
+
+**انجام شد (2026-08-25):** تست منفی در `test/tools/project-tools.test.js` (`no model-facing project tool exists anywhere`): نه `callableToolNames()` و نه خروجی model-facing `resolveTools("*")` هیچ نامی منطبق بر `/project/i` ندارد. منطق مشترک پروژه در لایهٔ tools در `agent/tools/ToolContext.js` زندگی می‌کند — ماژولی داخلی runtime که هرگز در IMPLEMENTATIONS/registry مدل وارد نمی‌شود.
 
 **تصمیم تأییدشده (2026-08-25):** هیچ ابزار model-facingای برای پروژه ساخته نمی‌شود. در صورت نیاز به منطق مشترک پروژه در لایهٔ tools، یک ماژول **داخلی runtime** (مثل `agent/tools/project.js` در ساختار پیشنهادی اسناد مرجع) قابل ساخت است، اما هرگز در `tools registry` مدل قرار نمی‌گیرد و به‌عنوان tool schema در prompt/request ارسال نمی‌شود. لیست، انتخاب و تعویض پروژهٔ فعال فقط از طریق Web API فاز ۹ و UI فاز ۱۱ انجام می‌شود (قانون ثابت ۹). این گام صرفاً مستندسازی این مرز و افزودن تست منفی (عدم وجود ابزار پروژه در خروجی `resolveTools()`) است.
 
@@ -828,6 +838,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 7. **مکانیزم ایزوله‌سازی Run (فاز ۳):** AsyncLocalStorage برای هر دو context Run و رویدادها؛ legacy بدون ورود به scope دقیقاً همان globalها. انتخاب ALS به‌جای پاس‌دادن صریح ctx به همهٔ فراخوانی‌ها برای حفظ شکل مسیر اجرا و wrapperهای سازگار بود (قانون ۷).
 8. **مرز state اشتراکی toolRuntime (فاز ۳):** search sessions/telemetry/process sessions در `agent/tools` همچنان process-global است؛ per-run/per-project شدن آن‌ها صریحاً scope فاز ۴ (Tool Runtime) است. هم‌زمانی فاز ۳ روی messages/budget/cancellation/attribution تضمین می‌شود، نه روی state داخلی ابزارها.
 9. **قالب run id در modular:** همان قالب legacy؛ پسوند `-r<N>` تنها هنگام برخورد دو Run در یک میلی‌ثانیه (additive؛ normalized بودن run id در fixtureها حفظ می‌شود).
+10. **فعال‌شدن cross-root (فاز ۴):** اجرای پروژه روی root متفاوت از WORKSPACE_ROOT فقط وقتی مجاز است که `RUN_CONTEXT_MODE=modular` و `PROJECT_CONTEXT_MODE=modular` باشند (یعنی context ابزار per-run تضمین‌شده است). در غیر این صورت `assertWorkspaceMatch` فاز ۲ ساری می‌ماند. ابزارهای هنوز project-aware‌نشده (code_* → فاز ۶، plan/memory/archive → فاز ۸، search/runtime_stats به‌همراهان) روی root خارجی خطای صریح «not yet project-aware» می‌دهند تا سکوتِ mis-scope هرگز رخ ندهد.
+11. **نام API پروژه‌ای workspace (فاز ۴ گام ۲):** به‌جای overload `resolveWorkspacePath` (نقض قانون ۵ روی export موجود)، نام‌های `resolveProjectPath`/`isInsideProject`/`toProjectRelative`/`assertProjectPathSafe` با همان الگوریتم مرز انتخاب شدند.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

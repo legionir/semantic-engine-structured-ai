@@ -135,12 +135,59 @@ function recordMutation(name, args) {
 }
 
 
+/*
+| Per-run buckets (EXECUTION_PLAN Phase 4): in modular mode every run's
+| calls are tallied under its run id in ADDITION to the process-wide
+| counters. A concurrent run therefore neither reads nor wipes another
+| run's tally, while the legacy surfaces below keep their exact shapes
+| and semantics for single-run callers.
+*/
+
+const RUN_BUCKETS = new Map();
+
+
+function bucketFor(runId) {
+
+    let bucket = RUN_BUCKETS.get(runId);
+
+    if (!bucket) {
+
+        bucket = {
+            total_calls: 0,
+            total_failures: 0,
+            per_tool: new Map(),
+            recent: []
+        };
+
+        RUN_BUCKETS.set(runId, bucket);
+
+        /* Stats buckets are small, but a long-lived process should not
+           hold a retired run's tally forever; bound the history the same
+           way the RunManager does. */
+        while (
+            RUN_BUCKETS.size >
+            settings.get("RUN_HISTORY_LIMIT")
+        ) {
+
+            RUN_BUCKETS.delete(
+                RUN_BUCKETS.keys().next().value
+            );
+        }
+    }
+
+    return bucket;
+
+}
+
+
 function record({
     name,
     success,
     durationMs,
     agent,
     error,
+    run_id,
+    project_id,
     arguments: args
 }) {
 
@@ -181,6 +228,55 @@ function record({
 
     while (STATE.recent.length > settings.get("MAX_RECENT_TOOL_CALLS")) {
         STATE.recent.shift();
+    }
+
+    if (run_id) {
+
+        const bucket = bucketFor(run_id);
+
+        bucket.total_calls++;
+
+        if (!success) {
+            bucket.total_failures++;
+        }
+
+        const scopedStats =
+            bucket.per_tool.get(name) || {
+                calls: 0,
+                failures: 0,
+                total_ms: 0,
+                max_ms: 0
+            };
+
+        scopedStats.calls++;
+        scopedStats.total_ms += durationMs;
+        scopedStats.max_ms = Math.max(scopedStats.max_ms, durationMs);
+
+        if (!success) {
+            scopedStats.failures++;
+        }
+
+        bucket.per_tool.set(name, scopedStats);
+
+        /* Additive run/project attribution on scoped entries; the
+           process-wide recent list above keeps its historical shape. */
+        bucket.recent.push({
+            tool: name,
+            agent: agent || "main_agent",
+            success,
+            duration_ms: durationMs,
+            at: new Date().toISOString(),
+            error: error || null,
+            run_id,
+            ...(project_id ? { project_id } : {})
+        });
+
+        while (
+            bucket.recent.length >
+            settings.get("MAX_RECENT_TOOL_CALLS")
+        ) {
+            bucket.recent.shift();
+        }
     }
 }
 
@@ -261,7 +357,17 @@ async function runtimeStats(args) {
 }
 
 
-function reset() {
+/* reset() with no argument is the historical process-wide reset; with a
+   run id only that run's bucket is dropped, so concurrent modular runs
+   never clear each other's tallies. */
+function reset(runId) {
+
+    if (runId) {
+
+        RUN_BUCKETS.delete(runId);
+
+        return;
+    }
 
     STATE.started_at = Date.now();
     STATE.total_calls = 0;
@@ -285,7 +391,17 @@ function runSummary() {
 }
 
 
-function executedToolNames() {
+/* With a run id, the tools that specific run executed; without one, the
+   historical process-wide view. */
+function executedToolNames(runId) {
+
+    if (runId) {
+
+        const bucket = RUN_BUCKETS.get(runId);
+
+        return bucket ? [...bucket.per_tool.keys()] : [];
+    }
+
     return [...STATE.per_tool.keys()];
 }
 
@@ -301,5 +417,6 @@ module.exports = {
     reset,
 
     _gitStatusMap: gitStatusMap,
-    _normalisePath: normalisePath
+    _normalisePath: normalisePath,
+    _buckets: RUN_BUCKETS
 };

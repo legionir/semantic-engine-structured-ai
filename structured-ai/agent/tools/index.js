@@ -11,6 +11,7 @@ const telemetry = require("./telemetry");
 const code = require("./code");
 const mcp = require("./mcp");
 const discussion = require("./discussion");
+const ToolContext = require("./ToolContext");
 
 const {
     capResult,
@@ -134,6 +135,30 @@ async function discoverMcpTools(options) {
 }
 
 
+/*
+| Tools that still act on the process-wide workspace rather than the calling
+| run's project context. They are exactly as safe as before Phase 4 as long
+| as the run's project shares the workspace root (then the two roots are
+| the same directory); on a project rooted ELSEWHERE, executing one would
+| silently mis-scope it, so the gate below makes that a loud error with the
+| phase where each family becomes project-aware (search/semantic in 6,
+| plan/memory in 8). Derived from the modules themselves so a converted
+| tool can never stay listed by accident.
+*/
+
+const PENDING_PROJECT_AWARENESS =
+    new Set([
+        ...Object.keys(publicTools(code)),
+        ...Object.keys(publicTools(plan)),
+        ...Object.keys(publicTools(memory)),
+        "search_start",
+        "search_get",
+        "search_list",
+        "search_stop",
+        "runtime_stats"
+    ]);
+
+
 async function executeTool(
     name,
     args,
@@ -147,14 +172,53 @@ async function executeTool(
         );
     }
 
+    /* Identity never travels as a tool argument (rule 9); the run
+       context the runtime attaches is the only channel. */
+    ToolContext.assertNoIdentityArguments(args);
+
+    const toolContext =
+        ToolContext.from(context);
+
+    if (
+        toolContext &&
+        toolContext.scoped &&
+        !toolContext.sharesWorkspaceRoot() &&
+        PENDING_PROJECT_AWARENESS.has(name)
+    ) {
+
+        throw new Error(
+            `Tool "${name}" is not yet project-aware and cannot run on ` +
+            `project "${toolContext.projectId}" rooted outside this process ` +
+            "workspace. Its conversion lands in a later EXECUTION_PLAN phase; " +
+            "run on a workspace-rooted project or use PROJECT_CONTEXT_MODE=legacy."
+        );
+
+    }
+
     const startedAt = Date.now();
+
+    const telemetryFields =
+
+        toolContext
+            ? {
+                  ...(toolContext.runId
+                      ? { run_id: toolContext.runId }
+                      : {}),
+                  ...(toolContext.projectId
+                      ? { project_id: toolContext.projectId }
+                      : {})
+              }
+            : {};
 
     try {
 
         /*
         | A tool receives only its declared arguments. The agent that
         | called it is context, passed under a name no schema uses, for
-        | the two tools that report which agent acted.
+        | the two tools that report which agent acted. The normalized
+        | ToolContext rides as the second positional parameter; tools
+        | that predate it simply ignore it, which keeps every
+        | non-converted tool bit-identical.
         */
 
         const implementation =
@@ -167,7 +231,8 @@ async function executeTool(
                         ...(args || {}),
 
                         _agent: context.agent
-                    }
+                    },
+                    toolContext
                 )
                 : await mcp._executeDiscovered(
                     name,
@@ -179,6 +244,7 @@ async function executeTool(
             success: true,
             durationMs: Date.now() - startedAt,
             agent: context.agent,
+            ...telemetryFields,
             arguments: args || {}
         });
 
@@ -193,6 +259,7 @@ async function executeTool(
             success: false,
             durationMs: Date.now() - startedAt,
             agent: context.agent,
+            ...telemetryFields,
             error: error.message,
             arguments: args || {}
         });
@@ -219,11 +286,17 @@ function shutdown() {
 | instead of killed.
 */
 
-function startRunScope() {
+function startRunScope(runId) {
 
-    search.resetSessions();
+    /* With a run id (modular mode) only that run's bucket is cleared;
+       the legacy call without one resets the process-wide state exactly
+       as before, so sequential CLI behavior is unchanged and two
+       concurrent modular runs can never wipe each other's sessions or
+       counters mid-flight. */
 
-    telemetry.reset();
+    search.resetSessions(runId);
+
+    telemetry.reset(runId);
 
     const semanticScope = code._startRunScope();
 

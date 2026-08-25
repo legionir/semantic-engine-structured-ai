@@ -405,7 +405,7 @@ function describeSession(
 |--------------------------------------------------------------------------
 */
 
-async function searchStart(args) {
+async function searchStart(args, context) {
 
     const root =
         resolveWorkspacePath(
@@ -444,6 +444,14 @@ async function searchStart(args) {
     const session = {
         id:
             `search_${sessionCounter}`,
+
+        /* The run that owns this session (modular mode); a run-scoped
+           reset clears only its own sessions, never a concurrent
+           run's. */
+        run_id:
+            context && context.runId
+                ? context.runId
+                : null,
 
         root,
 
@@ -617,16 +625,25 @@ async function searchStop(args) {
 }
 
 
-function resetSessions() {
+/* No argument: the historical process-wide reset. With a run id only
+   that run's sessions are stopped and cleared. */
+function resetSessions(runId) {
 
-    for (const session of SESSIONS.values()) {
+    for (
+        const [id, session]
+        of [...SESSIONS.entries()]
+    ) {
+
+        if (runId && session.run_id !== runId) {
+            continue;
+        }
 
         if (session.status === "running") {
             session.status = "stopped";
         }
-    }
 
-    SESSIONS.clear();
+        SESSIONS.delete(id);
+    }
 }
 
 

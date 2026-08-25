@@ -5,10 +5,10 @@ const crypto = require("crypto");
 const settings = require("../lib/storage");
 
 const {
-    ignoredDirectories,
-    resolveWorkspacePath,
-    toWorkspaceRelative
+    ignoredDirectories
 } = require("../lib/workspace");
+
+const ToolContext = require("./ToolContext");
 
 
 /*
@@ -325,10 +325,13 @@ async function summariseDirectory(root, maxDepth) {
 }
 
 
-async function fsInfo(args) {
+async function fsInfo(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const target =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.path,
             {
                 mustExist: true
@@ -348,7 +351,7 @@ async function fsInfo(args) {
 
     const info = {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         absolute_path:
             target,

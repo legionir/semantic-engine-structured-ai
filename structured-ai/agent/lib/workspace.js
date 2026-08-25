@@ -185,7 +185,8 @@ function nearestExistingPath(target) {
 }
 
 
-function resolveWorkspacePath(
+function resolvePathInRoot(
+    root,
     inputPath,
     options = {}
 ) {
@@ -203,11 +204,11 @@ function resolveWorkspacePath(
 
     const resolved =
         path.resolve(
-            WORKSPACE_ROOT,
+            root,
             inputPath
         );
 
-    if (!isInsideWorkspace(resolved)) {
+    if (!isInsideRoot(root, resolved)) {
 
         throw new Error(
             `Path is outside workspace: ${inputPath}`
@@ -233,7 +234,7 @@ function resolveWorkspacePath(
             ? realExisting
             : path.join(realExisting, suffix);
 
-    if (!isInsideWorkspace(target)) {
+    if (!isInsideRoot(root, target)) {
 
         throw new Error(
             `Path escapes the workspace through a symlink: ${inputPath}`
@@ -254,10 +255,23 @@ function resolveWorkspacePath(
 }
 
 
-function assertWorkspacePathSafe(target, options = {}) {
+function resolveWorkspacePath(
+    inputPath,
+    options = {}
+) {
+
+    return resolvePathInRoot(
+        WORKSPACE_ROOT,
+        inputPath,
+        options
+    );
+}
+
+
+function assertPathSafeInRoot(root, target, options = {}) {
 
     const resolved = path.resolve(target);
-    if (!isInsideWorkspace(resolved)) {
+    if (!isInsideRoot(root, resolved)) {
         throw new Error(`Path is outside workspace: ${target}`);
     }
 
@@ -271,12 +285,12 @@ function assertWorkspacePathSafe(target, options = {}) {
         }
 
         const parent = path.dirname(current);
-        if (parent === current || !isInsideWorkspace(parent)) break;
+        if (parent === current || !isInsideRoot(root, parent)) break;
         current = parent;
     }
 
     const existing = nearestExistingPath(resolved);
-    if (!isInsideWorkspace(realpath(existing))) {
+    if (!isInsideRoot(root, realpath(existing))) {
         throw new Error(`Path escapes the workspace through a symlink: ${target}`);
     }
 
@@ -284,17 +298,114 @@ function assertWorkspacePathSafe(target, options = {}) {
 }
 
 
-function toWorkspaceRelative(target) {
+function assertWorkspacePathSafe(target, options = {}) {
+
+    return assertPathSafeInRoot(
+        WORKSPACE_ROOT,
+        target,
+        options
+    );
+}
+
+
+function toRelativeInRoot(root, target) {
 
     const relative =
         path.relative(
-            WORKSPACE_ROOT,
+            root,
             target
         );
 
     return relative === ""
         ? "."
         : relative;
+}
+
+
+function toWorkspaceRelative(target) {
+
+    return toRelativeInRoot(WORKSPACE_ROOT, target);
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Project-relative Boundary (EXECUTION_PLAN Phase 4, گام ۲)
+|--------------------------------------------------------------------------
+|
+| The same boundary rules, anchored at a project root supplied by the
+| caller's ProjectContext instead of the process-wide WORKSPACE_ROOT.
+| The "project" argument is anything carrying a workspaceRoot (a
+| ProjectContext or a minimal { workspaceRoot }); an absent or rootless
+| one is a programming error, so it fails loudly rather than silently
+| falling back to the global workspace.
+|
+| The legacy wrappers above keep their exact signatures (rule 5), so
+| these are new names rather than overloads of resolveWorkspacePath.
+|--------------------------------------------------------------------------
+*/
+
+function projectRootOf(project) {
+
+    const root =
+        project && typeof project === "object"
+            ? project.workspaceRoot
+            : null;
+
+    if (typeof root !== "string" || root === "") {
+
+        throw new Error(
+            "A project-aware operation needs a project with a workspaceRoot; " +
+            "without it there is no boundary to resolve against (EXECUTION_PLAN Phase 4)."
+        );
+
+    }
+
+    return root;
+}
+
+
+function resolveProjectPath(
+    project,
+    inputPath,
+    options = {}
+) {
+
+    return resolvePathInRoot(
+        projectRootOf(project),
+        inputPath,
+        options
+    );
+}
+
+
+function assertProjectPathSafe(project, target, options = {}) {
+
+    return assertPathSafeInRoot(
+        projectRootOf(project),
+        target,
+        options
+    );
+}
+
+
+function isInsideProject(project, target) {
+
+    return isInsideRoot(
+        projectRootOf(project),
+        target
+    );
+}
+
+
+function toProjectRelative(project, target) {
+
+    return toRelativeInRoot(
+        projectRootOf(project),
+        target
+    );
+
 }
 
 
@@ -496,6 +607,14 @@ module.exports = {
     resolveWorkspacePath,
     assertWorkspacePathSafe,
     toWorkspaceRelative,
+    resolvePathInRoot,
+    assertPathSafeInRoot,
+    toRelativeInRoot,
+    projectRootOf,
+    resolveProjectPath,
+    assertProjectPathSafe,
+    isInsideProject,
+    toProjectRelative,
     truncateText,
     capResult
 };

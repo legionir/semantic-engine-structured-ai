@@ -1844,8 +1844,15 @@ function startRun() {
     | point gets the same clean slate, not only runAgent.
     */
 
+    /* A modular run resets only its own tool scope (search sessions,
+       telemetry buckets); the legacy start resets process-wide state
+       exactly as it always has. */
     currentRun().carried =
-        toolRuntime.startRunScope();
+        toolRuntime.startRunScope(
+            currentRun() instanceof AgentRunContext
+                ? currentRun().id
+                : undefined
+        );
 
     return currentRun().carried;
 }
@@ -2957,9 +2964,15 @@ function checkPerformedClaim(action, progress, scope) {
         return null;
     }
 
+    /* A modular run is checked against its own tool history; a legacy
+       run against the process-wide one, as before. */
     const executed =
         toolRuntime.executedToolNames
-            ? toolRuntime.executedToolNames()
+            ? toolRuntime.executedToolNames(
+                  currentRun() instanceof AgentRunContext
+                      ? currentRun().runId
+                      : undefined
+              )
             : [];
 
     const problems = [];
@@ -4089,9 +4102,25 @@ async function executeToolGraph(
                             await toolRuntime.executeTool(
                                 call.name,
                                 resolvedArguments,
-                                {
-                                    agent: scope || "main_agent"
-                                }
+
+                                /*
+                                | Identity comes from the run context,
+                                | never from the call's arguments
+                                | (rule 9). Legacy runs keep the exact
+                                | historical { agent } shape.
+                                */
+                                (
+                                    currentRun() instanceof AgentRunContext
+                                        ? {
+                                              agent: scope || "main_agent",
+                                              runId: currentRun().runId,
+                                              projectId: currentRun().projectId ?? undefined,
+                                              projectContext: currentRun().project ?? undefined
+                                          }
+                                        : {
+                                              agent: scope || "main_agent"
+                                          }
+                                )
                             );
 
                         /*
@@ -9054,7 +9083,20 @@ function resolveRunProjectContext(options) {
             workspaceRoot: WORKSPACE_ROOT
         });
 
-    projects.assertWorkspaceMatch(context, WORKSPACE_ROOT);
+    /*
+    | A project rooted elsewhere than this process's workspace is
+    | executable once every tool call carries the project context — that
+    | is exactly what RUN_CONTEXT_MODE=modular guarantees (Phase 4). In
+    | any other mode the tool layer still resolves against the global
+    | WORKSPACE_ROOT, so a foreign root would silently mis-scope every
+    | tool call and keeps failing loudly here.
+    */
+
+    if (runContextMode() !== "modular") {
+
+        projects.assertWorkspaceMatch(context, WORKSPACE_ROOT);
+
+    }
 
     return context;
 

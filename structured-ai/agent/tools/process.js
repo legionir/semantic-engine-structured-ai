@@ -4,10 +4,11 @@ const settings = require("../lib/storage");
 
 const {
     WORKSPACE_ROOT,
-    resolveWorkspacePath,
-    toWorkspaceRelative,
+    toRelativeInRoot,
     truncateText
 } = require("../lib/workspace");
+
+const ToolContext = require("./ToolContext");
 
 
 /*
@@ -27,16 +28,16 @@ let sessionCounter = 0;
 
 
 
-function resolveCwd(inputCwd) {
+function resolveCwd(ctx, inputCwd) {
 
     return inputCwd
-        ? resolveWorkspacePath(
+        ? ctx.resolvePath(
             inputCwd,
             {
                 mustExist: true
             }
         )
-        : WORKSPACE_ROOT;
+        : ctx.root;
 }
 
 
@@ -61,7 +62,7 @@ const USE_PROCESS_GROUPS =
     process.platform !== "win32";
 
 
-function spawnInGroup(command, cwd) {
+function spawnInGroup(ctx, command, cwd) {
 
     const mode = settings.get("PROCESS_SANDBOX_MODE");
 
@@ -84,7 +85,7 @@ function spawnInGroup(command, cwd) {
                 "--proc", "/proc",
                 "--dev", "/dev",
                 "--tmpfs", "/tmp",
-                "--bind", WORKSPACE_ROOT, WORKSPACE_ROOT,
+                "--bind", ctx.root, ctx.root,
                 "--chdir", cwd,
                 "--unshare-pid",
                 "--unshare-uts",
@@ -94,7 +95,7 @@ function spawnInGroup(command, cwd) {
                 "/bin/sh", "-c", command
             ],
             {
-                cwd: WORKSPACE_ROOT,
+                cwd: ctx.root,
                 windowsHide: true,
                 detached: USE_PROCESS_GROUPS
             }
@@ -226,7 +227,7 @@ const LEADING_CD =
     /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|([^\s&;|]+))\s*(?:&&|;|&)/i;
 
 
-function assertNoForeignCd(command) {
+function assertNoForeignCd(ctx, command) {
 
     const match = LEADING_CD.exec(command);
 
@@ -239,18 +240,21 @@ function assertNoForeignCd(command) {
 
     try {
 
-        resolveWorkspacePath(target, { mustExist: true });
+        ctx.resolvePath(target, { mustExist: true });
 
     } catch {
 
         throw new Error(
-            `The command starts with "cd ${target}", which is not inside the workspace. Every command already starts in ${WORKSPACE_ROOT}; use the cwd argument to enter a subdirectory instead.`
+            `The command starts with "cd ${target}", which is not inside the workspace. Every command already starts in ${ctx.root}; use the cwd argument to enter a subdirectory instead.`
         );
     }
 }
 
 
-function terminalExec(args) {
+function terminalExec(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     try {
         assertProcessExecutionEnabled();
@@ -270,7 +274,7 @@ function terminalExec(args) {
 
     try {
 
-        assertNoForeignCd(args.command);
+        assertNoForeignCd(ctx, args.command);
 
     } catch (error) {
 
@@ -278,7 +282,7 @@ function terminalExec(args) {
     }
 
     const cwd =
-        resolveCwd(args.cwd);
+        resolveCwd(ctx, args.cwd);
 
     const timeout =
         Number.isInteger(args.timeout_ms)
@@ -288,7 +292,7 @@ function terminalExec(args) {
     return new Promise(resolve => {
 
         const child =
-            spawnInGroup(args.command, cwd);
+            spawnInGroup(ctx, args.command, cwd);
 
         let stdout = "";
         let stderr = "";
@@ -346,7 +350,7 @@ function terminalExec(args) {
 
                 resolve({
                     cwd:
-                        toWorkspaceRelative(cwd),
+                        ctx.relative(cwd),
 
                     /*
                     | Where the command actually ran. The agent works in
@@ -383,7 +387,7 @@ function terminalExec(args) {
 
                 resolve({
                     cwd:
-                        toWorkspaceRelative(cwd),
+                        ctx.relative(cwd),
 
                     /*
                     | Where the command actually ran. The agent works in
@@ -425,7 +429,10 @@ function terminalExec(args) {
 |--------------------------------------------------------------------------
 */
 
-async function processStart(args) {
+async function processStart(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     assertProcessExecutionEnabled();
 
@@ -440,16 +447,28 @@ async function processStart(args) {
     }
 
     const cwd =
-        resolveCwd(args.cwd);
+        resolveCwd(ctx, args.cwd);
 
     sessionCounter++;
 
     const child =
-        spawnInGroup(args.command, cwd);
+        spawnInGroup(ctx, args.command, cwd);
 
     const session = {
         id:
             `process_${sessionCounter}`,
+
+        /* Ownership (modular mode): a session belongs to the project
+           and run that started it; other projects cannot see or steer
+           it (EXECUTION_PLAN Phase 4, per-project sessions). */
+        run_id:
+            ctx.runId,
+
+        project_id:
+            ctx.scoped ? ctx.projectId : null,
+
+        root:
+            ctx.root,
 
         command:
             args.command,
@@ -592,7 +611,7 @@ function readSessionOutput(session, options) {
             session.command,
 
         cwd:
-            toWorkspaceRelative(session.cwd),
+            toRelativeInRoot(session.root || WORKSPACE_ROOT, session.cwd),
 
         status:
             session.status,
@@ -619,12 +638,21 @@ function readSessionOutput(session, options) {
 }
 
 
-function requireSession(processId) {
+function requireSession(processId, ctx) {
 
     const session =
         SESSIONS.get(processId);
 
-    if (!session) {
+    /* A session another project owns is invisible here: from the
+       caller's side it simply does not exist. */
+    if (
+        !session ||
+        (
+            ctx &&
+            ctx.scoped &&
+            session.project_id !== ctx.projectId
+        )
+    ) {
 
         throw new Error(
             `Unknown process: ${processId}`
@@ -635,10 +663,13 @@ function requireSession(processId) {
 }
 
 
-async function processRead(args) {
+async function processRead(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const session =
-        requireSession(args.process_id);
+        requireSession(args.process_id, ctx);
 
     const waitMs =
         Number.isInteger(args.wait_ms)
@@ -681,10 +712,13 @@ async function processRead(args) {
 |--------------------------------------------------------------------------
 */
 
-async function processWrite(args) {
+async function processWrite(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const session =
-        requireSession(args.process_id);
+        requireSession(args.process_id, ctx);
 
     if (session.status !== "running") {
 
@@ -726,10 +760,13 @@ async function processWrite(args) {
 |--------------------------------------------------------------------------
 */
 
-async function processTerminate(args) {
+async function processTerminate(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const session =
-        requireSession(args.process_id);
+        requireSession(args.process_id, ctx);
 
     if (session.status !== "running") {
 
@@ -803,14 +840,23 @@ async function processTerminate(args) {
 |--------------------------------------------------------------------------
 */
 
-async function processList(args) {
+async function processList(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const sessions =
         [...SESSIONS.values()]
             .filter(
                 session =>
-                    args.include_finished === true ||
-                    session.status === "running"
+                    (
+                        !ctx.scoped ||
+                        session.project_id === ctx.projectId
+                    ) &&
+                    (
+                        args.include_finished === true ||
+                        session.status === "running"
+                    )
             )
             .map(
                 session => ({
@@ -824,7 +870,7 @@ async function processList(args) {
                         session.command,
 
                     cwd:
-                        toWorkspaceRelative(session.cwd),
+                        toRelativeInRoot(session.root || WORKSPACE_ROOT, session.cwd),
 
                     status:
                         session.status,

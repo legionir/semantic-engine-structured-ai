@@ -4,12 +4,10 @@ const path = require("path");
 const settings = require("../lib/storage");
 
 const {
-    WORKSPACE_ROOT,
-    ignoredDirectories,
-    resolveWorkspacePath,
-    assertWorkspacePathSafe,
-    toWorkspaceRelative
+    ignoredDirectories
 } = require("../lib/workspace");
+
+const ToolContext = require("./ToolContext");
 
 
 /*
@@ -72,10 +70,13 @@ async function statSafe(target) {
 |--------------------------------------------------------------------------
 */
 
-async function fsRead(args) {
+async function fsRead(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const target =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.path,
             {
                 mustExist: true
@@ -99,7 +100,7 @@ async function fsRead(args) {
 
         return {
             path:
-                toWorkspaceRelative(target),
+                ctx.relative(target),
 
             binary: true,
 
@@ -156,7 +157,7 @@ async function fsRead(args) {
 
     return {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         binary: false,
 
@@ -188,7 +189,10 @@ async function fsRead(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsReadMany(args) {
+async function fsReadMany(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const paths =
         Array.isArray(args.paths)
@@ -257,10 +261,13 @@ async function fsReadMany(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsList(args) {
+async function fsList(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const target =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.path,
             {
                 mustExist: true
@@ -339,7 +346,7 @@ async function fsList(args) {
 
     return {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         count:
             sorted.length,
@@ -356,10 +363,13 @@ async function fsList(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsTree(args) {
+async function fsTree(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const root =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.path,
             {
                 mustExist: true
@@ -464,7 +474,7 @@ async function fsTree(args) {
 
     return {
         path:
-            toWorkspaceRelative(root),
+            ctx.relative(root),
 
         max_depth:
             maxDepth,
@@ -487,17 +497,20 @@ async function fsTree(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsStat(args) {
+async function fsStat(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const target =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.path,
             {
                 mustExist: true
             }
         );
 
-    assertWorkspacePathSafe(target, { rejectSymlinks: true });
+    ctx.assertSafe(target, { rejectSymlinks: true });
 
     const stats =
         await fs.promises.lstat(target);
@@ -512,7 +525,7 @@ async function fsStat(args) {
 
     return {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         type:
             effective.isDirectory()
@@ -550,11 +563,14 @@ async function fsStat(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsRoots() {
+async function fsRoots(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     return {
         allowed_directories: [
-            WORKSPACE_ROOT
+            ctx.root
         ],
 
         note:
@@ -569,7 +585,10 @@ async function fsRoots() {
 |--------------------------------------------------------------------------
 */
 
-async function fsWrite(args) {
+async function fsWrite(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     if (typeof args.content !== "string") {
 
@@ -579,8 +598,8 @@ async function fsWrite(args) {
     }
 
     const target =
-        resolveWorkspacePath(args.path);
-    assertWorkspacePathSafe(target, { rejectSymlinks: true });
+        ctx.resolvePath(args.path);
+    ctx.assertSafe(target, { rejectSymlinks: true });
 
     const mode =
         args.mode === "append"
@@ -645,7 +664,7 @@ async function fsWrite(args) {
 
     const result = {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         mode,
 
@@ -739,16 +758,19 @@ async function fsWrite(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsEdit(args) {
+async function fsEdit(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const target =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.path,
             {
                 mustExist: true
             }
         );
-    assertWorkspacePathSafe(target, { rejectSymlinks: true });
+    ctx.assertSafe(target, { rejectSymlinks: true });
 
     if (typeof args.old_text !== "string") {
 
@@ -816,7 +838,7 @@ async function fsEdit(args) {
 
     return {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         replacements:
             occurrences,
@@ -833,11 +855,14 @@ async function fsEdit(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsMkdir(args) {
+async function fsMkdir(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const target =
-        resolveWorkspacePath(args.path);
-    assertWorkspacePathSafe(target, { rejectSymlinks: true });
+        ctx.resolvePath(args.path);
+    ctx.assertSafe(target, { rejectSymlinks: true });
 
     const existed =
         fs.existsSync(target);
@@ -851,7 +876,7 @@ async function fsMkdir(args) {
 
     return {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         created:
             !existed
@@ -865,10 +890,13 @@ async function fsMkdir(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsMove(args) {
+async function fsMove(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const source =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.source,
             {
                 mustExist: true
@@ -876,9 +904,9 @@ async function fsMove(args) {
         );
 
     const destination =
-        resolveWorkspacePath(args.destination);
-    assertWorkspacePathSafe(source, { rejectSymlinks: true });
-    assertWorkspacePathSafe(destination, { rejectSymlinks: true });
+        ctx.resolvePath(args.destination);
+    ctx.assertSafe(source, { rejectSymlinks: true });
+    ctx.assertSafe(destination, { rejectSymlinks: true });
 
     if (
         fs.existsSync(destination) &&
@@ -904,10 +932,10 @@ async function fsMove(args) {
 
     return {
         source:
-            toWorkspaceRelative(source),
+            ctx.relative(source),
 
         destination:
-            toWorkspaceRelative(destination),
+            ctx.relative(destination),
 
         overwritten:
             args.overwrite === true
@@ -921,17 +949,20 @@ async function fsMove(args) {
 |--------------------------------------------------------------------------
 */
 
-async function fsDelete(args) {
+async function fsDelete(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const target =
-        resolveWorkspacePath(
+        ctx.resolvePath(
             args.path,
             {
                 mustExist: true
             }
         );
 
-    if (target === WORKSPACE_ROOT) {
+    if (target === ctx.root) {
 
         throw new Error(
             "The workspace root cannot be deleted."
@@ -963,7 +994,7 @@ async function fsDelete(args) {
 
     return {
         path:
-            toWorkspaceRelative(target),
+            ctx.relative(target),
 
         deleted: true,
 

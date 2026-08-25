@@ -127,3 +127,11 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - `agent/lib/events.js` یک API جدید additive دارد: `runWithScope(initial, fn)` که context هم‌بستگی را برای یک زنجیرهٔ async ایزوله می‌کند (`setContext` داخل scope به همان scope می‌نویسد). بدون فراخوانی آن، رفتار `emit`/`setContext` بیت‌به‌بیت همان است.
 - سطح دسترسی runtime (exports در `agent/agent.js`) additive گسترش یافت: `AgentRunContext`, `runManager`, `runContextMode`, `cancelRunById`. امضاها و رفتار entry pointهای قبلی (`startRun`, `cancelRun`, `isRunCancelled`, `runRemainingMs`, `assertRunActive`, `runAgent`) بدون تغییر؛ در حالت legacy همان state سراسری را هدف می‌گیرند.
 - قالب run id حالت modular همان `run-<ISO-timestamp>` است؛ در برخورد هم‌زمان در یک میلی‌ثانیه پسوند `-r<N>` اضافه می‌شود (فقط حالت modular).
+
+## ۹. تغییرات additive فاز ۴ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
+
+- امضای سطح ابزار: `executeTool(name, args, context)` بدون تغییر می‌ماند؛ `context` حالا می‌تواند `{ agent, runId, projectId, projectContext }` باشد (همیشه سازگار با شکل قدیمی `{agent}`) و به implementation به‌عنوان **پارامتر دوم** (`implementation(args, toolContext)`) می‌رسد — implementationهای قدیمی آن را نادیده می‌گیرند. schema و نام ابزارها در هیچ حالتی تغییر نمی‌کند.
+- rule 9 مکانیکی: آرگومان‌های ابزار نمی‌توانند `projectId`/`project_id`/`project`/`projectRoot`/`root` داشته باشند (خطا)؛ هویت پروژه فقط از مسیر context ران‌تایم می‌رسد.
+- `agent/lib/workspace.js` additive گسترش یافت: `resolvePathInRoot`/`assertPathSafeInRoot`/`toRelativeInRoot` و API پروژه‌ای `resolveProjectPath`/`isInsideProject`/`toProjectRelative`/`assertProjectPathSafe`/`projectRootOf`؛ امضای exportهای قبلی پین‌شده به WORKSPACE_ROOT دست‌نخورده.
+- telemetry: رکوردها در حالت contextدار حامل `run_id`/`project_id` (additive، فقط در bucket per-run) هستند؛ `executedToolNames(runId?)` و `reset(runId?)` پارامتر اختیاری گرفتند؛ فرم خروجی runtime_stats جهانی تغییر نکرده است.
+- sessionهای search با `run_id` علامت‌گذاری می‌شوند و `resetSessions(runId)` فقط همان Run را پاک می‌کند؛ فراخوانی بدون آرگومان رفتار جهانی تاریخی را دارد. sessionهای process دارای `run_id`/`project_id`/`root` هستند و در حالت scoped فقط برای پروژهٔ مالک قابل‌مشاهده/کنترل‌اند.
