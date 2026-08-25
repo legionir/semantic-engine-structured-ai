@@ -64,6 +64,9 @@ Options
   -s, --serve [port]        Serve the web console (default port 7777)
       --host <address>      Address to bind the console to (default 127.0.0.1)
   -w, -C, --workspace <dir> Directory the agent may act in (default: cwd)
+      --project <id>      Run inside the registered project <id>: the root
+                          comes from the project registry (-w must match it
+                          or be omitted), and the run becomes project-aware
   -f, --file <path>         Read the task from a file
   -a, --approve <mode>      auto | prompt | deny (default: prompt)
       --dry-run             Refuse anything needing approval, so nothing is changed
@@ -200,6 +203,11 @@ function parseArguments(argv) {
             case "--dir":
             case "--workspace":
                 options.workspace =
+                    requireValue(argument, argv[++index]);
+                break;
+
+            case "--project":
+                options.project =
                     requireValue(argument, argv[++index]);
                 break;
 
@@ -364,6 +372,85 @@ function applyEnvironment(options) {
         }
 
         environment.WORKSPACE_ROOT = resolved;
+    }
+
+    /*
+    | EXECUTION_PLAN Phase 7 گام ۱: --project <id> binds the run to a
+    | registered project. The root is ALWAYS taken from the registry —
+    | a -w that disagrees with the registered root is an error, and
+    | without -w the registered root becomes the workspace (rule: never
+    | trust identity arguments over registry data).
+    */
+    if (options.project) {
+
+        const projects =
+            require(path.join(REPO_ROOT, "agent", "projects", "index.js"));
+
+        const { canonicalizeRoot } =
+            require(path.join(REPO_ROOT, "agent", "projects", "ProjectRegistry.js"));
+
+        let record;
+
+        try {
+
+            record =
+                projects.registry().get(options.project);
+
+        } catch (error) {
+
+            fail(
+                `${error.message} ` +
+                "(--project names a record of the central project registry; " +
+                "register the project there first)"
+            );
+
+        }
+
+        const projectRoot = record.rootPath;
+
+        if (options.workspace) {
+
+            if (
+                canonicalizeRoot(environment.WORKSPACE_ROOT) !==
+                projectRoot
+            ) {
+
+                fail(
+                    `--project ${options.project} is rooted at ${projectRoot}, ` +
+                    `which does not match --workspace ${options.workspace}; ` +
+                    "the project root always comes from the registry, not from flags " +
+                    "(drop -w to run on the registered root)"
+                );
+
+            }
+
+        } else {
+
+            if (
+                !fs.existsSync(projectRoot) ||
+                !fs.statSync(projectRoot).isDirectory()
+            ) {
+
+                fail(
+                    `--project ${options.project} is rooted at ${projectRoot}, ` +
+                    "but that directory does not exist"
+                );
+
+            }
+
+            environment.WORKSPACE_ROOT = projectRoot;
+
+        }
+
+        /* Selecting a project asks for the project-aware execution
+           bundle: scoped run context (Phase 2/3), per-run isolation and
+           the project_context prompt message (Phase 5) engage together.
+           Without --project every flag stays untouched, so today's
+           single-project behavior is bit-identical. */
+        environment.PROJECT_CONTEXT_MODE = "modular";
+        environment.RUN_CONTEXT_MODE = "modular";
+        environment.PROMPT_BUILDER_MODE = "modular";
+
     }
 
     if (options.approve) {
@@ -621,7 +708,11 @@ async function runUntilDone(runtime, options, task) {
                     task:
                         cycle === 1
                             ? task
-                            : "Continue the plan: read it, take the next open step, verify it, and record the result."
+                            : "Continue the plan: read it, take the next open step, verify it, and record the result.",
+
+                    ...(options.project
+                        ? { projectId: options.project }
+                        : {})
                 });
 
             if (
@@ -1152,7 +1243,12 @@ async function main() {
 
     try {
 
-        action = await runtime.runAgent();
+        action =
+            await runtime.runAgent(
+                options.project
+                    ? { projectId: options.project }
+                    : undefined
+            );
 
     } catch (error) {
 

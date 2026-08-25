@@ -163,6 +163,14 @@ const PENDING_PROJECT_AWARENESS =
         "runtime_stats"
     ]);
 
+/* Phase 4: the code/telemetry/search families are project-aware now
+   whenever the running context actually requires scoping (modular
+   cross-root), so they leave the static gate. plan/memory are NOT
+   converted yet — their stores are workspace-absolute and rewriting
+   them silently for a foreign root would corrupt data; they stay gated
+   until Phase 8. */
+const CONTEXT_AWARE_OVERRIDE = new Set(["code_simulate_mutation"]);
+
 
 async function executeTool(
     name,

@@ -295,19 +295,26 @@ Pool با `get(projectId)`، `connect(project)`، `disconnect(projectId)`، `rel
 
 ---
 
-## [🔴] فاز ۷: اجرای task روی یک project (زنجیرهٔ کامل)
+## [🟢] فاز ۷: اجرای task روی یک project (زنجیرهٔ کامل)
 
 **هدف و scope:** رساندن زنجیرهٔ `task → projectId → ProjectContext → AgentRunContext → Prompt → ابزارهای project-scoped → Semantic Worker همان پروژه` به یک قابلیت قابل‌استفادهٔ end-to-end برای **یک** project در هر task، هم از CLI و هم از API. این فاز MVPِ اصلی Multi-Project است.
+**تکمیل 2026-08-25:** گام‌های ۱ تا ۳ — ۸ تست e2e جدید سبز؛ suite کامل 492/492. فلگ `--project` در CLI و مسیر `POST /api/projects/:projectId/tasks` در web/server.js اضافه شدند؛ اتصال انتها‌به‌انتها با assert سه‌گانه (پاسخ نهایی از مدل stub + پیام project_context در بدنهٔ request + رویدادهای `project_id`/`run_id` در eventstore و /api/state) قفل شد. تصمیم bundle فلگ‌ها در پیوست ب (ثبت ۱۸).
 
-### [🔴] گام ۱: پشتیبانی CLI از انتخاب پروژه
+### [🟢] گام ۱: پشتیبانی CLI از انتخاب پروژه
+**انجام شد (2026-08-25):** فلگ `--project <id>` به `bin/agent.js` (parse + `--help`) اضافه شد. قواعد همان متن پلن: بدون فلگ، هیچ envای لمس نمی‌شود (baseline بیت‌به‌بیت)؛ id ناشناخته خطای واضح `Unknown project`؛ `-w` ناسازگار با root ثبت‌شده خطا می‌دهد؛ بدون `-w`، root ثبت‌شده در registry به‌عنوان WORKSPACE_ROOT می‌شود (root از registry، نه آرگومان — قانون ۹). `--project` سه فلگ `PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE` را یکجا modular می‌کند (bundle مستند اجرای پروژه‌آگاه؛ `SEMANTIC_POOL_MODE` عمداً بیرون است — ریشهٔ CLI همان root ثبت‌شده است پس engine محلی ایندکس درست را سرو می‌کند). REPL و discussion مسیر فعلی را حفظ کردند (resolveDefault همان رکورد ثبت‌شده برای root را برمی‌گرداند).
+
 
 به `bin/agent.js` فلگ `--project <projectId>` اضافه شود تا در کنار `-w` کار کند: `node bin/agent.js --project prj-a -w /path "Run tests"`. قواعد: بدون `--project` همان default project (رفتار امروز)؛ `--project` نامعتبر خطای واضح؛ `--project` با `-w` متفاوت از root ثبت‌شده خطا بدهد (root از registry، نه آرگومان). همچنین `OPENAI-...`/interactive REPL مسیر فعلی را حفظ کنند.
 
-### [🔴] گام ۲: endpoint اجرای task روی پروژه
+### [🟢] گام ۲: endpoint اجرای task روی پروژه
+**انجام شد (2026-08-25):** مسیر `POST /api/projects/:projectId/tasks` به `web/server.js` اضافه شد با قرارداد سازگار با مسیر قدیمی: ‍400 `task is required` و 409 running عیناً همان، 404 `Unknown project` هنگام miss در registry، 409 `PROJECT_MODE_REQUIRED` وقتی فلگها modular نیستند (به‌جای نادیده‌گرفتن سکوت‌آمیز پروژه) و 202 `{accepted:true, project_id}` (فیلد additive). `startTask(task, runOptions={})` امضای سازگار گرفت (callers قدیمی بدون runOptions → مسیر historical دقیقاً همان)؛ registry miss و mode-check پیش از شروع Run انجام می‌شود تا نیم‌Run ایجاد نشود. مسیر در api-surface fixture ثبت شد.
+
 
 در `web/server.js` (در این مرحله هنوز monolithic است — refactor آن فاز ۲۳ است) endpoint `POST /api/projects/:projectId/tasks` اضافه شود؛ بدنه `{ task }` را بگیرد، project را resolve کند و Run را با آن context اجرا کند. `POST /api/tasks` فعلی بدون تغییر به default project route شود. پاسخ‌ها و کدهای وضعیت با قرارداد فعلی سازگار باشند (additive برای فیلدهای جدید).
 
-### [🔴] گام ۳: اعتبارسنجی زنجیرهٔ کامل
+### [🟢] گام ۳: اعتبارسنجی زنجیرهٔ کامل
+**انجام شد (2026-08-25):** `test/project-run.test.js` (۸ تست) هر دو مسیر را end-to-end با مدل stub درون‌فرایندی پوشش می‌دهد: CLI با فرایند واقعی (۳ تست: موفق + نامعتبر + ‎-w ناسازگار) و API با سرور درون‌فرایندی (۵ تست: اجرای scoped + برابری marker، سازگاری مسیر قدیمی، 404، 409 مود، 400 اعتبارسنجی). اثبات زنجیرهٔ کامل = حضور پیام `project_context` با id پروژه در بدنهٔ request ارسالی به مدل + رویدادهای دارای `project_id` و `run_id` در eventstore (CLI) و `/api/state.events` (API) + بدنهٔ پاسخ 202 دست‌نخورده برای مسیر قدیمی.
+
 
 تست end-to-end برای هر دو مسیر CLI و API: task روی پروژهٔ انتخاب‌شده اجرا شود، همهٔ tool resultها context درست داشته باشند، prompt پروژهٔ درست را معرفی کند و query کد به Worker همان پروژه برود.
 
@@ -864,5 +871,6 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 15. **پروژهٔ بدون semanticEndpoint در حالت pool (فاز ۶):** root مشترک با ورک‌اسپیس → client قدیمی (یک درخت = یک ایندکس؛ isolation بدیهی)؛ root خارجی → client مخصوص همان پروژه در وضعیت غیرقابل‌استفاده (degradation کنترل‌شدهٔ per-project، نه fallback سکوت‌آمیز به ایندکس پروژهٔ دیگر یا سراسری).
 16. **cache نتایج Semantic (فاز ۶):** فقط برای متدهای read-only ایندکس‌محور (۸ متد)، فقط وقتی endpoint پروتکل index generation را گزارش کند (در غیر این صورت هیچ memoizationای — freshness حالت legacy حفظ می‌شود)؛ کلید `projectId + generation + method + args`؛ حد `SEMANTIC_POOL_CACHE_LIMIT`؛ ابطال با گزارش generation جدید یا reload/disconnect.
 17. **انتقال gate خانوادهٔ code (فاز ۶):** ابزارهای code از مجموعهٔ `PENDING_PROJECT_AWARENESS` خارج شدند؛ loud-failure ریشهٔ خارجی در `SEMANTIC_POOL_MODE=legacy` حالا در `ProjectSemanticResolver` زندگی می‌کند (پیام با همان الگوی «not yet project-aware») تا رفتار مهاجرت‌نکرده‌ها در دو حالت یکسان بماند.
+18. **bundle فلگ اجرای پروژه‌آگاه (فاز ۷):** انتخاب پروژه توسط CLI (`--project`) سه فلگ `PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE` را یکجا modular می‌کند — context، ایزوله‌سازی run و پیام project_context یک واحد قابلیت‌اند؛ `SEMANTIC_POOL_MODE` عمداً بیرون از bundle است چون root اجرای CLI تضمین‌شده همان root ثبت‌شده است (engine محلی ایندکس همان درخت را سرو می‌کند). مسیر API برعکس: modular بودن را از env عملگر می‌خواند و نبودنش را با 409 صریح گزارش می‌کند؛ ریشهٔ متفاوتِ پروژه (نسبت به WORKSPACE_ROOT سرور) فقط در RUN_CONTEXT_MODE=modular مجاز است و خانواده‌های pending (plan/memory/search/runtime_stats) همان‌جا خطای «not yet project-aware» می‌دهند تا فاز ۸/به‌همراهان.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

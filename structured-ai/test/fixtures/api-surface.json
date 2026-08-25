@@ -14,6 +14,7 @@
     "/api/graph/",
     "/api/mcp",
     "/api/mcp/",
+    "/api/projects/",
     "/api/sessions",
     "/api/sessions/",
     "/api/settings",
@@ -25,6 +26,7 @@
     "POST /api/tasks": "submit a task; used by web.test.js with a stubbed model",
     "GET  /api/events": "SSE event stream; consumed by the console",
     "GET  /api/discussion/personas": "lists selectable discussion personas (discussion.test.js)",
-    "POST /api/discussion": "starts a discussion; validates its request (discussion.test.js)"
+    "POST /api/discussion": "starts a discussion; validates its request (discussion.test.js)",
+    "POST /api/projects/:projectId/tasks": "runs a task scoped to the named project (project-run.test.js); 202 {accepted, project_id} / 404 unknown / 409 modes required"
   }
 }

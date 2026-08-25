@@ -888,7 +888,14 @@ function createServer(runtime, options = {}) {
     }
 
 
-    async function startTask(task) {
+    /*
+    | runOptions (EXECUTION_PLAN Phase 7 گام ۲): when the caller names a
+    | projectId the run is resolved against the project registry and the
+    | whole run is scoped to that project (modular modes required — the
+    | route enforces that before accepting). Legacy callers pass nothing
+    | and the historical single-run behaviour is untouched.
+    */
+    async function startTask(task, runOptions = {}) {
 
         if (state.status === "running") {
 
@@ -938,7 +945,11 @@ function createServer(runtime, options = {}) {
                     turn_id,
 
                     history:
-                        state.history
+                        state.history,
+
+                    ...(runOptions.projectId
+                        ? { projectId: runOptions.projectId }
+                        : {})
                 });
 
             state.answer =
@@ -2073,6 +2084,118 @@ function createServer(runtime, options = {}) {
                     startTask(task).catch(() => {});
 
                     sendJson(res, 202, { accepted: true });
+
+                    return;
+                }
+
+                /* ---------------------------------- project tasks */
+
+                /*
+                | EXECUTION_PLAN Phase 7 گام ۲: POST /api/projects/:id/tasks
+                | runs the task scoped to the named project. The legacy
+                | /api/tasks route above is untouched; this route adds
+                | only additive behaviour:
+                |   400 task is required            (same contract)
+                |   409 a task is already running   (same contract)
+                |   404 Unknown project: <id>       (registry miss)
+                |   409 PROJECT_MODE_REQUIRED       (project-aware modes
+                |                                    not enabled)
+                |   202 {accepted:true, project_id} (accepted; additive field)
+                */
+
+                const projectTaskMatch =
+                    /^\/api\/projects\/([^/]+)\/tasks$/.exec(pathname);
+
+                if (
+                    projectTaskMatch &&
+                    req.method === "POST"
+                ) {
+
+                    const body =
+                        await readBody(req);
+
+                    const task =
+                        typeof body.task === "string"
+                            ? body.task.trim()
+                            : "";
+
+                    if (task === "") {
+
+                        sendJson(res, 400, {
+                            error: "task is required"
+                        });
+
+                        return;
+                    }
+
+                    if (
+                        state.status === "running" ||
+                        (
+                            state.discussion &&
+                            state.discussion.status === "running"
+                        )
+                    ) {
+
+                        sendJson(res, 409, {
+                            error:
+                                state.status === "running"
+                                    ? "a task is already running"
+                                    : "a discussion is already running"
+                        });
+
+                        return;
+                    }
+
+                    const projectId =
+                        decodeURIComponent(projectTaskMatch[1]);
+
+                    let record;
+
+                    try {
+
+                        record =
+                            runtime.projects.registry().get(projectId);
+
+                    } catch (error) {
+
+                        sendJson(res, 404, {
+                            error: error.message
+                        });
+
+                        return;
+                    }
+
+                    /* Project resolution lives behind the phase flags;
+                       in legacy modes a run would silently ignore the
+                       project option, which this route must never do —
+                       fail loudly instead of mis-scoping the task. */
+
+                    if (
+                        runtime.projects.projectContextMode() !== "modular" ||
+                        runtime.runContextMode() !== "modular"
+                    ) {
+
+                        sendJson(res, 409, {
+                            error:
+                                "project-scoped task execution requires " +
+                                "PROJECT_CONTEXT_MODE=modular and " +
+                                "RUN_CONTEXT_MODE=modular; enable them in the " +
+                                "environment and restart the server " +
+                                "(PROMPT_BUILDER_MODE=modular additionally puts " +
+                                "the project_context message into the prompt)",
+                            code: "PROJECT_MODE_REQUIRED",
+                            project_id: record.id
+                        });
+
+                        return;
+                    }
+
+                    startTask(task, { projectId: record.id }).catch(() => {});
+
+                    sendJson(res, 202, {
+                        accepted: true,
+                        project_id: record.id
+                    });
 
                     return;
                 }

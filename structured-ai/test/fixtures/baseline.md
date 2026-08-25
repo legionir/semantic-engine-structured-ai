@@ -134,3 +134,22 @@
 | **مجموع** | **484/484 passed** |
 
 *نکته:* برابری routing حالت legacy با baseline توسط `test/semantic.test.js` (۱۴ تست بدون تغییر) و تست identity مستقیم resolver (برگشت همان آبجکت `mcp/semantic.js`) قفل است؛ ایزوله‌بودن دو پروژه، degradation per-project، cache کلید generation و تعویض endpoint از registry توسط suite جدید روی stub قرارداد `/mcp/:projectId` اثبات می‌شود.
+
+## suite پایان فاز ۷ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-25 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` (جدید فاز ۷) | 8/8 passed |
+| ۱۴ فایل اصلی (مانند جدول اول) | 415/415 passed |
+| **مجموع** | **492/492 passed** |
+
+*نکته:* مسیرهای legacy کاملاً قفل‌اند: `cli.test.js` (۱۹ تست) و `web.test.js` (۲۸ تست) بدون تغییر سبزند و بدنهٔ 202 مسیر قدیمی در تست جدید با deep-equal تطبیق داده می‌شود؛ اثبات زنجیرهٔ end-to-end با مدل stub، پیام `project_context` در بدنهٔ request و attribution رویدادها (`project_id`/`run_id`) در eventstore و `/api/state` انجام می‌شود.
