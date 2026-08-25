@@ -1,5 +1,7 @@
 const { EventEmitter } = require("events");
 
+const { AsyncLocalStorage } = require("async_hooks");
+
 
 /*
 |--------------------------------------------------------------------------
@@ -19,6 +21,13 @@ const { EventEmitter } = require("events");
 | attribute an event to the same run, turn and step. The runtime sets the
 | current context with setContext(); an emit may override any field via its
 | own payload.
+|
+| With runWithScope() (Phase 3, RUN_CONTEXT_MODE=modular) a whole async
+| chain gets its own context: setContext writes land in the scope instead
+| of the process-global object, and emitted envelopes are read back from
+| it. Concurrent runs therefore cannot overwrite each other's attribution.
+| A scoped envelope additionally carries project_id (additive); events
+| emitted without a scope keep the exact legacy shape.
 |--------------------------------------------------------------------------
 */
 
@@ -36,12 +45,54 @@ const context = {
 };
 
 
+const scopeStorage = new AsyncLocalStorage();
+
+
+function currentScope() {
+
+    return scopeStorage.getStore() || null;
+
+}
+
+
+/* Runs fn with its own correlation context; leaving the chain restores
+   whatever the caller saw, so no cleanup pass is needed after a run. */
+function runWithScope(initial = {}, fn) {
+
+    const scope = {
+        run_id: null,
+        turn_id: null,
+        scope: null,
+        iteration: null,
+        project_id:
+            Object.prototype.hasOwnProperty.call(initial, "project_id")
+                ? initial.project_id
+                : null
+    };
+
+    for (const key of ["run_id", "turn_id", "scope", "iteration"]) {
+
+        if (Object.prototype.hasOwnProperty.call(initial, key)) {
+            scope[key] = initial[key];
+        }
+
+    }
+
+    return scopeStorage.run(scope, fn);
+
+}
+
+
 function setContext(patch = {}) {
+
+    const scoped = currentScope();
+
+    const target = scoped || context;
 
     for (const key of Object.keys(context)) {
 
         if (Object.prototype.hasOwnProperty.call(patch, key)) {
-            context[key] = patch[key];
+            target[key] = patch[key];
         }
     }
 }
@@ -51,6 +102,13 @@ function emit(type, payload = {}) {
 
     sequence++;
 
+    const scoped = currentScope();
+
+    const resolve = (key) =>
+        Object.prototype.hasOwnProperty.call(payload, key)
+            ? payload[key]
+            : (scoped ? scoped[key] : context[key]);
+
     const event = {
         seq: sequence,
 
@@ -58,28 +116,27 @@ function emit(type, payload = {}) {
 
         at: Date.now(),
 
-        run_id:
-            Object.prototype.hasOwnProperty.call(payload, "run_id")
-                ? payload.run_id
-                : context.run_id,
+        run_id: resolve("run_id"),
 
-        turn_id:
-            Object.prototype.hasOwnProperty.call(payload, "turn_id")
-                ? payload.turn_id
-                : context.turn_id,
+        turn_id: resolve("turn_id"),
 
-        scope:
-            Object.prototype.hasOwnProperty.call(payload, "scope")
-                ? payload.scope
-                : context.scope,
+        scope: resolve("scope"),
 
-        iteration:
-            Object.prototype.hasOwnProperty.call(payload, "iteration")
-                ? payload.iteration
-                : context.iteration,
+        iteration: resolve("iteration"),
 
         ...payload
     };
+
+    /* Additive: only a scoped (modular) event carries the project, so
+       legacy envelopes keep their historical fields bit for bit. */
+    if (scoped) {
+
+        event.project_id =
+            Object.prototype.hasOwnProperty.call(payload, "project_id")
+                ? payload.project_id
+                : scoped.project_id;
+
+    }
 
     bus.emit("event", event);
 
@@ -99,5 +156,6 @@ module.exports = {
     bus,
     emit,
     setContext,
+    runWithScope,
     resetSequence
 };

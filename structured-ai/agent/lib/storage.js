@@ -1317,6 +1317,21 @@ const DEFINITIONS = [
         type: STRING,
         default: "legacy",
         description: "Project scoping mode: 'legacy' keeps single-workspace behavior; 'modular' resolves a ProjectContext per run (EXECUTION_PLAN feature flag)."
+    },
+    {
+        key: "RUN_CONTEXT_MODE",
+        group: "runtime",
+        type: STRING,
+        default: "legacy",
+        description: "Run state mode: 'legacy' keeps the process-global RUN/AGENT_BUDGET; 'modular' gives every run its own AgentRunContext via the RunManager so runs may execute concurrently (EXECUTION_PLAN phase 3 flag)."
+    },
+    {
+        key: "RUN_HISTORY_LIMIT",
+        group: "runtime",
+        type: NUMBER,
+        default: 100,
+        min: 1,
+        description: "How many settled runs the RunManager keeps queryable after they finish."
     }
 ];
 

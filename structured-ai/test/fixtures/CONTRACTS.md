@@ -118,4 +118,12 @@ envelope پاسخ مدل (کلیدهای سطح-یک): `version`(`"1.0"`), `tool
 flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شوند (نه env خام) تا resolver، UI و snapshot همه یک مقدار را ببینند:
 
 - `PROJECT_CONTEXT_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۲ موجود است.
-- بقیه (`RUN_CONTEXT_MODE`, `PROMPT_BUILDER_MODE`, `SEMANTIC_POOL_MODE`, `RUNTIME_ENGINE_MODE`, `WEB_SERVER_MODE`) هنگام ورود به فاز خودشان اعلان می‌شوند.
+- `RUN_CONTEXT_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۳ موجود است؛ همراه آن `RUN_HISTORY_LIMIT` (NUMBER، پیش‌فرض ۱۰۰) برای ظرفیت تاریخچهٔ Runهای پایان‌یافتهٔ RunManager.
+- بقیه (`PROMPT_BUILDER_MODE`, `SEMANTIC_POOL_MODE`, `RUNTIME_ENGINE_MODE`, `WEB_SERVER_MODE`) هنگام ورود به فاز خودشان اعلان می‌شوند.
+
+## ۸. تغییرات additive فاز ۳ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
+
+- رویدادهای emit‌شده **داخل scope یک Run در حالت `RUN_CONTEXT_MODE=modular`** فیلد envelope جدید `project_id` دارند (null وقتی پروژه‌ای resolve نشده). رویدادهای خارج از scope — و بنابراین کل رفتار حالت `legacy` — دقیقاً همان شکل قبلی را دارند؛ fixtureهای فاز ۱ بدون تغییر معتبرند.
+- `agent/lib/events.js` یک API جدید additive دارد: `runWithScope(initial, fn)` که context هم‌بستگی را برای یک زنجیرهٔ async ایزوله می‌کند (`setContext` داخل scope به همان scope می‌نویسد). بدون فراخوانی آن، رفتار `emit`/`setContext` بیت‌به‌بیت همان است.
+- سطح دسترسی runtime (exports در `agent/agent.js`) additive گسترش یافت: `AgentRunContext`, `runManager`, `runContextMode`, `cancelRunById`. امضاها و رفتار entry pointهای قبلی (`startRun`, `cancelRun`, `isRunCancelled`, `runRemainingMs`, `assertRunActive`, `runAgent`) بدون تغییر؛ در حالت legacy همان state سراسری را هدف می‌گیرند.
+- قالب run id حالت modular همان `run-<ISO-timestamp>` است؛ در برخورد هم‌زمان در یک میلی‌ثانیه پسوند `-r<N>` اضافه می‌شود (فقط حالت modular).

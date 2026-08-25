@@ -148,15 +148,22 @@
 
 ---
 
-## [🔴] فاز ۳: AgentRunContext و RunManager
+## [🟢] فاز ۳: AgentRunContext و RunManager
 
 **هدف و scope:** حذف تدریجی state سراسری `RUN` (خط ۱۷۳۹ `agent/agent.js`) و `AGENT_BUDGET` به‌نفع context متعلق به هر اجرا؛ پیش‌نیاز اجرای هم‌زمان چند task و انتقال امن context در فاز ۴. خروجی: `agent/runtime/AgentRunContext.js`، `agent/runtime/RunManager.js`، `agent/runtime/RunBudget.js`، `agent/runtime/RunCancellation.js`.
 
-### [🔴] گام ۱: پیاده‌سازی AgentRunContext
+**تکمیل 2026-08-25:** ۵ تست جدید سبز؛ suite کامل ۴۵۹/۴۵۹. ماژول‌ها در `agent/runtime/`؛ wiring پشت flag `RUN_CONTEXT_MODE` (اعلان‌شده در schema تنظیمات، همراه `RUN_HISTORY_LIMIT`). گسترش‌های additive در `test/fixtures/CONTRACTS.md` §۸ ثبت شد.
+**مرز ثبت‌شده:** جداسازی تضمین‌شده messages/budget/delegation budget/cancellation است؛ state اشتراکی `toolRuntime` (search sessions، telemetry، process sessions) عمداً process-global مانده و در فاز ۴ (Tool Runtime) per-run/per-project می‌شود. اجرای هم‌زمان دو پروژه با دو **root متفاوت** نیز همچنان محدودیت fail-fast فاز ۲ (`assertWorkspaceMatch`) را دارد و با ابزارهای project-aware فاز ۴ باز می‌شود؛ تست هم‌زمانی فاز ۳ با دو پروژهٔ متمایز روی یک root (registered + default synthetic) معیار پذیرش را اقناع می‌کند.
+
+### [🟢] گام ۱: پیاده‌سازی AgentRunContext
+
+**انجام شد (2026-08-25):** `agent/runtime/AgentRunContext.js` با فیلدهای خواسته‌شده (`runId`, `project`, `projectId`, `task`, `parentRunId`, `turnId`, `messages`, `budget`, `cancellation`, `agentBudget`) + سطح سازگاری با فیلدهای legacy `RUN` (getter/setter روی اعضای معنایی) تا مسیر اجرای مشترک بدون fork کار کند. `agent/runtime/RunBudget.js` دو کلاس `RunBudget` (ساعت/ددلاین/hook swap) و `AgentSpawnBudget` (شمارندهٔ spawn) دارد؛ `agent/runtime/RunCancellation.js` مالکیت controller/reason هر Run. در `agent.js` هر ۹۲ دسترسی `RUN.` و ۶ دسترسی `AGENT_BUDGET.` به wrapperهای سازگار `currentRun()`/`currentAgentBudget()` منتقل شد — در legacy همان globalها، در modular context متعلق به زنجیرهٔ async جاری (AsyncLocalStorage در RunManager). flag `RUN_CONTEXT_MODE` در DEFINITIONS تنظیمات اعلان شد (قانون repo که runtime.test اجرا می‌کند). خروجی normalized رفتار single-Run حالت modular با حالت legacy (baseline فاز ۱) بیت‌به‌بیت برابر است (تست اختصاصی؛ تنها تفاوت مجاز: فیلد additive `project_id`).
 
 کلاس `AgentRunContext` با فیلدهای `runId`، `project` (ProjectContext)، `projectId`، `task`، `parentRunId`، `turnId`، `messages`، `budget`، `cancellation`، `agentBudget` را بساز. دسترسی‌های فعلی به `RUN`/`AGENT_BUDGET` در `agent.js` و ماژول‌های lib به context جدید delegate شود (ابتدا wrapper سازگار: getterهای قدیمی contextِ Run جاری را می‌خوانند). **پشت flag:** `RUN_CONTEXT_MODE`.
 
-### [🔴] گام ۲: پیاده‌سازی RunManager و اجرای هم‌زمان
+### [🟢] گام ۲: پیاده‌سازی RunManager و اجرای هم‌زمان
+
+**انجام شد (2026-08-25):** `agent/runtime/RunManager.js` چرخهٔ حیات را مدیریت می‌کند: `createRun` (id یکتا با قالب legacy + پسوند `-r<N>` فقط هنگام برخورد در یک میلی‌ثانیه)، `execute` (دو async scope توأمان: store مخصوص Run برای `currentRun()` و `events.runWithScope` جدید additive در `lib/events.js` که context هم‌بستگی را per-run ایزوله می‌کند)، ردیابی active/finished (سقف `RUN_HISTORY_LIMIT`)، و `cancelRunById` برای لغو خارج از scope. `runAgent` در حالت modular از مسیر `runAgentModular` می‌رود که بعد از resolve پروژه (fail-fast) context را می‌سازد؛ منطق after-task-hook معادل مقایسهٔ previousRunId در legacy دقیقاً بازسازی شده (سیگنال `started_at`). تست‌های `test/runs/run-context.test.js`: legacy بدون رد RunManager، برابری normalized با baseline (تنها تفاوت مجاز `project_id` additive روی همهٔ رویدادهای scoped)، `Promise.all` دو Run روی دو پروژهٔ متمایز بدون تداخل messages/بudget/cancellation/attribution رویدادها (`run_id`+`turn_id`+`project_id`)، و لغو Run الف در میانهٔ پرواز بدون اثر روی Run ب (`status` پایانی: `cancelled`/`completed`).
 
 `RunManager` چرخهٔ حیات Runها (ایجاد، ردیابی، پایان، لغو) را مدیریت کند و اجرای `Promise.all([runAgent(...), runAgent(...)])` را برای دو project متفاوت ممکن سازد. پیام‌ها، budget، شمارندهٔ delegation و cancellation هر Run کاملاً جدا باشد. رویدادهای runtime `runId` (و در حالت modular `projectId` و `turnId`) را به‌صورت additive حمل کنند.
 
@@ -816,5 +823,11 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 5. **Approval برای MCPهای `scope: global`:** gateway-level با attribution به پروژهٔ درخواست‌کننده؛ یک‌بار تأیید، audit per-project (فاز ۹ گام ۴).
 6. **Transcript discussion:** per-project پایدار در `dataRoot` پروژه و قابل replay (فاز ۲۸ گام ۲) — تغییر رفتاری تعمدی و مستند.
 
+ثبت‌های تکمیلی هنگام اجرا:
+
+7. **مکانیزم ایزوله‌سازی Run (فاز ۳):** AsyncLocalStorage برای هر دو context Run و رویدادها؛ legacy بدون ورود به scope دقیقاً همان globalها. انتخاب ALS به‌جای پاس‌دادن صریح ctx به همهٔ فراخوانی‌ها برای حفظ شکل مسیر اجرا و wrapperهای سازگار بود (قانون ۷).
+8. **مرز state اشتراکی toolRuntime (فاز ۳):** search sessions/telemetry/process sessions در `agent/tools` همچنان process-global است؛ per-run/per-project شدن آن‌ها صریحاً scope فاز ۴ (Tool Runtime) است. هم‌زمانی فاز ۳ روی messages/budget/cancellation/attribution تضمین می‌شود، نه روی state داخلی ابزارها.
+9. **قالب run id در modular:** همان قالب legacy؛ پسوند `-r<N>` تنها هنگام برخورد دو Run در یک میلی‌ثانیه (additive؛ normalized بودن run id در fixtureها حفظ می‌شود).
+
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
-7. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
+10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

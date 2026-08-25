@@ -23,6 +23,12 @@ const eventstore = require("./lib/eventstore");
 
 const projects = require("./projects");
 
+const {
+    AgentRunContext,
+    runManager,
+    runContextMode
+} = require("./runtime");
+
 journal.attach(events.bus);
 eventstore.attach(events.bus);
 
@@ -1183,7 +1189,7 @@ function archiveExchanges(messages, exchanges, scope) {
                 fresh,
                 {
                     agent: scope || "main_agent",
-                    run: RUN.id
+                    run: currentRun().id
                 }
             )
         );
@@ -1287,7 +1293,7 @@ async function foldIntoMemory(messages, scope) {
             {
                 getSignal: () => {
                     assertRunActive("folding history into memory");
-                    return RUN.controller?.signal;
+                    return currentRun().controller?.signal;
                 }
             }
         );
@@ -1654,12 +1660,12 @@ function createRuntimeContext() {
                 settings.get("MAX_TOTAL_AGENTS"),
 
             agents_spawned:
-                AGENT_BUDGET.spawned,
+                currentAgentBudget().spawned,
 
             agents_remaining:
                 Math.max(
                     0,
-                    settings.get("MAX_TOTAL_AGENTS") - AGENT_BUDGET.spawned
+                    settings.get("MAX_TOTAL_AGENTS") - currentAgentBudget().spawned
                 ),
 
             iterations_per_agent:
@@ -1675,7 +1681,7 @@ function createRuntimeContext() {
                 settings.get("MAX_CONTEXT_CHARS"),
 
             run_remaining_ms:
-                RUN.started_at
+                currentRun().started_at
                     ? Math.max(0, runRemainingMs())
                     : settings.get("MAX_RUN_MS")
         },
@@ -1761,9 +1767,35 @@ const RUN = {
 };
 
 
+/*
+| The compat accessors of EXECUTION_PLAN Phase 3: every read/write the
+| engine used to aim at the global RUN and AGENT_BUDGET goes through
+| these. In legacy mode (and anywhere outside a run's async scope) they
+| resolve to the same globals as before, so behavior is unchanged; in
+| modular mode each run's async chain resolves to its own
+| AgentRunContext, which is what lets two runs share a process without
+| sharing messages, budgets or cancellation.
+*/
+
+function currentRun() {
+
+    return runManager.current() || RUN;
+
+}
+
+
+function currentAgentBudget() {
+
+    const context = runManager.current();
+
+    return context ? context.agentBudget : AGENT_BUDGET;
+
+}
+
+
 function startRun() {
 
-    RUN.started_at = Date.now();
+    currentRun().started_at = Date.now();
 
     /*
     | Archived records outlive the process, so they carry the run they
@@ -1771,37 +1803,51 @@ function startRun() {
     | failure from this morning's.
     */
 
-    RUN.id =
-        `run-${new Date(RUN.started_at).toISOString()
-            .replace(/[:.]/g, "-")}`;
+    /*
+    | A modular run keeps the id the RunManager issued when its context
+    | was created, so the run is addressable before startRun; the legacy
+    | global RUN always regenerates its id from the fresh start
+    | timestamp, exactly as it historically does.
+    */
+
+    if (
+        !(currentRun() instanceof AgentRunContext) ||
+        !currentRun().id
+    ) {
+
+        currentRun().id =
+            `run-${new Date(currentRun().started_at).toISOString()
+                .replace(/[:.]/g, "-")}`;
+
+    }
 
     /* Every event emitted from now on carries this run_id in its
        correlation envelope, so the journal, session and archive can
        attribute events to the same run. */
-    events.setContext({ run_id: RUN.id });
+    events.setContext({ run_id: currentRun().id });
 
-    RUN.controller = new AbortController();
-    RUN.cancelled_reason = null;
-    RUN.inHook = false;
-    RUN.hook_phase = null;
-    RUN.hook_started_at = 0;
-    RUN.hook_deadline_at = null;
-    RUN.hook_results = {};
-    RUN.after_hooks_ran = false;
-    RUN.main_agent_definition = null;
-    RUN.task = "";
-    RUN.turnCounter = 0;
-    RUN.project = null;
+    currentRun().controller = new AbortController();
+    currentRun().cancelled_reason = null;
+    currentRun().inHook = false;
+    currentRun().hook_phase = null;
+    currentRun().hook_started_at = 0;
+    currentRun().hook_deadline_at = null;
+    currentRun().hook_results = {};
+    currentRun().after_hooks_ran = false;
+    currentRun().main_agent_definition = null;
+    currentRun().task = "";
+    currentRun().turnCounter = 0;
+    currentRun().project = null;
 
     /*
     | Whatever belongs to a single run is cleared here, so every entry
     | point gets the same clean slate, not only runAgent.
     */
 
-    RUN.carried =
+    currentRun().carried =
         toolRuntime.startRunScope();
 
-    return RUN.carried;
+    return currentRun().carried;
 }
 
 
@@ -1812,16 +1858,16 @@ function startRun() {
 
 function runDeadlineAt() {
 
-    if (RUN.inHook && RUN.hook_deadline_at) {
-        return RUN.hook_deadline_at;
+    if (currentRun().inHook && currentRun().hook_deadline_at) {
+        return currentRun().hook_deadline_at;
     }
 
-    if (!RUN.started_at) {
+    if (!currentRun().started_at) {
         return null;
     }
 
     return (
-        RUN.started_at +
+        currentRun().started_at +
         settings.get("MAX_RUN_MS")
     );
 }
@@ -1830,13 +1876,13 @@ function runDeadlineAt() {
 function cancelRun(reason) {
 
     if (
-        !RUN.controller ||
-        RUN.controller.signal.aborted
+        !currentRun().controller ||
+        currentRun().controller.signal.aborted
     ) {
         return;
     }
 
-    RUN.cancelled_reason = reason;
+    currentRun().cancelled_reason = reason;
 
     if (reason === "deadline") {
 
@@ -1847,7 +1893,51 @@ function cancelRun(reason) {
         });
     }
 
-    RUN.controller.abort();
+    currentRun().controller.abort();
+}
+
+
+/*
+| Cancellation addressable by run id (RUN_CONTEXT_MODE=modular). A
+| caller that holds no async scope of the run — a web cancel endpoint,
+| a test — names the run instead of whichever run happens to be current
+| process-wide. Awaiting the run's promise still reports the failure to
+| its own caller; every other run keeps going. Returns false when no
+| tracked run has that id.
+*/
+function cancelRunById(runId, reason) {
+
+    const context = runManager.get(runId);
+
+    if (!context) {
+        return false;
+    }
+
+    if (
+        !context.controller ||
+        context.controller.signal.aborted
+    ) {
+        return true;
+    }
+
+    context.cancelled_reason = reason;
+
+    if (reason === "deadline") {
+
+        events.emit("run:deadline", {
+            run_id: context.runId,
+            agent: "main_agent",
+            max_run_ms: settings.get("MAX_RUN_MS"),
+            elapsed_ms:
+                context.started_at
+                    ? Date.now() - context.started_at
+                    : 0
+        });
+    }
+
+    context.cancellation.abort();
+
+    return true;
 }
 
 
@@ -1866,16 +1956,16 @@ function runRemainingMs() {
 function isRunCancelled() {
 
     return Boolean(
-        RUN.controller &&
-        RUN.controller.signal.aborted
+        currentRun().controller &&
+        currentRun().controller.signal.aborted
     );
 }
 
 
 function runElapsedMs() {
 
-    return RUN.started_at
-        ? Date.now() - RUN.started_at
+    return currentRun().started_at
+        ? Date.now() - currentRun().started_at
         : 0;
 }
 
@@ -1887,9 +1977,9 @@ function runElapsedMs() {
 
 function budgetSentence() {
 
-    if (RUN.inHook) {
+    if (currentRun().inHook) {
 
-        return `the ${RUN.hook_phase || "hook"} budget of ${
+        return `the ${currentRun().hook_phase || "hook"} budget of ${
             settings.get("HOOK_TIMEOUT_MS")
         } ms (HOOK_TIMEOUT_MS) was spent`;
     }
@@ -1906,11 +1996,11 @@ function assertRunActive(what) {
 
         throw new Error(
             `Run cancelled${
-                RUN.cancelled_reason
-                    ? ` (${RUN.cancelled_reason})`
+                currentRun().cancelled_reason
+                    ? ` (${currentRun().cancelled_reason})`
                     : ""
             }: ${what}${
-                RUN.cancelled_reason === "deadline"
+                currentRun().cancelled_reason === "deadline"
                     ? ` — ${budgetSentence()}`
                     : ""
             }`
@@ -1993,22 +2083,22 @@ function createRequestSignal(timeoutOverride) {
         */
 
         state.reason =
-            RUN.cancelled_reason === "deadline"
+            currentRun().cancelled_reason === "deadline"
                 ? budgetSentence()
                 : `run cancelled (${
-                    RUN.cancelled_reason || "unknown"
+                    currentRun().cancelled_reason || "unknown"
                 })`;
 
         controller.abort();
     };
 
-    if (RUN.controller) {
+    if (currentRun().controller) {
 
-        if (RUN.controller.signal.aborted) {
+        if (currentRun().controller.signal.aborted) {
             onRunAbort();
         } else {
 
-            RUN.controller.signal.addEventListener(
+            currentRun().controller.signal.addEventListener(
                 "abort",
                 onRunAbort,
                 {
@@ -2030,9 +2120,9 @@ function createRequestSignal(timeoutOverride) {
 
             clearTimeout(timer);
 
-            if (RUN.controller) {
+            if (currentRun().controller) {
 
-                RUN.controller.signal.removeEventListener(
+                currentRun().controller.signal.removeEventListener(
                     "abort",
                     onRunAbort
                 );
@@ -2059,7 +2149,7 @@ const AGENT_BUDGET = {
 
 function resetAgentBudget() {
 
-    AGENT_BUDGET.spawned = 0;
+    currentAgentBudget().spawned = 0;
 }
 
 
@@ -2067,7 +2157,7 @@ function remainingAgentBudget() {
 
     return Math.max(
         0,
-        settings.get("MAX_TOTAL_AGENTS") - AGENT_BUDGET.spawned
+        settings.get("MAX_TOTAL_AGENTS") - currentAgentBudget().spawned
     );
 }
 
@@ -2076,10 +2166,10 @@ function consumeAgentBudget(
     agentName
 ) {
 
-    AGENT_BUDGET.spawned++;
+    currentAgentBudget().spawned++;
 
     if (
-        AGENT_BUDGET.spawned >
+        currentAgentBudget().spawned >
         settings.get("MAX_TOTAL_AGENTS")
     ) {
 
@@ -8251,14 +8341,14 @@ function hookExecutionContext(extra = {}) {
     const plan = currentPlanSummary();
 
     return {
-        task: RUN.task,
-        objective: plan.objective || RUN.task,
+        task: currentRun().task,
+        objective: plan.objective || currentRun().task,
         repository: detectRepository(),
         files_changed: toolRuntime.telemetry.changedFiles(),
         file_tracking_complete:
             toolRuntime.telemetry.changeTrackingComplete(),
         plan,
-        hooks: RUN.hook_results,
+        hooks: currentRun().hook_results,
         ...extra
     };
 }
@@ -8497,7 +8587,7 @@ async function executeOneHook(hook, baseContext, mainAgentDefinition) {
     const startedAt = Date.now();
     const context = {
         ...baseContext,
-        hooks: RUN.hook_results
+        hooks: currentRun().hook_results
     };
 
     events.emit("hook:start", {
@@ -8522,7 +8612,7 @@ async function executeOneHook(hook, baseContext, mainAgentDefinition) {
             duration_ms: Date.now() - startedAt
         };
 
-        RUN.hook_results[hook.id] = skipped;
+        currentRun().hook_results[hook.id] = skipped;
         events.emit("hook:end", {
             id: skipped.id,
             phase: skipped.phase,
@@ -8565,7 +8655,7 @@ async function executeOneHook(hook, baseContext, mainAgentDefinition) {
             duration_ms: Date.now() - startedAt
         };
 
-        RUN.hook_results[hook.id] = completed;
+        currentRun().hook_results[hook.id] = completed;
         events.emit("hook:end", {
             id: completed.id,
             phase: completed.phase,
@@ -8596,7 +8686,7 @@ async function executeOneHook(hook, baseContext, mainAgentDefinition) {
             duration_ms: Date.now() - startedAt
         };
 
-        RUN.hook_results[hook.id] = failed;
+        currentRun().hook_results[hook.id] = failed;
         events.emit("hook:end", {
             id: failed.id,
             phase: failed.phase,
@@ -8617,7 +8707,7 @@ async function executeOneHook(hook, baseContext, mainAgentDefinition) {
 
 async function withHookBudget(phase, callback) {
 
-    if (RUN.inHook) {
+    if (currentRun().inHook) {
         return {
             phase,
             skipped: true,
@@ -8628,16 +8718,16 @@ async function withHookBudget(phase, callback) {
     }
 
     const previous = {
-        controller: RUN.controller,
-        cancelled_reason: RUN.cancelled_reason
+        controller: currentRun().controller,
+        cancelled_reason: currentRun().cancelled_reason
     };
 
-    RUN.inHook = true;
-    RUN.hook_phase = phase;
-    RUN.hook_started_at = Date.now();
-    RUN.hook_deadline_at = RUN.hook_started_at + settings.get("HOOK_TIMEOUT_MS");
-    RUN.controller = new AbortController();
-    RUN.cancelled_reason = null;
+    currentRun().inHook = true;
+    currentRun().hook_phase = phase;
+    currentRun().hook_started_at = Date.now();
+    currentRun().hook_deadline_at = currentRun().hook_started_at + settings.get("HOOK_TIMEOUT_MS");
+    currentRun().controller = new AbortController();
+    currentRun().cancelled_reason = null;
 
     const timeout =
         setTimeout(
@@ -8651,23 +8741,23 @@ async function withHookBudget(phase, callback) {
         clearTimeout(timeout);
 
         const hookCancellation =
-            RUN.cancelled_reason;
+            currentRun().cancelled_reason;
 
-        RUN.inHook = false;
-        RUN.hook_phase = null;
-        RUN.hook_started_at = 0;
-        RUN.hook_deadline_at = null;
-        RUN.controller = previous.controller;
-        RUN.cancelled_reason = previous.cancelled_reason;
+        currentRun().inHook = false;
+        currentRun().hook_phase = null;
+        currentRun().hook_started_at = 0;
+        currentRun().hook_deadline_at = null;
+        currentRun().controller = previous.controller;
+        currentRun().cancelled_reason = previous.cancelled_reason;
 
         if (
             hookCancellation &&
             hookCancellation !== "hook deadline" &&
-            RUN.controller &&
-            !RUN.controller.signal.aborted
+            currentRun().controller &&
+            !currentRun().controller.signal.aborted
         ) {
-            RUN.cancelled_reason = hookCancellation;
-            RUN.controller.abort();
+            currentRun().cancelled_reason = hookCancellation;
+            currentRun().controller.abort();
         }
     }
 }
@@ -8677,7 +8767,7 @@ async function runHooks(phase, context, mainAgentDefinition) {
 
     const declarations = hookRegistry.enabledHooks(phase);
 
-    if (declarations.length === 0 || RUN.inHook) {
+    if (declarations.length === 0 || currentRun().inHook) {
 
         return {
             phase,
@@ -8760,7 +8850,7 @@ function hookReportText(report) {
 
 async function applyAfterTaskHooks(action, runError) {
 
-    if (RUN.after_hooks_ran) {
+    if (currentRun().after_hooks_ran) {
         return { action, report: null };
     }
 
@@ -8781,15 +8871,15 @@ async function applyAfterTaskHooks(action, runError) {
         await runHooks(
             "after_task",
             context,
-            RUN.main_agent_definition || mainAgentProfile()
+            currentRun().main_agent_definition || mainAgentProfile()
         );
 
-    RUN.after_hooks_ran = true;
+    currentRun().after_hooks_ran = true;
 
     const combinedReport = {
         ...report,
         results:
-            Object.values(RUN.hook_results)
+            Object.values(currentRun().hook_results)
     };
 
     if (!action) {
@@ -8836,7 +8926,7 @@ async function autoroutePlanStep(mainAgentDefinition) {
 
     if (
         settings.get("PLAN_AUTOROUTE") !== true ||
-        RUN.inHook
+        currentRun().inHook
     ) {
         return null;
     }
@@ -8986,7 +9076,7 @@ async function runAgentCore(options = {}) {
     validateRegistries();
 
     const carried =
-        RUN.carried || { background_processes: [] };
+        currentRun().carried || { background_processes: [] };
 
     if (carried.background_processes.length > 0) {
 
@@ -9007,7 +9097,7 @@ async function runAgentCore(options = {}) {
     | fast, assigned after it so the clean-slate reset cannot drop it.
     | Still inert in legacy mode (null).
     */
-    RUN.project = projectContext;
+    currentRun().project = projectContext;
 
     resetAgentBudget();
 
@@ -9021,7 +9111,7 @@ async function runAgentCore(options = {}) {
 
     await discoverMcpTools();
 
-    RUN.task =
+    currentRun().task =
         options.task ||
         readTask();
 
@@ -9032,7 +9122,11 @@ async function runAgentCore(options = {}) {
        conversation message and the runtime events line up. */
     const turn_id =
         options.turn_id ||
-        `${RUN.id}_t${(RUN.turnCounter = (RUN.turnCounter || 0) + 1)}`;
+        `${currentRun().id}_t${(currentRun().turnCounter = (currentRun().turnCounter || 0) + 1)}`;
+
+    if (currentRun() instanceof AgentRunContext) {
+        currentRun().turnId = turn_id;
+    }
 
     events.setContext({ turn_id });
 
@@ -9044,12 +9138,12 @@ async function runAgentCore(options = {}) {
 
     events.emit("run:start", {
         run_id:
-            RUN.id,
+            currentRun().id,
 
         turn_id,
 
         task:
-            RUN.task,
+            currentRun().task,
 
         continued:
             Array.isArray(options.history) &&
@@ -9060,6 +9154,12 @@ async function runAgentCore(options = {}) {
         Array.isArray(options.history)
             ? options.history
             : [];
+
+    /* The run context aliases the very array the loop mutates, so a
+       run handle always sees its own conversation as it grows. */
+    if (currentRun() instanceof AgentRunContext) {
+        currentRun().messages = messages;
+    }
 
     if (messages.length === 0) {
 
@@ -9119,7 +9219,7 @@ async function runAgentCore(options = {}) {
             };
         })();
 
-    RUN.main_agent_definition =
+    currentRun().main_agent_definition =
         mainAgentDefinition;
 
     const mainDepthBudget =
@@ -9849,17 +9949,87 @@ async function runAgentCore(options = {}) {
 }
 
 
+/*
+| Modular variant (EXECUTION_PLAN Phase 3, RUN_CONTEXT_MODE=modular):
+| the run gets its own AgentRunContext before anything starts, the whole
+| core executes inside the run's async scopes, and two such calls may
+| interleave without sharing messages, budgets or cancellation.
+|
+| The error path mirrors the legacy wrapper: the after-task hooks only
+| run for a failure of a run that actually started — a failure during
+| context resolution or registry validation must not inherit them. The
+| legacy wrapper detects that via its previousRunId comparison; here the
+| run's started_at timestamp is the equivalent signal.
+*/
+async function runAgentModular(options = {}) {
+
+    /* Resolved before the context is created so a bad project reference
+       still fails fast and no half-built run is ever tracked. */
+    const projectContext =
+        resolveRunProjectContext(options);
+
+    const context =
+        runManager.createRun({
+            task: options.task || "",
+            parentRunId: options.parent_run_id || null,
+            project: projectContext
+        });
+
+    return await runManager.execute(context, async () => {
+
+        try {
+            return await runAgentCore(options);
+        } catch (error) {
+
+            if (
+                context.started_at &&
+                !context.after_hooks_ran
+            ) {
+
+                try {
+
+                    const finalized =
+                        await applyAfterTaskHooks(null, error);
+
+                    const report =
+                        hookReportText(finalized.report);
+
+                    if (report) {
+                        error.message = `${error.message}\n\nAutomated routine:\n${report}`;
+                    }
+
+                } catch (hookError) {
+
+                    error.message =
+                        `${error.message}\n\nafter_task hooks could not finish: ${hookError.message}`;
+                }
+            }
+
+            throw error;
+
+        }
+
+        /* Leaving the async scopes restores the correlation context:
+           nothing process-global needs the legacy wrapper's cleanup. */
+    });
+}
+
+
 async function runAgent(options = {}) {
 
-    const previousRunId = RUN.id;
+    if (runContextMode() === "modular") {
+        return await runAgentModular(options);
+    }
+
+    const previousRunId = currentRun().id;
 
     try {
         return await runAgentCore(options);
     } catch (error) {
 
         if (
-            RUN.id !== previousRunId &&
-            !RUN.after_hooks_ran
+            currentRun().id !== previousRunId &&
+            !currentRun().after_hooks_ran
         ) {
 
             try {
@@ -10101,6 +10271,17 @@ module.exports = {
     isRunCancelled,
     runRemainingMs,
     assertRunActive,
+
+    /*
+    | Per-run context surface (Phase 3, gated by RUN_CONTEXT_MODE). The
+    | legacy entry points above keep their exact signatures and
+    | behavior; these exist so modular callers can address one specific
+    | run out of several concurrent ones.
+    */
+    AgentRunContext,
+    runManager,
+    runContextMode,
+    cancelRunById,
 
     settings,
 

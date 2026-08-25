@@ -66,3 +66,20 @@
 | **مجموع** | **437/437 passed** |
 
 *نکته:* `npm run check` نیز سبز است. اعداد جدول اول baseline **قبل** از افزودن contractها را ثبت می‌کنند؛ این جدول وضعیت پایان فاز ۱ است.
+
+## suite پایان فاز ۳ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-25 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/actions.contract.test.js` | 6/6 passed |
+| `test/contracts/events.contract.test.js` | 5/5 passed |
+| `test/contracts/prompt.contract.test.js` | 5/5 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` (جدید فاز ۳) | 5/5 passed |
+| ۱۴ فایل اصلی (مانند جدول اول) | 415/415 passed |
+| **مجموع** | **459/459 passed** |
+
+*نکته:* تست parity فاز ۳ خروجی normalize‌شدهٔ اجرای single-Run در حالت `RUN_CONTEXT_MODE=modular` را در همان فرایند با حالت legacy (baseline این سند) مقایسه و برابر اعلام کرد؛ تنها تفاوت مجاز، فیلد additive `project_id` روی envelope رویدادهای scoped است (CONTRACTS.md §۸).
