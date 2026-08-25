@@ -106,5 +106,16 @@ envelope پاسخ مدل (کلیدهای سطح-یک): `version`(`"1.0"`), `tool
 ## ۶. قراردادهای persistence و CLI
 
 - مسیر state فعلی: `<workspace>/.agent/` (memory, plan, sessions, archive, journal, eventstore, searches, processes و `project.json`). در این فاز تغییر نمی‌کند؛ انتقال به data root مرکزی موضوع فاز ۸ است.
+- **مرز دو مفهوم «Project» (رسمی‌شده 2026-08-25 در فاز ۲):**
+  - `agent/lib/project.js` («workspace profile»): فایل `.agent/project.json` درون workspace؛ تنظیمات/proفایلِ بازدیدهای قبلیِ همان یک workspace. در نقشهٔ overlay (global ← workspace ← run) می‌ماند و export فعلی‌اش (از جمله `runtime.project`) تغییر نمی‌کند.
+  - `agent/projects/` («multi-project registry»): ثبت/resolve چند workspace در فروگاه مرکزی داده (`~/.local/share/structured-ai/registry.json`، با override `STRUCTURED_AI_DATA_HOME`). سطح عمومی از طریق `runtime.projects` عرضه می‌شود.
+  - این دو **ادغام نمی‌شوند**؛ مقصد نوشتن تنظیماتِ project-scoped در آیندهٔ فاز ۸ `projects/<id>/project.json` مرکزی است، ولی خواندنِ overlayِ workspace حفظ می‌شود.
 - فرمت فایل‌های session/archive/journal/eventstore باید replay-compatible بماند.
 - CLI: `node bin/agent.js -w <path> "<task>"` و REPL (`/help`, `/clear`, `/history`, `/approve`, `/tools`, `/save`) حفظ می‌شوند.
+
+## ۷. flagهای migration (قانون ثابت ۸)
+
+flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شوند (نه env خام) تا resolver، UI و snapshot همه یک مقدار را ببینند:
+
+- `PROJECT_CONTEXT_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۲ موجود است.
+- بقیه (`RUN_CONTEXT_MODE`, `PROMPT_BUILDER_MODE`, `SEMANTIC_POOL_MODE`, `RUNTIME_ENGINE_MODE`, `WEB_SERVER_MODE`) هنگام ورود به فاز خودشان اعلان می‌شوند.

@@ -1303,6 +1303,20 @@ const DEFINITIONS = [
         default: null,
         fixed: true,
         description: "Directory the agent may act in. Fixed at startup because every path check depends on it."
+    },
+    {
+        key: "STRUCTURED_AI_DATA_HOME",
+        group: "persistence",
+        type: STRING,
+        default: null,
+        description: "Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai."
+    },
+    {
+        key: "PROJECT_CONTEXT_MODE",
+        group: "workspace",
+        type: STRING,
+        default: "legacy",
+        description: "Project scoping mode: 'legacy' keeps single-workspace behavior; 'modular' resolves a ProjectContext per run (EXECUTION_PLAN feature flag)."
     }
 ];
 

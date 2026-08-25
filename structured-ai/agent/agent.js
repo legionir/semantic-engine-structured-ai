@@ -21,6 +21,8 @@ const settings = require("./lib/storage");
 const journal = require("./lib/journal");
 const eventstore = require("./lib/eventstore");
 
+const projects = require("./projects");
+
 journal.attach(events.bus);
 eventstore.attach(events.bus);
 
@@ -1749,7 +1751,13 @@ const RUN = {
     after_hooks_ran: false,
     main_agent_definition: null,
     task: "",
-    turnCounter: 0
+    turnCounter: 0,
+    /*
+    | The ProjectContext this run is scoped to (Phase 2). Null in legacy
+    | mode: nothing downstream may branch on it yet — consumers arrive
+    | with the project-aware tool runtime in Phase 4.
+    */
+    project: null
 };
 
 
@@ -1783,6 +1791,7 @@ function startRun() {
     RUN.main_agent_definition = null;
     RUN.task = "";
     RUN.turnCounter = 0;
+    RUN.project = null;
 
     /*
     | Whatever belongs to a single run is cleared here, so every entry
@@ -8929,7 +8938,43 @@ async function autoroutePlanStep(mainAgentDefinition) {
 |--------------------------------------------------------------------------
 */
 
+/*
+| Resolve the ProjectContext for one run (EXECUTION_PLAN, Phase 2).
+|
+| legacy mode (default): returns null and the run behaves exactly as
+| before — project options are ignored, nothing looks at RUN.project.
+|
+| modular mode: the explicit option wins ({project, projectId}), else the
+| default project; while the tool layer still reads the process-wide
+| WORKSPACE_ROOT, a project rooted elsewhere fails loudly here instead of
+| silently mis-scoping tool calls (the cross-root execution lands with
+| the project-aware tool runtime in Phase 4).
+*/
+function resolveRunProjectContext(options) {
+
+    if (projects.projectContextMode() !== "modular") {
+
+        return null;
+
+    }
+
+    const context =
+        projects.resolveProjectForRun(options, {
+            registry: projects.registry(),
+            workspaceRoot: WORKSPACE_ROOT
+        });
+
+    projects.assertWorkspaceMatch(context, WORKSPACE_ROOT);
+
+    return context;
+
+}
+
+
 async function runAgentCore(options = {}) {
+
+    const projectContext =
+        resolveRunProjectContext(options);
 
     /*
     | Pick up any edit made to a registry or the policy since the last
@@ -8956,6 +9001,13 @@ async function runAgentCore(options = {}) {
     }
 
     startRun();
+
+    /*
+    | Context resolved before startRun so a bad project reference fails
+    | fast, assigned after it so the clean-slate reset cannot drop it.
+    | Still inert in legacy mode (null).
+    */
+    RUN.project = projectContext;
 
     resetAgentBudget();
 
@@ -9989,6 +10041,13 @@ module.exports = {
     refreshMemoryMessage,
     memoryStore,
     project: require("./lib/project"),
+
+    /*
+    | Multi-project surface (Phase 2). Named `projects` to stay distinct
+    | from the legacy workspace-profile module above; the boundary is
+    | documented in EXECUTION_PLAN Phase 2 step 3.
+    */
+    projects,
     sessions: require("./lib/sessions"),
     eventstore: require("./lib/eventstore"),
     openProject: () => require("./lib/project").openProject(),

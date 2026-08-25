@@ -113,19 +113,27 @@
 
 ---
 
-## [🔴] فاز ۲: Project Registry و Project Context
+## [🟢] فاز ۲: Project Registry و Project Context
 
 **هدف و scope:** مدل پروژه، ثبت چند پروژه بدون collision، و ساخت context صریح پروژه که تمام runtime آن را دریافت می‌کند. این فاز زیربنای همهٔ فازهای Multi-Project است و هنوز هیچ رفتار model-facingای را تغییر نمی‌دهد (default project رفتار امروز را حفظ می‌کند).
 
-### [🔴] گام ۱: پیاده‌سازی ProjectRegistry و ProjectStore و ProjectResolver
+**تکمیل 2026-08-25:** ۱۷ تست جدید سبز؛ suite کامل ۴۵۴/۴۵۴. ماژول‌ها در `agent/projects/`؛ wiring پشت flag `PROJECT_CONTEXT_MODE` (اعلان‌شده در schema تنظیمات).
+
+### [🟢] گام ۱: پیاده‌سازی ProjectRegistry و ProjectStore و ProjectResolver
+
+**انجام شد (2026-08-25):** `agent/projects/ProjectRegistry.js` (canonicalization با `fs.realpathSync`، dedupe روی root canonical، id = slug(name)+hash8(root canonical)، immutable identity fields)، `agent/projects/ProjectStore.js` (registry.json در `~/.local/share/structured-ai` با override `STRUCTURED_AI_DATA_HOME`، نوشتن atomic temp+rename، خطای صریح برای فایل corrupt)، `agent/projects/ProjectResolver.js` + `index.js`. یافتهٔ مهم: قرارداد داخلی repo «هر env var باید تعریف schema داشته باشد» اجرا شد — `STRUCTURED_AI_DATA_HOME` و `PROJECT_CONTEXT_MODE` به DEFINITIONS در `lib/storage.js` افزوده شدند (به‌جای خواندن خام env).
 
 فایل‌های `agent/projects/ProjectRegistry.js`، `agent/projects/ProjectStore.js` و `agent/projects/ProjectResolver.js` را بساز. مدل پروژه طبق سند مرجع: `id`، `name`، `rootPath`، `semanticEndpoint`، `enabled`، `autoStart` و `permissions` (read/write/terminal/git). API: `register`، `get`، `list`، `remove`، `update`، `resolveDefault`. قواعد: root با `realpath` canonical شود؛ root تکراری تشخیص داده شود و پروژهٔ جدید نسازد؛ project ID از root خام ساخته نشود و با rename تغییر نکند؛ root path فقط از registry خوانده شود. registry در data directory مرکزی (`registry.json`) ذخیره شود.
 
-### [🔴] گام ۲: پیاده‌سازی ProjectContext و تزریق آن به مسیر اجرا
+### [🟢] گام ۲: پیاده‌سازی ProjectContext و تزریق آن به مسیر اجرا
+
+**انجام شد (2026-08-25):** `agent/projects/ProjectContext.js` با dataRoot مرکزی برای پروژه‌های ثبت‌شده و dataRoot legacy (`<ws>/.agent`) برای default synthetic؛ `runAgent` حالا `project`/`projectId` می‌پذیرد و در `modular` mode قبل از startRun حل می‌کند (fail-fast) و بعد از آن به `RUN.project` نسبت می‌دهد؛ ناسازگاری root با WORKSPACE_ROOT خطای صریح با ارجاع به فاز ۴ می‌دهد. `legacy` mode به‌صورت کامل رفتار قبلی را حفظ می‌کند (تست: `projectId` نامعتبری در legacy نادیده گرفته می‌شود).
 
 `agent/projects/ProjectContext.js` را بساز با مدل: `projectId`، `projectName`، `workspaceRoot`، `dataRoot` (`{{USER_DATA}}/.structured-ai/projects/<id>`)، `semanticEndpoint`، `permissions`. نقطهٔ ورود `runAgent` توسعه یابد تا یک project یا `{ projectId, projectRegistry }` بپذیرد و بدون آن‌ها default project را resolve کند (سازگاری با CLI فعلی `node bin/agent.js -w <path> "<task>"`). در نبود project معتبر، خطای واضح تولید شود. **پشت flag:** `PROJECT_CONTEXT_MODE`.
 
-### [🔴] گام ۳: تعیین تکلیف `agent/lib/project.js` موجود (تداخل نام‌گذاری)
+### [🟢] گام ۳: تعیین تکلیف `agent/lib/project.js` موجود (تداخل نام‌گذاری)
+
+**انجام شد (2026-08-25):** مرز دو مفهوم در `test/fixtures/CONTRACTS.md` §۶ رسمی شد — ماژول legacy به‌عنوان overlay خوانده می‌شود (رفتار exportها بدون تغییر: `project`/`openProject`/`persistProject`) و سطح multi-project با نام مجزای `projects` از `agent.js` export می‌شود؛ rename ای انجام نشد تا contract حفظ شود.
 
 ماژول فعلی `agent/lib/project.js` مسئول `.agent/project.json` (تنظیمات per-workspace) است و با مفهوم جدید «Project» تداخل مفهومی/نام‌گذاری دارد. **تصمیم تأییدشده (2026-08-25) — مدل Overlay:** فایل legacy `.agent/project.json` در workspace به‌عنوان لایهٔ overlay تنظیمات همچنان **خوانده** می‌شود و در زنجیرهٔ اولویت (global ← project ← run) جای خود را حفظ می‌کند؛ اما مقصد **نوشتنِ** جدید `projects/<id>/project.json` مرکزی است. اجرای کامل این ادغام در فاز ۸ گام ۲ انجام می‌شود؛ در این فاز فقط نام‌گذاری ماژول‌های جدید از این فایل قابل‌تفکیک انتخاب شود (مثلاً `WorkspaceProfile` برای موجودی قدیمی در صورت rename) و boundary دو مفهوم مستند شود. رفتار فعلی `project.openProject()`/`persist()` و exportهای `project`/`openProject`/`persistProject` از `agent.js` بدون تغییر باقی بماند.
 
