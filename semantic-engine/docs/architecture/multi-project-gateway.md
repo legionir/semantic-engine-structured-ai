@@ -1,6 +1,6 @@
 # ADR — Multi-Project Gateway, per-project Workers, external data directory
 
-**Status:** accepted (فاز ۱ of `MULTI_PROJECT_GATEWAY_EXECUTION_PLAN.md`)
+**Status:** accepted (فاز ۱–۴ of `MULTI_PROJECT_GATEWAY_EXECUTION_PLAN.md`)
 **Date:** 2026-08-26
 **Source of requirements:** [`MULTI_PROJECT_GATEWAY_PLAN.md`](../../../MULTI_PROJECT_GATEWAY_PLAN.md)
 **Executable plan (order, contracts, acceptance):** [`MULTI_PROJECT_GATEWAY_EXECUTION_PLAN.md`](../../../MULTI_PROJECT_GATEWAY_EXECUTION_PLAN.md)
@@ -309,7 +309,37 @@ test:gate`) fails when any non-test source file builds a path from the literal
 so `doctor`'s temporary `.semantic-engine-doctor-<pid>` write probe is not
 flagged.
 
-## 6. Verified baseline (2026-08-26)
+## 6. The default flipped in فاز ۴
+
+`semanticEngine.artifactLocation` now defaults to **`external`**: a fresh
+`semantic-engine index --root <repo>` writes nothing into `<repo>`. `in-root`
+remains a supported mode (`--artifact-location in-root` /
+`SEMANTIC_ENGINE_ARTIFACT_LOCATION=in-root`) and `--out` overrides both.
+
+The consumer side of the contract lives in
+`structured-ai/agent/mcp/enginePaths.js` (data home + `projectIdFor` mirror),
+used by `agent/mcp/semantic.js`; `SEMANTIC_ENGINE_DATA_DIR` is a declared
+setting there. Three tests hold the two packages together:
+
+| test | what it pins |
+|---|---|
+| `structured-ai/test/mcp/engine-paths.test.js` | data home per platform, id derivation, read order, `checkStaleness` on both locations |
+| `semantic-engine/src/core/config/structuredAiContract.test.ts` | the engine and the consumer compute identical data homes, slugs and ids |
+| `semantic-engine/src/cli/commands/artifactLocationExternal.test.ts` | the real CLI writes only under the data root |
+
+Container: `SEMANTIC_ENGINE_DATA_DIR=/data` in
+`semantic-engine/Dockerfile` and `structured-ai/docker-compose.yml`, with a
+named volume mounted at `/data` — the compose service runs `read_only: true`,
+so without the volume the default data directory would not be writable.
+
+**Test hygiene.** Tests must not write into a developer's home. Two jest hooks
+are required, because `process.env` inside a jest sandbox is a *copy* and never
+reaches `child_process`: `globalSetup`
+(`src/test/globalSetupDataDir.ts`) sets the temporary data root in the real
+process environment so spawned CLI children inherit it, and `setupFiles`
+(`src/test/setupDataDir.ts`) covers in-sandbox resolution.
+
+## 7. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

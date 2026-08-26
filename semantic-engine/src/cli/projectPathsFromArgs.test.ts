@@ -31,8 +31,23 @@ describe('projectPathsFromArgs — one resolver for every CLI command', () => {
     expect(envVarNameFor('semanticEngine.artifactLocation')).toBe(ARTIFACT_LOCATION_ENV_VAR);
   });
 
-  it('defaults to the in-root layout', () => {
-    const paths = projectPathsFromArgs(parseArgs(['index', '--root', root]), root, {});
+  it('defaults to the data directory', () => {
+    const paths = projectPathsFromArgs(parseArgs(['index', '--root', root]), root, {
+      SEMANTIC_ENGINE_DATA_DIR: path.join(base, 'data'),
+    });
+
+    expect(paths.location).toBe('external');
+    expect(paths.artifactRoot).toBe(
+      path.join(base, 'data', 'projects', projectIdFor('app', root))
+    );
+  });
+
+  it('still supports the legacy in-root layout on request', () => {
+    const paths = projectPathsFromArgs(
+      parseArgs(['index', '--root', root, '--artifact-location', 'in-root']),
+      root,
+      { SEMANTIC_ENGINE_DATA_DIR: path.join(base, 'data') }
+    );
 
     expect(paths.location).toBe('in-root');
     expect(paths.artifactRoot).toBe(path.join(root, '.semantic-engine'));

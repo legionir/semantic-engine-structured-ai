@@ -213,13 +213,50 @@ describeIfBuilt('MIG-51 — دستور index', () => {
     expect(result.stderr).not.toMatch(/at Object\.|at Module\./);
   });
 
-  it('خروجی پیش‌فرض داخل ریشه است', () => {
+  it('خروجی پیش‌فرض در data directory است، نه داخل ریشه', () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'se-cli-ws-'));
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'se-cli-data-'));
+    const projectId = 'prj-cli-index-00000000';
+    try {
+      fs.mkdirSync(path.join(workspace, 'src'));
+      fs.writeFileSync(path.join(workspace, 'src', 'a.ts'), 'export const a = 1;\n');
+
+      const result = run([
+        'index',
+        '--root',
+        workspace,
+        '--no-sqlite',
+        '--project-id',
+        projectId,
+        '--data-dir',
+        dataDir,
+      ]);
+      expect(result.code).toBe(EXIT.ok);
+      expect(
+        fs.existsSync(path.join(dataDir, 'projects', projectId, 'project-index.json'))
+      ).toBe(true);
+      /* هیچ artifactی داخل checkout ساخته نمی‌شود. */
+      expect(fs.existsSync(path.join(workspace, '.semantic-engine'))).toBe(false);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it('--artifact-location in-root همان خروجی قدیمی را می‌دهد', () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'se-cli-ws-'));
     try {
       fs.mkdirSync(path.join(workspace, 'src'));
       fs.writeFileSync(path.join(workspace, 'src', 'a.ts'), 'export const a = 1;\n');
 
-      const result = run(['index', '--root', workspace, '--no-sqlite']);
+      const result = run([
+        'index',
+        '--root',
+        workspace,
+        '--no-sqlite',
+        '--artifact-location',
+        'in-root',
+      ]);
       expect(result.code).toBe(EXIT.ok);
       expect(
         fs.existsSync(path.join(workspace, '.semantic-engine', 'project-index.json'))

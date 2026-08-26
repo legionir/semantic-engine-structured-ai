@@ -20,8 +20,8 @@
         "in-root",
         "external"
       ],
-      "default": "in-root",
-      "description": "Where artifacts are written: 'in-root' keeps the legacy <workspace>/.semantic-engine, 'external' writes under semanticEngine.dataDir. An explicit --out always wins. 'in-root' stays the default until the multi-project migration flips it."
+      "default": "external",
+      "description": "Where artifacts are written: 'external' (default) writes under semanticEngine.dataDir, 'in-root' keeps the legacy <workspace>/.semantic-engine for backward compatibility. An explicit --out always wins."
     },
     "semanticEngine.treeSitter.grammarDir": {
       "type": [

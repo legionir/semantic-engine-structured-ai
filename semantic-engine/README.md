@@ -146,12 +146,38 @@ node bin/semantic-engine.js doctor
 
 ### مسیر یکنواخت پروژه و ایندکس
 
-ریشهٔ پروژه همیشه همان مسیر `--root` است و خروجی پیش‌فرض در
-`<root>/.semantic-engine/` ساخته می‌شود. دستورهای `serve`، `query`، `watch`،
-UI و MCP همین قرارداد را استفاده می‌کنند. اگر یک ایندکس قدیمی در
-`<root>/.agent/semantic/` یا `<root>/semantic/` وجود داشته باشد، فقط برای سازگاری خوانده می‌شود و
-خروجی‌های جدید هرگز در آن مسیر نوشته نمی‌شوند. دادن خودِ `.agent` یا
-`.semantic-engine` به‌عنوان `--root` نیز به ریشهٔ واقعی پروژه نرمال می‌شود.
+ریشهٔ پروژه همیشه همان مسیر `--root` است و فقط **خوانده** می‌شود؛ خروجی از
+نسخهٔ چندپروژه‌ای به بعد در data directory کاربر نوشته می‌شود تا هیچ checkout
+به‌خاطر ایندکس dirty نشود:
+
+```text
+Linux     $XDG_DATA_HOME/semantic-engine        (وگرنه ~/.local/share/semantic-engine)
+macOS     ~/Library/Application Support/SemanticEngine
+Windows   %LOCALAPPDATA%\SemanticEngine
+
+<dataRoot>/projects/<projectId>/project-index.json
+                             /blueprint.json
+                             /project-index.sqlite
+                             /project-artifacts.manifest.json
+```
+
+`<projectId>` برابر `prj-<slug(نام)>-<sha256(مسیر canonical)[0:8]>` است، پس دو
+پروژهٔ هم‌نام در دو مسیر مختلف هرگز به هم نمی‌خورند؛ با `--project-id` هم
+قابل تعیین است. مسیر data root با `SEMANTIC_ENGINE_DATA_DIR` یا `--data-dir`
+عوض می‌شود.
+
+دو راه فرار برای سازگاری با گذشته وجود دارد: `--out <dir>` مثل قبل بر همه‌چیز
+مقدم است، و `--artifact-location in-root` (یا
+`SEMANTIC_ENGINE_ARTIFACT_LOCATION=in-root`) همان رفتار قدیمی
+`<root>/.semantic-engine/` را برمی‌گرداند.
+
+اگر ایندکس قدیمی در `<root>/.semantic-engine/`، `<root>/.agent/semantic/` یا
+`<root>/semantic/` وجود داشته باشد، در اولین اجرا به data directory **کپی**
+می‌شود (نه جابه‌جا) و `<artifactRoot>/migration.json` ثبت می‌کند که از کجا آمده؛
+فایل‌های قدیمی هرگز پاک نمی‌شوند. دستورهای `serve`، `query`، `watch`، UI و MCP
+همین قرارداد را استفاده می‌کنند و `semantic-engine doctor` مسیر data root و
+وضعیت migration را گزارش می‌دهد. دادن خودِ `.agent` یا `.semantic-engine`
+به‌عنوان `--root` نیز به ریشهٔ واقعی پروژه نرمال می‌شود.
 
 ### به‌روزرسانی خودکار artifactها
 
@@ -682,7 +708,8 @@ semantic-engine query find_symbol --name "AuthService" --json
       "command": "node",
       "args": [
         "/path/to/semantic-engine/dist/ai/mcp/cli.js",
-        "/path/to/project/.semantic-engine/project-index.json"
+        "--root",
+        "/path/to/project"
       ]
     }
   }

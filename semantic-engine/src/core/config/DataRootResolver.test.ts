@@ -105,8 +105,9 @@ describe('DataRootResolver — one platform-aware data directory', () => {
 
     expect(artifactLocationOrDefault('external')).toBe('external');
     expect(artifactLocationOrDefault('nonsense')).toBe(DEFAULT_ARTIFACT_LOCATION);
-    expect(artifactLocationOrDefault('nonsense', 'external')).toBe('external');
-    expect(DEFAULT_ARTIFACT_LOCATION).toBe('in-root');
+    expect(artifactLocationOrDefault('nonsense', 'in-root')).toBe('in-root');
+    /* فاز ۴: the data directory is the default now; `in-root` stays opt-in. */
+    expect(DEFAULT_ARTIFACT_LOCATION).toBe('external');
     expect([...ARTIFACT_LOCATIONS]).toEqual(['in-root', 'external']);
   });
 

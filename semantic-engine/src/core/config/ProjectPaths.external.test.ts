@@ -31,14 +31,29 @@ describe('resolveProjectPaths — source and generated data never share a root',
     fs.rmSync(base, { recursive: true, force: true });
   });
 
-  it('keeps today’s in-root layout while `in-root` is the default', () => {
-    const paths = resolveProjectPaths({ projectId: PROJECT_ID, workspaceRoot: workspace });
+  it('keeps the legacy in-root layout when `in-root` is requested', () => {
+    const paths = resolveProjectPaths({
+      projectId: PROJECT_ID,
+      workspaceRoot: workspace,
+      location: 'in-root',
+    });
 
     expect(paths.location).toBe('in-root');
     expect(paths.workspaceRoot).toBe(workspace);
     expect(paths.artifactRoot).toBe(path.join(workspace, '.semantic-engine'));
     expect(paths.indexPath).toBe(canonicalIndexPath(workspace));
     expect(paths.dataRoot).not.toBe('');
+  });
+
+  it('defaults to the data directory', () => {
+    const paths = resolveProjectPaths({
+      projectId: PROJECT_ID,
+      workspaceRoot: workspace,
+      dataRoot: path.join(base, 'data'),
+    });
+
+    expect(paths.location).toBe('external');
+    expect(paths.artifactRoot).toBe(path.join(base, 'data', PROJECTS_DIR_NAME, PROJECT_ID));
   });
 
   it('puts every artifact under the data root in external mode', () => {
@@ -107,6 +122,7 @@ describe('resolveProjectPaths — source and generated data never share a root',
     const paths = resolveProjectPaths({
       projectId: PROJECT_ID,
       workspaceRoot: path.join(workspace, '.agent'),
+      location: 'in-root',
     });
 
     expect(paths.workspaceRoot).toBe(workspace);

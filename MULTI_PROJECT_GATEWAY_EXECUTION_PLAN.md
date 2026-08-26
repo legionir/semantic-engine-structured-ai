@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۳ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۴ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۴ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۵ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -290,27 +290,27 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 
 ---
 
-## [🔴] فاز ۴: فعال‌سازی پیش‌فرض `external` و هماهنگ‌سازی مصرف‌کننده‌ها
+## [🟢] فاز ۴: فعال‌سازی پیش‌فرض `external` و هماهنگ‌سازی مصرف‌کننده‌ها
 
 **هدف:** flip پیش‌فرض به data directory **هم‌زمان** با به‌روزرسانی هر مصرف‌کننده‌ای که مسیر را حدس می‌زند (به‌ویژه structured-ai) و اصلاح استقرار. بدون این فاز، فاز ۳ باعث شکستن یکپارچگی ship‌شده می‌شود (Baseline #10).
 
-### [🔴] گام ۱: تغییر پیش‌فرض
+### [🟢] گام ۱: تغییر پیش‌فرض
 
 `semanticEngine.artifactLocation` در `contracts/config.schema.json` و لایهٔ default در `src/host/Config.ts` → `external`. `in-root` به‌عنوان حالت پشتیبانی‌شده باقی بماند (D10).
 
-### [🔴] گام ۲: resolver مشترک در structured-ai
+### [🟢] گام ۲: resolver مشترک در structured-ai
 
 تغییر `structured-ai/agent/mcp/semantic.js:340-352` تا مسیر ایندکس را اول از data dir (همان قواعد D1 + `SEMANTIC_ENGINE_DATA_DIR`) و بعد از legacyها بخواند؛ حفظ `normalizeWorkspaceRoot` فعلی (خط ۹۴-۱۱۴) و افزودن تست در `structured-ai/test/mcp/semantic.test.js` برای هر دو حالت.
 
-### [🔴] گام ۳: به‌روزرسانی قراردادها و مستندات مسیر
+### [🟢] گام ۳: به‌روزرسانی قراردادها و مستندات مسیر
 
 `semantic-engine/INTEGRATION-STRUCTURED-AI.md:112,190` (INT-02) به قرارداد جدید تغییر کند و نسخهٔ قرارداد افزایش یابد؛ `semantic-engine/README.md:150-154,685` و `semantic-engine/HANDOFF.md:60,92` با مسیر جدید و override به‌روز شوند.
 
-### [🔴] گام ۴: استقرار
+### [🟢] گام ۴: استقرار
 
 `structured-ai/docker-compose.yml`: افزودن `SEMANTIC_ENGINE_DATA_DIR=/data`، mount یک named volume (`engine-data:/data`) و حفظ `read_only: true`؛ اطمینان از اینکه `command` فعلی (`ui --root /workspace …`) با data dir جدید کار می‌کند. به‌روزرسانی `semantic-engine/Dockerfile` اگر `ENV` لازم شد.
 
-### [🔴] گام ۵: doctor
+### [🟢] گام ۵: doctor
 
 `semantic-engine/src/cli/commands/doctor-command.ts`: گزارش مسیر data root، نوشتن‌پذیری آن، وضعیت هر پروژه (`fresh|stale|missing|migrated`) و تشخیص legacy باقیمانده. خروجی `--json` هم داشته باشد.
 
@@ -320,6 +320,25 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 - پروژه‌ای که artifact legacy در root دارد، پس از یک اجرا migrate شود و legacy پاک نشود.
 - `docker compose config` معتبر باشد و `SEMANTIC_ENGINE_DATA_DIR` روی volume نگاشت شود. (Unknown / Requires Verification: اجرای واقعی `docker compose up` در این محیط ممکن نیست؛ بررسی با `docker compose config` و تست نوشتن روی volume شبیه‌سازی‌شده انجام می‌شود.)
 - `semantic-engine doctor --json` مسیر data root و وضعیت migration را برگرداند.
+
+### وضعیت اجرای فاز ۴ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**semantic-engine:** `DataRootResolver.ts` (پیش‌فرض `external`)، `contracts/config.schema.json` (default `external`)، `doctor-command.ts` (+`data-root` و +`artifacts`)، `main.ts` (help: `--project-id`، `--data-dir`، `--artifact-location` و بلوک «artifact location»)، `README.md`، `HANDOFF.md`، `INTEGRATION-STRUCTURED-AI.md` (§۲.۶ و INT-02 → v2)، `Dockerfile`، `jest.config.js` + `src/test/globalSetupDataDir.ts` + `src/test/setupDataDir.ts`، تست جدید `doctorDataRoot.test.ts` (۵) و `structuredAiContract.test.ts` (۴). تست‌های به‌روزشده: `cli.test.ts` (MIG-51)، `serve-watch.test.ts` (MIG-52)، `readyBeforeSignal.phase49.test.ts`، `artifactLocationDefault.test.ts`، `DataRootResolver.test.ts`، `ProjectPaths.external.test.ts`، `projectPathsFromArgs.test.ts`.
+**structured-ai:** `agent/mcp/enginePaths.js` (جدید)، `agent/mcp/semantic.js` (استفاده از آن)، `agent/config/SettingsSchema.js` (+`SEMANTIC_ENGINE_DATA_DIR`)، `test/mcp/engine-paths.test.js` (جدید، ۶ تست) و `package.json` (`test:semantic` و `test`).
+**استقرار:** `docker-compose.yml` (+`SEMANTIC_ENGINE_DATA_DIR=/data` و named volume `engine-data:/data`) و `Dockerfile` (`ENV SEMANTIC_ENGINE_DATA_DIR=/data` + `mkdir/chown` پیش از `USER node`).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 184 passed / 184 total`، `Tests: 2566 passed / 2566 total`، «all suites ran» و «artifact location gate: ok»** (baseline فاز ۳: ۱۸۲ suite و ۲۵۵۴ تست).
+- `cd structured-ai && npm run check && npm test` → exit 0 و **صفر** خط `FAIL` در کل زنجیره (شامل `test/mcp/engine-paths.test.js`: ۶/۶).
+- **یکپارچگی واقعی دوطرفه (نه mock):** اجرای `node bin/semantic-engine.js index --root /tmp/e2e-proj --no-git` با `SEMANTIC_ENGINE_DATA_DIR=/tmp/e2e-data` → artifactها در `/tmp/e2e-data/projects/prj-e2e-proj-a7409ac7/` و `ls /tmp/e2e-proj` فقط `src`؛ سپس از سمت structured-ai: `engineProjectIdFor` همان `prj-e2e-proj-a7409ac7` را داد و `checkStaleness` همان فایل را با `state: "fresh"`، `file_count: 1`، `symbol_count: 1` پیدا کرد.
+- `docker-compose.yml` با پارسر YAML اعتبارسنجی شد (env، هر دو volume و بخش top-level `volumes:`). **Unknown / Requires Verification:** `docker compose up` در این محیط ممکن نیست (docker نصب نیست).
+- `semantic-engine doctor --json` در تست، `data-root` (مسیر + ساخت پوشه) و `artifacts` (وضعیت `external`، ایندکس موجود، یا legacy در انتظار کپی) را برمی‌گرداند؛ `--data-dir` صریح هم رعایت می‌شود.
+
+**دو یافتهٔ مهم حین اجرا (هر دو ثبت و رفع شدند):**
+
+1. **آمار فاز ۳ ناقص بود.** `cli.test.ts` و `serve-watch.test.ts` داخل `describeIfBuilt` هستند و بدون `dist/` بی‌صدا skip می‌شوند؛ عدد «۱۸۲ suite / ۲۵۵۴ تست» که برای فاز ۳ گزارش شد بدون build اندازه‌گیری شده بود. با build، دو تست واقعاً شکستند (MIG-51 «خروجی پیش‌فرض داخل ریشه است» و MIG-52 پذیرش watch) و هر دو برای پیش‌فرض جدید به‌روز شدند. آمار معتبر فاز ۴ همان ۱۸۴/۲۵۶۶ با build است.
+2. **`process.env` در sandbox جست یک کپی است.** نگهبان `setupFiles` مقدار را درون تست ست می‌کرد ولی به پروسه‌های CLI که تست‌ها spawn می‌کنند نمی‌رسید؛ اندازه‌گیری: `PROBE in-process=/tmp/se-jest-data-PolunM child=(unset)`. نتیجه اینکه `doctor`/`ui`/`watch` واقعاً در `~/.local/share/semantic-engine` می‌نوشتند (۲۰۹ کیلوبایت manifest در خانهٔ کاربر پیدا و پاک شد). رفع: `globalSetup` در کنار `setupFiles`؛ بعد از آن اجرای کامل suite هیچ چیزی در data directory واقعی نمی‌سازد (بررسی شد).
 
 ---
 

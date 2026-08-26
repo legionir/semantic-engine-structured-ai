@@ -1,12 +1,11 @@
 /**
- * فاز ۱ must not change what the CLI writes.
+ * `in-root` remains a supported mode (D10) after فاز ۴ flipped the default to
+ * `external`: asking for it explicitly must keep producing
+ * `<dir>/.semantic-engine/…` exactly as before, and must not write into the
+ * data directory.
  *
- * The data-directory resolver exists now, but `semanticEngine.artifactLocation`
- * still defaults to `in-root`, so `semantic-engine index --root <dir>` has to
- * keep producing `<dir>/.semantic-engine/…` — and must not start writing into
- * a configured data directory before فاز ۴ flips the default on purpose.
- *
- * This drives the real command handler, not a copy of it.
+ * This drives the real command handler, not a copy of it. The external default
+ * is covered by `artifactLocationExternal.test.ts`.
  */
 
 import * as fs from 'fs';
@@ -22,16 +21,19 @@ interface IndexJson {
   readonly blueprintPath?: string;
 }
 
-describe('index — artifact location is unchanged while `in-root` is the default', () => {
+describe('index — the in-root compatibility mode still works', () => {
   let base: string;
   let dataRoot: string;
   let savedDataDir: string | undefined;
+  let savedLocation: string | undefined;
 
   beforeEach(() => {
     base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'se-index-location-')));
     dataRoot = path.join(base, 'data-dir');
     savedDataDir = process.env['SEMANTIC_ENGINE_DATA_DIR'];
+    savedLocation = process.env['SEMANTIC_ENGINE_ARTIFACT_LOCATION'];
     process.env['SEMANTIC_ENGINE_DATA_DIR'] = dataRoot;
+    process.env['SEMANTIC_ENGINE_ARTIFACT_LOCATION'] = 'in-root';
 
     const src = path.join(base, 'app', 'src');
     fs.mkdirSync(src, { recursive: true });
@@ -41,12 +43,14 @@ describe('index — artifact location is unchanged while `in-root` is the defaul
   afterEach(() => {
     if (savedDataDir === undefined) delete process.env['SEMANTIC_ENGINE_DATA_DIR'];
     else process.env['SEMANTIC_ENGINE_DATA_DIR'] = savedDataDir;
+    if (savedLocation === undefined) delete process.env['SEMANTIC_ENGINE_ARTIFACT_LOCATION'];
+    else process.env['SEMANTIC_ENGINE_ARTIFACT_LOCATION'] = savedLocation;
     fs.rmSync(base, { recursive: true, force: true });
   });
 
   const logger = () => createLoggerFromEnv({ SEMANTIC_ENGINE_LOG_LEVEL: 'error' }, { stdio: true });
 
-  it('writes the index and blueprint inside the workspace root', async () => {
+  it('writes the index and blueprint inside the workspace root when asked for in-root', async () => {
     const root = path.join(base, 'app');
     const result = await runIndex(parseArgs(['index', '--root', root, '--no-git']), {
       cwd: base,
@@ -62,7 +66,7 @@ describe('index — artifact location is unchanged while `in-root` is the defaul
     expect(fs.existsSync(json.indexPath!)).toBe(true);
     expect(fs.existsSync(path.join(root, '.semantic-engine', 'blueprint.json'))).toBe(true);
 
-    /* Nothing leaks into the data directory before the flip is implemented. */
+    /* Nothing leaks into the data directory while in-root was requested. */
     expect(fs.existsSync(dataRoot)).toBe(false);
   });
 

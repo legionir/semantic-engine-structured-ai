@@ -18,7 +18,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { EXIT, ParsedArgs } from '../args';
+import { EXIT, ParsedArgs, stringOption } from '../args';
+import { ensureDataRoot, resolveDataRoot } from '../../core/config/DataRootResolver';
+import { indexPathCandidates, normalizeWorkspaceRoot } from '../../core/config/ProjectPaths';
+import { projectPathsFromArgs } from '../projectPathsFromArgs';
 import { CommandContext, CommandResult } from './types';
 import { resolveGrammarDir } from '../../pipeline/ExtractorFactory';
 import { LspServerRegistry } from '../../lsp/registry';
@@ -116,6 +119,74 @@ function checkWriteAccess(target: string): DoctorCheck {
       }`,
     };
   }
+}
+
+/**
+ * data root — فاز ۴.
+ *
+ * از وقتی artifactها بیرون از root نوشته می‌شوند، «کجا می‌نویسیم و آیا
+ * نوشتن در آن ممکن است» یک سؤال محیطی واقعی است: یک container با rootfs
+ * فقط‌خواندنی و بدون volume، دقیقاً همین‌جا شکست می‌خورد.
+ */
+function checkDataRoot(args: ParsedArgs, env: NodeJS.ProcessEnv): DoctorCheck {
+  const requested = resolveDataRoot({
+    ...(stringOption(args.options, 'dataDir') !== undefined
+      ? { dataDir: stringOption(args.options, 'dataDir') }
+      : {}),
+    env,
+  });
+
+  try {
+    const created = ensureDataRoot({
+      ...(stringOption(args.options, 'dataDir') !== undefined
+        ? { dataDir: stringOption(args.options, 'dataDir') }
+        : {}),
+      env,
+    });
+    return { name: 'data-root', ok: true, detail: created };
+  } catch (error) {
+    return {
+      name: 'data-root',
+      ok: false,
+      detail: `${requested} — ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * وضعیت artifact یک پروژه: کجا نوشته می‌شود، آیا ایندکس هست، و آیا یک
+ * ایندکس قدیمیِ داخل root مانده که در اولین اجرا کپی شود.
+ */
+function checkArtifacts(args: ParsedArgs, cwd: string, env: NodeJS.ProcessEnv): DoctorCheck {
+  const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? cwd);
+  const paths = projectPathsFromArgs(args, root, env);
+
+  if (fs.existsSync(paths.indexPath)) {
+    return {
+      name: 'artifacts',
+      ok: true,
+      detail: `${paths.location} — ${paths.indexPath}`,
+    };
+  }
+
+  const legacy = indexPathCandidates(root, { location: 'in-root' })
+    .find(candidate => fs.existsSync(candidate));
+
+  if (legacy) {
+    return {
+      name: 'artifacts',
+      ok: true,
+      detail:
+        `${paths.location} — no index yet; legacy index at ${legacy} ` +
+        `is copied (not moved) on the next index/serve`,
+    };
+  }
+
+  return {
+    name: 'artifacts',
+    ok: true,
+    detail: `${paths.location} — ${paths.artifactRoot} (no index yet)`,
+  };
 }
 
 function checkTempAccess(): DoctorCheck {
@@ -228,7 +299,7 @@ async function checkServerHandshake(cwd: string): Promise<DoctorCheck[]> {
 }
 
 export async function runDoctor(
-  _args: ParsedArgs,
+  args: ParsedArgs,
   context: CommandContext
 ): Promise<CommandResult> {
   const checks: DoctorCheck[] = [
@@ -238,6 +309,8 @@ export async function runDoctor(
     checkOptionalModule('chokidar'),
     checkOptionalModule('sqlite3'),
     checkOptionalModule('usearch'),
+    checkDataRoot(args, process.env),
+    checkArtifacts(args, context.cwd, process.env),
     checkWriteAccess(context.cwd),
     checkTempAccess(),
     ...checkLanguageServers(context.cwd),

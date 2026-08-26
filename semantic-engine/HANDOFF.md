@@ -55,9 +55,11 @@ npm ci
 npm run build
 
 # ساخت index
+# خروجی به‌صورت پیش‌فرض در data directory کاربر نوشته می‌شود
+# ($XDG_DATA_HOME/semantic-engine/projects/<projectId>/)؛ برای نوشتن در root
+# قدیمی، --artifact-location in-root یا --out بدهید.
 node bin/semantic-engine.js index \
-  --root /path/to/project \
-  --out /path/to/project/.semantic-engine
+  --root /path/to/project
 
 # اجرای UI و REST platform
 node bin/semantic-engine.js ui \
@@ -89,7 +91,6 @@ node bin/semantic-engine.js start \
 # watch — reindex incremental و به‌روزرسانی artifactها
 node bin/semantic-engine.js watch \
   --root /path/to/project \
-  --out /path/to/project/.semantic-engine \
   --vectors \
   --sqlite
 

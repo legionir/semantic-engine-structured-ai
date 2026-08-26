@@ -59,7 +59,10 @@ ui & serve options:
 
 index options:
   --root <dir>          project to scan            (default: cwd)
-  --out <dir>           output directory           (default: <root>/.semantic-engine)
+  --project-id <id>     stable project id          (default: derived from the root path)
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --artifact-location <m>  external (default) or in-root
+  --out <dir>           output directory           (overrides the two above)
   --no-blueprint        skip blueprint.json
   --vectors             build vector chunks for semantic search (off by default)
   --sqlite              also write project-index.sqlite
@@ -68,7 +71,10 @@ index options:
 
 watch options:
   --root <dir>          project to watch           (default: cwd)
-  --out <dir>           output directory           (default: <root>/.semantic-engine)
+  --project-id <id>     stable project id          (default: derived from the root path)
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --artifact-location <m>  external (default) or in-root
+  --out <dir>           output directory           (overrides the two above)
   --debounce <ms>       batch window               (default: 500)
   --vectors             build/update vector chunks and embeddings
   --sqlite              write/update project-index.sqlite
@@ -80,6 +86,14 @@ query options:
   --index <file>        path to project-index.json (default: <root>/.semantic-engine/…)
   --<name> <value>      passed through to the tool
   (no tool name)        list the available tools
+
+artifact location:
+  generated data is written to the user data directory
+  ($XDG_DATA_HOME/semantic-engine, ~/Library/Application Support/SemanticEngine,
+  %LOCALAPPDATA%\\SemanticEngine) under projects/<projectId>/, never into the
+  workspace. SEMANTIC_ENGINE_DATA_DIR overrides the location; an index left in
+  <root>/.semantic-engine, <root>/.agent/semantic or <root>/semantic is copied
+  (not moved) on first use.
 
 global options:
   --json                machine-readable output on stdout

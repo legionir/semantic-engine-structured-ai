@@ -51,8 +51,14 @@ export type ArtifactLocation = 'in-root' | 'external';
 
 export const ARTIFACT_LOCATIONS: readonly ArtifactLocation[] = ['in-root', 'external'];
 
-/** فاز ۱ keeps today's behaviour; only فاز ۴ may change this default. */
-export const DEFAULT_ARTIFACT_LOCATION: ArtifactLocation = 'in-root';
+/**
+ * فاز ۴: the default is now the data directory.
+ *
+ * `in-root` stays fully supported (D10) — `--artifact-location in-root` or
+ * `SEMANTIC_ENGINE_ARTIFACT_LOCATION=in-root` restores the old layout, and
+ * `--out` overrides either mode.
+ */
+export const DEFAULT_ARTIFACT_LOCATION: ArtifactLocation = 'external';
 
 /** Directory name used under the platform data directory. */
 export const DATA_DIR_NAME_POSIX = 'semantic-engine';

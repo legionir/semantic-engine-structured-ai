@@ -5,6 +5,8 @@ const path = require("path");
 const settings = require("../config");
 const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
 
+const enginePaths = require("./enginePaths");
+
 const { manager } = require("./McpManager");
 
 
@@ -342,12 +344,14 @@ function checkStaleness(root) {
     const base =
         normalizeWorkspaceRoot(root || workspaceRoot());
 
-    const candidates = [
-        path.join(base, ".semantic-engine", "project-index.json"),
-        /* Compatibility with indexes created by older Structured AI builds. */
-        path.join(base, ".agent", "semantic", "project-index.json"),
-        path.join(base, "semantic", "project-index.json")
-    ];
+    /*
+    | The engine writes to its data directory now (see agent/mcp/enginePaths.js
+    | for the shared contract); the three historical in-root locations stay
+    | readable so an index that predates the move keeps working.
+    */
+    const candidates = enginePaths.indexPathCandidates(base, {
+        override: settings.get("SEMANTIC_ENGINE_DATA_DIR")
+    });
 
     const indexPath =
         candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
