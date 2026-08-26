@@ -1412,6 +1412,13 @@ const DEFINITIONS = [
         type: STRING,
         default: "legacy",
         description: "Semantic engine routing mode: 'legacy' uses the single process-wide engine client; 'modular' routes code tools through the per-project SemanticClientPool keyed by projectId (EXECUTION_PLAN phase 6 flag)."
+    },
+    {
+        key: "RUNTIME_ENGINE_MODE",
+        group: "runtime",
+        type: STRING,
+        default: "legacy",
+        description: "Runtime loop mode: 'legacy' and 'modular' both run the extracted agent/runtime engine (Phase 16). The flag is declared so Phase 30 can drop it after equality is proven; a misspelled value behaves as legacy."
     }
 ];
 

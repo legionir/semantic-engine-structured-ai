@@ -119,7 +119,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 
 - `PROJECT_CONTEXT_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۲ موجود است.
 - `RUN_CONTEXT_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۳ موجود است؛ همراه آن `RUN_HISTORY_LIMIT` (NUMBER، پیش‌فرض ۱۰۰) برای ظرفیت تاریخچهٔ Runهای پایان‌یافتهٔ RunManager.
-- بقیه (`PROMPT_BUILDER_MODE`, `SEMANTIC_POOL_MODE`, `RUNTIME_ENGINE_MODE`, `WEB_SERVER_MODE`) هنگام ورود به فاز خودشان اعلان می‌شوند.
+- `PROMPT_BUILDER_MODE` (پیش‌فرض `legacy`) — از فاز ۵.
+- `SEMANTIC_POOL_MODE` (پیش‌فرض `legacy`) — از فاز ۶.
+- `RUNTIME_ENGINE_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۱۶؛ هر دو مقدار همان engine استخراج‌شده را اجرا می‌کنند (تصمیم ۳۵). مقدار غلط رفتار legacy دارد.
+- `WEB_SERVER_MODE` هنگام ورود به فاز ۲۳ اعلان می‌شود.
 
 ## ۸. تغییرات additive فاز ۳ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
 
@@ -229,3 +232,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Actions:** پیاده‌سازی در `agent/actions/`؛ `agent/agent.js` wrapper سازگار با همان exportها (`parseStructuredResponse`، `adaptNativeToolCalls`، `parseToolArguments`، `repairStructuredAction`، `readModelAction`، `isModelResponseError`، `validateAction`).
 - **Export additive:** `actions` از `agent/agent.js` همان kit را برمی‌گرداند. `bind({ toolsOf, events, logLine })` وابستگی زندهٔ registry/bus را تزریق می‌کند.
 - **AGENT_SCHEMA:** همچنان `fixed` است (پیش‌فرض `default`)؛ شاخهٔ strict فقط با مقدار startup و فایل `response_format.strict.json` فعال می‌شود.
+
+## ۲۱. تغییرات additive فاز ۱۶ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** نام event، payload منطقی، action envelope، بودجه/عمق delegation، ترتیب wave و `depends_on` دست‌نخورده‌اند. استخراج ساختاری است.
+- **Runtime engine:** پیاده‌سازی حلقه در `agent/runtime/{AgentRun,IterationRunner,ActionProcessor,ToolGraphExecutor,DelegationRunner,RetryController,RunState,ReportVerifier}.js`؛ `agent/agent.js` wrapper سازگار با همان exportها (`runAgent`، `callAI`، `executeDependencyGraph`، `executeToolGraph`، `normalizeToolCalls`، `resolveArgumentReferences`، `validateDelegationPolicy`، `resolveDepthBudget`، `checkPerformedClaim`، ...).
+- **Export additive:** `runtimeEngine` و `runtimeEngineMode` از `agent/agent.js`. `bind({...})` وابستگی زندهٔ settings/events/run/tools را تزریق می‌کند.
+- **Flag:** `RUNTIME_ENGINE_MODE` (پیش‌فرض `legacy`). هر دو مقدار همان engine را اجرا می‌کنند (تصمیم ۳۵)؛ misspell = legacy. پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

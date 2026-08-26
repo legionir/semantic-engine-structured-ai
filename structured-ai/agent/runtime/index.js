@@ -49,6 +49,9 @@ function runContextMode() {
 }
 
 
+const { runtimeEngineMode } = require("./engineContext");
+
+
 module.exports = {
     AgentRunContext,
     RunCancellation,
@@ -62,6 +65,7 @@ module.exports = {
     Observability,
     observability,
     runContextMode,
+    runtimeEngineMode,
     runWithProject,
     overrideActive,
     effectiveProject,

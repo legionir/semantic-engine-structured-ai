@@ -187,6 +187,7 @@ const hookRegistry = require("./lib/hooks");
 
 const application = require("./application");
 const actionKit = require("./actions");
+const runtimeEngine = require("./runtime/engine");
 const registryLoader = require("./registry/RegistryLoader");
 const registryValidator = require("./registry/RegistryValidator");
 const AgentRegistry = require("./registry/AgentRegistry");
@@ -3066,65 +3067,17 @@ function mayDelegate(agentDefinition) {
 | that does not fit would be worse than not delegating at all.
 */
 
-function delegationHintMessage(planSummary, remainingAgents) {
+function delegationHintMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.delegationHintMessage(...args);
 
-        content:
-            JSON.stringify({
-                type: "runtime_notice",
-
-                notice: "delegation_available",
-
-                agents_remaining: remainingAgents,
-
-                open_steps:
-                    planSummary.pending + planSummary.in_progress,
-
-                assigned_steps:
-                    planSummary.assigned_open_steps || [],
-
-                instruction:
-                    (planSummary.assigned_open_steps || []).length > 0
-                        ? `The plan already assigns open work to agent profiles: ${
-                            planSummary.assigned_open_steps
-                                .map(step => `${step.id} → ${step.agent}`)
-                                .join(", ")
-                        }. Delegate independent assigned steps to those exact profiles in one action instead of continuing alone. Keep only sequential work that depends on state you hold.`
-                        : "You have been working alone while the plan still has open steps and the whole agent budget is unspent. Steps that do not depend on each other can run at the same time, each in its own context: hand them to sub-agents in one delegate action, and keep for yourself only what depends on state you hold. If the remaining work really is one sequential thread, say so in your next answer and carry on."
-            })
-    };
 }
 
 
-function shouldHintDelegation(progress, planSummary, agentDefinition) {
+function shouldHintDelegation(...args) {
 
-    const after =
-        settings.get("DELEGATION_NUDGE_AFTER");
+    return runtimeEngine.shouldHintDelegation(...args);
 
-    if (
-        after === 0 ||
-        !mayDelegate(agentDefinition) ||
-        progress.delegations > 0 ||
-        (progress.delegationHints || 0) >=
-            settings.get("MAX_DELEGATION_NUDGES")
-    ) {
-        return false;
-    }
-
-    if (progress.tools < after) {
-        return false;
-    }
-
-    if (
-        !planSummary.exists ||
-        planSummary.pending + planSummary.in_progress < 2
-    ) {
-        return false;
-    }
-
-    return remainingAgentBudget() >= 2;
 }
 
 
@@ -3136,82 +3089,10 @@ function shouldHintDelegation(progress, planSummary, agentDefinition) {
 | the runtime cannot know which of the two is the lie.
 */
 
-function checkPerformedClaim(action, progress, scope) {
+function checkPerformedClaim(...args) {
 
-    const claim = action?.performed;
+    return runtimeEngine.checkPerformedClaim(...args);
 
-    if (!claim || typeof claim !== "object") {
-        return null;
-    }
-
-    /* A modular run is checked against its own tool history; a legacy
-       run against the process-wide one, as before. */
-    const executed =
-        toolRuntime.executedToolNames
-            ? toolRuntime.executedToolNames(
-                  currentRun() instanceof AgentRunContext
-                      ? currentRun().runId
-                      : undefined
-              )
-            : [];
-
-    const problems = [];
-
-    for (const tool of claim.tools || []) {
-
-        if (!executed.includes(tool)) {
-
-            problems.push(
-                `claimed ${tool}, which the runtime never executed`
-            );
-        }
-    }
-
-    if (
-        (claim.agents || []).length > 0 &&
-        progress.delegations === 0
-    ) {
-
-        problems.push(
-            `claimed ${
-                (claim.agents || []).join(", ")
-            }, but nothing was delegated`
-        );
-    }
-
-    if (
-        (claim.files_changed || []).length > 0 &&
-        !executed.some(
-            name => FILE_MUTATING_TOOLS.includes(name)
-        )
-    ) {
-
-        problems.push(
-            `claimed ${
-                claim.files_changed.length
-            } changed file(s), but no write ran`
-        );
-    }
-
-    if (problems.length === 0) {
-        return null;
-    }
-
-    logLine(
-        scope || "main_agent",
-        `The answer claims work the runtime did not do: ${
-            problems.join("; ")
-        }`
-    );
-
-    events.emit("report:mismatch", {
-        agent: scope || "main_agent",
-        problems,
-        claimed: claim,
-        executed
-    });
-
-    return problems;
 }
 
 
@@ -3377,34 +3258,10 @@ function createMainAgentMessages(task) {
 |--------------------------------------------------------------------------
 */
 
-function assertToolAllowed(
-    toolName,
-    allowedTools
-) {
+function assertToolAllowed(...args) {
 
-    if (
-        !TOOL_REGISTRY_OF().has(toolName) &&
-        !toolRuntime.mcp._hasDiscoveredTool(toolName)
-    ) {
+    return runtimeEngine.assertToolAllowed(...args);
 
-        throw new Error(
-            `Tool is not available: ${toolName}`
-        );
-    }
-
-    if (!toolRuntime.hasTool(toolName)) {
-
-        throw new Error(
-            `Tool is declared but not implemented: ${toolName}`
-        );
-    }
-
-    if (!allowedTools.has(toolName)) {
-
-        throw new Error(
-            `Tool "${toolName}" is not allowed for this agent.`
-        );
-    }
 }
 
 
@@ -3420,92 +3277,10 @@ function parseArguments(value, toolName) {
 }
 
 
-function normalizeToolCalls(
-    toolCalls
-) {
+function normalizeToolCalls(...args) {
 
-    /*
-    | A generated id must not collide with one the model chose, or the
-    | whole action would be rejected for a duplicate it never wrote.
-    */
+    return runtimeEngine.normalizeToolCalls(...args);
 
-    const taken =
-        new Set(
-            toolCalls
-                .map(call => call && call.id)
-                .filter(Boolean)
-        );
-
-    const generateId = index => {
-
-        let candidate =
-            `call_${index + 1}`;
-
-        let suffix = 1;
-
-        while (taken.has(candidate)) {
-
-            candidate = `call_${index + 1}_${suffix}`;
-
-            suffix++;
-        }
-
-        taken.add(candidate);
-
-        return candidate;
-    };
-
-    return toolCalls.map(
-        (call, index) => {
-
-            const parsedArguments =
-                parseArguments(
-                    call.arguments,
-                    call.name
-                );
-
-            const pathRepair =
-                repairMarkdownPathArguments(
-                    call.name,
-                    parsedArguments
-                );
-
-            if (pathRepair.repaired_fields.length > 0) {
-
-                events.emit("response:repaired", {
-                    repair: "markdown_path",
-                    tool: call.name,
-                    repaired_fields: pathRepair.repaired_fields
-                });
-
-                logLine(
-                    null,
-                    `Repaired Markdown links in ${call.name}.${
-                        pathRepair.repaired_fields.join(`, ${call.name}.`)
-                    }.`
-                );
-            }
-
-            return {
-                id:
-                    call.id ||
-                    generateId(index),
-
-                name:
-                    call.name,
-
-                /* Arguments may arrive as an object or, under a strict
-                   schema, as a JSON encoded string. */
-                arguments:
-                    pathRepair.arguments,
-
-                depends_on:
-                    Array.isArray(call.depends_on)
-                        ? call.depends_on
-                        : []
-            };
-        }
-    );
 }
 
 
@@ -3515,55 +3290,10 @@ function normalizeToolCalls(
 |--------------------------------------------------------------------------
 */
 
-function validateDependencyGraph(
-    items
-) {
+function validateDependencyGraph(...args) {
 
-    const ids =
-        new Set();
+    return runtimeEngine.validateDependencyGraph(...args);
 
-    for (
-        const item
-        of items
-    ) {
-
-        if (ids.has(item.id)) {
-
-            throw new Error(
-                `Duplicate dependency id: ${item.id}`
-            );
-        }
-
-        ids.add(item.id);
-    }
-
-    for (
-        const item
-        of items
-    ) {
-
-        for (
-            const dependency
-            of item.depends_on
-        ) {
-
-            if (!ids.has(dependency)) {
-
-                throw new Error(
-                    `Unknown dependency: ${dependency}`
-                );
-            }
-
-            if (
-                dependency === item.id
-            ) {
-
-                throw new Error(
-                    `Item cannot depend on itself: ${item.id}`
-                );
-            }
-        }
-    }
 }
 
 
@@ -3581,211 +3311,17 @@ function validateDependencyGraph(
 | anything, which gives the waves and a name for the shape.
 */
 
-function describeGraph(items, maxParallel) {
+function describeGraph(...args) {
 
-    const remaining =
-        new Map(items.map(item => [item.id, item]));
+    return runtimeEngine.describeGraph(...args);
 
-    const done = new Set();
-
-    const waves = [];
-
-    while (remaining.size > 0) {
-
-        const ready =
-            [...remaining.values()].filter(
-                item =>
-                    (item.depends_on || []).every(
-                        dependency => done.has(dependency)
-                    )
-            );
-
-        if (ready.length === 0) {
-
-            /* a cycle: the executor will report it, this is only a view */
-            break;
-        }
-
-        const batch =
-            ready.slice(0, Math.max(1, maxParallel));
-
-        waves.push(batch.map(item => item.id));
-
-        for (const item of batch) {
-
-            done.add(item.id);
-
-            remaining.delete(item.id);
-        }
-    }
-
-    const dependent =
-        items.some(
-            item => (item.depends_on || []).length > 0
-        );
-
-    const shape =
-        items.length <= 1
-            ? "single"
-            : !dependent
-                ? "parallel"
-                : waves.every(wave => wave.length === 1)
-                    ? "sequential"
-                    : "graph";
-
-    return {
-        shape,
-
-        waves,
-
-        widest:
-            waves.reduce(
-                (widest, wave) =>
-                    Math.max(widest, wave.length),
-                0
-            )
-    };
 }
 
 
-async function executeDependencyGraph({
-    items,
-    executor,
-    maxParallel
-}) {
+async function executeDependencyGraph(...args) {
 
-    validateDependencyGraph(
-        items
-    );
+    return await runtimeEngine.executeDependencyGraph(...args);
 
-    const remaining =
-        new Map(
-            items.map(
-                item => [
-                    item.id,
-                    item
-                ]
-            )
-        );
-
-    const results =
-        new Map();
-
-    while (
-        remaining.size > 0
-    ) {
-
-        const ready = [];
-
-        for (
-            const item
-            of remaining.values()
-        ) {
-
-            const dependenciesComplete =
-                item.depends_on.every(
-                    dependency =>
-                        results.has(
-                            dependency
-                        )
-                );
-
-            if (
-                dependenciesComplete
-            ) {
-                ready.push(item);
-            }
-        }
-
-        if (
-            ready.length === 0
-        ) {
-
-            throw new Error(
-                "Dependency graph contains a cycle or unresolved dependency."
-            );
-        }
-
-        const batch =
-            ready.slice(
-                0,
-                maxParallel
-            );
-
-        const batchResults =
-            await Promise.all(
-                batch.map(
-                    async item => {
-
-                        try {
-
-                            const result =
-                                await executor(
-                                    item,
-                                    results
-                                );
-
-                            return {
-                                id:
-                                    item.id,
-
-                                success:
-                                    true,
-
-                                result
-                            };
-
-                        } catch (error) {
-
-                            return {
-                                id:
-                                    item.id,
-
-                                success:
-                                    false,
-
-                                result:
-                                    null,
-
-                                error: {
-                                    code:
-                                        error.name ||
-                                        "EXECUTION_ERROR",
-
-                                    message:
-                                        error.message,
-
-                                    retryable:
-                                        false
-                                }
-                            };
-                        }
-                    }
-                )
-            );
-
-        for (
-            const result
-            of batchResults
-        ) {
-
-            results.set(
-                result.id,
-                result
-            );
-
-            remaining.delete(
-                result.id
-            );
-        }
-    }
-
-    return items.map(
-        item =>
-            results.get(
-                item.id
-            )
-    );
 }
 
 
@@ -3804,239 +3340,25 @@ async function executeDependencyGraph({
 |--------------------------------------------------------------------------
 */
 
-const REFERENCE_PATTERN =
-    /\$\{([A-Za-z0-9_.-]+)\}/g;
 
+function readReferencePath(...args) {
 
-function readReferencePath(
-    value,
-    segments,
-    expression
-) {
+    return runtimeEngine.readReferencePath(...args);
 
-    let current = value;
-
-    for (const segment of segments) {
-
-        if (
-            current === null ||
-            current === undefined
-        ) {
-
-            throw new Error(
-                `Reference "${expression}" cannot be resolved: "${segment}" is not reachable.`
-            );
-        }
-
-        if (Array.isArray(current)) {
-
-            const index =
-                Number(segment);
-
-            if (!Number.isInteger(index)) {
-
-                throw new Error(
-                    `Reference "${expression}" expects a numeric index for an array, received "${segment}".`
-                );
-            }
-
-            current = current[index];
-
-            continue;
-        }
-
-        if (typeof current !== "object") {
-
-            throw new Error(
-                `Reference "${expression}" cannot descend into "${segment}".`
-            );
-        }
-
-        current = current[segment];
-    }
-
-    return current;
 }
 
 
-function resolveReference(
-    expression,
-    results,
-    allowedIds
-) {
+function resolveReference(...args) {
 
-    const [id, ...segments] =
-        expression.split(".");
+    return runtimeEngine.resolveReference(...args);
 
-    if (!allowedIds.includes(id)) {
-
-        throw new Error(
-            `Reference "${expression}" points at "${id}", which is not listed in depends_on.`
-        );
-    }
-
-    void 0;
-
-    const entry =
-        results.get(id);
-
-    if (!entry) {
-
-        throw new Error(
-            `Reference "${expression}" points at an unknown call: ${id}`
-        );
-    }
-
-    if (!entry.success) {
-
-        throw new Error(
-            `Reference "${expression}" points at "${id}", which failed: ${
-                entry.error?.message || "unknown error"
-            }`
-        );
-    }
-
-    return readReferencePath(
-        entry,
-        segments,
-        expression
-    );
 }
 
 
-function resolveArgumentReferences(
-    value,
-    results,
-    allowedIds,
-    knownIds
-) {
+function resolveArgumentReferences(...args) {
 
-    /*
-    | Only an expression that names a call in this action is a
-    | reference. Anything else is ordinary text: file content routinely
-    | contains ${...}, for example a JavaScript template literal, and
-    | rewriting or rejecting that would corrupt the file.
-    */
+    return runtimeEngine.resolveArgumentReferences(...args);
 
-    const isReference = expression => {
-
-        const id =
-            expression.split(".")[0];
-
-        return (
-            allowedIds.includes(id) ||
-            (
-                knownIds
-                    ? knownIds.has(id)
-                    : false
-            )
-        );
-    };
-
-    if (typeof value === "string") {
-
-        /*
-        | $${...} is an explicit escape for a literal ${...}. It is
-        | protected before the scan and restored afterwards.
-        */
-
-        const ESCAPE = "\u0000ESCAPED_REFERENCE\u0000";
-
-        const guarded =
-            value.replace(/\$\$\{/g, ESCAPE);
-
-        const restore = text =>
-            text.split(ESCAPE).join("${");
-
-        const matches =
-            [...guarded.matchAll(REFERENCE_PATTERN)]
-                .filter(
-                    match => isReference(match[1])
-                );
-
-        if (matches.length === 0) {
-            return restore(guarded);
-        }
-
-        /*
-        | A string that is exactly one reference keeps the original
-        | type, so an object or number is not stringified.
-        */
-
-        if (
-            matches.length === 1 &&
-            matches[0][0] === guarded
-        ) {
-
-            return resolveReference(
-                matches[0][1],
-                results,
-                allowedIds
-            );
-        }
-
-        return restore(
-            guarded.replace(
-                REFERENCE_PATTERN,
-                (match, expression) => {
-
-                    if (!isReference(expression)) {
-                        return match;
-                    }
-
-                    const resolved =
-                        resolveReference(
-                            expression,
-                            results,
-                            allowedIds
-                        );
-
-                    return typeof resolved === "string"
-                        ? resolved
-                        : JSON.stringify(resolved);
-                }
-            )
-        );
-    }
-
-    if (Array.isArray(value)) {
-
-        return value.map(
-            item =>
-                resolveArgumentReferences(
-                    item,
-                    results,
-                    allowedIds,
-                    knownIds
-                )
-        );
-    }
-
-    if (
-        value &&
-        typeof value === "object"
-    ) {
-
-        const output = {};
-
-        for (
-            const [key, item]
-            of Object.entries(value)
-        ) {
-
-            output[key] =
-                resolveArgumentReferences(
-                    item,
-                    results,
-                    allowedIds,
-                    knownIds
-                );
-        }
-
-        return output;
-    }
-
-    return value;
 }
 
 
@@ -4046,433 +3368,11 @@ function resolveArgumentReferences(
 |--------------------------------------------------------------------------
 */
 
-let GRAPH_SEQUENCE = 0;
 
+async function executeToolGraph(...args) {
 
-async function executeToolGraph(
-    toolCalls,
-    allowedTools,
-    scope,
-    context = {}
-) {
+    return await runtimeEngine.executeToolGraph(...args);
 
-    const calls =
-        normalizeToolCalls(
-            toolCalls
-        );
-
-    const callIds =
-        new Set(
-            calls.map(call => call.id)
-        );
-
-    const maxParallel =
-        settings.get("MAX_PARALLEL_TOOLS");
-
-    const graph =
-        describeGraph(calls, maxParallel);
-
-    const graphId =
-        `graph_${++GRAPH_SEQUENCE}`;
-
-    /*
-    | Which wave a call belongs to is what makes "parallel" visible
-    | afterwards: two calls in the same wave really did run together.
-    */
-
-    const waveOf = new Map();
-
-    graph.waves.forEach((wave, index) => {
-
-        for (const id of wave) {
-            waveOf.set(id, index);
-        }
-    });
-
-    logLine(
-        scope,
-        `Executing tool graph (${calls.length} call(s), ${
-            graph.shape
-        }, ${graph.waves.length} wave(s)).`
-    );
-
-    events.emit("tool:graph", {
-        agent:
-            scope || "main_agent",
-
-        scope:
-            scope || "main_agent",
-
-        graph_id:
-            graphId,
-
-        iteration:
-            context.iteration || null,
-
-        hook:
-            context.hook || null,
-
-        shape:
-            graph.shape,
-
-        waves:
-            graph.waves,
-
-        max_parallel:
-            maxParallel,
-
-        calls:
-            calls.map(call => ({
-                id: call.id,
-                name: call.name,
-                depends_on: call.depends_on,
-                wave: waveOf.get(call.id) ?? null
-            }))
-    });
-
-    const results =
-        await executeDependencyGraph({
-
-            items: calls,
-
-            maxParallel:
-                settings.get("MAX_PARALLEL_TOOLS"),
-
-            executor:
-                async (
-                    call,
-                    results
-                ) => {
-
-                    assertRunActive(
-                        `tool ${call.name}`
-                    );
-
-                    assertToolAllowed(
-                        call.name,
-                        allowedTools
-                    );
-
-                    const resolved =
-                        resolveArgumentReferences(
-                            call.arguments,
-                            results,
-                            call.depends_on,
-                            callIds
-                        );
-
-                    /*
-                    | An argument the tool does not declare used to be
-                    | dropped in silence, so "fs_read with a content
-                    | field" looked like a successful read instead of the
-                    | mistake it is. The call still runs, and the result
-                    | says what was ignored.
-                    */
-
-                    const checked =
-                        keepDeclaredArguments(call.name, resolved);
-
-                    const resolvedArguments =
-                        checked.dropped.length > 0
-                            ? checked.arguments
-                            : resolved;
-
-                    if (checked.dropped.length > 0) {
-
-                        logLine(
-                            scope,
-                            `${call.name} does not take ${
-                                checked.dropped.join(", ")
-                            }; ignored`
-                        );
-
-                        events.emit("tool:arguments_ignored", {
-                            agent: scope || "main_agent",
-                            scope: scope || "main_agent",
-                            id: call.id,
-                            name: call.name,
-                            dropped: checked.dropped
-                        });
-                    }
-
-                    /*
-                    | Policy is evaluated on the resolved arguments, so a
-                    | value injected by a dependency cannot slip past a
-                    | rule that inspects arguments.
-                    */
-
-                    await POLICY_ENGINE.enforce(
-                        call.name,
-                        resolvedArguments,
-                        scope || "main_agent"
-                    );
-
-                    await enforceCrossProjectWrite(
-                        call.name,
-                        resolvedArguments,
-                        scope || "main_agent"
-                    );
-
-                    logObject(
-                        scope,
-                        `Tool ${call.id} -> ${call.name}`,
-                        resolvedArguments
-                    );
-
-                    events.emit("tool:start", {
-                        agent:
-                            scope || "main_agent",
-
-                        scope:
-                            scope || "main_agent",
-
-                        id:
-                            call.id,
-
-                        name:
-                            call.name,
-
-                        graph_id:
-                            graphId,
-
-                        shape:
-                            graph.shape,
-
-                        wave:
-                            waveOf.get(call.id) ?? null,
-
-                        depends_on:
-                            call.depends_on,
-
-                        iteration:
-                            context.iteration || null,
-
-                        hook:
-                            context.hook || null,
-
-                        arguments:
-                            resolvedArguments
-                    });
-
-                    const startedAt = Date.now();
-
-                    try {
-
-                        const result =
-                            await toolRuntime.executeTool(
-                                call.name,
-                                resolvedArguments,
-
-                                /*
-                                | Identity comes from the run context,
-                                | never from the call's arguments
-                                | (rule 9). Legacy runs keep the exact
-                                | historical { agent } shape.
-                                */
-                                (
-                                    currentRun() instanceof AgentRunContext
-                                        ? (() => {
-
-                                              const project =
-                                                  effectiveProject(currentRun().project);
-
-                                              return {
-                                                  agent: scope || "main_agent",
-                                                  runId: currentRun().runId,
-                                                  projectId:
-                                                      projectIdOf(project) ??
-                                                      currentRun().projectId ??
-                                                      undefined,
-                                                  projectContext:
-                                                      project ?? undefined
-                                              };
-
-                                          })()
-                                        : {
-                                              agent: scope || "main_agent"
-                                          }
-                                )
-                            );
-
-                        /*
-                        | Loading a skill is a decision, not plumbing,
-                        | so the operator sees which agent took it.
-                        */
-
-                        if (
-                            call.name === "skill_get" &&
-                            result &&
-                            Array.isArray(result.skills)
-                        ) {
-
-                            logLine(
-                                scope,
-                                `Loaded skill ${
-                                    result.skills
-                                        .map(skill => skill.name)
-                                        .join(", ")
-                                }`
-                            );
-                        }
-
-                        /*
-                        | The warning travels with the result, because
-                        | that is the only place the model reliably
-                        | reads.
-                        */
-
-                        if (
-                            checked.dropped.length > 0 &&
-                            result &&
-                            typeof result === "object" &&
-                            !Array.isArray(result)
-                        ) {
-
-                            result.ignored_arguments =
-                                checked.dropped;
-
-                            result.note =
-                                `${call.name} does not take ${
-                                    checked.dropped.join(", ")
-                                }. Those arguments were ignored; use the tool that does, or drop them.`;
-                        }
-
-                        /*
-                        | A command that exits non-zero is data, not a
-                        | tool failure, so the runtime keeps going. The
-                        | console said "ok" for it, which is how a build
-                        | that never ran looked like a build that
-                        | passed, so the code travels with the event.
-                        */
-
-                        events.emit("tool:end", {
-                            agent:
-                                scope || "main_agent",
-
-                            scope:
-                                scope || "main_agent",
-
-                            id:
-                                call.id,
-
-                            name:
-                                call.name,
-
-                            graph_id:
-                                graphId,
-
-                            wave:
-                                waveOf.get(call.id) ?? null,
-
-                            iteration:
-                                context.iteration || null,
-
-                            hook:
-                                context.hook || null,
-
-                            arguments:
-                                resolvedArguments,
-
-                            exit_code:
-                                result &&
-                                typeof result === "object"
-                                    ? result.exit_code
-                                    : undefined,
-
-                            warning:
-                                result &&
-                                typeof result === "object"
-                                    ? result.warning
-                                    : undefined,
-
-                            success: true,
-
-                            duration_ms:
-                                Date.now() - startedAt,
-
-                            result
-                        });
-
-                        return result;
-
-                    } catch (error) {
-
-                        events.emit("tool:end", {
-                            agent:
-                                scope || "main_agent",
-
-                            scope:
-                                scope || "main_agent",
-
-                            id:
-                                call.id,
-
-                            name:
-                                call.name,
-
-                            graph_id:
-                                graphId,
-
-                            wave:
-                                waveOf.get(call.id) ?? null,
-
-                            iteration:
-                                context.iteration || null,
-
-                            hook:
-                                context.hook || null,
-
-                            arguments:
-                                resolvedArguments,
-
-                            success: false,
-
-                            duration_ms:
-                                Date.now() - startedAt,
-
-                            error:
-                                error.message
-                        });
-
-                        throw error;
-                    }
-                }
-        });
-
-    /*
-    | Each result carries the tool name so the model can read the
-    | tool message without correlating ids by itself.
-    */
-
-    const named =
-        results.map(
-            (result, index) => ({
-                ...result,
-
-                name:
-                    calls[index].name
-            })
-        );
-
-    for (
-        const result
-        of named
-    ) {
-
-        logObject(
-            scope,
-            `Tool result ${result.id} (${
-                result.success
-                    ? "success"
-                    : "failed"
-            })`,
-            result.success
-                ? result.result
-                : result.error
-        );
-    }
-
-    return named;
 }
 
 
@@ -4489,102 +3389,24 @@ async function executeToolGraph(
 | a request that the server rejected on its merits is not.
 */
 
-function isRetryableStatus(status) {
+function isRetryableStatus(...args) {
 
-    return (
-        status === 408 ||
-        status === 409 ||
-        status === 425 ||
-        status === 429 ||
-        status >= 500
-    );
+    return runtimeEngine.isRetryableStatus(...args);
+
 }
 
 
-function retryDelayMs(attempt, retryAfterHeader) {
+function retryDelayMs(...args) {
 
-    if (retryAfterHeader) {
+    return runtimeEngine.retryDelayMs(...args);
 
-        const seconds =
-            Number(retryAfterHeader);
-
-        if (Number.isFinite(seconds)) {
-
-            return Math.min(
-                seconds * 1000,
-                30000
-            );
-        }
-    }
-
-    const backoff =
-        settings.get("RETRY_BASE_MS") * Math.pow(2, attempt - 1);
-
-    return Math.min(
-        backoff + Math.floor(Math.random() * settings.get("RETRY_BASE_MS")),
-        30000
-    );
 }
 
 
-async function callAI(options) {
+async function callAI(...args) {
 
-    let lastError;
+    return await runtimeEngine.callAI(...args);
 
-    for (
-        let attempt = 1;
-        attempt <= settings.get("MAX_REQUEST_RETRIES") + 1;
-        attempt++
-    ) {
-
-        try {
-
-            return await sendAgentRequest(options);
-
-        } catch (error) {
-
-            lastError = error;
-
-            const retryable =
-                error.retryable === true;
-
-            if (
-                !retryable ||
-                attempt > settings.get("MAX_REQUEST_RETRIES")
-            ) {
-                throw error;
-            }
-
-            const delay =
-                retryDelayMs(
-                    attempt,
-                    error.retryAfter
-                );
-
-            if (runRemainingMs() <= delay) {
-
-                throw new Error(
-                    `${error.message} (no time left in the run budget to retry)`
-                );
-            }
-
-            logLine(
-                options.scope,
-                `Request failed (${
-                    error.message.slice(0, 120)
-                }); retrying in ${delay} ms [attempt ${
-                    attempt
-                }/${settings.get("MAX_REQUEST_RETRIES")}]`
-            );
-
-            await new Promise(
-                resolve =>
-                    setTimeout(resolve, delay)
-            );
-        }
-    }
-
-    throw lastError;
 }
 
 
@@ -5261,35 +4083,9 @@ function delegationProjectSwitchEnabled() {
 }
 
 
-function findingsFromReport(report) {
+function findingsFromReport(...args) {
 
-    if (!report || typeof report !== "object") {
-        return [];
-    }
-
-    if (Array.isArray(report.findings)) {
-        return report.findings;
-    }
-
-    const content =
-        report.response &&
-        typeof report.response.content === "string"
-            ? report.response.content.trim()
-            : "";
-
-    if (content !== "") {
-        return [report.response.content];
-    }
-
-    if (Array.isArray(report.data)) {
-        return report.data;
-    }
-
-    if (report.data !== undefined && report.data !== null) {
-        return [report.data];
-    }
-
-    return [];
+    return runtimeEngine.findingsFromReport(...args);
 
 }
 
@@ -5307,104 +4103,10 @@ function validateAction(
 |--------------------------------------------------------------------------
 */
 
-function appendToolConversation(
-    messages,
-    message,
-    toolCalls,
-    results,
-    scope
-) {
+function appendToolConversation(...args) {
 
-    messages.push({
+    return runtimeEngine.appendToolConversation(...args);
 
-        role: "assistant",
-
-        content:
-            message.content ??
-            null,
-
-        tool_calls:
-            toolCalls.map(
-                call => ({
-                    id:
-                        call.id,
-
-                    type:
-                        "function",
-
-                    function: {
-                        name:
-                            call.name,
-
-                        arguments:
-                            JSON.stringify(
-                                call.arguments
-                            )
-                    }
-                })
-            )
-    });
-
-    for (
-        const result
-        of results
-    ) {
-
-        messages.push({
-
-            role: "tool",
-
-            tool_call_id:
-                result.id,
-
-            content:
-                JSON.stringify(
-                    result
-                )
-        });
-    }
-
-    /*
-    | Archived before compaction touches it, because a compressed result
-    | is exactly the thing the archive exists to replace.
-    */
-
-    const appended =
-        findExchanges(messages);
-
-    archiveExchanges(
-        messages,
-        appended.slice(appended.length - 1),
-        scope
-    );
-
-    const compaction =
-        compactConversation(messages, {
-
-            onDrop: (current, exchange) =>
-                archiveExchanges(current, [exchange], scope)
-        });
-
-    if (compaction.compacted) {
-
-        events.emit("context:compacted", {
-            agent: scope || "main_agent",
-            ...compaction
-        });
-
-        logLine(
-            scope,
-            `Context compacted: ${
-                Math.round(compaction.before / 1000)
-            }k -> ${
-                Math.round(compaction.after / 1000)
-            }k chars (${
-                compaction.elided_results
-            } results elided, ${
-                compaction.dropped_exchanges
-            } exchanges dropped)`
-        );
-    }
 }
 
 
@@ -5422,66 +4124,10 @@ function appendToolConversation(
    are now model-response errors so the loop returns them to the model with
    the same retry budget as any other invalid action. */
 
-function validateDelegationPolicy(
-    agentDefinition,
-    depthBudget,
-    delegations
-) {
+function validateDelegationPolicy(...args) {
 
-    const policy =
-        agentDefinition.delegation || {
-            enabled: false,
-            max_depth: 0,
-            max_children: 0
-        };
+    return runtimeEngine.validateDelegationPolicy(...args);
 
-    if (!policy.enabled) {
-
-        throw modelResponseError(
-            `Agent "${agentDefinition.name}" is not allowed to delegate.`,
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "delegation_disabled",
-                max_children: 0
-            }
-        );
-    }
-
-    /*
-    | max_depth is relative: it is how many levels an agent may create
-    | beneath itself, further limited by what its parent had left.
-    */
-
-    if (depthBudget < 1) {
-
-        throw modelResponseError(
-            `Agent "${agentDefinition.name}" exceeded delegation depth.`,
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "delegation_depth",
-                depth_budget: depthBudget
-            }
-        );
-    }
-
-    if (
-        delegations.length >
-        policy.max_children
-    ) {
-
-        throw modelResponseError(
-            `Agent "${agentDefinition.name}" exceeded max_children (${policy.max_children}).`,
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "max_children",
-                max_children: policy.max_children,
-                delegations: delegations.length
-            }
-        );
-    }
 }
 
 
@@ -5495,28 +4141,10 @@ function validateDelegationPolicy(
 |--------------------------------------------------------------------------
 */
 
-function resolveDepthBudget(
-    agentDefinition,
-    inheritedBudget
-) {
+function resolveDepthBudget(...args) {
 
-    const policy =
-        agentDefinition.delegation || {
-            enabled: false,
-            max_depth: 0
-        };
+    return runtimeEngine.resolveDepthBudget(...args);
 
-    if (!policy.enabled) {
-        return 0;
-    }
-
-    return Math.max(
-        0,
-        Math.min(
-            inheritedBudget,
-            Number(policy.max_depth) || 0
-        )
-    );
 }
 
 
@@ -5526,83 +4154,24 @@ function resolveDepthBudget(
 |--------------------------------------------------------------------------
 */
 
-function isUnfinishedFinal(action, progress) {
+function isUnfinishedFinal(...args) {
 
-    if (action.action !== "final") {
-        return false;
-    }
+    return runtimeEngine.isUnfinishedFinal(...args);
 
-    /*
-    | A declared block is a legitimate stop, and so is a run that
-    | actually did something.
-    */
-
-    if (action.error) {
-        return false;
-    }
-
-    return (
-        progress.tools === 0 &&
-        progress.delegations === 0
-    );
 }
 
 
-function failureSignature(results) {
+function failureSignature(...args) {
 
-    const failures =
-        results.filter(
-            result => !result.success
-        );
+    return runtimeEngine.failureSignature(...args);
 
-    if (
-        failures.length === 0 ||
-        failures.length !== results.length
-    ) {
-
-        /*
-        | Partial progress is not a loop.
-        */
-
-        return null;
-    }
-
-    return failures
-        .map(
-            result =>
-                `${result.name}:${
-                    (result.error && result.error.message) || ""
-                }`
-        )
-        .sort()
-        .join("|");
 }
 
 
-function trackRepeatedFailure(progress, results) {
+function trackRepeatedFailure(...args) {
 
-    const signature =
-        failureSignature(results);
+    return runtimeEngine.trackRepeatedFailure(...args);
 
-    if (!signature) {
-
-        progress.lastFailure = null;
-        progress.repeats = 0;
-
-        return 0;
-    }
-
-    if (signature === progress.lastFailure) {
-
-        progress.repeats = (progress.repeats || 0) + 1;
-
-    } else {
-
-        progress.lastFailure = signature;
-        progress.repeats = 1;
-    }
-
-    return progress.repeats;
 }
 
 
@@ -5613,145 +4182,31 @@ function trackRepeatedFailure(progress, results) {
 | cancelled run into a partial result and a named next step.
 */
 
-function wrapUpMessage(remainingMs, planSummary) {
+function wrapUpMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.wrapUpMessage(...args);
 
-        content:
-            JSON.stringify({
-                type: "runtime_notice",
-
-                notice: "budget_almost_spent",
-
-                remaining_ms: remainingMs,
-
-                max_run_ms:
-                    settings.get("MAX_RUN_MS"),
-
-                plan:
-                    planSummary && planSummary.exists
-                        ? {
-                            done: planSummary.done,
-                            open:
-                                planSummary.pending +
-                                planSummary.in_progress,
-                            next_step: planSummary.next_step
-                        }
-                        : null,
-
-                instruction:
-                    "The run is nearly out of time. Do not start new work and do not call another tool unless it takes seconds. Return action final now: report what was actually done and verified, what remains, and the next concrete step. Record any finished step in the plan first if that costs one quick call."
-            })
-    };
 }
 
 
-function loopNoticeMessage(signature, repeats) {
+function loopNoticeMessage(...args) {
 
-    const pathGuessLoop =
-        /does not exist/i.test(signature || "");
+    return runtimeEngine.loopNoticeMessage(...args);
 
-    const detail =
-        "The same call failed the same way several times, so repeating it will not help. Read the error text literally and change something concrete: fix the argument it complains about, use a different tool, or split the work. If the error mentions a dependency reference, note that ${...} inside file content is treated as literal text only when it does not name a call in the same action, so rename the call id or escape the sequence as $${...}."
-
-        + (pathGuessLoop
-            ? " The repeated error is \"does not exist\": you are guessing a path. Do not keep probing guessed paths. Discover the real layout once with fs_list, fs_tree or search_start, and read only a path a tool result actually confirmed."
-            : "");
-
-    return {
-        role: "user",
-
-        content:
-            JSON.stringify({
-                type:
-                    "runtime_notice",
-
-                notice:
-                    "repeated_failure",
-
-                repeats,
-
-                failure:
-                    signature,
-
-                detail
-            })
-    };
 }
 
 
-function planContinuationMessage(summary, remainingMs) {
+function planContinuationMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.planContinuationMessage(...args);
 
-        content:
-            JSON.stringify({
-                type:
-                    "runtime_notice",
-
-                notice:
-                    "plan_incomplete",
-
-                progress: {
-                    done:
-                        summary.done,
-
-                    open:
-                        summary.pending + summary.in_progress,
-
-                    blocked:
-                        summary.blocked,
-
-                    total:
-                        summary.steps
-                },
-
-                next_step:
-                    summary.next_step,
-
-                run_remaining_ms:
-                    Math.max(0, remainingMs),
-
-                detail:
-                    "The plan still has open steps and this run still has budget, so the work is not finished. Continue with the next step: do it, verify it, record it with plan_update, and only then move on. Stop early only if you are blocked by something a tool cannot reach, in which case mark the step blocked and return final with error.code NEEDS_INPUT."
-            })
-    };
 }
 
 
-function nudgeMessage({
-    iteration,
-    maxIterations,
-    remainingMs
-}) {
+function nudgeMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.nudgeMessage(...args);
 
-        content:
-            JSON.stringify({
-                type:
-                    "runtime_notice",
-
-                notice:
-                    "unfinished_run",
-
-                detail:
-                    "You returned a final answer without executing a single tool or delegation, so nothing in the workspace was inspected or changed. If the objective needs work, start it now: choose the next unfinished piece yourself, use the tools, verify the result, and report what you actually did. If you are genuinely blocked by a decision only the user can make, return final again with error.code set to NEEDS_INPUT and the specific question.",
-
-                budget: {
-                    iteration,
-
-                    iterations_remaining:
-                        maxIterations - iteration,
-
-                    run_remaining_ms:
-                        Math.max(0, remainingMs)
-                }
-            })
-    };
 }
 
 
@@ -5882,591 +4337,17 @@ function createSubAgentMessages(
 | answer. Whatever happens, the node now closes.
 */
 
-async function runSubAgent(options) {
+async function runSubAgent(...args) {
 
-    try {
+    return await runtimeEngine.runSubAgent(...args);
 
-        return await runSubAgentLoop(options);
-
-    } catch (error) {
-
-        events.emit("agent:end", {
-            agent:
-                options.agentProfile?.name || "sub_agent",
-
-            scope:
-                `${
-                    options.agentProfile?.name || "sub_agent"
-                }#${options.depth}`,
-
-            depth:
-                options.depth,
-
-            hook:
-                options.context?.hook || null,
-
-            success: false,
-
-            error: error.message
-        });
-
-        throw error;
-    }
 }
 
 
-async function runSubAgentLoop({
-    agentProfile,
-    task,
-    depth,
-    depthBudget,
-    context
-}) {
+async function runSubAgentLoop(...args) {
 
-    if (
-        depth >
-        settings.get("MAX_AGENT_DEPTH")
-    ) {
+    return await runtimeEngine.runSubAgentLoop(...args);
 
-        throw new Error(
-            `Maximum agent depth exceeded: ${settings.get("MAX_AGENT_DEPTH")}`
-        );
-    }
-
-    const agentDefinition =
-        agentProfile;
-
-    const agentName =
-        agentDefinition.name;
-
-    consumeAgentBudget(
-        agentName
-    );
-
-    const ownDepthBudget =
-        resolveDepthBudget(
-            agentDefinition,
-            Number.isFinite(depthBudget)
-                ? depthBudget
-                : settings.get("MAX_AGENT_DEPTH")
-        );
-
-    const capabilities =
-        resolveAgentCapabilities(
-            agentDefinition
-        );
-
-    const allowedTools =
-        new Set(
-            capabilities.tools.map(
-                tool =>
-                    tool.function.name
-            )
-        );
-
-    const messages =
-        createSubAgentMessages(
-            agentDefinition,
-            task,
-            context
-        );
-
-    const scope =
-        `${agentName}#${depth}`;
-
-    const progress = {
-        tools: 0,
-        delegations: 0,
-        nudges: 0
-    };
-
-    events.emit("agent:start", {
-        agent: agentName,
-        scope,
-        depth,
-        task,
-
-        /*
-        | Who asked for this agent. Without it a console can only guess
-        | the shape of the tree from the depth number.
-        */
-
-        parent:
-            context?.parent || null,
-
-        parent_scope:
-            context?.parent_scope || null,
-
-        delegation_id:
-            context?.delegation_id || null,
-
-        hook:
-            context?.hook || null,
-
-        persona:
-            agentDefinition.persona || null,
-
-        tools:
-            [...allowedTools]
-    });
-
-    logLine(
-        scope,
-        `Sub-agent started: ${task}`
-    );
-
-    for (
-        let iteration = 1;
-        iteration <= settings.get("MAX_ITERATIONS");
-        iteration++
-    ) {
-
-        assertRunActive(
-            `sub-agent ${agentName}`
-        );
-
-        await maintainContext(messages, scope);
-
-        refreshRuntimeContext(messages);
-
-        events.setContext({ scope, iteration });
-
-        events.emit("agent:iteration", {
-            agent: agentName,
-            scope,
-            depth,
-            iteration
-        });
-
-        logLine(
-            scope,
-            `Iteration ${iteration}`
-        );
-
-        const data =
-            await callAI({
-                messages,
-
-                agentDefinition,
-
-                tools:
-                    capabilities.tools,
-
-                role:
-                    roleForDepth(depth),
-
-                scope
-            });
-
-        /* Keep the provider response visible even when the structured action
-           below turns out to be malformed. */
-        reportModelResponse(data, scope, agentName, depth, iteration);
-
-        let parsed;
-
-        try {
-
-            parsed = readModelAction(data);
-
-        } catch (error) {
-
-            if (!isModelResponseError(error)) {
-                throw error;
-            }
-
-            if (progress.malformedCode !== error.code) {
-                progress.malformed = 0;
-                progress.malformedCode = error.code;
-            }
-
-            progress.malformed = (progress.malformed || 0) + 1;
-
-            const limit =
-                settings.get("MAX_MALFORMED_RESPONSES");
-
-            const maximumAttempts =
-                limit + 1;
-
-            logLine(
-                scope,
-                `Unreadable answer (${error.message}) [${
-                    progress.malformed
-                }/${maximumAttempts}]`
-            );
-
-            events.emit("run:malformed", {
-                agent: agentName,
-                scope,
-                depth,
-                iteration,
-                code: error.code,
-                reason: error.message,
-                finish_reason:
-                    error.details?.finish_reason || null,
-                completion_tokens:
-                    error.details?.completion_tokens ?? null,
-                output_chars:
-                    error.details?.output_chars ?? null,
-                attempt: progress.malformed,
-                limit,
-                max_attempts: maximumAttempts,
-                retries_left:
-                    Math.max(0, maximumAttempts - progress.malformed),
-                outcome:
-                    progress.malformed > limit
-                        ? "stopped"
-                        : "retry"
-            });
-
-            if (progress.malformed > limit) {
-                throw error;
-            }
-
-            messages.push(
-                malformedNoticeMessage(
-                    error,
-                    progress.malformed,
-                    limit
-                )
-            );
-
-            continue;
-        }
-
-        /* The correction succeeded. A malformed-answer allowance is a retry
-           budget for one bad-response streak, not a lifetime quota that can
-           stop an otherwise productive long run hours later. */
-        progress.malformed = 0;
-        progress.malformedCode = null;
-
-        const message =
-            parsed.message;
-
-        const action =
-            parsed.structured;
-
-        events.emit("agent:action", {
-            agent: agentName,
-            scope,
-            depth,
-            iteration,
-            action: action.action
-        });
-
-        logLine(
-            scope,
-            `Action: ${action.action}`
-        );
-
-
-        if (
-            action.action === "final" &&
-            !progress.wrapup &&
-            isUnfinishedFinal(action, progress) &&
-            progress.nudges < settings.get("MAX_EMPTY_FINAL_NUDGES")
-        ) {
-
-            progress.nudges++;
-
-            logLine(
-                scope,
-                "Sub-agent finished without doing anything; handing the task back once."
-            );
-
-            events.emit("run:nudge", {
-                agent: agentName,
-                scope,
-                iteration,
-                attempt: progress.nudges
-            });
-
-            messages.push({
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(action)
-            });
-
-            messages.push(
-                nudgeMessage({
-                    iteration,
-                    maxIterations: settings.get("MAX_ITERATIONS"),
-                    remainingMs: runRemainingMs()
-                })
-            );
-
-            continue;
-        }
-
-
-        if (
-            action.action ===
-            "final"
-        ) {
-
-            logObject(
-                scope,
-                "Final response",
-                action.response
-            );
-
-            events.emit("agent:end", {
-                agent: agentName,
-                scope,
-                depth,
-                hook: context?.hook || null,
-                success: true,
-                response: action.response
-            });
-
-            return {
-                agent:
-                    agentName,
-
-                success:
-                    true,
-
-                response:
-                    action.response,
-
-                data:
-                    action.data ?? null,
-
-                error:
-                    action.error ?? null,
-
-                performed: {
-                    tools: progress.tools,
-                    delegations: progress.delegations
-                },
-
-                projectId:
-                    effectiveProjectId(currentRun().project),
-
-                findings:
-                    findingsFromReport({
-                        response: action.response,
-                        data: action.data
-                    })
-            };
-        }
-
-
-        if (
-            action.action ===
-            "tool_call"
-        ) {
-
-            const toolCalls =
-                normalizeToolCalls(
-                    action.tool_calls
-                );
-
-            const results =
-                await executeToolGraph(
-                    toolCalls,
-                    allowedTools,
-                    scope,
-                    { iteration }
-                );
-
-            progress.tools += results.length;
-
-            appendToolConversation(
-                messages,
-                message,
-                toolCalls,
-                results,
-                scope
-            );
-
-            const repeats =
-                trackRepeatedFailure(progress, results);
-
-            if (repeats >= settings.get("MAX_REPEATED_FAILURES")) {
-
-                logLine(
-                    scope,
-                    `The same failure repeated ${repeats} times.`
-                );
-
-                /*
-                | A loop is the failure mode a console most needs to see,
-                | so it is an event rather than only a log line.
-                */
-
-                events.emit("run:loop", {
-                    agent: agentName,
-                    scope,
-                    depth,
-                    iteration,
-                    repeats,
-                    limit:
-                        settings.get("MAX_REPEATED_FAILURES"),
-                    signature:
-                        progress.lastFailure,
-                    outcome:
-                        repeats > settings.get("MAX_REPEATED_FAILURES")
-                            ? "stopped"
-                            : "notice"
-                });
-
-                if (repeats > settings.get("MAX_REPEATED_FAILURES")) {
-
-                    throw new Error(
-                        `Sub-agent "${agentName}" repeated the same failing call ${repeats} times: ${progress.lastFailure}`
-                    );
-                }
-
-                messages.push(
-                    loopNoticeMessage(
-                        progress.lastFailure,
-                        repeats
-                    )
-                );
-            }
-
-            continue;
-        }
-
-
-        if (
-            action.action ===
-            "delegate"
-        ) {
-
-            try {
-
-                validateDelegationPolicy(
-                    agentDefinition,
-                    ownDepthBudget,
-                    action.delegations
-                );
-
-            } catch (error) {
-
-                if (!isModelResponseError(error)) {
-                    throw error;
-                }
-
-                if (progress.malformedCode !== error.code) {
-                    progress.malformed = 0;
-                    progress.malformedCode = error.code;
-                }
-
-                progress.malformed = (progress.malformed || 0) + 1;
-
-                const limit =
-                    settings.get("MAX_MALFORMED_RESPONSES");
-
-                const maximumAttempts =
-                    limit + 1;
-
-                logLine(
-                    scope,
-                    `Invalid delegation (${error.message}) [${
-                        progress.malformed
-                    }/${maximumAttempts}]`
-                );
-
-                events.emit("run:malformed", {
-                    agent: agentName,
-                    scope,
-                    depth,
-                    iteration,
-                    code: error.code,
-                    reason: error.message,
-                    attempt: progress.malformed,
-                    limit,
-                    max_attempts: maximumAttempts,
-                    retries_left:
-                        Math.max(0, maximumAttempts - progress.malformed),
-                    outcome:
-                        progress.malformed > limit
-                            ? "stopped"
-                            : "retry"
-                });
-
-                if (progress.malformed > limit) {
-                    throw error;
-                }
-
-                messages.push(
-                    malformedNoticeMessage(
-                        error,
-                        progress.malformed,
-                        limit
-                    )
-                );
-
-                continue;
-            }
-
-            events.emit("delegation:start", {
-                parent: agentName,
-                parent_scope: scope,
-                depth,
-                delegations:
-                    action.delegations.map(item => ({
-                        id: item.id,
-                        agent: item.agent || `adhoc:${item.persona}`,
-                        task: item.task,
-                        depends_on: item.depends_on,
-                        projectId:
-                            requestedDelegationProjectId(item).value
-                    }))
-            });
-
-            logLine(
-                scope,
-                `Delegating to ${
-                    action.delegations
-                        .map(item => item.agent)
-                        .join(", ")
-                }`
-            );
-
-            const results =
-                await executeDelegations(
-                    action.delegations,
-                    depth + 1,
-                    agentDefinition,
-                    ownDepthBudget - 1,
-                    scope
-                );
-
-            progress.delegations += action.delegations.length;
-
-            messages.push({
-
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(
-                        action
-                    )
-            });
-
-            messages.push({
-
-                role: "user",
-
-                content:
-                    JSON.stringify({
-                        type:
-                            "sub_agent_results",
-
-                        results
-                    })
-            });
-        }
-    }
-
-    throw new Error(
-        `Sub-agent exceeded maximum iterations: ${agentName}`
-    );
 }
 
 
@@ -6476,384 +4357,10 @@ async function runSubAgentLoop({
 |--------------------------------------------------------------------------
 */
 
-async function executeDelegations(
-    delegations,
-    depth,
-    parentAgent,
-    depthBudget,
-    parentScope
-) {
+async function executeDelegations(...args) {
 
-    const policy =
-        parentAgent?.delegation || {
-            max_children:
-                settings.get("MAX_PARALLEL_AGENTS")
-        };
+    return await runtimeEngine.executeDelegations(...args);
 
-    if (
-        delegations.length >
-        policy.max_children
-    ) {
-
-        /* A policy violation here is a model decision, so it is a
-           model-response error like validateDelegationPolicy, never a run
-           killer. */
-        throw modelResponseError(
-            "Delegation count exceeds parent agent policy.",
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "max_children",
-                max_children: policy.max_children,
-                delegations: delegations.length
-            }
-        );
-    }
-
-    /*
-    | An ad-hoc child may only be granted tools the parent already has.
-    */
-
-    const parentAllowedTools =
-        new Set(
-            resolveTools(
-                parentAgent?.tools
-            ).map(
-                tool =>
-                    tool.function.name
-            )
-        );
-
-    const tasks =
-        delegations.map(
-            (item, index) => ({
-                id:
-                    item.id ||
-                    `delegation_${index + 1}`,
-
-                agent:
-                    item.agent ||
-                    (
-                        item.persona
-                            ? `adhoc:${item.persona}`
-                            : "unresolved_agent"
-                    ),
-
-                delegation:
-                    item,
-
-                task:
-                    item.task,
-
-                depends_on:
-                    Array.isArray(
-                        item.depends_on
-                    )
-                        ? item.depends_on
-                        : []
-            })
-        );
-
-    const maxParallel =
-        settings.get("MAX_PARALLEL_AGENTS");
-
-    /*
-    | Delegation runs on the same scheduler as tools, so it has the same
-    | shape, and the console is told about it the same way.
-    */
-
-    const graph =
-        describeGraph(tasks, maxParallel);
-
-    events.emit("delegation:graph", {
-        parent:
-            parentAgent?.name || "main_agent",
-
-        parent_scope:
-            parentScope || parentAgent?.name || "main_agent",
-
-        depth,
-
-        shape:
-            graph.shape,
-
-        waves:
-            graph.waves,
-
-        max_parallel:
-            maxParallel,
-
-        delegations:
-            tasks.map(task => ({
-                id: task.id,
-                agent: task.agent,
-                depends_on: task.depends_on,
-                projectId:
-                    requestedDelegationProjectId(task.delegation).value
-            }))
-    });
-
-    return executeDependencyGraph({
-
-        items:
-            tasks,
-
-        maxParallel,
-
-        executor:
-            async (
-                task,
-                results
-            ) => {
-
-                const startedAt = Date.now();
-
-                /*
-                | A delegation that fails before its agent starts used to
-                | leave no trace at all: no agent:start, no agent:end,
-                | nothing but a gap in the log. Every delegation now
-                | reports how it ended, whoever failed it.
-                */
-
-                const switchEnabled =
-                    delegationProjectSwitchEnabled();
-
-                const requested =
-                    requestedDelegationProjectId(task.delegation).value;
-
-                const inherited =
-                    effectiveProject(currentRun().project);
-
-                const inheritedId =
-                    projectIdOf(inherited) ||
-                    currentRun().projectId ||
-                    null;
-
-                let scopedProject = inherited;
-
-                if (switchEnabled && requested) {
-
-                    try {
-
-                        scopedProject =
-                            projects.createProjectContext(
-                                projects.registry().get(requested)
-                            );
-
-                    } catch {
-
-                        const unknown =
-                            new Error(`Unknown project: ${requested}`);
-
-                        unknown.name = "UNKNOWN_PROJECT";
-
-                        throw unknown;
-
-                    }
-
-                }
-
-                /* In legacy the requested id is accepted but ignored,
-                   so it must not become the child's label, the ALS
-                   frame, or a multi-project mark. */
-                const scopedProjectId =
-                    projectIdOf(scopedProject) ||
-                    (switchEnabled ? requested : null) ||
-                    inheritedId;
-
-                if (switchEnabled) {
-                    noteDelegationProject(currentRun(), scopedProjectId);
-                }
-
-                try {
-
-                    const agentProfile =
-                        resolveDelegationProfile(
-                            task.delegation,
-                            parentAllowedTools
-                        );
-
-                    const dependencyContext =
-                        task.depends_on.map(
-                            id => ({
-                                id,
-
-                                result:
-                                    results.get(
-                                        id
-                                    )
-                            })
-                        );
-
-                    const runChild = () =>
-                        runSubAgent({
-                            agentProfile,
-
-                            task:
-                                task.task,
-
-                            depth,
-
-                            depthBudget,
-
-                            context: {
-                                parent:
-                                    parentAgent?.name || null,
-
-                                parent_scope:
-                                    parentScope || null,
-
-                                delegation_id:
-                                    task.id,
-
-                                hook:
-                                    task.delegation.hook || null,
-
-                                dependencies:
-                                    dependencyContext
-                            }
-                        });
-
-                    /* Each Sub-Agent gets its own project ALS frame so
-                       two concurrent children cannot mix tools or
-                       event project_id. Nested delegations may start a
-                       new frame; this one is fixed for the child.
-                       Legacy never enters the frame, so envelopes
-                       stay historically shaped. */
-                    const report =
-                        switchEnabled
-                            ? await runWithProject(
-                                scopedProject,
-                                () =>
-                                    events.withProjectId(
-                                        scopedProjectId,
-                                        runChild
-                                    )
-                            )
-                            : await runChild();
-
-                    const labeled = {
-                        ...report,
-                        projectId:
-                            report.projectId ?? scopedProjectId,
-                        findings:
-                            Array.isArray(report.findings)
-                                ? report.findings
-                                : findingsFromReport(report)
-                    };
-
-                    events.emit("delegation:end", {
-                        parent:
-                            parentAgent?.name || "main_agent",
-
-                        parent_scope:
-                            parentScope || parentAgent?.name || "main_agent",
-
-                        id: task.id,
-
-                        agent: task.agent,
-
-                        depth,
-
-                        success: true,
-
-                        projectId: labeled.projectId,
-
-                        duration_ms:
-                            Date.now() - startedAt
-                    });
-
-                    return labeled;
-
-                } catch (error) {
-
-                    events.emit("delegation:end", {
-                        parent:
-                            parentAgent?.name || "main_agent",
-
-                        parent_scope:
-                            parentScope || parentAgent?.name || "main_agent",
-
-                        id: task.id,
-
-                        agent: task.agent,
-
-                        depth,
-
-                        success: false,
-
-                        projectId: scopedProjectId,
-
-                        error: error.message,
-
-                        duration_ms:
-                            Date.now() - startedAt
-                    });
-
-                    logLine(
-                        parentScope || "main_agent",
-                        `Delegation "${task.id}" to ${
-                            task.agent
-                        } failed: ${error.message}`
-                    );
-
-                    error.projectId = scopedProjectId;
-
-                    throw error;
-                }
-            }
-    })
-        .then(
-            results =>
-
-                /*
-                | Each result carries the agent name so a failed
-                | delegation is attributable without id correlation.
-                | Phase 12 adds projectId + findings so synthesis can
-                | only cite labeled, per-project reports.
-                */
-
-                results.map(
-                    (result, index) => {
-
-                        const requested =
-                            requestedDelegationProjectId(
-                                tasks[index].delegation
-                            ).value;
-
-                        const projectId =
-                            result.projectId ||
-                            (result.result && result.result.projectId) ||
-                            result.error?.projectId ||
-                            (delegationProjectSwitchEnabled()
-                                ? requested
-                                : null) ||
-                            projectIdOf(effectiveProject(currentRun().project)) ||
-                            currentRun().projectId ||
-                            null;
-
-                        const findings =
-                            result.success
-                                ? (
-                                    result.findings ||
-                                    findingsFromReport(result.result)
-                                )
-                                : [];
-
-                        return {
-                            ...result,
-
-                            agent:
-                                tasks[index].agent,
-
-                            projectId,
-
-                            findings
-                        };
-
-                    }
-                )
-        );
 }
 
 
@@ -7601,893 +5108,10 @@ function resolveRunProjectContext(options) {
 }
 
 
-async function runAgentCore(options = {}) {
+async function runAgentCore(...args) {
 
-    const projectContext =
-        resolveRunProjectContext(options);
+    return await runtimeEngine.runAgentCore(...args);
 
-    /*
-    | Pick up any edit made to a registry or the policy since the last
-    | run, then validate what was actually loaded.
-    */
-
-    loadRegistries(false);
-
-    validateRegistries();
-
-    const carried =
-        currentRun().carried || { background_processes: [] };
-
-    if (carried.background_processes.length > 0) {
-
-        logLine(
-            "main_agent",
-            `${carried.background_processes.length} background process(es) from an earlier run are still alive: ${
-                carried.background_processes
-                    .map(item => item.process_id)
-                    .join(", ")
-            }`
-        );
-    }
-
-    startRun();
-
-    /*
-    | Context resolved before startRun so a bad project reference fails
-    | fast, assigned after it so the clean-slate reset cannot drop it.
-    | Still inert in legacy mode (null).
-    */
-    currentRun().project = projectContext;
-
-    resetAgentBudget();
-
-    /*
-    | The tools an MCP server offers have to be known before the first
-    | request is built, or the model is told about a capability one
-    | iteration after it needed it. Discovery is bounded, and a server
-    | that does not answer is left out rather than allowed to hold up
-    | the run.
-    */
-
-    await discoverMcpTools();
-
-    currentRun().task =
-        options.task ||
-        readTask();
-
-    /* Every user task in this run starts a new turn; all events and
-       conversation steps it produces share the same turn_id, so the UI can
-       render the execution for a user message as one stage-by-stage block.
-       A caller (such as the web server) may pass its own turn_id so the
-       conversation message and the runtime events line up. */
-    const turn_id =
-        options.turn_id ||
-        `${currentRun().id}_t${(currentRun().turnCounter = (currentRun().turnCounter || 0) + 1)}`;
-
-    if (currentRun() instanceof AgentRunContext) {
-        currentRun().turnId = turn_id;
-    }
-
-    events.setContext({ turn_id });
-
-    /*
-    | A caller that keeps a history array across calls gets a
-    | multi-turn session: the array is filled on the first run and
-    | extended with the new task on every following run.
-    */
-
-    events.emit("run:start", {
-        run_id:
-            currentRun().id,
-
-        turn_id,
-
-        task:
-            currentRun().task,
-
-        continued:
-            Array.isArray(options.history) &&
-            options.history.length > 0
-    });
-
-    const messages =
-        Array.isArray(options.history)
-            ? options.history
-            : [];
-
-    /* The run context aliases the very array the loop mutates, so a
-       run handle always sees its own conversation as it grows. */
-    if (currentRun() instanceof AgentRunContext) {
-        currentRun().messages = messages;
-    }
-
-    if (messages.length === 0) {
-
-        messages.push(
-            ...createMainAgentMessages(options.task)
-        );
-
-    } else {
-
-        messages.push({
-            role: "user",
-
-            turn_id,
-
-            content:
-                options.task && options.task.trim() !== ""
-                    ? options.task
-                    : readTask()
-        });
-    }
-
-    const mainAgentDefinition =
-        (() => {
-
-            const configured =
-                AGENT_REGISTRY_OF().get(
-                    "main_agent"
-                );
-
-            /*
-            | Delegation is a capability declared by the profile,
-            | not an intrinsic property of being the root agent.
-            */
-
-            const base =
-                configured || {
-                    name: "main_agent",
-                    tools: "*",
-                    delegation: {
-                        enabled: true,
-                        max_depth:
-                            settings.get("MAX_AGENT_DEPTH"),
-                        max_children:
-                            settings.get("MAX_PARALLEL_AGENTS")
-                    }
-                };
-
-            return {
-                ...base,
-
-                model:
-                    base.model || settings.get("AGENT_MODEL"),
-
-                temperature:
-                    base.temperature ??
-                    settings.get("AGENT_TEMPERATURE")
-            };
-        })();
-
-    currentRun().main_agent_definition =
-        mainAgentDefinition;
-
-    const mainDepthBudget =
-        resolveDepthBudget(
-            mainAgentDefinition,
-            settings.get("MAX_AGENT_DEPTH")
-        );
-
-    const mainAgentTools =
-        resolveTools(
-            mainAgentDefinition.tools
-        );
-
-    const allowedTools =
-        new Set(
-            mainAgentTools.map(
-                tool =>
-                    tool.function.name
-            )
-        );
-
-    const progress = {
-        tools: 0,
-        delegations: 0,
-        nudges: 0,
-        continuations: 0
-    };
-
-    const beforeHooks =
-        await runHooks(
-            "before_task",
-            hookExecutionContext(),
-            mainAgentDefinition
-        );
-
-    if (beforeHooks.stopped) {
-
-        const failed =
-            beforeHooks.results.find(
-                item => item.status === "failed" && item.on_failure === "stop"
-            );
-
-        throw new Error(
-            `Required before_task hook "${failed.id}" failed: ${failed.summary}`
-        );
-    }
-
-    if (beforeHooks.results.length > 0) {
-
-        messages.push({
-            role: "user",
-            content:
-                JSON.stringify({
-                    type: "runtime_notice",
-                    notice: "before_task_hooks_complete",
-                    results:
-                        beforeHooks.results.map(item => ({
-                            id: item.id,
-                            status: item.status,
-                            ok: item.ok,
-                            summary: item.summary
-                        })),
-                    instruction:
-                        "These deterministic routine steps already ran. Use their evidence and do not repeat them in the plan or with tools."
-                })
-        });
-    }
-
-    const routed =
-        await autoroutePlanStep(mainAgentDefinition);
-
-    if (routed) {
-
-        progress.delegations++;
-
-        messages.push({
-            role: "user",
-            content:
-                JSON.stringify({
-                    type: "runtime_notice",
-                    notice: "plan_step_autorouted",
-                    result: routed,
-                    instruction:
-                        "The runtime already delegated this assigned plan step and recorded its evidence. Do not repeat it. Continue from the updated plan and report the verified result."
-                })
-        });
-    }
-
-    for (
-        let iteration = 1;
-        iteration <= settings.get("MAX_ITERATIONS");
-        iteration++
-    ) {
-
-        assertRunActive("main agent");
-
-        await maintainContext(messages, "main_agent");
-
-        refreshRuntimeContext(messages);
-
-        events.setContext({ scope: "main_agent", iteration });
-
-        events.emit("agent:iteration", {
-            agent: "main_agent",
-            scope: "main_agent",
-            depth: 0,
-            iteration
-        });
-
-        /*
-        | The reserved slice is capped by a share of the budget, so a
-        | two minute run is not told to wrap up on its first iteration
-        | just because the default slice is a minute.
-        */
-
-        /*
-        | The reminder fires at the top of an iteration, before the
-        | request is built, so the notice travels with it.
-        */
-
-        if (
-            shouldHintDelegation(
-                progress,
-                currentPlanSummary(),
-                mainAgentDefinition
-            )
-        ) {
-
-            progress.delegationHints =
-                (progress.delegationHints || 0) + 1;
-
-            const planSummary = currentPlanSummary();
-
-            logLine(
-                "main_agent",
-                `Working alone for ${
-                    progress.tools
-                } calls with ${
-                    remainingAgentBudget()
-                } agents unused and ${
-                    planSummary.pending + planSummary.in_progress
-                } open steps; suggesting delegation.`
-            );
-
-            events.emit("run:delegation_hint", {
-                agent: "main_agent",
-                iteration,
-                attempt: progress.delegationHints,
-                agents_remaining: remainingAgentBudget(),
-                open_steps:
-                    planSummary.pending + planSummary.in_progress
-            });
-
-            messages.push(
-                delegationHintMessage(
-                    planSummary,
-                    remainingAgentBudget()
-                )
-            );
-        }
-
-        const wrapUpAt =
-            Math.min(
-                settings.get("RUN_WRAPUP_MS"),
-                settings.get("MAX_RUN_MS") *
-                settings.get("RUN_WRAPUP_FRACTION")
-            );
-
-        if (
-            wrapUpAt > 0 &&
-            !progress.wrapup &&
-            runRemainingMs() <= wrapUpAt
-        ) {
-
-            progress.wrapup = true;
-
-            const planSummary =
-                currentPlanSummary();
-
-            logLine(
-                "main_agent",
-                `Run budget nearly spent (${
-                    Math.max(0, runRemainingMs())
-                } ms left); asking for a final answer.`
-            );
-
-            events.emit("run:wrapup", {
-                agent: "main_agent",
-                iteration,
-                remaining_ms: runRemainingMs(),
-                max_run_ms: settings.get("MAX_RUN_MS")
-            });
-
-            messages.push(
-                wrapUpMessage(
-                    runRemainingMs(),
-                    planSummary
-                )
-            );
-        }
-
-        if (settings.get("AGENT_VERBOSE")) {
-
-            LOG_STREAM(
-                `\n=== Agent Iteration ${iteration} ===`
-            );
-        }
-
-        const data =
-            await callAI({
-                messages,
-
-                agentDefinition:
-                    mainAgentDefinition,
-
-                tools:
-                    mainAgentTools,
-
-                role: "MAIN",
-
-                scope:
-                    "main_agent"
-            });
-
-        /* Keep the provider response visible even when the structured action
-           below turns out to be malformed. */
-        reportModelResponse(data, "main_agent", "main_agent", 0, iteration);
-
-        let parsed;
-
-        try {
-
-            parsed = readModelAction(data);
-
-        } catch (error) {
-
-            if (!isModelResponseError(error)) {
-                throw error;
-            }
-
-            if (progress.malformedCode !== error.code) {
-                progress.malformed = 0;
-                progress.malformedCode = error.code;
-            }
-
-            progress.malformed = (progress.malformed || 0) + 1;
-
-            const limit =
-                settings.get("MAX_MALFORMED_RESPONSES");
-
-            const maximumAttempts =
-                limit + 1;
-
-            logLine(
-                "main_agent",
-                `Unreadable answer (${error.message}) [${
-                    progress.malformed
-                }/${maximumAttempts}]`
-            );
-
-            events.emit("run:malformed", {
-                agent: "main_agent",
-                scope: "main_agent",
-                depth: 0,
-                iteration,
-                code: error.code,
-                reason: error.message,
-                finish_reason:
-                    error.details?.finish_reason || null,
-                completion_tokens:
-                    error.details?.completion_tokens ?? null,
-                output_chars:
-                    error.details?.output_chars ?? null,
-                attempt: progress.malformed,
-                limit,
-                max_attempts: maximumAttempts,
-                retries_left:
-                    Math.max(0, maximumAttempts - progress.malformed),
-                outcome:
-                    progress.malformed > limit
-                        ? "stopped"
-                        : "retry"
-            });
-
-            if (progress.malformed > limit) {
-                throw error;
-            }
-
-            messages.push(
-                malformedNoticeMessage(
-                    error,
-                    progress.malformed,
-                    limit
-                )
-            );
-
-            continue;
-        }
-
-        /* A valid replacement closes this malformed-answer streak. Later
-           independent mistakes get their own corrective retry allowance. */
-        progress.malformed = 0;
-        progress.malformedCode = null;
-
-        const message =
-            parsed.message;
-
-        const action =
-            parsed.structured;
-
-        events.emit("agent:action", {
-            agent: "main_agent",
-            scope: "main_agent",
-            depth: 0,
-            iteration,
-            action: action.action
-        });
-
-        logLine(
-            "main_agent",
-            `Action: ${action.action}`
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | FINAL
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            action.action === "final" &&
-            !action.error
-        ) {
-
-            const planSummary =
-                currentPlanSummary();
-
-            const openSteps =
-                planSummary.exists
-                    ? planSummary.pending + planSummary.in_progress
-                    : 0;
-
-            /*
-            | Continue only while there is enough time for another
-            | step, without demanding a whole request budget.
-            */
-
-            const continuationFloor =
-                Math.min(
-                    settings.get("MAX_REQUEST_MS"),
-                    Math.max(5000, settings.get("MAX_RUN_MS") * 0.1)
-                );
-
-            if (
-                openSteps > 0 &&
-                !progress.wrapup &&
-                progress.continuations < settings.get("MAX_PLAN_CONTINUATIONS") &&
-                runRemainingMs() > continuationFloor
-            ) {
-
-                progress.continuations++;
-
-                logLine(
-                    "main_agent",
-                    `Plan still has ${openSteps} open step(s); continuing with "${
-                        planSummary.next_step
-                            ? planSummary.next_step.title
-                            : "the next step"
-                    }".`
-                );
-
-                events.emit("run:continue", {
-                    agent: "main_agent",
-                    open_steps: openSteps,
-                    next_step: planSummary.next_step,
-                    attempt: progress.continuations
-                });
-
-                messages.push({
-                    role: "assistant",
-
-                    content:
-                        message.content ??
-                        JSON.stringify(action)
-                });
-
-                messages.push(
-                    planContinuationMessage(
-                        planSummary,
-                        runRemainingMs()
-                    )
-                );
-
-                continue;
-            }
-        }
-
-
-        if (
-            action.action === "final" &&
-            isUnfinishedFinal(action, progress) &&
-            progress.nudges < settings.get("MAX_EMPTY_FINAL_NUDGES")
-        ) {
-
-            progress.nudges++;
-
-            logLine(
-                "main_agent",
-                "Final answer arrived with no work performed; handing the objective back once."
-            );
-
-            events.emit("run:nudge", {
-                agent: "main_agent",
-                iteration,
-                attempt: progress.nudges
-            });
-
-            messages.push({
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(action)
-            });
-
-            messages.push(
-                nudgeMessage({
-                    iteration,
-                    maxIterations: settings.get("MAX_ITERATIONS"),
-                    remainingMs: runRemainingMs()
-                })
-            );
-
-            continue;
-        }
-
-
-        if (
-            action.action ===
-            "final"
-        ) {
-
-            /*
-            | The answer is kept in the transcript so a following task
-            | in the same session can refer back to it.
-            */
-
-            messages.push({
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(action)
-            });
-
-            const finalized =
-                await applyAfterTaskHooks(action, null);
-
-            const finalAction =
-                finalized.action;
-
-            /* The session history must carry the hook evidence and any
-               HOOK_FAILED status, not the pre-hook draft from the model. */
-            messages[messages.length - 1].content =
-                JSON.stringify(finalAction);
-
-            /*
-            | Before the answer leaves, what it claims is compared with
-            | what the runtime executed, including deterministic hooks.
-            */
-
-            const mismatch =
-                checkPerformedClaim(finalAction, progress, "main_agent");
-
-            events.emit("run:end", {
-                action: finalAction,
-
-                hooks:
-                    finalized.report || undefined,
-
-                claim_mismatch:
-                    mismatch || undefined,
-
-                ok:
-                    !finalAction.error
-            });
-
-            if (PRINT_FINAL) {
-
-                LOG_STREAM(
-                    "\n=== FINAL RESPONSE ===\n"
-                );
-
-                LOG_STREAM(
-                    JSON.stringify(
-                        finalAction,
-                        null,
-                        2
-                    )
-                );
-            }
-
-            return finalAction;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | TOOL CALL
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            action.action ===
-            "tool_call"
-        ) {
-
-            const toolCalls =
-                normalizeToolCalls(
-                    action.tool_calls
-                );
-
-            const results =
-                await executeToolGraph(
-                    toolCalls,
-                    allowedTools,
-                    "main_agent",
-                    { iteration }
-                );
-
-            progress.tools += results.length;
-
-            appendToolConversation(
-                messages,
-                message,
-                toolCalls,
-                results,
-                "main_agent"
-            );
-
-            const repeats =
-                trackRepeatedFailure(progress, results);
-
-            if (repeats >= settings.get("MAX_REPEATED_FAILURES")) {
-
-                logLine(
-                    "main_agent",
-                    `The same failure repeated ${repeats} times.`
-                );
-
-                events.emit("run:loop", {
-                    agent: "main_agent",
-                    scope: "main_agent",
-                    depth: 0,
-                    iteration,
-                    repeats,
-                    limit:
-                        settings.get("MAX_REPEATED_FAILURES"),
-                    signature:
-                        progress.lastFailure,
-                    outcome:
-                        repeats > settings.get("MAX_REPEATED_FAILURES")
-                            ? "stopped"
-                            : "notice"
-                });
-
-                if (repeats > settings.get("MAX_REPEATED_FAILURES")) {
-
-                    throw new Error(
-                        `The agent repeated the same failing call ${repeats} times: ${progress.lastFailure}`
-                    );
-                }
-
-                messages.push(
-                    loopNoticeMessage(
-                        progress.lastFailure,
-                        repeats
-                    )
-                );
-            }
-
-            continue;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | DELEGATE
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            action.action ===
-            "delegate"
-        ) {
-
-            try {
-
-                validateDelegationPolicy(
-                    mainAgentDefinition,
-                    mainDepthBudget,
-                    action.delegations
-                );
-
-            } catch (error) {
-
-                if (!isModelResponseError(error)) {
-                    throw error;
-                }
-
-                if (progress.malformedCode !== error.code) {
-                    progress.malformed = 0;
-                    progress.malformedCode = error.code;
-                }
-
-                progress.malformed = (progress.malformed || 0) + 1;
-
-                const limit =
-                    settings.get("MAX_MALFORMED_RESPONSES");
-
-                const maximumAttempts =
-                    limit + 1;
-
-                logLine(
-                    "main_agent",
-                    `Invalid delegation (${error.message}) [${
-                        progress.malformed
-                    }/${maximumAttempts}]`
-                );
-
-                events.emit("run:malformed", {
-                    agent: "main_agent",
-                    scope: "main_agent",
-                    depth: 0,
-                    iteration,
-                    code: error.code,
-                    reason: error.message,
-                    attempt: progress.malformed,
-                    limit,
-                    max_attempts: maximumAttempts,
-                    retries_left:
-                        Math.max(0, maximumAttempts - progress.malformed),
-                    outcome:
-                        progress.malformed > limit
-                            ? "stopped"
-                            : "retry"
-                });
-
-                if (progress.malformed > limit) {
-                    throw error;
-                }
-
-                messages.push(
-                    malformedNoticeMessage(
-                        error,
-                        progress.malformed,
-                        limit
-                    )
-                );
-
-                continue;
-            }
-
-            events.emit("delegation:start", {
-                parent: "main_agent",
-                parent_scope: "main_agent",
-                depth: 0,
-                delegations:
-                    action.delegations.map(item => ({
-                        id: item.id,
-                        agent: item.agent || `adhoc:${item.persona}`,
-                        task: item.task,
-                        depends_on: item.depends_on,
-                        projectId:
-                            requestedDelegationProjectId(item).value
-                    }))
-            });
-
-            logLine(
-                "main_agent",
-                `Delegating to ${
-                    action.delegations
-                        .map(item => item.agent)
-                        .join(", ")
-                }`
-            );
-
-            const results =
-                await executeDelegations(
-                    action.delegations,
-                    1,
-                    mainAgentDefinition,
-                    mainDepthBudget - 1,
-                    "main_agent"
-                );
-
-            progress.delegations += action.delegations.length;
-
-            messages.push({
-
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(
-                        action
-                    )
-            });
-
-            messages.push({
-
-                role: "user",
-
-                content:
-                    JSON.stringify({
-                        type:
-                            "sub_agent_results",
-
-                        results
-                    })
-            });
-        }
-    }
-
-    throw new Error(
-        `Agent exceeded maximum iterations: ${settings.get("MAX_ITERATIONS")}`
-    );
 }
 
 
@@ -8701,21 +5325,6 @@ async function main() {
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| Entry Point
-|--------------------------------------------------------------------------
-|
-| The runtime only starts when executed directly, so the internals can
-| be imported and tested.
-|--------------------------------------------------------------------------
-*/
-
-if (require.main === module) {
-    main();
-}
-
-
 application.bind({
     runAgent,
     main,
@@ -8730,6 +5339,89 @@ actionKit.bind({
     events,
     logLine
 });
+
+runtimeEngine.bind({
+    settings,
+    events,
+    logLine,
+    logObject,
+    LOG_STREAM,
+    PRINT_FINAL,
+    currentRun,
+    AgentRunContext,
+    currentAgentBudget,
+    toolRuntime,
+    POLICY_ENGINE,
+    FILE_MUTATING_TOOLS,
+    assertRunActive,
+    runRemainingMs,
+    keepDeclaredArguments,
+    parseArguments,
+    repairMarkdownPathArguments,
+    enforceCrossProjectWrite,
+    effectiveProject,
+    effectiveProjectId,
+    projectIdOf,
+    runWithProject,
+    noteDelegationProject,
+    isMultiProjectTask,
+    consumeAgentBudget,
+    remainingAgentBudget,
+    mayDelegate,
+    resolveTools,
+    resolveAgentCapabilities,
+    resolveDelegationProfile,
+    createSubAgentMessages,
+    sendAgentRequest,
+    readModelAction,
+    isModelResponseError,
+    malformedNoticeMessage,
+    reportModelResponse,
+    maintainContext,
+    refreshRuntimeContext,
+    roleForDepth,
+    requestedDelegationProjectId,
+    delegationProjectSwitchEnabled,
+    projects,
+    modelResponseError,
+    compactConversation,
+    findExchanges,
+    archiveExchanges,
+    startRun,
+    resetAgentBudget,
+    discoverMcpTools,
+    loadRegistries,
+    validateRegistries,
+    createMainAgentMessages,
+    readTask,
+    runHooks,
+    hookExecutionContext,
+    applyAfterTaskHooks,
+    hookReportText,
+    autoroutePlanStep,
+    AGENT_REGISTRY_OF,
+    TOOL_REGISTRY_OF,
+    mainAgentProfile,
+    currentPlanSummary,
+    resolveRunProjectContext
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| Entry Point
+|--------------------------------------------------------------------------
+|
+| The runtime only starts when executed directly, so the internals can
+| be imported and tested. Bindings above must run first: the extracted
+| engine (Phase 16) reads live closures through host() from the first
+| line of runAgentCore.
+|--------------------------------------------------------------------------
+*/
+
+if (require.main === module) {
+    main();
+}
 
 
 module.exports = {
@@ -8881,6 +5573,8 @@ module.exports = {
     registryLoader,
     registryValidator,
     actions: actionKit,
+    runtimeEngine,
+    runtimeEngineMode: runtimeEngine.runtimeEngineMode,
 
     /*
     | Read through the store so a caller never caches a stale limit.
