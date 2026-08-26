@@ -22,14 +22,14 @@ const {
     PERSONAS,
     OBSERVER,
     listPersonas
-} = require("../agent/discussion");
+} = require("../../agent/discussion");
 
 const {
     buildFirstRoundPrompt,
     buildCrossExamPrompt
-} = require("../agent/discussion/personaRunner");
+} = require("../../agent/discussion/personaRunner");
 
-const { jaccardSimilarity } = require("../agent/discussion/loopDetector");
+const { jaccardSimilarity } = require("../../agent/discussion/loopDetector");
 
 const results = [];
 
@@ -229,7 +229,7 @@ async function main() {
 
     await test("discussion personas and profiles are registered", async () => {
 
-        const registry = path.resolve(__dirname, "..", "agent", "registry");
+        const registry = path.resolve(__dirname, "..", "..", "agent", "registry");
 
         const personas = JSON.parse(fs.readFileSync(path.join(registry, "personas.json"), "utf8"));
         const agents = JSON.parse(fs.readFileSync(path.join(registry, "agents.json"), "utf8"));
@@ -619,7 +619,7 @@ async function main() {
     /* ---------------------------------------------------------------- */
     console.log("tool");
 
-    const tools = require("../agent/tools");
+    const tools = require("../../agent/tools");
 
     await test("discussion_start is registered and callable", async () => {
 
@@ -675,7 +675,7 @@ async function main() {
         | fail loudly, never answer with canned opinions.
         */
 
-        const agent = require("../agent/agent");
+        const agent = require("../../agent/agent");
 
         agent.settings.set("AGENT_BASE_URL", "http://127.0.0.1:9/v1");
         agent.settings.set("MAX_REQUEST_RETRIES", 0);

@@ -18,8 +18,8 @@ process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.MAX_TOOL_RESULT_CHARS = "20000";
 process.env.PROCESS_SANDBOX_MODE = "test";
 
-const tools = require("../agent/tools");
-const { WORKSPACE_ROOT } = require("../agent/lib/workspace");
+const tools = require("../../agent/tools");
+const { WORKSPACE_ROOT } = require("../../agent/lib/workspace");
 
 const results = [];
 
@@ -951,12 +951,12 @@ async function main() {
     await test("registry, groups and implementations agree", async () => {
 
         const declared =
-            require("../agent/registry/tools.json")
+            require("../../agent/registry/tools.json")
                 .map(tool => tool.function.name);
 
         const grouped =
             Object.values(
-                require("../agent/registry/tool_groups.json")
+                require("../../agent/registry/tool_groups.json")
             ).flatMap(group => group.tools);
 
         const implemented =
@@ -1038,7 +1038,7 @@ async function main() {
     await test("a skill is an index in the prompt and full text on demand", async () => {
 
         const skills =
-            require("../agent/tools/skills");
+            require("../../agent/tools/skills");
 
         /* what every request carries */
         const index = skills._skillIndex();
@@ -1088,8 +1088,8 @@ async function main() {
 
     await test("the semantic-engine skill follows MCP availability", async () => {
 
-        const skills = require("../agent/tools/skills");
-        const settings = require("../agent/lib/storage");
+        const skills = require("../../agent/tools/skills");
+        const settings = require("../../agent/lib/storage");
 
         assert.ok(
             skills._skillIndex().some(item => item.name === "semantic_engine")
@@ -1177,7 +1177,7 @@ async function main() {
         );
 
         /* and a data skill is in the index like any other */
-        const skills = require("../agent/tools/skills");
+        const skills = require("../../agent/tools/skills");
 
         assert.ok(
             skills._skillIndex().some(
@@ -1189,7 +1189,7 @@ async function main() {
     await test("loading a skill is an event, attributed to the agent", async () => {
 
         const events =
-            require("../agent/lib/events");
+            require("../../agent/lib/events");
 
         const seen = [];
 

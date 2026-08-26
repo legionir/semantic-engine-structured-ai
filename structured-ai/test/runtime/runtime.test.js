@@ -12,7 +12,7 @@ process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.MAX_RUN_MS = "2000";
 process.env.MAX_REQUEST_MS = "1000";
 
-const runtime = require("../agent/agent.js");
+const runtime = require("../../agent/agent.js");
 
 const results = [];
 
@@ -646,7 +646,7 @@ async function main() {
     console.log("\ncontext budget");
 
     const { compactConversation, conversationSize } =
-        require("../agent/lib/context");
+        require("../../agent/lib/context");
 
     function buildConversation(exchanges, size) {
 
@@ -883,7 +883,7 @@ async function main() {
     await test("the tier of an exchange follows its distance from the newest", async () => {
 
         const { levelForPosition, LEVELS } =
-            require("../agent/lib/context");
+            require("../../agent/lib/context");
 
         const options = {
             keepRecentExchanges: 2,
@@ -931,12 +931,12 @@ async function main() {
     /* ---------------------------------------------------------------- */
     console.log("\npolicy engine");
 
-    const { PolicyEngine } = require("../agent/lib/policy");
+    const { PolicyEngine } = require("../../agent/lib/policy");
 
     const engine =
         new PolicyEngine({
-            policy: require("../agent/registry/policy.json"),
-            toolGroups: require("../agent/registry/tool_groups.json")
+            policy: require("../../agent/registry/policy.json"),
+            toolGroups: require("../../agent/registry/tool_groups.json")
         });
 
     await test("read-only tools are allowed", async () => {
@@ -1156,12 +1156,12 @@ async function main() {
     console.log("\nregistries and schema");
 
     const registries = {
-        tools: require("../agent/registry/tools.json"),
-        groups: require("../agent/registry/tool_groups.json"),
-        skills: require("../agent/registry/skills.json"),
-        agents: require("../agent/registry/agents.json"),
-        personas: require("../agent/registry/personas.json"),
-        policy: require("../agent/registry/policy.json")
+        tools: require("../../agent/registry/tools.json"),
+        groups: require("../../agent/registry/tool_groups.json"),
+        skills: require("../../agent/registry/skills.json"),
+        agents: require("../../agent/registry/agents.json"),
+        personas: require("../../agent/registry/personas.json"),
+        policy: require("../../agent/registry/policy.json")
     };
 
     await test("every tool belongs to a group and to at least one skill", async () => {
@@ -1282,7 +1282,7 @@ async function main() {
     await test("the default schema is a valid json schema", async () => {
 
         const schema =
-            require("../agent/schema/response_format.json");
+            require("../../agent/schema/response_format.json");
 
         assert.equal(schema.type, "json_schema");
         assert.equal(schema.json_schema.strict, false);
@@ -1340,7 +1340,7 @@ async function main() {
     await test("the strict schema satisfies strict mode", async () => {
 
         const schema =
-            require("../agent/schema/response_format.strict.json");
+            require("../../agent/schema/response_format.strict.json");
 
         assert.equal(schema.json_schema.strict, true);
 
@@ -1543,7 +1543,7 @@ async function main() {
         const prompt =
             require("fs").readFileSync(
                 require("path").join(
-                    __dirname, "..", "agent", "config", "system_prompt.txt"
+                    __dirname, "..", "..", "agent", "config", "system_prompt.txt"
                 ),
                 "utf8"
             );
@@ -1560,7 +1560,7 @@ async function main() {
     /* ---------------------------------------------------------------- */
     console.log("\nsettings storage");
 
-    const settings = require("../agent/lib/storage");
+    const settings = require("../../agent/lib/storage");
 
     await test("a value resolves override, then environment, then default", async () => {
 
@@ -1694,7 +1694,7 @@ async function main() {
         };
 
         for (const root of roots) {
-            walk(path.join(__dirname, "..", root));
+            walk(path.join(__dirname, "..", "..", root));
         }
 
         const known =
@@ -1863,7 +1863,7 @@ async function main() {
         const fs = require("fs");
         const file =
             require("path").join(
-                __dirname, "..", "agent", "registry", "policy.json"
+                __dirname, "..", "..", "agent", "registry", "policy.json"
             );
 
         const original =
@@ -1919,7 +1919,7 @@ async function main() {
         const fs = require("fs");
         const file =
             require("path").join(
-                __dirname, "..", "agent", "config", "execution_rules.txt"
+                __dirname, "..", "..", "agent", "config", "execution_rules.txt"
             );
 
         const original =
@@ -1972,7 +1972,7 @@ async function main() {
         };
 
         for (const root of ["agent", "bin", "web"]) {
-            walk(path.join(__dirname, "..", root));
+            walk(path.join(__dirname, "..", "..", root));
         }
 
         const problems = [];
@@ -1980,7 +1980,7 @@ async function main() {
         for (const file of files) {
 
             const source = fs.readFileSync(file, "utf8");
-            const name = path.relative(path.join(__dirname, ".."), file);
+            const name = path.relative(path.join(__dirname, "..", ".."), file);
 
             /* a setting captured once at module load goes stale */
             for (
@@ -2015,7 +2015,7 @@ async function main() {
     await test("old exchanges are replaced by one summary", async () => {
 
         const { digestOldest } =
-            require("../agent/lib/context");
+            require("../../agent/lib/context");
 
         const messages =
             buildConversation(12, 3000);
@@ -2066,7 +2066,7 @@ async function main() {
     await test("a failing summariser falls back instead of breaking the run", async () => {
 
         const { digestOldest } =
-            require("../agent/lib/context");
+            require("../../agent/lib/context");
 
         const messages =
             buildConversation(8, 3000);
@@ -2090,7 +2090,7 @@ async function main() {
 
     await test("state from one run does not leak into the next", async () => {
 
-        const tools = require("../agent/tools");
+        const tools = require("../../agent/tools");
 
         await tools.executeTool(
             "search_start",
@@ -2295,7 +2295,7 @@ async function main() {
     /* ---------------------------------------------------------------- */
     console.log("\nworking memory");
 
-    const memory = require("../agent/lib/memory");
+    const memory = require("../../agent/lib/memory");
 
     await test("memory merges without duplicating and stays capped", async () => {
 
@@ -2638,7 +2638,7 @@ async function main() {
         assert.equal(report.archived > 0, true);
 
         const archive =
-            require("../agent/lib/archive");
+            require("../../agent/lib/archive");
 
         const found =
             archive.searchArchive("fs_read", { limit: 50 });
@@ -3336,7 +3336,7 @@ async function main() {
 
     await test("compaction reports itself once, not twice", async () => {
 
-        const events = require("../agent/lib/events");
+        const events = require("../../agent/lib/events");
 
         const seen = [];
 
@@ -3388,7 +3388,7 @@ async function main() {
 
     await test("events carry a run/scope/iteration correlation envelope", async () => {
 
-        const events = require("../agent/lib/events");
+        const events = require("../../agent/lib/events");
 
         const seen = [];
 
@@ -3463,7 +3463,7 @@ async function main() {
         const path = require("path");
 
         const root =
-            path.join(__dirname, "..");
+            path.join(__dirname, "..", "..");
 
         /*
         | Anything the registries actually name is legitimate: tools,
@@ -3615,7 +3615,7 @@ async function main() {
         const prompt =
             fs.readFileSync(
                 path.join(
-                    __dirname, "..", "agent", "config", "system_prompt.txt"
+                    __dirname, "..", "..", "agent", "config", "system_prompt.txt"
                 ),
                 "utf8"
             );
@@ -3664,7 +3664,7 @@ async function main() {
     await test("the workspace boundary holds on a case insensitive filesystem", async () => {
 
         const { isInsideRoot } =
-            require("../agent/lib/workspace");
+            require("../../agent/lib/workspace");
 
         const windows = (root, target) =>
             isInsideRoot(root, target, true, "\\");
@@ -3753,7 +3753,7 @@ async function main() {
     await test("a sub-agent's skills can be inlined or indexed", async () => {
 
         const settings =
-            require("../agent/lib/storage");
+            require("../../agent/lib/storage");
 
         const profile =
             runtime.resolveAgentProfile("implementation");
@@ -3830,7 +3830,7 @@ async function main() {
             JSON.parse(
                 require("fs").readFileSync(
                     require("path").join(
-                        __dirname, "..", "agent", "schema",
+                        __dirname, "..", "..", "agent", "schema",
                         "response_format.strict.json"
                     ),
                     "utf8"
@@ -3880,7 +3880,7 @@ async function main() {
             JSON.parse(
                 require("fs").readFileSync(
                     require("path").join(
-                        __dirname, "..", "agent", "schema",
+                        __dirname, "..", "..", "agent", "schema",
                         "response_format.json"
                     ),
                     "utf8"
@@ -3942,7 +3942,7 @@ async function main() {
     await test("a claim the runtime cannot support is reported", async () => {
 
         const events =
-            require("../agent/lib/events");
+            require("../../agent/lib/events");
 
         const seen = [];
 

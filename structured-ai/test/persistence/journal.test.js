@@ -9,8 +9,8 @@ const WORKSPACE =
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
-const settings = require("../agent/lib/storage");
-const journal = require("../agent/lib/journal");
+const settings = require("../../agent/lib/storage");
+const journal = require("../../agent/lib/journal");
 
 const results = [];
 

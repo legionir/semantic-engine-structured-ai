@@ -924,22 +924,34 @@ discussion باید ProjectContext/RunContext فعلی را مصرف کند: `wo
 
 ---
 
-## [🔴] فاز ۲۹: تفکیک Test Suite و تکمیل Contract Tests
+## [🟢] فاز ۲۹: تفکیک Test Suite و تکمیل Contract Tests
 
 **هدف و scope:** انتقال از «یک فایل برای همه‌چیز» به تست‌های domain-based بدون افت پوشش.
 
-### [🔴] گام ۱: ساختار جدید تست‌ها
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ تکمیل شد. پیش از split، suite فاز ۲۸ برابر **669/669** تست بود؛ پس از انتقال suiteهای legacy و افزودن contractهای tool/API/persistence/discussion، suite کامل **690/690** شد (+21 تست contract) و هیچ assertionای از suiteهای قبلی حذف نشد.
 
-`test/` را به `contracts/` (action، tool، event، api، persistence + discussion)، `prompt/`، `runtime/`، `actions/`، `context/`، `tools/`، `mcp/`، `web/`، `ui/`، `projects/`، `discussion/` و `e2e/` سازمان‌دهی کن؛ ۱۴ فایل فعلی به ماژول‌های متناظر منتقل (منطق و assertions حفظ). `package.json` اسکریپت‌ها به‌روز شوند.
+### [🟢] گام ۱: ساختار جدید تست‌ها
 
-### [🔴] گام ۲: تثبیت تست differential
+**انجام شد (2026-08-26):** چهارده suiteٔ legacy موردنظر از ریشهٔ `test/` به domainهای متناظر منتقل شدند: runtime، tools، hooks، persistence (journal/eventstore)، MCP/semantic، context/archive، e2e (CLI و REPL)، UI، discussion و web. دو suiteٔ ریشه‌ای که در فازهای بعدی افزوده شده بودند (`semantic-pool` و `project-run`) نیز برای تکمیل ساختار به `mcp/` و `projects/` منتقل شدند. هیچ فایل اجراییِ تست در `test/` ریشه باقی نمانده است؛ بدنه، assertions، خروجی و exit codeها حفظ شده‌اند.
 
-الگوی مقایسهٔ `normalize(legacy) === normalize(modular)` برای همهٔ استخراج‌های باقی‌مانده (در صورت وجود فلگ‌های فعال) به‌کار رود.
+`package.json` اکنون علاوه بر زنجیرهٔ کامل و ترتیب serial قبلی، اسکریپت‌های domain-aware برای `contracts`، `runtime`، `context`، `tools`، `mcp`، `web`، `ui`، `projects`، `persistence`، `discussion`، `e2e` و سایر مرزها دارد. نقشهٔ مسیرها در `test/README.md` ثبت شده است.
+
+### [🟢] گام ۲: تثبیت تست differential و contractها
+
+**انجام شد (2026-08-26):** contractهای مستقل برای tool registry/runtime parity، API method/path و response-shape، atomic JSON/JSONL persistence و DiscussionService/transcript isolation افزوده شدند. fixture `api-surface.json` علاوه بر route inventory، وضعیت و کلیدهای الزامی پاسخ‌های task، project task، discussion start/replay و error را قفل می‌کند. تست‌های differential موجود برای prompt، run/runtime engine و path/server compatibility با `normalize(legacy) === normalize(modular)` حفظ و در زنجیرهٔ `test:contracts`/domain scripts قابل اجرا هستند؛ mode یا wrapper جدیدی اضافه نشد.
+
+**شواهد verification:**
+
+- `npm run check` — exit 0.
+- `npm test` — exit 0، 48 test entrypoint، 690/690 passed.
+- `npm run test:contracts` — exit 0، contractهای افزوده‌شده 21/21 passed علاوه بر contractهای قبلی.
+- suiteهای e2e، UI، API، persistence و discussion پس از انتقال همان assertions قبلی را سبز نگه داشتند.
 
 **معیار پذیرش:**
 
-- تعداد تست‌ها کاهش نمی‌یابد (گزارش تعداد قبل/بعد)؛ هر ماژول جدید unit test و هر مرز عمومی contract test دارد.
-- `npm test` کامل سبز؛ تست‌های e2e رفتار واقعی کاربر را پوشش می‌دهند.
+- تعداد تست‌ها کاهش نیافت: 669 قبل از split، 690 بعد از split؛ 21 تست جدید contract افزوده شد.
+- هر مرز عمومیِ تازه‌تفکیک‌شده حداقل در یک تست unit یا contract مصرف می‌شود و مسیرهای قدیمی برای rollback محصول همچنان دست‌نخورده‌اند.
+- `npm test` کامل سبز و تست‌های e2e رفتار واقعی کاربر را پوشش می‌دهند.
 
 ---
 
@@ -1070,6 +1082,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 46. **استخراج Event Contract فاز ۲۷ یک move است نه fork:** تولید/sequence/correlation در `EventBus` و `EventContext`، validation در `EventValidator`، inventory در `EventTypes`، projection/replay در `EventProjector` و redaction در `EventRedactor` قرار گرفتند. `agent/lib/events.js` facade باقی ماند؛ eventstore/journal/UI event business خام را می‌گیرند و log/external redaction صریح و جداست. نام‌ها و envelope موجود حذف یا rename نشدند.
 
 47. **Discussion فاز ۲۸ یک application boundary پروژه‌آگاه دارد:** `DiscussionService` caller/runtime/context/event lifecycle را inject می‌کند، `DiscussionEngine` و `TranscriptStore` از `agent.js` مستقل می‌مانند، و `TranscriptRepository` با persistence atomic در `dataRoot` پروژه می‌نویسد. APIهای project-scoped برای start/list/replay افزوده شدند؛ `/api/discussion` و ابزار/CLI legacy حفظ شدند؛ transcript خام برای replay نگه داشته و project دیگر به آن دسترسی ندارد.
+48. **تفکیک Test Suite فاز ۲۹ یک move است نه کاهش پوشش:** suiteهای legacy به domainهای متناظر منتقل شدند، assertions و execution order حفظ شد، و چهار contract suite مستقل برای tool/API/persistence/discussion اضافه شد. baseline قبل/بعد با 669 و 690 تست ثبت شده است؛ هیچ MODE یا contract محصول جدیدی ساخته نشد.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 - مورد باز ثبت‌شده‌ای باقی نمانده است؛ Assumption قالب ESM در تصمیم ۴۳ حل شد.

@@ -1,5 +1,5 @@
 {
-  "description": "Web Console API path literals and method inventory. The method-level route contract is mirrored by web/server/RouteInventory.js (EXECUTION_PLAN, Phase 23; discussion transcript routes added in Phase 28).",
+  "description": "Web Console API path literals and method inventory. The method-level route contract is mirrored by web/server/RouteInventory.js (EXECUTION_PLAN, Phase 23; discussion transcript routes added in Phase 28). Response contracts are additive and checked by test/contracts/api.contract.test.js (EXECUTION_PLAN Phase 29).",
   "paths": [
     "/api/",
     "/api/approval-mode",
@@ -90,5 +90,46 @@
     "GET /",
     "GET /projects",
     "GET /projects/:projectId"
-  ]
+  ],
+  "response_contracts": {
+    "legacy_task": {
+      "status": 202,
+      "required": [
+        "accepted"
+      ],
+      "notes": "POST /api/tasks keeps the historical acceptance envelope."
+    },
+    "project_task": {
+      "status": 202,
+      "required": [
+        "accepted",
+        "project_id"
+      ],
+      "notes": "Project-scoped task acceptance adds project_id without removing accepted."
+    },
+    "discussion_start": {
+      "status": 202,
+      "required": [
+        "accepted",
+        "id",
+        "project_id"
+      ],
+      "notes": "A project discussion returns its durable transcript identity."
+    },
+    "discussion_replay": {
+      "status": 200,
+      "required": [
+        "project_id",
+        "discussion"
+      ],
+      "notes": "Replay wraps the complete transcript and repeats its project identity."
+    },
+    "error": {
+      "status": 400,
+      "required": [
+        "error"
+      ],
+      "notes": "Validation failures retain the error key; code is additive when present."
+    }
+  }
 }

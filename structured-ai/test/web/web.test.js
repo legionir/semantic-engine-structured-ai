@@ -10,7 +10,7 @@ const path = require("path");
 */
 
 const REPO_ROOT =
-    path.resolve(__dirname, "..");
+    path.resolve(__dirname, "..", "..");
 
 const WORKSPACE =
     fs.mkdtempSync(

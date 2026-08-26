@@ -29,7 +29,7 @@ const http = require("http");
 const path = require("path");
 const { spawn } = require("child_process");
 
-const REPO_ROOT = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const BIN = path.join(REPO_ROOT, "bin", "agent.js");
 
 const WORKSPACE =

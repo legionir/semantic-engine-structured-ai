@@ -485,7 +485,7 @@ global.document = createDocument();
 
 const Modal =
     require(
-        path.join(__dirname, "..", "web", "public", "modal.js")
+        path.join(__dirname, "..", "..", "web", "public", "modal.js")
     );
 
 
@@ -2536,7 +2536,7 @@ function loadConsole() {
     };
 
     require(
-        path.join(__dirname, "..", "web", "public", "app.js")
+        path.join(__dirname, "..", "..", "web", "public", "app.js")
     );
 
     return {

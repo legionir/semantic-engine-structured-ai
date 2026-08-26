@@ -49,7 +49,7 @@ process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.STRUCTURED_AI_DATA_HOME = DATA_HOME;
 process.env.SEMANTIC_CALL_TIMEOUT_MS = "2000";
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 
 const resolver =
     require(path.join(ROOT, "agent", "mcp", "ProjectSemanticResolver.js"));

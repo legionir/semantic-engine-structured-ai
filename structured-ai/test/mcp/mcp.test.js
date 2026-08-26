@@ -21,13 +21,13 @@ const WORKSPACE =
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
-const protocol = require("../agent/mcp/protocol");
-const config = require("../agent/mcp/config");
-const { McpManager } = require("../agent/mcp/manager");
-const { McpClient } = require("../agent/mcp/client");
-const websocket = require("../agent/mcp/transports/websocket");
-const settings = require("../agent/lib/storage");
-const tools = require("../agent/tools");
+const protocol = require("../../agent/mcp/protocol");
+const config = require("../../agent/mcp/config");
+const { McpManager } = require("../../agent/mcp/manager");
+const { McpClient } = require("../../agent/mcp/client");
+const websocket = require("../../agent/mcp/transports/websocket");
+const settings = require("../../agent/lib/storage");
+const tools = require("../../agent/tools");
 
 const results = [];
 
@@ -1234,7 +1234,7 @@ async function main() {
         | does it: a definition that was never proved reachable.
         */
 
-        const { McpClient: Client } = require("../agent/mcp/client");
+        const { McpClient: Client } = require("../../agent/mcp/client");
 
         manager.clients.set(
             "broken",
@@ -1474,12 +1474,12 @@ async function main() {
 
     await test("a restricted server needs approval, a default one does not", async () => {
 
-        const { PolicyEngine } = require("../agent/lib/policy");
+        const { PolicyEngine } = require("../../agent/lib/policy");
 
         const engine =
             new PolicyEngine({
-                policy: require("../agent/registry/policy.json"),
-                toolGroups: require("../agent/registry/tool_groups.json")
+                policy: require("../../agent/registry/policy.json"),
+                toolGroups: require("../../agent/registry/tool_groups.json")
             });
 
         const manager = tools.mcp._manager;
@@ -1523,12 +1523,12 @@ async function main() {
 
     await test("MCP_APPROVAL can tighten every call, and never loosens a denial", async () => {
 
-        const { PolicyEngine } = require("../agent/lib/policy");
+        const { PolicyEngine } = require("../../agent/lib/policy");
 
         const engine =
             new PolicyEngine({
-                policy: require("../agent/registry/policy.json"),
-                toolGroups: require("../agent/registry/tool_groups.json")
+                policy: require("../../agent/registry/policy.json"),
+                toolGroups: require("../../agent/registry/tool_groups.json")
             });
 
         settings.set("MCP_APPROVAL", "always");
@@ -1565,7 +1565,7 @@ async function main() {
 
     await test("the engine is registered as a built-in server and called over MCP", async () => {
 
-        const semantic = require("../agent/mcp/semantic");
+        const semantic = require("../../agent/mcp/semantic");
 
         const command =
             writeStdioServer({ name: "semantic-engine" });
@@ -1600,7 +1600,7 @@ async function main() {
 
     await test("a workspace may replace the engine with its own server", async () => {
 
-        const semantic = require("../agent/mcp/semantic");
+        const semantic = require("../../agent/mcp/semantic");
 
         const manager = tools.mcp._manager;
 
@@ -1633,8 +1633,8 @@ async function main() {
     await test("the old lib path still resolves to the moved module", async () => {
 
         assert.equal(
-            require("../agent/lib/semantic"),
-            require("../agent/mcp/semantic")
+            require("../../agent/lib/semantic"),
+            require("../../agent/mcp/semantic")
         );
 
         /* and the helpers the code tools use are still there */
@@ -1649,7 +1649,7 @@ async function main() {
         ) {
 
             assert.equal(
-                typeof require("../agent/lib/semantic")[name],
+                typeof require("../../agent/lib/semantic")[name],
                 "function",
                 `${name} was lost in the move`
             );

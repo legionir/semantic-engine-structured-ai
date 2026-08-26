@@ -335,3 +335,49 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Events/UI/CLI:** eventهای `discussion:*` project_id additive دارند؛ UI برای project فعال به route scoped می‌رود و `/api/discussion` legacy باقی است؛ CLI `--discussion --project` transcript را در context پروژه ذخیره می‌کند.
 - **Security:** workspace/root از runtime/registry می‌آید؛ `workspace` و `workspace_root` از آرگومان tool برای identity پذیرفته نمی‌شوند؛ caller همچنان از `callAI` role-based runtime استفاده می‌کند.
 - **Flag:** فاز ۲۸ flag جدیدی اعلان نمی‌کند (تصمیم ۴۷). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+
+## ۳۴. تکمیل قراردادها و تفکیک Test Suite (فاز ۲۹)
+
+فاز ۲۹ قراردادهای عمومی را از تست‌های domain جدا کرد؛ split تست‌ها نباید قرارداد محصول را تغییر دهد. suiteهای قبلی با همان assertions اجرا می‌شوند و contractهای جدید فقط شکاف‌های شناخته‌شده را قفل می‌کنند.
+
+### Tool boundary
+
+- منبع canonical schema، concat فایل‌های `agent/registry/tool-schemas/*.json` است؛ snapshot `agent/registry/tools.json` باید با آن برابر بماند.
+- هر declaration از شکل `type: "function"`، نام پایدار و `parameters` یا `input_schema` تشکیل می‌شود.
+- `ToolRegistryAdapter.parity()` باید `missing: []` و `extra: []` بدهد؛ هیچ implementation بدون declaration نباید model-facing شود.
+- هویت پروژه (`projectId`/`project_id`/`project`/root) در args ابزار مجاز نیست و فقط از context معتبر می‌آید.
+
+### API boundary
+
+`test/fixtures/api-surface.json` مرجع مستقل method/path و response contracts است. فیلدهای موجود حذف نمی‌شوند؛ فیلدهای project و discussion additive هستند:
+
+| contract | status | required keys |
+|---|---:|---|
+| `legacy_task` | 202 | `accepted` |
+| `project_task` | 202 | `accepted`, `project_id` |
+| `discussion_start` | 202 | `accepted`, `id`, `project_id` |
+| `discussion_replay` | 200 | `project_id`, `discussion` |
+| `error` | 400 | `error` |
+
+`test/contracts/api.contract.test.js` هم‌خوانی fixture با `RouteInventory`، decode شدن پارامترهای dynamic فقط یک‌بار، status/content-type و serializerهای additive را بررسی می‌کند؛ تست‌های live در `test/web/` باقی می‌مانند.
+
+### Persistence boundary
+
+- JSON documentها با temp sibling و rename اتمیک نوشته می‌شوند؛ شکست rename فایل قبلی را تغییر نمی‌دهد.
+- JSONLهای journal/eventstore append-only هستند؛ خط ناقص یا خراب در انتهای فایل read را fail نمی‌کند.
+- `SchemaVersion`، `SafeIdentifier` و facadeهای session/eventstore/journal نام‌ها و مسیرهای تاریخی را حفظ می‌کنند.
+
+### Discussion boundary
+
+`DiscussionService` caller، context و event lifecycle را inject می‌کند. transcript با `project_id` و `dataRoot` پروژه قفل می‌شود؛ list/load پروژهٔ دیگر null/غیرقابل‌مشاهده است و workspace ارائه‌شده توسط model هویت محسوب نمی‌شود.
+
+### Differential rule
+
+در extractionهایی که mode legacy/modular دارند، خروجی قراردادی باید پس از حذف نویز با الگوی زیر برابر بماند و تفاوت‌های پروژه‌ای فقط additive باشند:
+
+```js
+assert.deepStrictEqual(normalize(modularOutput), normalize(legacyOutput));
+```
+
+شواهد اجرایی این قاعده در `test/prompt/builder.test.js`، `test/runs/run-context.test.js`، `test/runtime/engine.test.js` و تست‌های compatibility وب/CLI حفظ شده است.

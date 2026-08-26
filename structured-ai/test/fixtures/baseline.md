@@ -793,3 +793,34 @@
 | **مجموع** | **669/669 passed** |
 
 *نکته:* DiscussionService/Context و TranscriptRepository، persistence per-project و routeهای start/list/replay افزوده شدند. transcript کامل با AtomicFile ذخیره می‌شود، eventهای discussion project_id دارند، ابزار و CLI context معتبر را مصرف می‌کنند و `/api/discussion` legacy حفظ شده است. `npm run check` سبز.
+
+
+## suite پایان فاز ۲۹ — split و contract completion
+
+**تاریخ:** 2026-08-26 · **command:** `npm test` · **exit code: 0** · **نتیجه:** 690/690 passed
+
+| اندازه‌گیری | قبل از split (پایان فاز ۲۸) | بعد از split فاز ۲۹ |
+|---|---:|---:|
+| تعداد test entrypointها | 44 | 48 |
+| تعداد تست‌ها | 669 | 690 |
+| تست‌های شکست‌خورده | 0 | 0 |
+| تغییر assertionهای legacy | — | 0 |
+| contract testهای جدید | 0 | 21 |
+
+چهارده suiteٔ legacy ریشه‌ای به domainهای زیر منتقل شدند و دو suiteٔ root که در فازهای ۶ و ۷ اضافه شده بودند نیز برای یک‌دستی منتقل شدند:
+
+| suiteٔ منتقل‌شده | مسیر canonical | نتیجه |
+|---|---|---:|
+| runtime | `test/runtime/runtime.test.js` | 105/105 |
+| tools | `test/tools/tools.test.js` | 56/56 |
+| hooks | `test/hooks/legacy.test.js` | 5/5 |
+| journal/eventstore | `test/persistence/{journal,eventstore}.test.js` | 2/2، 5/5 |
+| semantic/MCP | `test/mcp/{semantic,semantic-pool,mcp}.test.js` | 14/14، 9/9، 37/37 |
+| archive | `test/context/archive.test.js` | 16/16 |
+| project run | `test/projects/project-run.test.js` | 8/8 |
+| e2e/CLI/REPL | `test/e2e/{e2e,cli,interactive}.test.js` | 58/58، 19/19، 12/12 |
+| UI | `test/ui/ui.test.js` | 40/40 |
+| discussion | `test/discussion/discussion.test.js` | 23/23 |
+| web | `test/web/web.test.js` | 28/28 |
+
+contractهای افزوده‌شده: `test/contracts/tool.contract.test.js` (5/5)، `api.contract.test.js` (5/5)، `persistence.contract.test.js` (5/5) و `discussion.contract.test.js` (6/6). مسیرهای `test:contracts` و همهٔ scriptهای domain-aware در `structured-ai/package.json` قابل اجرای مستقل‌اند. `npm run check` نیز exit 0 است.

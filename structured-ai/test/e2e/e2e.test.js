@@ -13,7 +13,7 @@ const { spawn, execFileSync } = require("child_process");
 */
 
 const REPO_ROOT =
-    path.resolve(__dirname, "..");
+    path.resolve(__dirname, "..", "..");
 
 const results = [];
 
