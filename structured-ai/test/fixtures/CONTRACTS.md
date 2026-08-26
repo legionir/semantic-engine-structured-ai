@@ -260,3 +260,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Tools:** پیاده‌سازی در `agent/tools/{ToolRuntime,ToolRegistryAdapter}` و گروه‌های `filesystem/`، `process/`، `code/`، `planning/`، `memory/`؛ فایل‌های تاریخی `filesystem.js`، `process.js`، `code.js`، `plan.js`، `memory.js`، `fileinfo.js` و `tools/index.js` wrapper سازگار با همان exportها هستند.
 - **Export additive:** `ToolRegistryAdapter` از `agent/tools` (parity: registry → schema، runtime → implementation، validator → parity check). `code/SemanticClient.js` همان کلاس `agent/mcp/SemanticClient.js` فاز ۶ است.
 - **Flag:** فاز ۱۹ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۸). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۵. تغییرات additive فاز ۲۰ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** نام ابزار MCP، namespace `mcp__<server>__<tool>`، handshake چهار transport، framing Content-Length/NDJSON، `mcp_call`، discovery، add/remove runtime، trust/approval، timeout، `MCP_MAX_MESSAGE_BYTES`، و فیلتر `tools/list` فاز ۹ دست‌نخورده‌اند. استخراج ساختاری است.
+- **MCP:** پیاده‌سازی در `agent/mcp/{McpManager,McpConfigLoader,McpConfigValidator,McpConnection,McpCatalogue,McpTrustPolicy}.js`، `protocol/{JsonRpcCodec,ContentLengthCodec,NdjsonCodec,McpErrors}.js` و `transports/{Stdio,Http,Sse,WebSocket}Transport.js`. فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگار با همان exportها هستند.
+- **Export additive:** `McpConnection` همان کلاس `McpClient` است. `config.serverVisibleTo` به `McpTrustPolicy` delegate می‌شود.
+- **Flag:** فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۹). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

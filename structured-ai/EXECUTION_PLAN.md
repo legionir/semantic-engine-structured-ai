@@ -700,22 +700,26 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 ---
 
-## [🔴] فاز ۲۰: تفکیک MCP Layer
+## [🟢] فاز ۲۰: تفکیک MCP Layer
 
 **هدف و scope:** ماژولارسازی config، connection، protocol، catalogue و transportهای MCP. خروجی: بازسازی `agent/mcp/` طبق سند refactor.
 
-### [🔴] گام ۱: تقسیم manager و config
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۸ تست جدید در `test/mcp/layer.test.js` سبز. استخراج یک move است نه fork؛ فلگ MODE تازه‌ای اعلان نشد (تصمیم ۳۹). wrapperهای `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` حفظ شدند (قانون ۷). هیچ قابلیت محصولی افزوده نشد.
 
-از `mcp/manager.js` (‎~۱۸KB) و `mcp/config.js` (‎~۱۵KB) بساز: `McpManager.js`، `McpConfigLoader.js`، `McpConfigValidator.js`، `McpConnection.js`، `McpCatalogue.js`، `McpTrustPolicy.js`؛ چهار transport فعلی در `transports/` (Stdio، Http، Sse، WebSocket) حفظ؛ protocol codecها در `protocol/` (JsonRpc، ContentLength، Ndjson، Errors). رفتار: discovery، namespaced tools، `mcp_call`، trust/approval، timeout، max message size، runtime add/remove و Semantic Engine به‌عنوان built-in server.
+### [🟢] گام ۱: تقسیم manager و config
 
-### [🔴] گام ۲: تست‌های framing و collision
+**انجام شد (2026-08-26):** از `mcp/manager.js` و `mcp/config.js` ساخته شد: `McpManager.js`، `McpConfigLoader.js`، `McpConfigValidator.js`، `McpConnection.js`، `McpCatalogue.js`، `McpTrustPolicy.js`. چهار transport در `transports/` با نام‌های `StdioTransport`/`HttpTransport`/`SseTransport`/`WebSocketTransport` حفظ شدند. codecهای protocol در `protocol/` (JsonRpc، ContentLength، Ndjson، Errors). رفتار: discovery، namespaced tools، `mcp_call`، trust/approval، timeout، max message size، runtime add/remove و Semantic Engine به‌عنوان built-in server.
 
-split/merge شدن پیام‌ها درست decode شود؛ ابزارهای هم‌نامِ serverهای مختلف collision نداشته باشند؛ server خراب runtime را crash نکند.
+### [🟢] گام ۲: تست‌های framing و collision
+
+**انجام شد (2026-08-26):** split/merge پیام‌ها در `MessageDecoder` و codecهای Content-Length/NDJSON قفل شد؛ ابزارهای هم‌نام دو server با namespace `mcp__<server>__<tool>` collision ندارند؛ server خراب فقط همان client را degrade می‌کند و runtime crash نمی‌شود.
 
 **معیار پذیرش:**
 
 - handshake هر ۴ transport موفق؛ `mcp.test.js` و `semantic.test.js` بدون تغییر سبز.
 - scoping پروژه‌ای فاز ۹ (فیلتر `tools/list`) حفظ؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند با `test/mcp/layer.test.js` (8/8)، `mcp.test.js` 37/37 و `semantic.test.js` اثبات شد. `TRANSPORT_KINDS` همان چهار transport است؛ `serverVisibleTo` از `McpTrustPolicy` بدون تغییر معناست.
 
 ---
 
@@ -988,6 +992,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 36. **استخراج context فاز ۱۷ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۷ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `RUNTIME_ENGINE_MODE` فاز ۱۶). پیاده‌سازی واحد در `agent/context/` و `agent/persistence/` است؛ `lib/context.js`، `lib/memory.js`، `lib/archive.js` و توابع `agent.js` wrapper سازگارند تا فاز ۳۰.
 37. **استخراج persistence فاز ۱۸ یک move است نه fork و فلگ تازه‌ای ندارد:** JSONهای کامل (session، memory، archive index) با temp+rename اتمیک نوشته می‌شوند؛ JSONL (journal، eventstore، archive segment) append-only می‌ماند و خط truncated در خواندن skip می‌شود. `SchemaVersion.migrate` برای نسخه‌های فعلی identity است.
 38. **استخراج tools فاز ۱۹ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۹ `*_MODE` جدیدی اعلان نمی‌کند. پیاده‌سازی واحد در `agent/tools/{ToolRuntime,ToolRegistryAdapter}` و گروه‌های `filesystem/`، `process/`، `code/`، `planning/`، `memory/` است؛ فایل‌های تاریخی `filesystem.js`/`process.js`/`code.js`/`plan.js`/`memory.js`/`fileinfo.js` و `tools/index.js` wrapper سازگارند تا فاز ۳۰. `code/SemanticClient.js` همان کلاس فاز ۶ را re-export می‌کند.
+39. **استخراج MCP فاز ۲۰ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `WEB_SERVER_MODE` فاز ۲۳). پیاده‌سازی واحد در `McpManager`/`McpConfigLoader`/`McpConfigValidator`/`McpConnection`/`McpCatalogue`/`McpTrustPolicy` و `protocol/` + `transports/*Transport.js` است؛ فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگارند تا فاز ۳۰.
+
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
