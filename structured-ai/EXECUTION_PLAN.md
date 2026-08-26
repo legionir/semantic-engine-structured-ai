@@ -677,22 +677,26 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 ---
 
-## [🔴] فاز ۱۹: تفکیک Tools و Tool Registry
+## [🟢] فاز ۱۹: تفکیک Tools و Tool Registry
 
 **هدف و scope:** جداسازی implementation، lifecycle و گروه‌بندی ابزارها بدون تغییر schema/قرارداد. خروجی: زیرساختار `agent/tools/`. (ابزارها در فاز ۴ project-aware شده‌اند؛ این فاز ساختار داخلی‌شان را ماژولار می‌کند.)
 
-### [🔴] گام ۱: ساختار گروهی ابزارها
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۸ تست جدید در `test/tools/tool-runtime.test.js` سبز. استخراج یک move است نه fork؛ فلگ MODE تازه‌ای اعلان نشد (تصمیم ۳۸). wrapperهای `filesystem.js`/`process.js`/`code.js`/`plan.js`/`memory.js`/`fileinfo.js` و `tools/index.js` حفظ شدند (قانون ۷). هیچ قابلیت محصولی افزوده نشد.
 
-`agent/tools/` با `ToolRuntime.js`، `ToolRegistryAdapter.js` و گروه‌های `filesystem/`(PathBoundary، ReadTools، WriteTools، DirectoryTools، FileMetadataTools)، `process/`(ProcessManager، ForegroundCommand، BackgroundSession)، `code/`(SemanticClient→ اشتراک با فاز ۶، SemanticTools، LiveLspTools، IndexSessions)، `planning/`(PlanModel، PlanRepository، PlanTools)، `memory/`(MemoryTools، ArchiveTools) و `index.js` بازسازی شود. تعریف و implementation قابل‌مقایسه بمانند (registry → schema، runtime → implementation، validator → parity check).
+### [🟢] گام ۱: ساختار گروهی ابزارها
 
-### [🔴] گام ۲: حفظ نگه‌دارنده‌های امنیتی/رفتاری
+**انجام شد (2026-08-26):** `agent/tools/` با `ToolRuntime.js`، `ToolRegistryAdapter.js` و گروه‌های `filesystem/`(PathBoundary، ReadTools، WriteTools، DirectoryTools، FileMetadataTools)، `process/`(ProcessManager، ForegroundCommand، BackgroundSession)، `code/`(SemanticClient→ اشتراک با فاز ۶ از `agent/mcp/SemanticClient.js`، SemanticTools، LiveLspTools، IndexSessions)، `planning/`(PlanModel، PlanRepository، PlanTools)، `memory/`(MemoryTools، ArchiveTools) و `index.js` بازسازی شد. تعریف و implementation قابل‌مقایسه ماندند (registry → schema، runtime → implementation، validator → parity check از طریق `ToolRegistryAdapter`).
 
-workspace boundary و symlink protection، process group kill و timeout، semantic fallback و index sessionها، tool result cap و telemetry با مقادیر/رفتار قبلی. امضای `executeTool()` (فاز ۴) سازگار بماند.
+### [🟢] گام ۲: حفظ نگه‌دارنده‌های امنیتی/رفتاری
+
+**انجام شد (2026-08-26):** workspace boundary و symlink protection در `PathBoundary`، process group kill و timeout در `ProcessManager`/`ForegroundCommand`، semantic fallback و index sessionها در گروه `code/`، tool result cap و telemetry با مقادیر/رفتار قبلی در `ToolRuntime`. امضای `executeTool()` (فاز ۴) سازگار ماند.
 
 **معیار پذیرش:**
 
-- همهٔ نام‌ها/schemaها/validationها برابر؛ parity loader=fаз ۱۴ سبز.
+- همهٔ نام‌ها/schemaها/validationها برابر؛ parity loader=فاز ۱۴ سبز.
 - testهای `tools.test.js` و سری‌های isolation فاز ۱۳ سبز؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند با `test/tools/tool-runtime.test.js` (8/8)، `tools.test.js`، `test/mvp/mvp.test.js` و suite کامل اثبات شد. `ToolRegistryAdapter.parity()` با concat `tool-schemas/` و `tools.json` برابر است؛ `executeTool` همان امضای فاز ۴ را دارد؛ فلگ MODE تازه‌ای اعلان نشد.
 
 ---
 
@@ -983,6 +987,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 35. **استخراج loop فاز ۱۶ یک move است نه fork:** هر دو مقدار `RUNTIME_ENGINE_MODE` (`legacy` و `modular`) همان engine استخراج‌شده در `agent/runtime/` را اجرا می‌کنند تا دو پیاده‌سازی واگرا نشوند. فلگ برای حذف در فاز ۳۰ اعلان شده؛ مقدار غلط مثل بقیهٔ `*_MODE`ها رفتار legacy دارد. پیش‌فرض schema `legacy` می‌ماند (تصمیم ۳۲).
 36. **استخراج context فاز ۱۷ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۷ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `RUNTIME_ENGINE_MODE` فاز ۱۶). پیاده‌سازی واحد در `agent/context/` و `agent/persistence/` است؛ `lib/context.js`، `lib/memory.js`، `lib/archive.js` و توابع `agent.js` wrapper سازگارند تا فاز ۳۰.
 37. **استخراج persistence فاز ۱۸ یک move است نه fork و فلگ تازه‌ای ندارد:** JSONهای کامل (session، memory، archive index) با temp+rename اتمیک نوشته می‌شوند؛ JSONL (journal، eventstore، archive segment) append-only می‌ماند و خط truncated در خواندن skip می‌شود. `SchemaVersion.migrate` برای نسخه‌های فعلی identity است.
+38. **استخراج tools فاز ۱۹ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۹ `*_MODE` جدیدی اعلان نمی‌کند. پیاده‌سازی واحد در `agent/tools/{ToolRuntime,ToolRegistryAdapter}` و گروه‌های `filesystem/`، `process/`، `code/`، `planning/`، `memory/` است؛ فایل‌های تاریخی `filesystem.js`/`process.js`/`code.js`/`plan.js`/`memory.js`/`fileinfo.js` و `tools/index.js` wrapper سازگارند تا فاز ۳۰. `code/SemanticClient.js` همان کلاس فاز ۶ را re-export می‌کند.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

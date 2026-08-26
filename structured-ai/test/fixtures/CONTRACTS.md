@@ -253,3 +253,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Persistence:** پیاده‌سازی در `agent/persistence/{AtomicFile,JsonRepository,SafeIdentifier,SchemaVersion,SessionRepository,JournalRepository,EventStoreRepository}.js`؛ `MemoryRepository`/`ArchiveRepository` JSON را اتمیک می‌نویسند. `agent/lib/sessions.js`، `lib/journal.js` و `lib/eventstore.js` wrapper سازگار با همان exportها هستند.
 - **Atomic write:** سند JSON کامل با temp+rename؛ crash قبل از rename فایل قبلی را نگه می‌دارد. JSONL append-only است و خط truncated در خواندن skip می‌شود.
 - **Flag:** فاز ۱۸ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۷). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۴. تغییرات additive فاز ۱۹ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** نام ابزار، schema، argument validation، امضای `executeTool(name, args, context)`، workspace boundary، process group kill/timeout، semantic fallback، index session، tool result cap و telemetry دست‌نخورده‌اند. استخراج ساختاری است.
+- **Tools:** پیاده‌سازی در `agent/tools/{ToolRuntime,ToolRegistryAdapter}` و گروه‌های `filesystem/`، `process/`، `code/`، `planning/`، `memory/`؛ فایل‌های تاریخی `filesystem.js`، `process.js`، `code.js`، `plan.js`، `memory.js`، `fileinfo.js` و `tools/index.js` wrapper سازگار با همان exportها هستند.
+- **Export additive:** `ToolRegistryAdapter` از `agent/tools` (parity: registry → schema، runtime → implementation، validator → parity check). `code/SemanticClient.js` همان کلاس `agent/mcp/SemanticClient.js` فاز ۶ است.
+- **Flag:** فاز ۱۹ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۸). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

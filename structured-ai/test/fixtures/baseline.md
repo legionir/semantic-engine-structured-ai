@@ -420,3 +420,33 @@
 | **مجموع** | **586/586 passed** |
 
 *نکته:* استخراج persistence بدون تغییر قالب/مسیر. نوشتن JSON اتمیک (temp+rename)؛ JSONL خط truncated را skip می‌کند؛ session قدیمی بدون migration replay می‌شود. `lib/sessions.js`/`lib/journal.js`/`lib/eventstore.js` wrapperاند. فلگ MODE تازه‌ای اعلان نشد. `npm run check` سبز.
+
+## suite پایان فاز ۱۹ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` (جدید فاز ۱۹) | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| ۱۴ فایل اصلی (ui.test.js ۴۰/۴۰، runtime.test.js ۱۰۵/۱۰۵، archive.test.js ۱۶/۱۶) | 420/420 passed |
+| **مجموع** | **594/594 passed** |
+
+*نکته:* استخراج tools بدون تغییر schema/قرارداد. `filesystem.js`/`process.js`/`code.js`/`plan.js`/`memory.js` wrapperاند؛ `ToolRegistryAdapter` parity با loader فاز ۱۴ را قفل می‌کند؛ `code/SemanticClient.js` همان کلاس فاز ۶ است. فلگ MODE تازه‌ای اعلان نشد. `npm run check` سبز.
