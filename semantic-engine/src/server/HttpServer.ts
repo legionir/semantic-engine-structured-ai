@@ -159,7 +159,17 @@ export class HttpServer {
     this.routes.push(...createAnalysisRoutes(this.projects, this.impactEngine, this.archEngine, this.mutationSimulator));
     this.routes.push(...createHistoryRoutes(this.projects, this.historyMiner));
     this.routes.push(...createProviderRoutes(this.embeddingProviders));
-    this.routes.push(...createFsRoutes(this.config.projectsRoot ?? process.cwd()));
+    this.routes.push(
+      ...createFsRoutes(this.config.projectsRoot ?? process.cwd(), {
+        /*
+        | در حالت managed، worker به یک پروژه bound است و مرور فایل فقط داخل
+        | همان پروژه معنا دارد. در حالت standalone، انتخابگر «باز کردن
+        | پروژه» در UI عمداً بیرون از root هم مرور می‌کند، پس آن حالت دست
+        | نخورده می‌ماند.
+        */
+        confineToRoot: Boolean(this.config.gatewayManaged),
+      })
+    );
     this.routes.push(
       ...createChatRoutes(this.projects, this.chatService, this.llmConfig, this.embeddingProviders)
     );
@@ -181,16 +191,36 @@ export class HttpServer {
       });
 
       this.server.once('error', reject);
-      this.server.listen(this.config.port, this.config.host, () => {
+
+      /*
+      | ── transport داخلی (فاز ۶) ──────────────────────────────────────
+      |
+      | Gateway می‌تواند worker را روی یک Unix domain socket بالا بیاورد تا
+      | هیچ پورت TCP دیگری روی ماشین باز نشود. روی socket،
+      | `socket.remoteAddress` تعریف نشده است و `SecurityPipeline` همان‌جا
+      | این را به‌عنوان اتصال local می‌شناسد.
+      */
+      const onListening = (): void => {
         const address = this.server?.address();
-        const boundPort = typeof address === 'object' && address ? address.port : this.config.port;
+        if (typeof address === 'string') {
+          resolve({ port: 0, host: address, url: `unix:${address}` });
+          return;
+        }
+        const boundPort = address ? address.port : this.config.port;
         const boundHost = this.config.host;
         resolve({
           port: boundPort,
           host: boundHost,
           url: `http://${boundHost}:${boundPort}`,
         });
-      });
+      };
+
+      if (this.config.socketPath) {
+        fs.mkdirSync(path.dirname(this.config.socketPath), { recursive: true });
+        this.server.listen(this.config.socketPath, onListening);
+      } else {
+        this.server.listen(this.config.port, this.config.host, onListening);
+      }
     });
   }
 
@@ -246,6 +276,64 @@ export class HttpServer {
     return method === 'GET' ? 'project:read' : 'project:write';
   }
 
+  /** در حالت managed، همهٔ روت‌ها توکن می‌خواهند. */
+  private requiresAuthentication(route: RouteDefinition): boolean {
+    if (this.config.gatewayManaged) return true;
+    return route.requireAuth !== false;
+  }
+
+  /** روت‌های مدیریتی/مسیرپذیر که یک worker تک‌پروژه نباید داشته باشد. */
+  private isManagedBlockedRoute(method: string, pathname: string): boolean {
+    if (!this.config.gatewayManaged) return false;
+
+    const blocked: readonly { method: string; pattern: RegExp }[] = [
+      { method: 'POST', pattern: /^\/api\/v1\/projects$/ },
+      { method: 'PATCH', pattern: /^\/api\/v1\/projects\/[^/]+$/ },
+      { method: 'DELETE', pattern: /^\/api\/v1\/projects\/[^/]+$/ },
+      { method: 'POST', pattern: /^\/api\/v1\/projects\/import-bundle$/ },
+      { method: 'POST', pattern: /^\/api\/v1\/projects\/[^/]+\/source\/upload$/ },
+    ];
+
+    return blocked.some(entry => entry.method === method && entry.pattern.test(pathname));
+  }
+
+  /** کلیدهایی که مسیر می‌برند و در حالت managed بررسی می‌شوند. */
+  private findForeignRoot(body: unknown): { key: string; value: string } | null {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+
+    const workspaceRoot = this.config.projectsRoot;
+    if (!workspaceRoot) return null;
+
+    const keys = ['path', 'rootPath', 'root', 'workspaceRoot', 'projectPath'] as const;
+    const record = body as Record<string, unknown>;
+    let allowedRoot: string;
+    try {
+      allowedRoot = fs.realpathSync(workspaceRoot);
+    } catch {
+      return null;
+    }
+
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value !== 'string' || value.trim() === '') continue;
+
+      let resolved: string;
+      try {
+        resolved = fs.realpathSync(path.resolve(value));
+      } catch {
+        /* مسیر ناموجود: نمی‌تواند به پروژهٔ دیگری برسد، ولی در حالت managed
+           اساساً پذیرفتنی نیست. */
+        return { key, value };
+      }
+
+      if (resolved !== allowedRoot && !resolved.startsWith(allowedRoot + path.sep)) {
+        return { key, value };
+      }
+    }
+
+    return null;
+  }
+
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     this.security.applySecurityHeaders(res, req);
 
@@ -297,8 +385,26 @@ export class HttpServer {
     const { route, params } = match;
 
     /*
+    | ── حالت gateway-managed (فاز ۶) ───────────────────────────────────
+    |
+    | worker پشت Gateway یک پروژهٔ ثابت دارد، پس مدیریت پروژه‌ها کارِ
+    | Gateway است نه او. روت‌هایی که می‌توانند پروژه اضافه/حذف کنند یا
+    | مسیری دلخواه بپذیرند، با ۴۰۳ بسته می‌شوند.
+    */
+    if (this.isManagedBlockedRoute(req.method || 'GET', pathname)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error: `${req.method} ${pathname} is not available on a gateway-managed worker`,
+        })
+      );
+      return;
+    }
+
+    /*
     | احراز هویت پیش‌فرض است؛ فقط مسیری که صریحاً `requireAuth: false`
-    | نوشته باشد باز است. جزئیاتش در RouteDefinition.
+    | نوشته باشد باز است. جزئیاتش در RouteDefinition. در حالت managed هیچ
+    | استثنایی وجود ندارد: حتی `/health` بدون توکن داخلی جواب نمی‌گیرد.
     */
     const candidateAuth = this.security.authenticate(req, query.token);
     const apiKeyAuth =
@@ -309,7 +415,7 @@ export class HttpServer {
       ? { authenticated: true, token: candidateAuth.token }
       : candidateAuth;
     const authContext = this.authContext(auth);
-    if (route.requireAuth !== false && !auth.authenticated) {
+    if (this.requiresAuthentication(route) && !auth.authenticated) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized: valid token is required' }));
       return;
@@ -330,6 +436,24 @@ export class HttpServer {
         if (!schemaValidation.valid) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Validation failed', details: schemaValidation.errors }));
+          return;
+        }
+      }
+
+      /*
+      | در حالت managed، worker فقط به همان workspaceRoot که با آن بالا
+      | آمده اجازه دارد؛ یک `path`/`rootPath` بیگانه در بدنهٔ درخواست یعنی
+      | تلاش برای رسیدن به پروژهٔ دیگر.
+      */
+      if (this.config.gatewayManaged) {
+        const foreign = this.findForeignRoot(body);
+        if (foreign) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: `${foreign.key} must stay inside this worker's workspace root`,
+            })
+          );
           return;
         }
       }

@@ -71,6 +71,19 @@ export interface PlatformConfig {
    * از `SEMANTIC_ENGINE_ARTIFACT_LOCATION` توسط CLI پر می‌شود.
    */
   readonly artifactLocation?: ArtifactLocation;
+  /**
+   * Worker پشت Gateway (فاز ۶): هیچ سطح بدون توکن ندارد، روت‌های registry
+   * بسته‌اند، و هیچ `path`/`rootPath` از request پذیرفته نمی‌شود.
+   */
+  readonly gatewayManaged?: boolean;
+  /**
+   * به proxy بودن Gateway اعتماد شود: `Origin` قضاوت نمی‌شود (Gateway آن را
+   * حذف می‌کند) ولی نبودِ `X-Forwarded-*` نشانهٔ درخواست مستقیم است و رد
+   * می‌شود. پیش‌فرض، همان `gatewayManaged` است.
+   */
+  readonly trustedGateway?: boolean;
+  /** مسیر Unix socket؛ وقتی ست باشد سرور روی socket گوش می‌دهد نه TCP. */
+  readonly socketPath?: string;
 }
 
 // ── Graph View Model Types ───────────────────────────────────────────────

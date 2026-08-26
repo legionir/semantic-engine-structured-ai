@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۵ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۶ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۶ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۷ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -393,27 +393,27 @@ root وجود داشته باشد و directory باشد؛ canonical شود؛ پ�
 
 ---
 
-## [🔴] فاز ۶: قرارداد transport و hardening امنیتی Worker
+## [🟢] فاز ۶: قرارداد transport و hardening امنیتی Worker
 
 **هدف:** رفع دو مانع واقعی که در بازبینی با اجرای کد اثبات شد (Baseline #5 و #6) و تبدیل worker به یک سرویس تک‌پروژهٔ خصوصی. معادل گام ۱۰ پلن مرجع، منتها **پیش از** Gateway چون Gateway بدون آن کار نمی‌کند.
 
-### [🔴] گام ۱: حالت `--gateway-managed`
+### [🟢] گام ۱: حالت `--gateway-managed`
 
 وقتی worker با این flag بالا می‌آید: توکن داخلی اجباری است؛ bind فقط روی loopback یا Unix socket مجاز است؛ روت‌های registry (`POST /api/v1/projects` در `projectRoutes.ts:32`) با ۴۰۳ بسته می‌شوند؛ هر `rootPath`/`path` ورودی از request که با `workspaceRoot` ثبت‌شده متفاوت باشد رد می‌شود.
 
-### [🔴] گام ۲: رفع `checkConnection` برای transport داخلی
+### [🟢] گام ۲: رفع `checkConnection` برای transport داخلی
 
 تغییر `src/server/SecurityPipeline.ts:89-105` تا اتصال از Unix socket (`remoteAddress === undefined` در حالی که سرور روی socket path گوش می‌دهد) به‌عنوان local شناخته شود — **فقط** وقتی همان request توکن داخلی معتبر داشته باشد. رفتار TCP loopback/non-loopback دقیقاً مثل امروز بماند (تست رگرسیون).
 
-### [🔴] گام ۳: سیاست Origin پشت Gateway (D6)
+### [🟢] گام ۳: سیاست Origin پشت Gateway (D6)
 
 افزودن گزینهٔ صریح `trustedGateway` به `SecurityPipeline` (`:165-193`) و `HttpGuard` (`:120-124`): در این حالت Origin قضاوت نمی‌شود ولی توکن داخلی اجباری است و نبودِ `X-Forwarded-*` نشانهٔ درخواست مستقیم است → رد. قرارداد Gateway: حذف `Origin` ورودی و افزودن `X-Forwarded-For/Proto/Host`.
 
-### [🔴] گام ۴: محدودسازی `fs/browse`
+### [🟢] گام ۴: محدودسازی `fs/browse`
 
 `src/server/routes/fsRoutes.ts:61-122`: هر `path` باید پس از `realpath` داخل subtree همان `workspaceRoot` باشد؛ در غیر این صورت ۴۰۳. (امروز هر مسیر دلخواه قابل لیست است.)
 
-### [🔴] گام ۵: تست‌های دائمی امنیتی
+### [🟢] گام ۵: تست‌های دائمی امنیتی
 
 `src/server/gatewayManagedSecurity.test.ts` — همان سناریوهایی که در بازبینی دستی اجرا شد، این‌بار به‌عنوان تست ماندگار:
 - درخواست از Unix socket **بدون** توکن → رد؛
@@ -428,6 +428,23 @@ root وجود داشته باشد و directory باشد؛ canonical شود؛ پ�
 - جدول endpointهای worker در ADR به‌روز شود: کدام endpoint در حالت gateway-managed فعال/غیرفعال است.
 - هیچ مسیری باقی نماند که بدون توکن داخلی، دادهٔ پروژه را در حالت gateway-managed برگرداند (بررسی با یک تست enumerate روی روت‌های ثبت‌شده).
 - `npm run build && npm test` سبز.
+
+### وضعیت اجرای فاز ۶ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های تغییرکرده:** `server/types.ts` (+`gatewayManaged`، +`trustedGateway`، +`socketPath`)، `server/SecurityPipeline.ts` (اتصال socket + `isTrustedGateway` + `gatewayManaged`)، `server/HttpServer.ts` (listen روی Unix socket، بستن روت‌های مدیریتی، احراز هویت اجباری در حالت managed، رد `path` بیگانه در بدنه، `confineToRoot` برای fs) و `server/routes/fsRoutes.ts` (+`FsRoutesOptions.confineToRoot` با بررسی پس از `realpath`).
+**فایل تست جدید:** `server/gatewayManagedSecurity.test.ts` (۱۳ تست).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 188 passed / 188 total`، `Tests: 2632 passed / 2632 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۶: ۱۸۷ suite و ۲۶۱۹ تست → +۱ suite و +۱۳ تست).
+- هر شش سناریوی گام ۵ با سرور واقعی و روی **Unix socket واقعی** سنجیده شد: socket بدون توکن → ۴۰۱؛ socket با توکن → ۲۰۰؛ `POST /api/v1/projects` → ۴۰۳؛ `fs/browse?path=/etc` → ۴۰۳ (و symlink به `/etc` هم پس از `realpath` → ۴۰۳)؛ `Origin` عمومی بدون `X-Forwarded-*` → ۴۰۳؛ و حالت standalone بدون تغییر (`/health` باز، `fs/browse` آزاد، `POST /api/v1/projects` → ۲۰۱).
+- «هیچ مسیر بدون توکن باقی نمانده» با enumerate روی پنج روت `requireAuth: false` سنجیده شد (`/health`، `/ready`، `/metrics`، `/api/v1/roles`، `POST /api/v1/auth/verify`) → همه ۴۰۱ در حالت managed و ۲۰۰ با توکن.
+- تست رگرسیون TCP: `127.0.0.1` و `::1` پذیرفته و `203.0.113.9` با ۴۰۳ رد می‌شود، دقیقاً مثل قبل.
+
+**دو نکتهٔ اجرایی (ثبت‌شده در ADR، جدول «Worker profiles»):**
+
+1. `fs/browse` فقط در حالت managed محدود شد؛ در حالت standalone عمداً آزاد ماند چون انتخابگر «باز کردن پروژه» در `public/open.js` بیرون از root را مرور می‌کند و محدودکردنش آن جریان را می‌شکست.
+2. اتصال socket تنها وقتی local حساب می‌شود که سرور واقعاً روی `socketPath` گوش بدهد؛ و در حالت managed حتی `/health` بدون توکن داخلی جواب نمی‌گیرد.
 
 ---
 

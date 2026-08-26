@@ -254,6 +254,38 @@ Rules that follow from this and are enforced by tests:
 
 ---
 
+### Worker profiles (فاز ۶)
+
+Two profiles, one codebase. `PlatformConfig.gatewayManaged` switches between
+them; nothing else in the request pipeline changes.
+
+| | standalone (`ui`, `serve`) | `--gateway-managed` |
+|---|---|---|
+| transport | TCP on `--host`/`--port` | Unix socket (`socketPath`) or loopback TCP |
+| auth | `requireAuth: false` routes are open | **every** route needs the internal token |
+| `Origin` | judged (loopback only) | not judged, but `X-Forwarded-*` must be present |
+| `POST /api/v1/projects`, `PATCH`/`DELETE /api/v1/projects/:id`, `import-bundle`, `source/upload` | available | **403** |
+| `path`/`rootPath`/`root`/`workspaceRoot` in a body | accepted | 403 unless inside the workspace root |
+| `/api/v1/fs/browse` | may roam (the UI's project picker needs it) | confined to the workspace subtree, checked after `realpath` |
+
+Two measurements drove this:
+
+```text
+checkConnection({ socket.remoteAddress: undefined }) → 403   (before فاز ۶)
+checkOrigin({ origin: 'https://gateway.example' })   → 403   (before فاز ۶)
+```
+
+The first is why the Unix-socket transport could not carry a request at all —
+a socket has no peer address — and the second is why a correctly proxied
+request was refused. A socket connection now counts as local **only** when the
+server really listens on a socket path, and in managed mode it still needs the
+internal token; a proxied request is recognized by the `X-Forwarded-*` headers
+the Gateway sets, so a direct request from a browser page is still rejected.
+
+The Gateway's side of the contract: strip the inbound `Origin`, set
+`X-Forwarded-For/Proto/Host`, send the worker token, and never forward a
+`rootPath`.
+
 ## 5. Artifact resolution and migration (فاز ۳)
 
 **Resolution order** — identical for `index`, `watch`, `serve`, `ui`, `start`,
