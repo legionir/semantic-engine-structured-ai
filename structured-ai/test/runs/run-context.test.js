@@ -6,10 +6,10 @@
 |--------------------------------------------------------------------------
 |
 | Locks the phase-3 acceptance criteria:
-|   1. legacy mode is untouched: a single in-process run behaves exactly
+|   1. a single in-process run keeps the established output and lifecycle
 |      as before the phase, and the RunManager stays out of the way
 |   2. normalized single-run output in modular mode equals the same run
-|      in legacy mode (the phase-1 baseline behavior), with only the
+|      in the phase-1 baseline behavior, with only the
 |      additive project_id field extra
 |   3. two concurrent runs on two different projects do not mix their
 |      messages, budgets, or event attribution
@@ -45,7 +45,7 @@ process.env.MAX_REQUEST_MS = "10000";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const runtime = require(path.join(ROOT, "agent", "agent.js"));
-const events = require(path.join(ROOT, "agent", "lib", "events.js"));
+const events = require(path.join(ROOT, "agent", "events"));
 const { normalize } = require(path.join(ROOT, "test", "helpers", "normalize.js"));
 
 const results = [];
@@ -166,19 +166,11 @@ async function startStub() {
 }
 
 
-function setModes(run, project) {
+function setModes() {
 
-    if (run === null) {
-        delete process.env.RUN_CONTEXT_MODE;
-    } else {
-        process.env.RUN_CONTEXT_MODE = run;
-    }
-
-    if (project === null) {
-        delete process.env.PROJECT_CONTEXT_MODE;
-    } else {
-        process.env.PROJECT_CONTEXT_MODE = project;
-    }
+    /* Phase 30 removed rollout flags. The canonical runtime is always
+       project- and run-context aware; keep this helper as a no-op so the
+       existing scenario ordering remains explicit. */
 
 }
 
@@ -233,12 +225,15 @@ async function main() {
     settings.set("AGENT_MODEL", "stub-model");
 
 
-    await test("legacy mode stays the default and leaves no RunManager trace", async () => {
+    await test("the canonical run context is always tracked by RunManager", async () => {
 
-        setModes(null, null);
+        setModes();
 
-        assert.equal(runtime.runContextMode(), "legacy");
-        assert.equal(settings.get("RUN_CONTEXT_MODE"), "legacy");
+        assert.equal(typeof runtime.runManager.createRun, "function");
+        assert.throws(
+            () => settings.definitionOf("RUN_CONTEXT_MODE"),
+            /Unknown setting/
+        );
         assert.equal(settings.get("RUN_HISTORY_LIMIT"), 100);
 
         stub.handler = (parsed) => ({
@@ -262,24 +257,24 @@ async function main() {
 
         assert.match(finalText(outcome), /legacy-done/);
 
-        /* The lifecycle was the global one: nothing is tracked. */
+        /* Every canonical run is retained long enough to query its
+           outcome, including the synthetic default project. */
 
         for (const runId of runIdsOf(captured)) {
-            assert.equal(
+            assert.ok(
                 runtime.runManager.get(runId),
-                null,
-                "a legacy run must not enter the RunManager"
+                "a canonical run must enter the RunManager"
             );
         }
 
         assert.equal(runtime.runManager.activeRuns().length, 0);
 
-        /* No additive project attribution in legacy envelopes. */
+        /* Project attribution is part of every scoped event envelope. */
         assert.ok(
-            captured.every(
-                event => !Object.prototype.hasOwnProperty.call(event, "project_id")
+            captured.some(
+                event => Object.prototype.hasOwnProperty.call(event, "project_id")
             ),
-            "legacy events must keep their historical shape"
+            "canonical events must carry project attribution"
         );
 
     });
@@ -664,7 +659,7 @@ async function main() {
     });
 
 
-    await test("legacy access wrappers still drive the global run", async () => {
+    await test("scope-free lifecycle helpers remain available for direct callers", async () => {
 
         setModes(null, null);
 

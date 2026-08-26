@@ -1,6 +1,6 @@
 "use strict";
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 
 const { PolicyMatcher, DECISIONS } = require("./PolicyMatcher");
 const { PolicyRegistry } = require("./PolicyRegistry");
@@ -54,7 +54,7 @@ function mcpServerOf(toolName, args) {
 
             try {
 
-                const { parseToolName } = require("../mcp/manager");
+                const { parseToolName } = require("../mcp/McpManager");
                 const parsed = parseToolName(requested);
                 return parsed ? parsed.server : null;
 
@@ -68,7 +68,7 @@ function mcpServerOf(toolName, args) {
 
     try {
 
-        const { parseToolName } = require("../mcp/manager");
+        const { parseToolName } = require("../mcp/McpManager");
         const parsed = parseToolName(toolName);
         return parsed ? parsed.server : null;
 
@@ -86,7 +86,7 @@ function globalMcpServer(serverName) {
 
     try {
 
-        const { manager } = require("../mcp/manager");
+        const { manager } = require("../mcp/McpManager");
         const client = manager.client(serverName);
 
         if (!client) {
@@ -138,7 +138,7 @@ function mcpEscalation(toolName, { settingsStore = settings } = {}) {
     let manager;
 
     try {
-        ({ manager } = require("../mcp/manager"));
+        ({ manager } = require("../mcp/McpManager"));
     } catch {
         return null;
     }

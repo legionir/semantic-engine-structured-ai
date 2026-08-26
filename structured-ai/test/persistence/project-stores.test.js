@@ -10,7 +10,7 @@
 |   1. one resolver (lib/dataRoot.js) decides where every persisted
 |      byte lives: explicit root, then the run's project from the
 |      ToolContext/registry, then the legacy workspace .agent root —
-|      and legacy mode NEVER consults the project machinery
+|      and an unscoped call uses the compatibility default root
 |   2. full per-project separation of memory / plan / sessions /
 |      archive / journal / eventstore: project A's state is invisible
 |      from project B, and an unscoped (legacy) flow never touches a
@@ -47,15 +47,15 @@ process.env.STRUCTURED_AI_DATA_HOME = DATA_HOME;
 const ROOT = path.resolve(__dirname, "..", "..");
 const BIN = path.join(ROOT, "bin", "agent.js");
 
-const settings = require(path.join(ROOT, "agent", "lib", "storage.js"));
-const dataRoot = require(path.join(ROOT, "agent", "lib", "dataRoot.js"));
-const memoryStore = require(path.join(ROOT, "agent", "lib", "memory.js"));
-const sessions = require(path.join(ROOT, "agent", "lib", "sessions.js"));
-const archive = require(path.join(ROOT, "agent", "lib", "archive.js"));
-const journal = require(path.join(ROOT, "agent", "lib", "journal.js"));
-const eventstore = require(path.join(ROOT, "agent", "lib", "eventstore.js"));
-const projectFile = require(path.join(ROOT, "agent", "lib", "project.js"));
-const planTools = require(path.join(ROOT, "agent", "tools", "plan.js"));
+const settings = require(path.join(ROOT, "agent", "config"));
+const dataRoot = require(path.join(ROOT, "agent", "persistence", "DataRoot"));
+const memoryStore = require(path.join(ROOT, "agent", "context", "Memory"));
+const sessions = require(path.join(ROOT, "agent", "persistence", "SessionRepository"));
+const archive = require(path.join(ROOT, "agent", "persistence", "ArchiveRepository"));
+const journal = require(path.join(ROOT, "agent", "persistence", "JournalRepository"));
+const eventstore = require(path.join(ROOT, "agent", "persistence", "EventStoreRepository"));
+const projectFile = require(path.join(ROOT, "agent", "projects", "WorkspaceProfile"));
+const planTools = require(path.join(ROOT, "agent", "tools", "planning"));
 const tools = require(path.join(ROOT, "agent", "tools", "index.js"));
 const projects = require(path.join(ROOT, "agent", "projects", "index.js"));
 
@@ -201,16 +201,14 @@ async function main() {
 
     await test("the data root resolver follows the گام ۱ order", async () => {
 
-        /* legacy mode (default): everything is the historical root,
-           no project machinery at all */
+        /* Canonical routing keeps the unscoped compatibility root while
+           an explicit project context resolves to its central root. */
 
-        assert.equal(settings.get("PROJECT_CONTEXT_MODE"), "legacy");
-        assert.equal(dataRoot.modularPersistence(), false);
+        assert.throws(() => settings.definitionOf("PROJECT_CONTEXT_MODE"), /Unknown setting/);
         assert.equal(dataRoot.resolveRoot(), legacyRoot());
-        assert.equal(dataRoot.resolveRoot(ctxA), legacyRoot());
-        assert.equal(dataRoot.dataRootForProjectId("prj-a"), null);
+        assert.equal(dataRoot.resolveRoot(ctxA), centralRoot("prj-a"));
+        assert.equal(dataRoot.dataRootForProjectId("prj-a"), centralRoot("prj-a"));
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -251,7 +249,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 
@@ -260,7 +257,6 @@ async function main() {
 
     await test("plan and memory live per project and never cross", async () => {
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -343,7 +339,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 
@@ -352,7 +347,6 @@ async function main() {
 
     await test("the project-awareness gate lifted for stores, kept for runtime_stats", async () => {
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -383,7 +377,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 
@@ -392,7 +385,6 @@ async function main() {
 
     await test("events route to the registered project's central store", async () => {
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -455,7 +447,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 
@@ -464,7 +455,6 @@ async function main() {
 
     await test("the journal separates runs per project and per run", async () => {
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -589,7 +579,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 
@@ -598,7 +587,6 @@ async function main() {
 
     await test("sessions and the archive are separated per project", async () => {
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -669,7 +657,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 
@@ -678,7 +665,6 @@ async function main() {
 
     await test("the settings overlay reads floor-with-cap and writes central only", async () => {
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -757,7 +743,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 
@@ -766,7 +751,6 @@ async function main() {
 
     await test("migration copies legacy state, stays idempotent, survives corruption", async () => {
 
-        settings.set("PROJECT_CONTEXT_MODE", "modular");
 
         try {
 
@@ -924,7 +908,6 @@ async function main() {
 
         } finally {
 
-            settings.reset("PROJECT_CONTEXT_MODE");
 
         }
 

@@ -6,6 +6,9 @@
 
 ---
 
+> **Structured AI execution status:** the runtime-side phases and final
+> acceptance are tracked in [`structured-ai/EXECUTION_PLAN.md`](structured-ai/EXECUTION_PLAN.md).
+
 ## ۱. هدف
 
 دو تغییر زیر باید هم‌زمان و هماهنگ پیاده‌سازی شوند:

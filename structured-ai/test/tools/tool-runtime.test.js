@@ -6,7 +6,7 @@
 |--------------------------------------------------------------------------
 |
 | Locks the extracted tool groups against the historical modules:
-| wrappers stay facades, there is no require cycle back to agent.js,
+| named groups expose one runtime, there is no require cycle back to agent.js,
 | names/schemas stay in parity with the Phase 14 loader, executeTool
 | keeps the Phase 4 signature, and SemanticClient is shared with Phase 6.
 |--------------------------------------------------------------------------
@@ -81,7 +81,7 @@ async function main() {
     const toolRuntime = require(path.join(toolsDir, "ToolRuntime.js"));
     const adapter = require(path.join(toolsDir, "ToolRegistryAdapter.js"));
     const loader = require(path.join(REPO, "agent", "registry", "RegistryLoader.js"));
-    const settings = require(path.join(REPO, "agent", "lib", "storage.js"));
+    const settings = require(path.join(REPO, "agent", "config"));
 
 
     await test("named Phase 19 modules exist", async () => {
@@ -111,7 +111,19 @@ async function main() {
             path.join("planning", "index.js"),
             path.join("memory", "MemoryTools.js"),
             path.join("memory", "ArchiveTools.js"),
-            path.join("memory", "index.js")
+            path.join("memory", "index.js"),
+            path.join("git", "GitTools.js"),
+            path.join("git", "index.js"),
+            path.join("network", "NetworkTools.js"),
+            path.join("network", "index.js"),
+            path.join("search", "SearchTools.js"),
+            path.join("search", "index.js"),
+            path.join("skills", "SkillTools.js"),
+            path.join("skills", "index.js"),
+            path.join("mcp", "McpTools.js"),
+            path.join("mcp", "index.js"),
+            path.join("discussion", "DiscussionTools.js"),
+            path.join("discussion", "index.js")
         ];
 
         for (const name of required) {
@@ -127,38 +139,25 @@ async function main() {
     });
 
 
-    await test("legacy wrappers stay facades over the extracted groups", async () => {
+    await test("canonical tool groups expose one public runtime without compatibility wrappers", async () => {
 
-        assert.equal(
-            require(path.join(toolsDir, "filesystem.js")),
-            require(path.join(toolsDir, "filesystem", "index.js"))
-        );
+        for (const group of [
+            "filesystem", "process", "code", "planning", "memory",
+            "git", "network", "search", "skills", "mcp", "discussion"
+        ]) {
+            assert.equal(
+                fs.existsSync(path.join(toolsDir, group, "index.js")),
+                true,
+                `missing canonical ${group} group`
+            );
+        }
 
-        assert.equal(
-            require(path.join(toolsDir, "process.js")),
-            require(path.join(toolsDir, "process", "index.js"))
-        );
-
-        assert.equal(
-            require(path.join(toolsDir, "code.js")),
-            require(path.join(toolsDir, "code", "index.js"))
-        );
-
-        assert.equal(
-            require(path.join(toolsDir, "plan.js")),
-            require(path.join(toolsDir, "planning", "index.js"))
-        );
-
-        assert.equal(
-            require(path.join(toolsDir, "memory.js")),
-            require(path.join(toolsDir, "memory", "index.js"))
-        );
-
-        const fileinfo = require(path.join(toolsDir, "fileinfo.js"));
-        const meta = require(path.join(toolsDir, "filesystem", "FileMetadataTools.js"));
-
-        assert.equal(fileinfo.fs_info, meta.fs_info);
+        const fileinfo = require(path.join(toolsDir, "filesystem", "FileMetadataTools.js"));
         assert.equal(typeof fileinfo.fs_info, "function");
+        assert.equal(
+            require(path.join(toolsDir, "filesystem")).fs_info,
+            fileinfo.fs_info
+        );
 
         assert.equal(tools.executeTool, toolRuntime.executeTool);
         assert.equal(tools.hasTool, toolRuntime.hasTool);
@@ -169,10 +168,18 @@ async function main() {
         assert.equal(tools.telemetry, toolRuntime.telemetry);
         assert.equal(typeof tools.ToolRegistryAdapter.assertParity, "function");
 
+        for (const removed of [
+            "code.js", "fileinfo.js", "filesystem.js", "git.js", "memory.js",
+            "mcp.js", "net.js", "plan.js", "process.js", "search.js",
+            "skills.js", "telemetry.js", "discussion.js"
+        ]) {
+            assert.equal(fs.existsSync(path.join(toolsDir, removed)), false, `${removed} is still a wrapper`);
+        }
+
     });
 
 
-    await test("the extracted Phase 19 modules have no require cycle back to agent.js", async () => {
+    await test("the canonical Phase 19 modules have no require cycle back to agent.js", async () => {
 
         const extracted = [
             path.join(toolsDir, "ToolRuntime.js"),
@@ -305,7 +312,7 @@ async function main() {
         assert.equal(groupClient, phase6Client);
         assert.equal(typeof groupClient, "function");
 
-        const codeTools = require(path.join(toolsDir, "code.js"));
+        const codeTools = require(path.join(toolsDir, "code"));
 
         assert.equal(typeof codeTools._shutdown, "function");
         assert.equal(typeof codeTools._startRunScope, "function");
@@ -314,12 +321,12 @@ async function main() {
 
         assert.ok(scope === undefined || typeof scope === "object");
 
-        const processTools = require(path.join(toolsDir, "process.js"));
+        const processTools = require(path.join(toolsDir, "process"));
 
         assert.ok(processTools._sessions instanceof Map);
         assert.equal(typeof processTools.shutdownAll, "function");
 
-        const planTools = require(path.join(toolsDir, "plan.js"));
+        const planTools = require(path.join(toolsDir, "planning"));
 
         assert.equal(typeof planTools._loadPlan, "function");
         assert.equal(typeof planTools._summarise, "function");
@@ -351,20 +358,23 @@ async function main() {
     });
 
 
-    await test("Phase 19 does not invent a MODE flag and schema defaults stay legacy", async () => {
+    await test("Phase 30 removes rollout flags without inventing a tool mode", async () => {
 
-        assert.equal(settings.definitionOf("PROJECT_CONTEXT_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("RUN_CONTEXT_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("PROMPT_BUILDER_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("SEMANTIC_POOL_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("RUNTIME_ENGINE_MODE").default, "legacy");
+        for (const removed of [
+            "PROJECT_CONTEXT_MODE",
+            "RUN_CONTEXT_MODE",
+            "PROMPT_BUILDER_MODE",
+            "SEMANTIC_POOL_MODE",
+            "RUNTIME_ENGINE_MODE",
+            "WEB_SERVER_MODE",
+            "TOOL_RUNTIME_MODE",
+            "TOOLS_MODE"
+        ]) {
+            assert.throws(() => settings.definitionOf(removed), /Unknown setting/);
+        }
 
         const keys = settings.definitions.map(item => item.key);
-
-        assert.equal(
-            keys.some(key => key === "TOOL_RUNTIME_MODE" || key === "TOOLS_MODE"),
-            false
-        );
+        assert.equal(keys.some(key => key.endsWith("_MODE") && key.startsWith("TOOL")), false);
 
         walkJs(toolsDir, full => {
 

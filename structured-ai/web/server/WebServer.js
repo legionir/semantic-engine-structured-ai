@@ -2,7 +2,7 @@
 
 const http = require("http");
 
-const { createServer: createLegacyServer } = require("./LegacyWebServer");
+const { createServer: createImplementationServer } = require("./ServerImplementation");
 const { Router } = require("./Router");
 const { ROUTES } = require("./RouteInventory");
 const controllers = require("./controllers");
@@ -13,15 +13,12 @@ const { EventStreamService } = require("./services/EventStreamService");
 
 /*
 |--------------------------------------------------------------------------
-| Modular Web Server — EXECUTION_PLAN Phase 23
+| Canonical Web Server — EXECUTION_PLAN Phase 30
 |--------------------------------------------------------------------------
 |
-| The compatibility implementation is kept in LegacyWebServer while the
-| web boundary is migrated in one safe step. This class owns the modular
-| HTTP lifecycle, route inventory and dependency graph; each registered
-| controller forwards into the already contract-tested handler until its
-| domain service is moved. Thus `WEB_SERVER_MODE=modular` changes structure
-| and routing, not API results or browser behaviour.
+| The implementation owns the established HTTP behavior. This class owns
+| the canonical lifecycle, route inventory and dependency graph; each
+| controller is an explicit adapter around an injected domain service.
 |--------------------------------------------------------------------------
 */
 
@@ -84,23 +81,23 @@ class WebServer {
 
         /* The moved implementation is used as a contract-preserving domain
            adapter; it is never put on a listening socket in this mode. */
-        this.legacy =
-            createLegacyServer(runtime, options);
+        this.implementation =
+            createImplementationServer(runtime, options);
 
         const forward =
-            (req, res) => this.legacy.handle(req, res);
+            (req, res) => this.implementation.handle(req, res);
 
         this.services = {
             task: new services.TaskService({
                 runtime,
-                state: this.legacy.state,
-                startTask: this.legacy.startTask
+                state: this.implementation.state,
+                startTask: this.implementation.startTask
             }),
             session: new services.SessionService({ runtime }),
             settings: new services.SettingsService({ runtime }),
             events: new EventStreamService({
                 events: runtime.events,
-                auth: require("../../agent/lib/consoleAuth")
+                auth: require("../../agent/config/ConsoleAuth")
             })
         };
 
@@ -126,8 +123,8 @@ class WebServer {
                 forward
             }),
             approval: new controllers.ApprovalController({
-                approvalStore: this.legacy.approvalStore,
-                resolve: this.legacy.resolveApproval,
+                approvalStore: this.implementation.approvalStore,
+                resolve: this.implementation.resolveApproval,
                 forward
             }),
             mcp: new controllers.McpController({
@@ -135,7 +132,7 @@ class WebServer {
                 forward
             }),
             archive: new controllers.ArchiveController({
-                archive: require("../../agent/lib/archive"),
+                archive: require("../../agent/persistence/ArchiveRepository"),
                 forward
             }),
             plan: new controllers.PlanController({
@@ -164,7 +161,7 @@ class WebServer {
         this.serializers = serializers;
         this.routeInventory = ROUTES;
         this.router = new Router({
-            fallback: (req, res) => this.legacy.handle(req, res)
+            fallback: (req, res) => this.implementation.handle(req, res)
         });
 
         for (const route of ROUTES) {
@@ -181,8 +178,8 @@ class WebServer {
         }
 
         /* The extracted SSE hub is owned by the compatibility domain
-           adapter, so modular and legacy modes share one client lifecycle. */
-        this.sseHub = this.legacy.sseHub;
+           adapter, so all callers share one client lifecycle. */
+        this.sseHub = this.implementation.sseHub;
 
         this.server =
             http.createServer((req, res) =>
@@ -204,7 +201,7 @@ class WebServer {
 
     async close() {
 
-        await this.legacy.close();
+        await this.implementation.close();
 
         if (!this.server.listening) {
             return;
@@ -216,10 +213,10 @@ class WebServer {
 
     facade() {
 
-        const legacy = this.legacy;
+        const implementation = this.implementation;
 
         return {
-            ...legacy,
+            ...implementation,
             server: this.server,
             mode: this.mode,
             router: this.router,

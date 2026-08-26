@@ -158,33 +158,27 @@ function comparable(captured) {
 async function main() {
 
     const runtime = require(path.join(REPO, "agent", "agent.js"));
-    const events = require(path.join(REPO, "agent", "lib", "events.js"));
+    const events = require(path.join(REPO, "agent", "events"));
     const settings = runtime.settings;
     const engineDir = path.join(REPO, "agent", "runtime");
 
 
-    await test("RUNTIME_ENGINE_MODE defaults to legacy and a misspelling stays legacy", async () => {
+    await test("the extracted runtime engine is the canonical implementation after rollout", async () => {
 
-        assert.equal(settings.get("RUNTIME_ENGINE_MODE"), "legacy");
-        assert.equal(runtime.runtimeEngineMode(), "legacy");
-        assert.equal(settings.definitionOf("RUNTIME_ENGINE_MODE").default, "legacy");
-
-        settings.set("RUNTIME_ENGINE_MODE", "moduler");
-
-        assert.equal(runtime.runtimeEngineMode(), "legacy");
-
-        settings.set("RUNTIME_ENGINE_MODE", "modular");
-
-        assert.equal(runtime.runtimeEngineMode(), "modular");
-
-        settings.reset("RUNTIME_ENGINE_MODE");
-
-        assert.equal(runtime.runtimeEngineMode(), "legacy");
+        assert.equal(typeof runtime.runtimeEngine.runAgentCore, "function");
+        assert.throws(
+            () => settings.definitionOf("RUNTIME_ENGINE_MODE"),
+            /Unknown setting/
+        );
+        assert.throws(
+            () => settings.set("RUNTIME_ENGINE_MODE", "legacy"),
+            /Unknown setting/
+        );
 
     });
 
 
-    await test("named Phase 16 modules exist and agent.js keeps historical wrappers", async () => {
+    await test("named Phase 16 modules exist and agent.js binds the canonical engine", async () => {
 
         for (const name of [
             "AgentRun.js",
@@ -304,9 +298,7 @@ async function main() {
     settings.set("AGENT_VERBOSE", false);
 
 
-    async function captureRun(task, mode) {
-
-        settings.set("RUNTIME_ENGINE_MODE", mode);
+    async function captureRun(task) {
 
         const captured = [];
         const listen = event => captured.push(event);
@@ -322,7 +314,6 @@ async function main() {
         } finally {
 
             events.bus.off("event", listen);
-            settings.reset("RUNTIME_ENGINE_MODE");
 
         }
 
@@ -331,7 +322,7 @@ async function main() {
     }
 
 
-    await test("legacy and modular produce equal normalized events for a tool then final", async () => {
+    await test("repeated canonical runs produce equal normalized events for a tool then final", async () => {
 
         stub.handler = parsed => {
 
@@ -357,8 +348,8 @@ async function main() {
 
         await runtime.runAgent({ task: "warm-up listing" });
 
-        const legacy = await captureRun("list the workspace", "legacy");
-        const modular = await captureRun("list the workspace", "modular");
+        const legacy = await captureRun("list the workspace");
+        const modular = await captureRun("list the workspace");
 
         assert.match(
             legacy.outcome.response.content,
@@ -378,7 +369,7 @@ async function main() {
     });
 
 
-    await test("normalized delegation scenario is equal in both flag modes", async () => {
+    await test("normalized delegation scenarios remain equal across repeated runs", async () => {
 
         stub.handler = parsed => {
 
@@ -440,8 +431,8 @@ async function main() {
 
         await runtime.runAgent({ task: "warm-up delegation" });
 
-        const legacy = await captureRun("delegate a git inspection", "legacy");
-        const modular = await captureRun("delegate a git inspection", "modular");
+        const legacy = await captureRun("delegate a git inspection");
+        const modular = await captureRun("delegate a git inspection");
 
         assert.match(
             legacy.outcome.response.content,
@@ -481,7 +472,6 @@ async function main() {
     settings.reset("AGENT_BASE_URL");
     settings.reset("AGENT_MODEL");
     settings.reset("AGENT_VERBOSE");
-    settings.reset("RUNTIME_ENGINE_MODE");
 
     await new Promise(resolve => stub.server.close(resolve));
 

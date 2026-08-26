@@ -2321,7 +2321,7 @@ async function main() {
 
 
 /*
-| Loads the real app.js against the shim, with the ids index.html
+| Loads the canonical console renderer against the shim, with the ids index.html
 | provides and stubs for the two browser APIs it uses.
 */
 
@@ -2536,7 +2536,7 @@ function loadConsole() {
     };
 
     require(
-        path.join(__dirname, "..", "..", "web", "public", "app.js")
+        path.join(__dirname, "..", "..", "web", "public", "app", "console.js")
     );
 
     return {

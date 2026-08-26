@@ -1,6 +1,6 @@
 "use strict";
 
-const settings = require("../../lib/storage");
+const settings = require("../../config");
 const { observability } = require("../../runtime/Observability");
 const resolver = require("../../mcp/ProjectSemanticResolver");
 

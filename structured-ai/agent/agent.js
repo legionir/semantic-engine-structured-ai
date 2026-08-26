@@ -4,7 +4,7 @@ const path = require("path");
 const {
     WORKSPACE_ROOT,
     capResult
-} = require("./lib/workspace");
+} = require("./context/WorkspaceBoundary");
 
 const toolRuntime = require("./tools");
 
@@ -17,9 +17,9 @@ const {
 
 const events = require("./events");
 
-const settings = require("./lib/storage");
-const journal = require("./lib/journal");
-const eventstore = require("./lib/eventstore");
+const settings = require("./config");
+const journal = require("./persistence/JournalRepository");
+const eventstore = require("./persistence/EventStoreRepository");
 
 const projects = require("./projects");
 
@@ -28,7 +28,6 @@ const projectRuntime = require("./runtime");
 const {
     AgentRunContext,
     runManager,
-    runContextMode,
     runScheduler,
     observability,
     runWithProject,
@@ -45,7 +44,7 @@ const promptKit = require("./prompt");
 | Prompt kit wiring (EXECUTION_PLAN Phase 5). The injected builders and
 | resolvers are created lazily on first use: every dependency they take
 | is a closure over live registry/settings/run state, so nothing ages,
-| and in PROMPT_BUILDER_MODE=legacy they are never constructed at all.
+| and are constructed lazily so live registry/settings state is always used.
 */
 
 let TOOL_RESOLVER = null;
@@ -160,12 +159,6 @@ function promptFacade() {
 }
 
 
-function promptBuilderMode() {
-
-    return promptKit.promptBuilderMode();
-
-}
-
 journal.attach(events.bus);
 eventstore.attach(events.bus);
 
@@ -173,16 +166,16 @@ const {
     conversationSize,
     compactConversation,
     findExchanges
-} = require("./lib/context");
+} = require("./context");
 
-const memoryStore = require("./lib/memory");
+const memoryStore = require("./context/Memory");
 
 const {
     _skillIndex: skillIndex,
     _isActiveSkill: isActiveSkill
 } = require("./tools/skills");
 
-const archive = require("./lib/archive");
+const archive = require("./persistence/ArchiveRepository");
 const hookRegistry = require("./hooks");
 const HookRunner = require("./hooks/HookRunner").HookRunner;
 
@@ -1188,50 +1181,7 @@ async function maintainContext(messages, scope) {
 
 
 function refreshRuntimeContext(messages) {
-
-    if (promptBuilderMode() === "modular") {
-
-        return promptFacade().refreshRuntimeContext(messages);
-
-    }
-
-
-    for (const message of messages) {
-
-        if (
-            message.role !== "system" ||
-            typeof message.content !== "string" ||
-            !message.content.startsWith("{")
-        ) {
-            continue;
-        }
-
-        let parsed;
-
-        try {
-
-            parsed = JSON.parse(message.content);
-
-        } catch {
-
-            continue;
-        }
-
-        if (parsed.type !== "runtime_context") {
-            continue;
-        }
-
-        message.content =
-            JSON.stringify({
-                type: "runtime_context",
-
-                context: createRuntimeContext()
-            });
-
-        return true;
-    }
-
-    return false;
+    return promptFacade().refreshRuntimeContext(messages);
 }
 
 
@@ -1239,7 +1189,7 @@ function currentPlanSummary() {
 
     try {
 
-        const plan = require("./tools/plan");
+        const plan = require("./tools/planning");
 
         return plan._summarise(plan._loadPlan());
 
@@ -1257,7 +1207,7 @@ function currentPlanView() {
 
     try {
 
-        const planTools = require("./tools/plan");
+        const planTools = require("./tools/planning");
         const plan = planTools._loadPlan();
 
         return {
@@ -1279,127 +1229,7 @@ function currentPlanView() {
 
 
 function createRuntimeContext() {
-
-    if (promptBuilderMode() === "modular") {
-
-        return promptFacade().runtimeContextMessage();
-
-    }
-
-
-    return {
-        ...CONFIGURED_RUNTIME_OF(),
-
-        environment:
-            detectEnvironment(),
-
-        repository:
-            detectRepository(),
-
-        workspace: {
-            ...(CONFIGURED_RUNTIME_OF().workspace || {}),
-
-            root:
-                WORKSPACE_ROOT
-        },
-
-        /*
-        | The group catalogue used to travel here as well: 2.7K
-        | characters describing tools whose full schemas are already in
-        | the request. Groups are how the policy reasons, not how the
-        | agent calls anything, so what the agent needs is the policy
-        | summary below, not the taxonomy behind it.
-        */
-
-        plan:
-            currentPlanSummary(),
-
-        memory: {
-            enabled:
-                settings.get("MEMORY_ENABLED") === true,
-
-            size_chars:
-                memoryStore.memorySize(memoryStore.loadMemory()),
-
-            chunk_chars:
-                settings.get("MEMORY_CHUNK_CHARS"),
-
-            max_summary_calls:
-                settings.get("MEMORY_MAX_SUMMARY_CALLS"),
-
-            summary_parallelism:
-                settings.get("MEMORY_SUMMARY_PARALLELISM")
-        },
-
-        /*
-        | The agent is told how much history is retrievable, otherwise
-        | it has no reason to search an archive it cannot see.
-        */
-
-        archive:
-            archive.stats(),
-
-        policy:
-            POLICY_ENGINE.summary(),
-
-        endpoints:
-            endpointOverview(),
-
-        runtime: {
-            workspace_root:
-                WORKSPACE_ROOT,
-
-            max_iterations:
-                settings.get("MAX_ITERATIONS"),
-
-            max_agent_depth:
-                settings.get("MAX_AGENT_DEPTH"),
-
-            max_parallel_tools:
-                settings.get("MAX_PARALLEL_TOOLS"),
-
-            max_parallel_agents:
-                settings.get("MAX_PARALLEL_AGENTS"),
-
-            max_total_agents:
-                settings.get("MAX_TOTAL_AGENTS"),
-
-            agents_spawned:
-                currentAgentBudget().spawned,
-
-            agents_remaining:
-                Math.max(
-                    0,
-                    settings.get("MAX_TOTAL_AGENTS") - currentAgentBudget().spawned
-                ),
-
-            iterations_per_agent:
-                settings.get("MAX_ITERATIONS"),
-
-            max_run_ms:
-                settings.get("MAX_RUN_MS"),
-
-            max_request_ms:
-                settings.get("MAX_REQUEST_MS"),
-
-            max_context_chars:
-                settings.get("MAX_CONTEXT_CHARS"),
-
-            run_remaining_ms:
-                currentRun().started_at
-                    ? Math.max(0, runRemainingMs())
-                    : settings.get("MAX_RUN_MS")
-        },
-
-        /*
-        | Which external servers this run can reach. Named rather than
-        | counted, because an agent that knows a "github" server exists
-        | asks it something; one told there are two servers does not.
-        */
-
-        mcp:
-            mcpContext()
-    };
+    return promptFacade().runtimeContextMessage();
 }
 
 
@@ -1610,7 +1440,7 @@ function cancelRun(reason) {
 
 
 /*
-| Cancellation addressable by run id (RUN_CONTEXT_MODE=modular). A
+| Cancellation is addressable by run id. A
 | caller that holds no async scope of the run — a web cancel endpoint,
 | a test — names the run instead of whichever run happens to be current
 | process-wide. Awaiting the run's promise still reports the failure to
@@ -2246,97 +2076,7 @@ function resolveAgentCapabilities(
 function buildAgentSystemPrompt(
     agentDefinition
 ) {
-
-    if (promptBuilderMode() === "modular") {
-
-        return promptFacade().subAgentSystemPrompt(agentDefinition);
-
-    }
-
-
-    const capabilities =
-        resolveAgentCapabilities(
-            agentDefinition
-        );
-
-    const personaText =
-        capabilities.persona?.system_prompt ||
-        "";
-
-    return [
-        personaText,
-
-        executionRules(agentDefinition),
-
-        {
-            type: "agent_runtime_rules",
-
-            rules: [
-                "You are an Agent inside a hierarchical Agent Runtime.",
-                "You were given one task by a parent agent; complete that task and report back.",
-                "Use only the tools provided by the runtime.",
-                "Use only the skills assigned to your Agent Profile.",
-                "Return your findings with the final action; the parent agent sees only that response.",
-                "Never fabricate tool results.",
-                "Never claim an operation succeeded unless runtime results confirm it."
-            ]
-        },
-
-        /*
-        | A specialist's own skills are its job, so they are in its
-        | prompt by default: two to five of them, and one skipped
-        | skill_get would cost it the expertise it was created for.
-        | SKILLS_INLINE_FOR_SUBAGENTS trades that for the index when the
-        | tokens matter more.
-        */
-
-        {
-            type: "skills",
-
-            note:
-                settings.get("SKILLS_INLINE_FOR_SUBAGENTS") === true
-                    ? undefined
-                    : "Names only. Read one with skill_get before doing that kind of work.",
-
-            skills:
-                settings.get("SKILLS_INLINE_FOR_SUBAGENTS") === true
-                    ? capabilities.skills
-                    : capabilities.skills.map(
-                        skill => ({
-                            name: skill.name,
-                            description: skill.description
-                        })
-                    )
-        },
-
-        {
-            type: "output_contract",
-
-            output_contract:
-                agentDefinition.output_contract ||
-                [
-                    "Report only results confirmed by runtime execution."
-                ]
-        },
-
-        {
-            type: "delegation_policy",
-            delegation:
-                agentDefinition.delegation ||
-                {
-                    enabled: false,
-                    max_depth: 0,
-                    max_children: 0
-                }
-        }
-    ]
-        .map(
-            item =>
-                typeof item === "string"
-                    ? item
-                    : JSON.stringify(item)
-        )
-        .join("\n\n");
+    return promptFacade().subAgentSystemPrompt(agentDefinition);
 }
 
 
@@ -2347,97 +2087,7 @@ function buildAgentSystemPrompt(
 */
 
 function buildAgentRequest(options) {
-
-    /* Phase 5: the modular RequestBuilder produces the same body from
-       injected closures. */
-    if (promptBuilderMode() === "modular") {
-
-        return promptFacade().request(options);
-
-    }
-
-    const {
-        messages,
-        agentDefinition,
-        tools,
-        responseFormat,
-        role,
-        withSchema = true
-    } = options;
-
-    const profile =
-        endpointFor(role, agentDefinition);
-
-    if (responseFormat === null) {
-
-        /*
-        | A plain completion, used by the summariser.
-        */
-
-        const request = {
-            model:
-                profile.model,
-
-            messages,
-
-            temperature:
-                agentDefinition &&
-                agentDefinition.temperature !== undefined
-                    ? agentDefinition.temperature
-                    : profile.temperature
-        };
-
-        if (
-            agentDefinition &&
-            agentDefinition.max_tokens
-        ) {
-            request.max_tokens = agentDefinition.max_tokens;
-        }
-
-        return request;
-    }
-
-    const request = {
-        model:
-            profile.model,
-
-        messages,
-
-        temperature:
-            profile.temperature,
-
-        tools,
-
-        parallel_tool_calls:
-            true
-    };
-
-    /*
-    | The schema is sent unless this endpoint has already refused it.
-    | Without it the model still has the contract in its instructions,
-    | and the parser accepts a native tool call either way.
-    */
-
-    if (withSchema) {
-
-        request.response_format =
-            RESPONSE_FORMAT_OF();
-    }
-
-    /*
-    | Left out by default, because a gateway that caps the answer for us
-    | is easier to see than a ceiling we set silently. When an answer is
-    | being cut off mid-write, this is the knob that fixes it.
-    */
-
-    const ceiling =
-        settings.get("MAX_RESPONSE_TOKENS");
-
-    if (ceiling > 0) {
-        request.max_tokens = ceiling;
-    }
-
-    return request;
+    return promptFacade().request(options);
 }
 
 
@@ -2618,153 +2268,9 @@ function checkPerformedClaim(...args) {
 
 
 function createMainAgentMessages(task) {
-
-    /* Phase 5: the injected builders assemble the same messages; the
-       legacy branch below stays the reference until rollout. */
-    if (promptBuilderMode() === "modular") {
-
-        return promptFacade().mainMessages(task, {
-            project: effectiveProject(currentRun().project)
-        });
-
-    }
-
-
-    return [
-
-        {
-            role: "system",
-            content:
-                systemPrompt()
-        },
-
-        {
-            role: "system",
-            content:
-                executionRules()
-        },
-
-        {
-            role: "system",
-            content:
-                JSON.stringify({
-                    type:
-                        "runtime_context",
-
-                    context:
-                        createRuntimeContext()
-                })
-        },
-
-        {
-            role: "system",
-            content:
-                JSON.stringify({
-                    type:
-                        "available_skills",
-
-                    note:
-                        "Names and descriptions only. Call skill_get before doing that kind of work to read its procedure and constraints.",
-
-                    skills:
-                        skillIndex()
-                })
-        },
-
-        /*
-        | Personas exist so an ad-hoc agent can be composed. An agent
-        | that may not delegate has no use for the catalogue, so it is
-        | added below only when it can.
-        |
-        | Discussion personas are left out on purpose: they are not
-        | delegation targets, they are run by the discussion engine
-        | through discussion_start, and advertising all sixteen of
-        | them would tax every request for a flow the orchestrator
-        | reaches with a single tool call.
-        */
-
-        mayDelegate(mainAgentProfile())
-            ? {
-                role: "system",
-                content:
-                    JSON.stringify({
-                        type:
-                            "available_personas",
-
-                        note:
-                            "For composing an ad-hoc agent when no profile fits.",
-
-                        personas:
-                            PERSONAS_OF()
-                                .filter(
-                                    persona =>
-                                        !discussionPersonaNames().has(
-                                            persona.name
-                                        )
-                                )
-                                .map(
-                                    persona => ({
-                                        name:
-                                            persona.name,
-
-                                        description:
-                                            persona.description
-                                    })
-                                )
-                    })
-            }
-            : null,
-
-        {
-            role: "system",
-            content:
-                JSON.stringify({
-                    type:
-                        "available_agents",
-
-                    agents:
-                        AGENTS_OF()
-                            .filter(
-                                agent =>
-                                    agent.name !==
-                                        "main_agent" &&
-                                    !agent.name.startsWith(
-                                        "discussion_"
-                                    )
-                            )
-                            .map(
-                            /*
-                            | What choosing a specialist needs: what it
-                            | is for and what it is allowed to do. Its
-                            | output contract, its skills and its tool
-                            | list are the sub-agent's own business, and
-                            | were 3K characters of every request.
-                            */
-
-                            agent => ({
-                                name:
-                                    agent.name,
-
-                                description:
-                                    agent.description,
-
-                                ...describeCapability(agent),
-
-                                can_delegate:
-                                    Boolean(agent.delegation?.enabled)
-                            })
-                        )
-                })
-        },
-
-        {
-            role: "user",
-            content:
-                task && task.trim() !== ""
-                    ? task
-                    : readTask()
-        }
-    ].filter(Boolean);
+    return promptFacade().mainMessages(task, {
+        project: effectiveProject(currentRun().project)
+    });
 }
 
 
@@ -3596,10 +3102,7 @@ function requestedDelegationProjectId(delegation) {
 
 function delegationProjectSwitchEnabled() {
 
-    return (
-        projects.projectContextMode() === "modular" &&
-        runContextMode() === "modular"
-    );
+    return true;
 
 }
 
@@ -3742,106 +3245,12 @@ function createSubAgentMessages(
     task,
     context
 ) {
-
-    if (promptBuilderMode() === "modular") {
-
-        return promptFacade().subAgentMessages(
-            agentDefinition,
-            task,
-            context,
-            { project: effectiveProject(currentRun().project) }
-        );
-
-    }
-
-
-    const systemPrompt =
-        buildAgentSystemPrompt(
-            agentDefinition
-        );
-
-    const capabilities =
-        resolveAgentCapabilities(
-            agentDefinition
-        );
-
-    return [
-
-        {
-            role: "system",
-
-            content:
-                systemPrompt
-        },
-
-        {
-            role: "system",
-
-            content:
-                JSON.stringify({
-                    type:
-                        "runtime_context",
-
-                    context:
-                        createRuntimeContext()
-                })
-        },
-
-        /*
-        | The profile used to travel whole: its persona, its skills, its
-        | output contract and its tool list, every one of which is
-        | already in the system prompt above or in the request's tools.
-        | What is left is what the agent cannot see anywhere else.
-        */
-
-        {
-            role: "system",
-
-            content:
-                JSON.stringify({
-                    type:
-                        "agent_profile",
-
-                    name:
-                        agentDefinition.name,
-
-                    description:
-                        agentDefinition.description,
-
-                    may_delegate:
-                        mayDelegate(agentDefinition)
-                })
-        },
-
-        {
-            role: "system",
-
-            content:
-                JSON.stringify({
-                    type:
-                        "available_tools",
-
-                    note:
-                        "Full parameter schemas travel in the request's tools field.",
-
-                    tools:
-                        capabilities.tools.map(
-                            tool => tool.function.name
-                        )
-                })
-        },
-
-        {
-            role: "user",
-
-            content:
-                JSON.stringify({
-                    task,
-                    context:
-                        context ?? null
-                })
-        }
-    ];
+    return promptFacade().subAgentMessages(
+        agentDefinition,
+        task,
+        context,
+        { project: effectiveProject(currentRun().project) }
+    );
 }
 
 
@@ -3953,7 +3362,7 @@ async function autoroutePlanStep(mainAgentDefinition) {
         return null;
     }
 
-    const planTools = require("./tools/plan");
+    const planTools = require("./tools/planning");
     const summary = currentPlanSummary();
     const step = summary.next_step;
 
@@ -4064,37 +3473,12 @@ async function autoroutePlanStep(mainAgentDefinition) {
 */
 function resolveRunProjectContext(options) {
 
-    if (projects.projectContextMode() !== "modular") {
-
-        return null;
-
-    }
-
-    const context =
-        projects.resolveProjectForRun(options, {
-            registry: projects.registry(),
-            workspaceRoot: WORKSPACE_ROOT
-        });
-
-    /*
-    | A project rooted elsewhere than this process's workspace is
-    | executable once every tool call carries the project context — that
-    | is exactly what RUN_CONTEXT_MODE=modular guarantees (Phase 4). In
-    | any other mode the tool layer still resolves against the global
-    | WORKSPACE_ROOT, so a foreign root would silently mis-scope every
-    | tool call and keeps failing loudly here.
-    */
-
-    if (runContextMode() !== "modular") {
-
-        projects.assertWorkspaceMatch(context, WORKSPACE_ROOT);
-
-    }
-
-    return context;
+    return projects.resolveProjectForRun(options, {
+        registry: projects.registry(),
+        workspaceRoot: WORKSPACE_ROOT
+    });
 
 }
-
 
 async function runAgentCore(...args) {
 
@@ -4104,16 +3488,14 @@ async function runAgentCore(...args) {
 
 
 /*
-| Modular variant (EXECUTION_PLAN Phase 3, RUN_CONTEXT_MODE=modular):
+| Canonical run variant (EXECUTION_PLAN Phase 3):
 | the run gets its own AgentRunContext before anything starts, the whole
 | core executes inside the run's async scopes, and two such calls may
 | interleave without sharing messages, budgets or cancellation.
 |
-| The error path mirrors the legacy wrapper: the after-task hooks only
-| run for a failure of a run that actually started — a failure during
-| context resolution or registry validation must not inherit them. The
-| legacy wrapper detects that via its previousRunId comparison; here the
-| run's started_at timestamp is the equivalent signal.
+| The error path runs after-task hooks only when a run actually started;
+| failures during context resolution or registry validation do not inherit
+| them.
 */
 async function runAgentModular(options = {}) {
 
@@ -4170,62 +3552,16 @@ async function runAgentModular(options = {}) {
         }
 
         /* Leaving the async scopes restores the correlation context:
-           nothing process-global needs the legacy wrapper's cleanup. */
+           run-local state is restored by RunManager's async scope. */
     }));
 }
 
 
 async function runAgent(options = {}) {
 
-    if (runContextMode() === "modular") {
-        return await runAgentModular(options);
-    }
+    return await runAgentModular(options);
 
-    const previousRunId = currentRun().id;
-
-    try {
-        return await runAgentCore(options);
-    } catch (error) {
-
-        if (
-            currentRun().id !== previousRunId &&
-            !currentRun().after_hooks_ran
-        ) {
-
-            try {
-
-                const finalized =
-                    await applyAfterTaskHooks(null, error);
-
-                const report =
-                    hookReportText(finalized.report);
-
-                if (report) {
-                    error.message = `${error.message}\n\nAutomated routine:\n${report}`;
-                }
-
-            } catch (hookError) {
-
-                error.message =
-                    `${error.message}\n\nafter_task hooks could not finish: ${hookError.message}`;
-            }
-        }
-
-        throw error;
-
-    } finally {
-
-        /* Clear the correlation context so events emitted after the run
-           (from hooks or the next run) are not mis-attributed. */
-        events.setContext({
-            run_id: null,
-            turn_id: null,
-            scope: null,
-            iteration: null
-        });
-    }
 }
-
 
 /*
 |--------------------------------------------------------------------------
@@ -4454,7 +3790,7 @@ module.exports = {
     resolveAgentProfile,
     resolveTools,
 
-    mcp: require("./mcp/manager").manager,
+    mcp: require("./mcp/McpManager").manager,
     mcpToolDeclarations,
     discoverMcpTools,
 
@@ -4474,7 +3810,7 @@ module.exports = {
     foldIntoMemory,
     refreshMemoryMessage,
     memoryStore,
-    project: require("./lib/project"),
+    project: require("./projects/WorkspaceProfile"),
 
     /*
     | Multi-project surface (Phase 2). Named `projects` to stay distinct
@@ -4482,10 +3818,10 @@ module.exports = {
     | documented in EXECUTION_PLAN Phase 2 step 3.
     */
     projects,
-    sessions: require("./lib/sessions"),
-    eventstore: require("./lib/eventstore"),
-    openProject: () => require("./lib/project").openProject(),
-    persistProject: () => require("./lib/project").persist(),
+    sessions: require("./persistence/SessionRepository"),
+    eventstore: require("./persistence/EventStoreRepository"),
+    openProject: () => require("./projects/WorkspaceProfile").openProject(),
+    persistProject: () => require("./projects/WorkspaceProfile").persist(),
     summariseTranscript,
     activeTemperature,
     runDeadlineAt,
@@ -4499,8 +3835,7 @@ module.exports = {
     buildAgentSystemPrompt,
 
     /*
-    | The request body builder (Phase 5 wrapper: inline in legacy, the
-    | injected agent/prompt/RequestBuilder in modular).
+    | The canonical request body builder from agent/prompt/RequestBuilder.
     */
     buildAgentRequest,
     executionRules,
@@ -4544,14 +3879,11 @@ module.exports = {
     assertRunActive,
 
     /*
-    | Per-run context surface (Phase 3, gated by RUN_CONTEXT_MODE). The
-    | legacy entry points above keep their exact signatures and
-    | behavior; these exist so modular callers can address one specific
-    | run out of several concurrent ones.
+    | Per-run context surface (Phase 3). Each caller can address one
+    | specific run out of several concurrent executions.
     */
     AgentRunContext,
     runManager,
-    runContextMode,
     runScheduler,
     observability,
     cancelRunById,
@@ -4571,7 +3903,6 @@ module.exports = {
     registryValidator,
     actions: actionKit,
     runtimeEngine,
-    runtimeEngineMode: runtimeEngine.runtimeEngineMode,
     context: contextKit,
     hooks: hookRegistry,
 

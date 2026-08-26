@@ -31,7 +31,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const runtime = require(path.join(ROOT, "agent", "agent.js"));
 const { normalize } = require(path.join(ROOT, "test", "helpers", "normalize.js"));
 
-const events = require(path.join(ROOT, "agent", "lib", "events.js"));
+const events = require(path.join(ROOT, "agent", "events"));
 
 const fixture =
     JSON.parse(

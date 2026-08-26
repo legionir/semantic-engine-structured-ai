@@ -3,10 +3,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const settings = require("../lib/storage");
-const dataRoot = require("../lib/dataRoot");
+const settings = require("../config");
+const dataRoot = require("../persistence/DataRoot");
 
-const { WORKSPACE_ROOT } = require("../lib/workspace");
+const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
 const JsonRepository = require("./JsonRepository");
 const { safeId } = require("./SafeIdentifier");
 const SchemaVersion = require("./SchemaVersion");
@@ -17,9 +17,8 @@ const SchemaVersion = require("./SchemaVersion");
 | Session repository (EXECUTION_PLAN Phase 18)
 |--------------------------------------------------------------------------
 |
-| Moved from agent/lib/sessions.js. Paths and file shape are unchanged.
-| JSON writes are atomic. agent/lib/sessions.js is the legacy wrapper
-| until Phase 30.
+| Canonical session repository. Paths and file shape remain stable;
+| JSON writes are atomic.
 |--------------------------------------------------------------------------
 */
 

@@ -5,9 +5,9 @@
 | Visualizer module boundary — EXECUTION_PLAN Phase 25
 |--------------------------------------------------------------------------
 |
-| visualizer.js remains the direct-embed compatibility renderer. This suite
-| verifies the native ESM graph, pure graph state/model behavior, project
-| URL scoping and worker/fallback seams.
+| The renderer now lives beside the native ESM graph modules. This suite
+| verifies pure graph state/model behavior, project URL scoping and
+| worker/fallback seams.
 |--------------------------------------------------------------------------
 */
 
@@ -60,11 +60,11 @@ async function main() {
     assert.equal(fs.existsSync(path.join(REPO, "web", "public", "workers", "layout.worker.js")), true);
   });
 
-  await test("visualizer.html loads native ESM and keeps the direct renderer asset", () => {
+  await test("visualizer.html loads the native ESM graph and canonical renderer", () => {
     const html = fs.readFileSync(path.join(REPO, "web", "public", "visualizer.html"), "utf8");
     assert.match(html, /<script type="module" src="\/visualizer\/main\.js"><\/script>/);
     assert.doesNotMatch(html, /<script src="\/visualizer\.js"><\/script>/);
-    assert.equal(fs.existsSync(path.join(REPO, "web", "public", "visualizer.js")), true);
+    assert.equal(fs.existsSync(path.join(REPO, "web", "public", "visualizer", "renderer.js")), true);
   });
 
   await test("the visualizer API client scopes and encodes every graph request", () => {
@@ -148,12 +148,12 @@ async function main() {
     assert.doesNotMatch(source("graph-renderer.js"), /innerHTML/);
   });
 
-  await test("main.js exposes the independent visualizer graph and compatibility bootstrap", () => {
+  await test("main.js exposes the independent visualizer graph and canonical bootstrap", () => {
     const main = source("main.js");
     required.filter(name => name !== "main.js").forEach(name => {
       assert.match(main, new RegExp(name.replace(".", "\\.")), name);
     });
-    assert.match(main, /import "\.\.\/visualizer\.js"/);
+    assert.match(main, /import "\.\/renderer\.js"/);
     assert.match(main, /StructuredAIVisualizer/);
   });
 

@@ -6,7 +6,7 @@
 |--------------------------------------------------------------------------
 |
 | Locks the complete method/path inventory and the extracted HTTP seams.
-| web.test.js remains the end-to-end compatibility suite; this file adds
+| web.test.js remains the end-to-end HTTP suite; this file adds
 | focused checks for routing, middleware, body/response helpers and modular
 | server lifecycle.
 |--------------------------------------------------------------------------
@@ -20,7 +20,6 @@ const { Readable } = require("stream");
 
 const WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), "phase23-web-"));
 process.env.WORKSPACE_ROOT = WORKSPACE;
-process.env.WEB_SERVER_MODE = "modular";
 process.env.AGENT_VERBOSE = "0";
 process.env.AGENT_PRINT_FINAL = "0";
 
@@ -274,12 +273,9 @@ async function main() {
     });
 
 
-    await test("the modular server exposes the route/controller graph", async () => {
+    await test("the canonical server exposes the route/controller graph", async () => {
 
         const runtime = require(path.join(REPO, "agent", "agent"));
-        const original = runtime.settings.get("WEB_SERVER_MODE");
-        runtime.settings.set("WEB_SERVER_MODE", "modular");
-
         const app = web.createServer(runtime);
         try {
             assert.equal(app.mode, "modular");
@@ -290,18 +286,13 @@ async function main() {
             assert.equal(typeof app.router.handle, "function");
         } finally {
             await app.close();
-            runtime.settings.reset("WEB_SERVER_MODE");
-            if (original !== undefined && original !== "legacy") {
-                runtime.settings.set("WEB_SERVER_MODE", original);
-            }
         }
     });
 
 
-    await test("modular mode preserves authenticated API and public static contracts", async () => {
+    await test("the canonical server preserves authenticated API and public static contracts", async () => {
 
         const runtime = require(path.join(REPO, "agent", "agent"));
-        runtime.settings.set("WEB_SERVER_MODE", "modular");
         const app = web.createServer(runtime);
         const address = await app.listen(0, "127.0.0.1");
         const base = `http://127.0.0.1:${address.port}`;
@@ -339,7 +330,6 @@ async function main() {
             assert.match(await worker.text(), /requestId/);
         } finally {
             await app.close();
-            runtime.settings.reset("WEB_SERVER_MODE");
         }
     });
 

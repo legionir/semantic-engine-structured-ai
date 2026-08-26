@@ -1,6 +1,6 @@
 "use strict";
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 const memoryRepository = require("../persistence/MemoryRepository");
 const { conversationSize } = require("./ConversationSizer");
 const { findExchanges } = require("./ExchangeDetector");
@@ -13,10 +13,9 @@ const { host } = require("./contextHost");
 | Memory coordinator (EXECUTION_PLAN Phase 17)
 |--------------------------------------------------------------------------
 |
-| Domain logic moved from agent/lib/memory.js, plus fold/refresh moved
-| from agent.js. IO is MemoryRepository. summariseTranscript / currentRun
-| / events arrive through the bound host so this module never requires
-| agent.js.
+| Domain logic and fold/refresh operations use MemoryRepository for IO.
+| summariseTranscript / currentRun / events arrive through the bound host
+| so this module never requires agent.js.
 |--------------------------------------------------------------------------
 */
 

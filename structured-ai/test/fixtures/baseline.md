@@ -824,3 +824,30 @@
 | web | `test/web/web.test.js` | 28/28 |
 
 contractهای افزوده‌شده: `test/contracts/tool.contract.test.js` (5/5)، `api.contract.test.js` (5/5)، `persistence.contract.test.js` (5/5) و `discussion.contract.test.js` (6/6). مسیرهای `test:contracts` و همهٔ scriptهای domain-aware در `structured-ai/package.json` قابل اجرای مستقل‌اند. `npm run check` نیز exit 0 است.
+
+
+## suite پایان فاز ۳۰ — rollout canonical و پذیرش نهایی
+
+**تاریخ:** 2026-08-26 · **command:** `npm test` · **exit code: 0** · **نتیجه:** 694/694 passed
+
+| اندازه‌گیری | پایان فاز ۲۹ | پایان فاز ۳۰ |
+|---|---:|---:|
+| تعداد test entrypointها | 48 | 49 |
+| تعداد تست‌ها | 690 | 694 |
+| تست‌های شکست‌خورده | 0 | 0 |
+| facadeهای legacy باقی‌مانده | موجود تا rollout | 0 |
+| rollout flagهای موقت در SettingsSchema | 6 | 0 |
+
+چهار تست rollout (`test/contracts/rollout.contract.test.js`) حذف facadeهای
+`agent/lib`، MCP/tool wrapperهای قدیمی، rendererهای compatibility و شش flag
+موقت را قفل می‌کنند. `test/mvp/mvp.test.js`، suiteهای isolation/concurrency،
+API/CLI/UI، persistence و e2e پس از فعال بودن دائمی مسیر canonical سبز هستند.
+synthetic default و فایل‌های `.agent/` فقط به‌عنوان data compatibility حفظ شده‌اند.
+
+**پذیرش اسناد مرجع:**
+
+- Multi-Project implementation و isolation/concurrency: سبز.
+- Refactor modules و dependency boundaries: سبز.
+- Order plan و Scope Traceability: همهٔ ردیف‌ها به فازهای سبز نگاشت شده‌اند.
+- Gateway واقعی Semantic Engine: طبق Decision 1 خارج از این repository باقی
+  مانده و stub contract در تست‌ها فعال است.

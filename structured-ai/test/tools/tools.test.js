@@ -19,7 +19,7 @@ process.env.MAX_TOOL_RESULT_CHARS = "20000";
 process.env.PROCESS_SANDBOX_MODE = "test";
 
 const tools = require("../../agent/tools");
-const { WORKSPACE_ROOT } = require("../../agent/lib/workspace");
+const { WORKSPACE_ROOT } = require("../../agent/context/WorkspaceBoundary");
 
 const results = [];
 
@@ -1089,7 +1089,7 @@ async function main() {
     await test("the semantic-engine skill follows MCP availability", async () => {
 
         const skills = require("../../agent/tools/skills");
-        const settings = require("../../agent/lib/storage");
+        const settings = require("../../agent/config");
 
         assert.ok(
             skills._skillIndex().some(item => item.name === "semantic_engine")
@@ -1189,7 +1189,7 @@ async function main() {
     await test("loading a skill is an event, attributed to the agent", async () => {
 
         const events =
-            require("../../agent/lib/events");
+            require("../../agent/events");
 
         const seen = [];
 

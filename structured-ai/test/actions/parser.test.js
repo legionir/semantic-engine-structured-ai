@@ -72,7 +72,7 @@ async function main() {
 
     const runtime = require(path.join(REPO, "agent", "agent.js"));
     const actions = require(path.join(REPO, "agent", "actions"));
-    const settings = require(path.join(REPO, "agent", "lib", "storage.js"));
+    const settings = require(path.join(REPO, "agent", "config"));
 
     const fixture =
         JSON.parse(

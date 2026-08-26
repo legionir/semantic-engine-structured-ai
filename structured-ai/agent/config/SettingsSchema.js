@@ -1307,28 +1307,9 @@ const DEFINITIONS = [
         default: null,
         description: "Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai."
     },
-    {
-        key: "PROJECT_CONTEXT_MODE",
-        group: "workspace",
-        type: STRING,
-        default: "legacy",
-        description: "Project scoping mode: 'legacy' keeps single-workspace behavior; 'modular' resolves a ProjectContext per run (EXECUTION_PLAN feature flag)."
-    },
-    {
-        key: "RUN_CONTEXT_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Run state mode: 'legacy' keeps the process-global RUN/AGENT_BUDGET; 'modular' gives every run its own AgentRunContext via the RunManager so runs may execute concurrently (EXECUTION_PLAN phase 3 flag)."
-    },
-    {
-        key: "WEB_SERVER_MODE",
-        group: "web",
-        type: ENUM,
-        values: ["legacy", "modular"],
-        default: "legacy",
-        description: "Web backend mode: legacy keeps the monolithic compatibility server; modular routes through the extracted web/server modules (EXECUTION_PLAN phase 23)."
-    },
+
+
+
     {
         key: "RUN_HISTORY_LIMIT",
         group: "runtime",
@@ -1407,27 +1388,9 @@ const DEFINITIONS = [
         min: 0,
         description: "How many memoized query results one SemanticClient pool entry keeps per project (0 disables memoization). Entries are additionally invalidated on an index-generation change reported by the worker."
     },
-    {
-        key: "PROMPT_BUILDER_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Prompt assembly mode: 'legacy' uses the inline builders in agent.js; 'modular' uses the injected agent/prompt builders with project_context support (EXECUTION_PLAN phase 5 flag)."
-    },
-    {
-        key: "SEMANTIC_POOL_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Semantic engine routing mode: 'legacy' uses the single process-wide engine client; 'modular' routes code tools through the per-project SemanticClientPool keyed by projectId (EXECUTION_PLAN phase 6 flag)."
-    },
-    {
-        key: "RUNTIME_ENGINE_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Runtime loop mode: 'legacy' and 'modular' both run the extracted agent/runtime engine (Phase 16). The flag is declared so Phase 30 can drop it after equality is proven; a misspelled value behaves as legacy."
-    }
+
+
+
 ];
 
 

@@ -6,6 +6,10 @@
 
 ---
 
+> **Execution status and verification:** the implementation is tracked in
+> [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md), including the Phase 30 canonical
+> rollout and final acceptance evidence.
+
 ## ۱. هدف
 
 هدف، اضافه‌کردن قابلیت multi-project به Structured AI است؛ به‌گونه‌ای که چند پروژه به‌صورت هم‌زمان مدیریت شوند، اما هر task، agent، ابزار، session، memory و Semantic Engine به پروژهٔ صحیح متصل بماند.

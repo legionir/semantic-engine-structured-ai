@@ -137,7 +137,7 @@ async function main() {
     await assert.rejects(() => command.execute({}, { interactive: true }), /--serve cannot be combined/);
   });
 
-  await test("the extracted Repl remains a compatibility-safe CommonJS module", () => {
+  await test("the canonical Repl remains a CommonJS module", () => {
     const source = fs.readFileSync(path.join(INTERACTIVE_DIR, "Repl.js"), "utf8");
     assert.doesNotMatch(source, /require\(["'][^"']*bin[\\/]interactive\.js["']\)/);
     assert.match(source, /createApprovalHandler/);

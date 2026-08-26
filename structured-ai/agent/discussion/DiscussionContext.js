@@ -1,6 +1,6 @@
 "use strict";
 
-const dataRoot = require("../lib/dataRoot");
+const dataRoot = require("../persistence/DataRoot");
 
 
 /*

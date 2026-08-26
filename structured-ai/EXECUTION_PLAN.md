@@ -1,8 +1,8 @@
 # پلن اجرایی Structured AI — از Baseline تا Multi-Project و Refactor کامل
 
-**وضعیت:** برنامهٔ اجرایی فعال؛ وضعیت گام‌ها و فازها در همین سند به‌روز می‌شود.
+**وضعیت:** تکمیل نهایی و پذیرفته‌شده؛ تمام فازهای ۱ تا ۳۰ verification شده‌اند.
 **تاریخ:** 2026-08-25
-**بازبینی:** 2026-08-25 — ثبت ۶ تصمیم تکمیلی (پیوست ب)
+**بازبینی:** 2026-08-26 — ثبت پذیرش نهایی Phase 30 و تصمیم 49 (پیوست ب)
 **پروژه:** `structured-ai`
 
 **منابع مرجع (دمایهٔ کامل نیازمندی‌ها):**
@@ -12,7 +12,7 @@
 - `REFACTOR_EXECUTION_PLAN.md` — دامنهٔ کامل refactor ماژولار
 - `MULTI_PROJECT_GATEWAY_PLAN.md` (ریشهٔ ریپو) — سمت Semantic Engine (خارج از دامنهٔ این سند)
 
-**رابطه با اسناد مرجع:** این سند ترتیب اجرای سه سند مرجع را به فازهای قابل‌اجرا با معیار پذیرش تبدیل می‌کند و شکاف‌های شناسایی‌شده در بازبینی (از جمله ماژول `discussion/`) را جبران می‌کند. در صورت تعارض ترتیب اجرا میان اسناد مرجع، ترتیب فازهای همین سند معتبر است.
+**رابطه با اسناد مرجع:** این سند ترتیب اجرای سه سند مرجع را به فازهای قابل‌اجرا با معیار پذیرش تبدیل می‌کند و شکاف‌های شناسایی‌شده در بازبینی (از جمله ماژول `discussion/`) را جبران می‌کند. در صورت تعارض ترتیب اجرا میان اسناد مرجع، ترتیب فازهای همین سند معتبر است. وضعیت اجرای نهایی و دستورهای verification در [`REFACTOR_EXECUTION_PLAN.md`](REFACTOR_EXECUTION_PLAN.md)، [`MULTI_PROJECT_IMPLEMENTATION_PLAN.md`](MULTI_PROJECT_IMPLEMENTATION_PLAN.md) و [`MULTI_PROJECT_REFACTOR_ORDER_PLAN.md`](MULTI_PROJECT_REFACTOR_ORDER_PLAN.md) به این سند برمی‌گردند.
 
 **وضعیت‌های مجاز:**
 
@@ -32,17 +32,8 @@
 4. **حفظ رفتار موجود.** رفتار single-project فعلی (CLI، ابزارها، session، memory، archive، MCP، UI، eventها) حفظ می‌شود مگر تغییری عمدی و مستند در معیار پذیرش فاز آمده باشد.
 5. **قراردادها فقط additive تغییر می‌کنند.** افزودن فیلد جدید به event/API مجاز است؛ تغییر معنای فیلد موجود، حذف فیلد، یا تغییر نام event/ابزار/action ممنوع است (جز با migration عمدی و مستند).
 6. **هر فاز پایان‌پذیر و پایدار.** پایان هر فاز: `npm run check` و `npm test` سبز، پروژه در وضعیت سازگار و قابل‌اجرا و قابل rollback. شروع فاز بعدی فقط پس از 🟢 شدن فاز جاری، مگر موازی‌کاریِ مستندشده در همین سند.
-7. **wrapperهای legacy** در تمام طول migration حفظ می‌شوند و فقط در فاز ۳۰ حذف می‌شوند.
-8. **Feature flagها (لیست واحدِ حاکم):**
-   ```text
-   PROJECT_CONTEXT_MODE=legacy|modular
-   RUN_CONTEXT_MODE=legacy|modular
-   PROMPT_BUILDER_MODE=legacy|modular
-   SEMANTIC_POOL_MODE=legacy|pool
-   RUNTIME_ENGINE_MODE=legacy|modular
-   WEB_SERVER_MODE=legacy|modular
-   ```
-   پیش‌فرض ابتدا legacy است؛ پس از برابری خروجی normalize‌شده و سبز بودن suite، پیش‌فرض به modular تغییر می‌کند؛ حذف flagها فقط در فاز ۳۰.
+7. **wrapperهای legacy** در طول migration حفظ شدند؛ در Phase 30 همهٔ facadeهای compatibility حذف و مسیرهای canonical فعال شدند.
+8. **Feature flagهای rollout موقت:** شش flag مرحله‌ای Phase 2–28 پس از اثبات برابری در Phase 30 از schema، runtime و entrypointها حذف شدند. رفتار project-aware، run isolation، prompt builder، semantic pool، runtime engine و web server اکنون تنها implementation canonical است؛ flagهای مستقل محصول مانند `PROCESS_SANDBOX_MODE` و `RESPONSE_FORMAT_MODE` همچنان بخشی از تنظیمات واقعی هستند.
 9. **مرز امنیتی مدل.** `projectId` و مسیر root فقط از runtime context می‌آیند و هرگز از آرگومان‌های قابل‌جعل توسط مدل پذیرفته نمی‌شوند. هیچ ابزار model-facingای برای تغییر project یا root فعال ساخته نمی‌شود.
 10. **وابستگی‌ها محترم شمرده می‌شوند.** گامی که به قابلیتِ پیاده‌نشده وابسته است، فقط با stub/mock صریح و مستند اجرا می‌شود.
 11. **نه تکه‌تکه، نه فشرده.** ترکیب گام‌ها نباید باعث کاهش اعتبارسنجی، coupling معماری یا ریسک شود؛ تقسیم بیشتر هم نباید فازهای مصنوعی بسازد.
@@ -955,27 +946,46 @@ discussion باید ProjectContext/RunContext فعلی را مصرف کند: `wo
 
 ---
 
-## [🔴] فاز ۳۰: حذف Wrapperها، مستندات و پذیرش نهایی
+## [🟢] فاز ۳۰: حذف Wrapperها، مستندات و پذیرش نهایی
 
 **هدف و scope:** پاک‌سازی لایه‌های سازگاری پس از اثبات برابری، تکمیل مستندات و پذیرش رسمی کل برنامه.
 
-### [🔴] گام ۱: حذف تدریجی wrapperهای legacy و flagها
+**تکمیل 2026-08-26:** هر سه گام تکمیل و ممیزی شدند. تمام rollout flagهای موقت حذف شدند، مسیرهای canonical تنها مسیر اجرای runtime هستند و suite کامل پس از cleanup سبز است.
 
-پس از برابری خروجی‌ها و سبز ماندن suite در حالت modular، پیش‌فرض همهٔ flagها modular و سپس flagها و wrapperهای legacy حذف شوند (technical-debt صفر در سطح facade). هر حذف در کامیت جدا با تست مرتبط.
+### [🟢] گام ۱: حذف تدریجی wrapperهای legacy و flagها
 
-### [🔴] گام ۲: مستندات
+**انجام شد (2026-08-26):**
 
-README و مستندات توسعه به‌روز شود: ساختار نهایی دایرکتوری‌ها، روش افزودن tool/skill/agent/prompt section/event/project و راهنمای multi-project (رجیستری، flagهای حذف‌شده، مسیرهای data). لینک از سه سند مرجع به این پلن (و بالعکس) درج شود.
+- wrapperهای `agent/lib/*` حذف و implementationهای canonical به `agent/config`، `agent/context`، `agent/persistence`، `agent/policy` و `agent/projects` منتقل شدند.
+- MCP wrapperهای `client.js`، `config.js`، `manager.js`، `protocol.js` و transportهای lowercase حذف شدند؛ `agent/mcp/index.js` و moduleهای named boundary اکنون public surface هستند.
+- tool wrapperهای root حذف شدند؛ گروه‌های `agent/tools/{filesystem,process,code,planning,memory,git,network,search,skills,mcp,discussion}` canonical هستند و `agent/tools/index.js` aggregator نهایی است.
+- `LegacyWebServer.js` به implementation canonical منتقل شد، `web/server.js` دیگر mode selector نیست و مستقیماً WebServer canonical را expose می‌کند.
+- rendererهای compatibility `web/public/app.js` و `web/public/visualizer.js` به `app/console.js` و `visualizer/renderer.js` منتقل شدند و bootstrapهای native ESM مستقیماً آن‌ها را load می‌کنند.
+- شش rollout flag موقت از `SettingsSchema` و تمام lookupهای runtime حذف شدند؛ اجرای project/run/prompt/semantic/web بدون opt-in انجام می‌شود. synthetic default همچنان برای data compatibility از `.agent/` استفاده می‌کند و حذف نشده است.
 
-### [🔴] گام ۳: ممیزی scope و پذیرش نهایی
+### [🟢] گام ۲: مستندات
 
-نگاشت دمایهٔ این سند (پیوست) مرور و هر ردیف «پوشش‌داده‌شده» علامت بخورد؛ معیارهای نهایی هر سه سند مرجع (MultProject §۷، Refactor §۶، Order §۱۱) یک‌جا اجرا و ثبت شود.
+**انجام شد (2026-08-26):** `README.md`، `HANDOFF-STRUCTURED-AI.md`، `test/README.md`، `test/fixtures/CONTRACTS.md` و `test/fixtures/baseline.md` با ساختار نهایی، روش افزودن tool/skill/agent/prompt/event/project، data paths، API contracts و verification نهایی به‌روز شدند. هر سه سند مرجع نیز به این plan لینک دارند و این plan به آن‌ها لینک برگشت دارد.
+
+### [🟢] گام ۳: ممیزی scope و پذیرش نهایی
+
+**انجام شد (2026-08-26):** نگاشت Scope Traceability مرور شد؛ gateway واقعی Semantic Engine همچنان طبق تصمیم ۱ خارج از این repository است و با stub contract-tested باقی می‌ماند. نام event/tool/action، status codeها، payloadهای موجود، مسیر single-project، CLI، MCP، UI، persistence، isolation و e2e behavior حفظ شدند؛ تغییرات عمدی Phase 30 فقط حذف selectorهای داخلی و انتقال asset/module pathهاست.
+
+**شواهد verification نهایی:**
+
+- `npm run check` — exit 0.
+- `npm test` — exit 0؛ 49 test entrypoint و **694/694 passed** پس از cleanup.
+- `npm run test:contracts` — exit 0؛ **47/47 passed** برای قراردادهای action/event/prompt/tool/API/persistence/discussion و rollout.
+- ممیزی static مسیرها — هیچ requireای به `agent/lib`، wrapperهای lowercase MCP/tool یا `LegacyWebServer` باقی نمانده است.
+- `test/mvp/mvp.test.js`، suiteهای isolation/concurrency و e2e — رفتار واقعی single-project و Multi-Project را تأیید می‌کنند.
 
 **معیار پذیرش:**
 
-- هیچ requireای به مسیر legacy نیست؛ `npm run check` و `npm test` سبز.
-- ساختار نهایی مطابق بخش ۴ سند refactor (+ `agent/discussion/` و `agent/projects/` و `agent/runtime/` و `agent/prompt/` و `agent/persistence/`) پیاده شده؛ monolithها تقسیم شده‌اند و dependencyها صریح‌اند.
-- API/CLI single-project و همهٔ قابلیت‌های Multi-Project (پذیرش فاز ۱۳) و معیارهای نهایی اسناد مرجع برقرار؛ سند با status نهایی 🟢 تکمیل می‌شود.
+- هیچ requireای به مسیر legacy نیست؛ wrapperهای فازهای قبل حذف شده‌اند.
+- ساختار نهایی مطابق بخش ۴ سند refactor و دامنه‌های discussion/projects/runtime/prompt/persistence پیاده شده و dependencyها صریح‌اند.
+- API/CLI single-project و قابلیت‌های Multi-Project برقرارند؛ تفاوت‌های داخلی Phase 30 در contractها و مستندات ثبت شده‌اند.
+- سند و تمام ردیف‌های Scope Traceability وضعیت نهایی 🟢 دارند.
+
 
 ---
 
@@ -1083,6 +1093,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 
 47. **Discussion فاز ۲۸ یک application boundary پروژه‌آگاه دارد:** `DiscussionService` caller/runtime/context/event lifecycle را inject می‌کند، `DiscussionEngine` و `TranscriptStore` از `agent.js` مستقل می‌مانند، و `TranscriptRepository` با persistence atomic در `dataRoot` پروژه می‌نویسد. APIهای project-scoped برای start/list/replay افزوده شدند؛ `/api/discussion` و ابزار/CLI legacy حفظ شدند؛ transcript خام برای replay نگه داشته و project دیگر به آن دسترسی ندارد.
 48. **تفکیک Test Suite فاز ۲۹ یک move است نه کاهش پوشش:** suiteهای legacy به domainهای متناظر منتقل شدند، assertions و execution order حفظ شد، و چهار contract suite مستقل برای tool/API/persistence/discussion اضافه شد. baseline قبل/بعد با 669 و 690 تست ثبت شده است؛ هیچ MODE یا contract محصول جدیدی ساخته نشد.
+49. **Rollout نهایی فاز ۳۰:** پس از برابری suiteهای legacy/modular، شش flag rollout و facadeهای compatibility حذف شدند. implementation canonical همیشه فعال است؛ synthetic default فقط data layout `.agent/` را برای خواندن/سازگاری نگه می‌دارد. assetهای browser نیز به مسیرهای named داخل `app/` و `visualizer/` منتقل شدند؛ قرارداد API، event، action و UI در testهای نهایی قفل است.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 - مورد باز ثبت‌شده‌ای باقی نمانده است؛ Assumption قالب ESM در تصمیم ۴۳ حل شد.

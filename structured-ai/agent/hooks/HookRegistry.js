@@ -1,6 +1,6 @@
 "use strict";
 
-const defaultSettings = require("../lib/storage");
+const defaultSettings = require("../config");
 
 const HookCondition = require("./HookCondition");
 const HookRenderer = require("./HookRenderer");

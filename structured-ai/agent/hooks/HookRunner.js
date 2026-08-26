@@ -1,6 +1,6 @@
 "use strict";
 
-const defaultSettings = require("../lib/storage");
+const defaultSettings = require("../config");
 
 const HookResult = require("./HookResult");
 
@@ -13,8 +13,8 @@ const HookResult = require("./HookResult");
 | Hook declarations are intentionally executed through the existing tool,
 | delegation and event paths. This runner owns orchestration and lifecycle,
 | but never bypasses policy, telemetry, project context or cancellation.
-| Dependencies are injected by agent.js to avoid a dependency back to the
-| facade and to keep the legacy wrappers usable during migration.
+| Dependencies are injected by agent.js to keep the hook boundary explicit
+| and independent from the application entry point.
 |--------------------------------------------------------------------------
 */
 
@@ -101,14 +101,16 @@ class HookRunner {
         const plan =
             this.currentPlanSummary();
 
+        const runId = this.currentRun()?.id || null;
+
         return {
             task: this.currentRun().task,
             objective: plan.objective || this.currentRun().task,
             repository: this.detectRepository(),
             files_changed:
-                this.toolRuntime.telemetry.changedFiles(),
+                this.toolRuntime.telemetry.changedFiles(runId),
             file_tracking_complete:
-                this.toolRuntime.telemetry.changeTrackingComplete(),
+                this.toolRuntime.telemetry.changeTrackingComplete(runId),
             plan,
             hooks: this.currentRun().hook_results,
             ...extra
@@ -195,7 +197,7 @@ class HookRunner {
                 );
 
             paths =
-                this.toolRuntime.telemetry.dirtyFiles();
+                this.toolRuntime.telemetry.dirtyFiles(this.currentRun()?.id || null);
 
             if (paths.length === 0) {
                 paths = dirtyPathsFromStatus(status.stdout);

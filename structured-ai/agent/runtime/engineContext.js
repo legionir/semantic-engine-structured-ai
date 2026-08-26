@@ -40,21 +40,7 @@ function host() {
 }
 
 
-function runtimeEngineMode() {
-
-    const settings = host().settings;
-
-    return (
-        settings.get("RUNTIME_ENGINE_MODE") === "modular"
-            ? "modular"
-            : "legacy"
-    );
-
-}
-
-
 module.exports = {
     bind,
     host,
-    runtimeEngineMode
 };

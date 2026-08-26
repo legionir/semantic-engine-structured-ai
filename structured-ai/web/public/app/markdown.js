@@ -12,7 +12,7 @@ export function safeHref(value) {
 
 export function renderMarkdown(element, value) {
   if (!element) return element;
-  /* textContent is the safe baseline; the full compatibility renderer still
+  /* textContent is the safe baseline; the full console renderer still
      owns the richer markdown presentation in app.js. */
   element.textContent = String(value ?? "");
   return element;

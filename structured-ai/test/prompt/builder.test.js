@@ -180,17 +180,10 @@ function matchesFixture(messages, structure, task) {
 
 function withMode(mode, fn) {
 
-    if (mode === "modular") {
-        process.env.PROMPT_BUILDER_MODE = "modular";
-    } else {
-        delete process.env.PROMPT_BUILDER_MODE;
-    }
-
-    try {
-        return fn();
-    } finally {
-        delete process.env.PROMPT_BUILDER_MODE;
-    }
+    /* Phase 30 has one canonical builder; retain the helper name so the
+       differential scenarios still document their comparison points. */
+    void mode;
+    return fn();
 }
 
 
@@ -439,7 +432,7 @@ async function main() {
            environment.) */
 
         const { _isActiveSkill: isActiveSkill } =
-            require(path.join(ROOT, "agent", "tools", "skills.js"));
+            require(path.join(ROOT, "agent", "tools", "skills"));
 
         for (const mode of ["legacy", "modular"]) {
 
@@ -626,10 +619,6 @@ async function main() {
 
     await test("end-to-end: a cross-root project's prompt shows its own root and context", async () => {
 
-        process.env.RUN_CONTEXT_MODE = "modular";
-        process.env.PROJECT_CONTEXT_MODE = "modular";
-        process.env.PROMPT_BUILDER_MODE = "modular";
-
         const projectBRoot =
             fs.mkdtempSync(path.join(os.tmpdir(), "agent-p5-e2eB-"));
 
@@ -693,10 +682,6 @@ async function main() {
             runtime.settings.reset("AGENT_BASE_URL");
             runtime.settings.reset("AGENT_MODEL");
             await new Promise(resolve => stub.close(resolve));
-
-            delete process.env.RUN_CONTEXT_MODE;
-            delete process.env.PROJECT_CONTEXT_MODE;
-            delete process.env.PROMPT_BUILDER_MODE;
         }
 
         assert.ok(captured.length >= 1, "the stub saw no request");

@@ -1,10 +1,8 @@
 /*
  * Browser ESM entry point — EXECUTION_PLAN Phase 24.
  *
- * The compatibility console remains the contract-tested implementation while
- * the domain modules are loaded through an explicit dependency graph. This
- * keeps the current user experience stable during the no-build migration;
- * later phases can replace one domain at a time without changing index.html.
+ * The canonical renderer is loaded through an explicit dependency graph;
+ * domain modules remain separately testable and the browser has no build step.
  */
 
 import { createStore } from "./store.js";
@@ -28,10 +26,9 @@ import * as formatters from "./formatters.js";
 import * as direction from "./direction.js";
 import * as markdown from "./markdown.js";
 
-/* The classic compatibility file owns the complete current UI wiring. It is
-   imported as an ESM module, so the browser still has one bootstrap path and
-   no absolute/localhost API dependency. */
-import "../app.js";
+/* The renderer owns browser wiring; this bootstrap owns the dependency
+   graph and exposes the modules for diagnostics and extensions. */
+import "./console.js";
 
 
 export const store = createStore();

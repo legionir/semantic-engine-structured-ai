@@ -2,7 +2,7 @@
 
 const readline = require("readline");
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 const {
     ApprovalDeniedError,
     unattendedApproval,

@@ -5,10 +5,9 @@
 | Archive repository (EXECUTION_PLAN Phase 17)
 |--------------------------------------------------------------------------
 |
-| Moved from agent/lib/archive.js. File format, index, segments, search
-| and retrieval are unchanged. agent/lib/archive.js is the legacy
-| wrapper until Phase 30. Coordination of *when* to archive (fold /
-| drop) lives in agent/context/ArchiveCoordinator.js.
+| Canonical archive repository. File format, index, segments, search and
+| retrieval remain stable. Coordination of when to archive (fold/drop)
+| lives in agent/context/ArchiveCoordinator.js.
 |--------------------------------------------------------------------------
 */
 
@@ -16,8 +15,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const settings = require("../lib/storage");
-const dataRoot = require("../lib/dataRoot");
+const settings = require("../config");
+const dataRoot = require("../persistence/DataRoot");
 const JsonRepository = require("./JsonRepository");
 const AtomicFile = require("./AtomicFile");
 const SchemaVersion = require("./SchemaVersion");

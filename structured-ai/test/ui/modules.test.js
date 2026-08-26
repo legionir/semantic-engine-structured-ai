@@ -5,7 +5,7 @@
 | Frontend module boundary — EXECUTION_PLAN Phase 24
 |--------------------------------------------------------------------------
 |
-| ui.test.js keeps the browser-facing compatibility behaviour. This suite
+| ui.test.js keeps the browser-facing renderer behaviour. This suite
 | verifies the native ESM graph, domain module inventory and relative API
 | discipline without requiring a browser or a build step.
 |--------------------------------------------------------------------------
@@ -59,11 +59,11 @@ async function main() {
     assert.ok(html.indexOf("/modal.js") < html.indexOf("/app/main.js"));
   });
 
-  await test("main.js imports the explicit domain graph and compatibility renderer", () => {
+  await test("main.js imports the explicit domain graph and canonical renderer", () => {
     const main = source("main.js");
     required.filter(name => name !== "main.js")
       .forEach(name => assert.match(main, new RegExp(`(?:\\./|\\.\\./).*${name.replace(".", "\\.")}`), name));
-    assert.match(main, /import "\.\.\/app\.js"/);
+    assert.match(main, /import "\.\/console\.js"/);
     assert.match(main, /globalThis\.StructuredAIApp/);
   });
 

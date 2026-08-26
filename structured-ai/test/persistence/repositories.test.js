@@ -64,11 +64,11 @@ async function main() {
     const MemoryRepository = require(path.join(persistDir, "MemoryRepository.js"));
     const ArchiveRepository = require(path.join(persistDir, "ArchiveRepository.js"));
 
-    const sessionsLib = require(path.join(REPO, "agent", "lib", "sessions.js"));
-    const journalLib = require(path.join(REPO, "agent", "lib", "journal.js"));
-    const eventstoreLib = require(path.join(REPO, "agent", "lib", "eventstore.js"));
-    const memoryLib = require(path.join(REPO, "agent", "lib", "memory.js"));
-    const archiveLib = require(path.join(REPO, "agent", "lib", "archive.js"));
+    const sessionsLib = require(path.join(REPO, "agent", "persistence", "SessionRepository"));
+    const journalLib = require(path.join(REPO, "agent", "persistence", "JournalRepository"));
+    const eventstoreLib = require(path.join(REPO, "agent", "persistence", "EventStoreRepository"));
+    const memoryLib = require(path.join(REPO, "agent", "context", "Memory"));
+    const archiveLib = require(path.join(REPO, "agent", "persistence", "ArchiveRepository"));
 
 
     await test("named Phase 18 modules exist", async () => {

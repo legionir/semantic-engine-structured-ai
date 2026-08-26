@@ -15,7 +15,6 @@ const { ProjectRegistry } = require("./ProjectRegistry");
 const ProjectStore = require("./ProjectStore");
 const { createProjectContext } = require("./ProjectContext");
 const {
-    projectContextMode,
     resolveProjectForRun,
     assertWorkspaceMatch
 } = require("./ProjectResolver");
@@ -41,7 +40,6 @@ module.exports = {
     ProjectStore,
     ProjectMigration,
     createProjectContext,
-    projectContextMode,
     resolveProjectForRun,
     assertWorkspaceMatch,
     registry

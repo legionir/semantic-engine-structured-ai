@@ -3,8 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const defaultSettings = require("../lib/storage");
-const defaultProject = require("../lib/project");
+const defaultSettings = require("../config");
+const defaultProject = require("../projects/WorkspaceProfile");
 
 
 /*

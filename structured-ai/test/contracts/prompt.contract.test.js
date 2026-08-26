@@ -374,7 +374,7 @@ async function main() {
 
         assert.deepStrictEqual(
             body.messages.map(message => message.role),
-            fixture.main.structure.map(item => item.role),
+            (fixture.request.message_roles || fixture.main.structure.map(item => item.role)),
             "request message roles drifted from the prompt contract"
         );
 

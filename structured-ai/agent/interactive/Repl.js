@@ -378,7 +378,8 @@ async function startSession(runtime, options) {
         } catch (error) {
 
             const cancelled =
-                runtime.isRunCancelled();
+                runtime.isRunCancelled() ||
+                /\b(?:run|task|request) cancelled\b|\baborted\b/i.test(error.message || "");
 
             process.stdout.write(
                 cancelled
@@ -408,7 +409,20 @@ async function startSession(runtime, options) {
 
         if (session.running) {
 
-            runtime.cancelRun("interrupt");
+            /* Signal callbacks run outside the run's async-local scope.
+               Address the one active interactive run explicitly instead
+               of accidentally cancelling only the process-level fallback. */
+            const active =
+                typeof runtime.runManager?.activeRuns === "function"
+                    ? runtime.runManager.activeRuns()
+                    : [];
+            const current = active[active.length - 1];
+
+            if (current && typeof runtime.cancelRunById === "function") {
+                runtime.cancelRunById(current.id, "interrupt");
+            } else {
+                runtime.cancelRun("interrupt");
+            }
 
             return;
         }

@@ -1,15 +1,15 @@
 "use strict";
 
 const filesystem = require("./filesystem");
-const fileinfo = require("./fileinfo");
-const plan = require("./plan");
+const fileinfo = require("./filesystem/FileMetadataTools");
+const plan = require("./planning");
 const memory = require("./memory");
 const skills = require("./skills");
 const search = require("./search");
 const processTools = require("./process");
 const git = require("./git");
-const net = require("./net");
-const telemetry = require("./telemetry");
+const net = require("./network");
+const telemetry = require("../runtime/Telemetry");
 const code = require("./code");
 const mcp = require("./mcp");
 const discussion = require("./discussion");
@@ -18,7 +18,7 @@ const ToolContext = require("./ToolContext");
 const {
     capResult,
     capTotalSize
-} = require("../lib/workspace");
+} = require("../context/WorkspaceBoundary");
 
 
 /*
@@ -162,17 +162,14 @@ async function discoverMcpTools(options) {
 | silently mis-scope it, so the gate below makes that a loud error with the
 | phase where each family becomes project-aware (plan/memory in 8).
 |
-| The code family left this list in Phase 6: code tools now route through
-| the semantic pool resolver, which carries the same loud-failure rule
-| internally (a scoped foreign root without SEMANTIC_POOL_MODE=modular is
-| refused instead of answered from the wrong index).
+| Code tools route through the semantic project resolver, which applies
+| the same loud-failure rule when a foreign project has no endpoint.
 |
-| Phase 8 took the plan, memory and search families out too: their
-| stores now resolve through lib/dataRoot.js to the active project's
-| data root (central for registered projects, the historical .agent
-| root otherwise), and search resolves its tree against the
-| ToolContext's project root. runtime_stats STAYS gated: process-wide
-| telemetry has no project data root it could honestly claim.
+| Plan, memory and search stores resolve through persistence/DataRoot to
+| the active project's data root (central for registered projects, the
+| compatibility .agent root for the synthetic default). runtime_stats
+| stays gated: process-wide telemetry has no project data root it could
+| honestly claim.
 |
 | Derived from the modules themselves so a converted tool can never stay
 | listed by accident.
@@ -217,7 +214,7 @@ async function executeTool(
             `Tool "${name}" is not yet project-aware and cannot run on ` +
             `project "${toolContext.projectId}" rooted outside this process ` +
             "workspace. Its conversion lands in a later EXECUTION_PLAN phase; " +
-            "run on a workspace-rooted project or use PROJECT_CONTEXT_MODE=legacy."
+            "run on a workspace-rooted project or configure a semantic endpoint."
         );
 
     }

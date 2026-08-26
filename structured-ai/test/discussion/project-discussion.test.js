@@ -25,10 +25,6 @@ const DATA_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "phase28-discussion-data
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.STRUCTURED_AI_DATA_HOME = DATA_HOME;
-process.env.PROJECT_CONTEXT_MODE = "modular";
-process.env.RUN_CONTEXT_MODE = "modular";
-process.env.PROMPT_BUILDER_MODE = "modular";
-process.env.SEMANTIC_POOL_MODE = "legacy";
 process.env.AGENT_APPROVAL = "auto";
 process.env.AGENT_VERBOSE = "0";
 process.env.AGENT_PRINT_FINAL = "0";

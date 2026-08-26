@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const dataRoot = require("../lib/dataRoot");
+const dataRoot = require("../persistence/DataRoot");
 const JsonRepository = require("../persistence/JsonRepository");
 const { safeId } = require("../persistence/SafeIdentifier");
 const SchemaVersion = require("../persistence/SchemaVersion");

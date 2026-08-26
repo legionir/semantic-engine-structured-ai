@@ -17,7 +17,7 @@ const path = require("path");
 const REPO = path.resolve(__dirname, "..", "..");
 
 const policy = require(path.join(REPO, "agent", "policy"));
-const legacy = require(path.join(REPO, "agent", "lib", "policy"));
+const legacy = require(path.join(REPO, "agent", "policy"));
 
 const results = [];
 

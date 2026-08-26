@@ -1,9 +1,8 @@
 /*
  * Visualizer ESM entry point — EXECUTION_PLAN Phase 25.
  *
- * Domain modules are explicit and independently testable. The existing
- * visualizer.js is imported as a compatibility renderer so the current graph
- * UX, selectors and fallback behavior remain unchanged during extraction.
+ * Domain modules and the renderer are explicit and independently testable;
+ * the graph UX, selectors and fallback behavior remain unchanged.
  */
 
 import * as api from "./api-client.js";
@@ -15,7 +14,7 @@ import { GraphRenderer } from "./graph-renderer.js";
 import * as details from "./node-details.js";
 import * as events from "./visualizer-events.js";
 
-import "../visualizer.js";
+import "./renderer.js";
 
 export const store = createGraphStore(api.projectIdFromLocation());
 export const layout = new LayoutClient();

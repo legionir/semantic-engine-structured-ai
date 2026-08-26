@@ -156,10 +156,8 @@ async function main() {
 
     await test("fs tools act in the caller's project and refuse foreign paths", async () => {
 
-        /* legacy mode for plain layer probes: the runtime supplies the
+        /* unscoped layer probes use the implicit default
            context, exactly like executeTool receives it in a run. */
-        delete process.env.PROJECT_CONTEXT_MODE;
-        delete process.env.RUN_CONTEXT_MODE;
 
         const ctxA = contextFor(projectA);
         const ctxB = contextFor(projectB);
@@ -378,23 +376,18 @@ async function main() {
             "projectId context without the context itself"
         );
 
-        /* modular mode refuses context-less tool execution outright */
+        /* Direct callers without a run still receive the implicit default
+           workspace boundary; project-aware runs pass the explicit context
+           above. This keeps the public tool API usable while preventing
+           forged identity in either channel. */
 
-        process.env.PROJECT_CONTEXT_MODE = "modular";
+        const implicit =
+            await tools.executeTool("fs_read", { path: "alpha.txt" }, undefined);
+        assert.match(implicit.content, /alpha/);
 
-        await expectThrow(
-            tools.executeTool("fs_read", { path: "alpha.txt" }, undefined),
-            /requires a valid project context/,
-            "context-less execution in modular mode"
-        );
-
-        await expectThrow(
-            tools.executeTool("fs_read", { path: "alpha.txt" }, { agent: "main_agent" }),
-            /requires a valid project context/,
-            "project-less context in modular mode"
-        );
-
-        delete process.env.PROJECT_CONTEXT_MODE;
+        const projectless =
+            await tools.executeTool("fs_read", { path: "alpha.txt" }, { agent: "main_agent" });
+        assert.match(projectless.content, /alpha/);
 
     });
 
@@ -476,9 +469,6 @@ async function main() {
 
 
     await test("two concurrent runs on two roots keep tools isolated end-to-end", async () => {
-
-        process.env.RUN_CONTEXT_MODE = "modular";
-        process.env.PROJECT_CONTEXT_MODE = "modular";
         process.env.AGENT_APPROVAL = "auto";
 
         /* scripted endpoint: each run writes its own artifact via
@@ -616,9 +606,6 @@ async function main() {
             assert.ok(entry.run_id, "telemetry entry lost its run attribution");
             assert.ok(entry.project_id, "telemetry entry lost its project attribution");
         }
-
-        delete process.env.RUN_CONTEXT_MODE;
-        delete process.env.PROJECT_CONTEXT_MODE;
         delete process.env.AGENT_APPROVAL;
 
     });

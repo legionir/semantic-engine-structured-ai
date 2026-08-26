@@ -20,7 +20,7 @@ const REPO = path.resolve(__dirname, "..", "..");
 const EVENTS_DIR = path.join(REPO, "agent", "events");
 const fixture = require(path.join(REPO, "test", "fixtures", "events.json"));
 const eventKit = require(path.join(EVENTS_DIR));
-const legacy = require(path.join(REPO, "agent", "lib", "events"));
+const legacy = require(path.join(REPO, "agent", "events"));
 const { Observability } = require(path.join(REPO, "agent", "runtime", "Observability"));
 
 const results = [];

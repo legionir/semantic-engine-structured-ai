@@ -8,9 +8,9 @@ const WORKSPACE =
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
-const settings = require("../../agent/lib/storage");
-const hooks = require("../../agent/lib/hooks");
-const project = require("../../agent/lib/project");
+const settings = require("../../agent/config");
+const hooks = require("../../agent/hooks");
+const project = require("../../agent/projects/WorkspaceProfile");
 
 const results = [];
 

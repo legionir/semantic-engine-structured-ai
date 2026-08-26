@@ -381,3 +381,29 @@ assert.deepStrictEqual(normalize(modularOutput), normalize(legacyOutput));
 ```
 
 شواهد اجرایی این قاعده در `test/prompt/builder.test.js`، `test/runs/run-context.test.js`، `test/runtime/engine.test.js` و تست‌های compatibility وب/CLI حفظ شده است.
+
+
+## ۳۵. Rollout نهایی و حذف facadeها (فاز ۳۰)
+
+پس از تثبیت برابری مسیرهای استخراج‌شده، مسیرهای compatibility دیگر بخشی از
+runtime نیستند:
+
+- importهای داخلی فقط به `agent/config`، `agent/context`، `agent/events`،
+  `agent/hooks`، `agent/mcp`، `agent/persistence`، `agent/policy`،
+  `agent/projects`، `agent/prompt`، `agent/runtime` و گروه‌های canonical
+  `agent/tools` اشاره می‌کنند. `agent/lib/` حذف شده است.
+- فایل‌های MCP و tool با نام‌های lowercase که فقط facade بودند حذف شده‌اند؛
+  entrypointهای `McpConfig`، `McpConnection`، `McpManager`، `mcp/protocol/`
+  و transportهای named مرجع هستند.
+- Web server فقط از `web/server/WebServer.js` ساخته می‌شود و frontend فقط
+  `web/public/app/main.js` و `web/public/visualizer/main.js` را bootstrap می‌کند.
+  rendererهای canonical در `app/console.js` و `visualizer/renderer.js` هستند.
+- شش rollout setting مرحله‌ای (`PROJECT_CONTEXT_MODE`، `RUN_CONTEXT_MODE`،
+  `PROMPT_BUILDER_MODE`، `SEMANTIC_POOL_MODE`، `RUNTIME_ENGINE_MODE` و
+  `WEB_SERVER_MODE`) از `SettingsSchema` حذف شده‌اند. نبود این settingها
+  contract است؛ flagهای مستقل محصول مانند sandbox و response format حذف نشده‌اند.
+- synthetic default همچنان برای خواندن/مهاجرت دادهٔ قبلی از `<workspace>/.agent`
+  استفاده می‌کند؛ این data compatibility است، نه مسیر اجرایی دوم.
+
+تست `test/contracts/rollout.contract.test.js` نبودن facadeها، canonical بودن
+entrypointها، حذف flagها و نبودن require به مسیرهای قدیمی را بررسی می‌کند.

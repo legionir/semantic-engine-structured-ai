@@ -2,7 +2,7 @@
  * Domain store — EXECUTION_PLAN Phase 24.
  *
  * The browser state is intentionally plain data. Reducers consume the same
- * runtime events as the compatibility console and never infer project
+ * runtime events as the canonical console and never infer project
  * identity from user-entered tool arguments.
  */
 

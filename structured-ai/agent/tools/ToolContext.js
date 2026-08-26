@@ -13,13 +13,9 @@
 | nor forge one (EXECUTION_PLAN rule 9).
 |
 | Modes:
-|   legacy  — no project context: every helper is pinned to the
-|             process-wide WORKSPACE_ROOT via the historical workspace
-|             functions, so behaviour is bit-identical to before.
-|   modular — PROJECT_CONTEXT_MODE=modular makes a valid project context
-|             mandatory: a tool that runs without one has no boundary
-|             and must fail loudly instead of resolving against the
-|             wrong root.
+| A run receives a trusted ProjectContext. Direct callers without a run
+| use the process workspace as the implicit default boundary; identity
+| fields supplied in tool arguments are always rejected.
 |
 |--------------------------------------------------------------------------
 */
@@ -36,9 +32,7 @@ const {
     resolvePathInRoot,
     assertPathSafeInRoot,
     toRelativeInRoot
-} = require("../lib/workspace");
-
-const settings = require("../lib/storage");
+} = require("../context/WorkspaceBoundary");
 
 
 class ToolContext {
@@ -190,15 +184,6 @@ function from(raw) {
 
     if (!raw || typeof raw !== "object") {
 
-        if (settings.get("PROJECT_CONTEXT_MODE") === "modular") {
-
-            throw new Error(
-                "Tool execution requires a valid project context in modular project mode; " +
-                "the runtime must pass { agent, runId, projectId, projectContext } to executeTool."
-            );
-
-        }
-
         return new ToolContext({
             agent: undefined,
             runId: null,
@@ -232,13 +217,6 @@ function from(raw) {
         throw new Error(
             "Invalid tool context: a projectId without a project context; " +
             "the id alone cannot resolve anything (rule 9)."
-        );
-
-    } else if (settings.get("PROJECT_CONTEXT_MODE") === "modular") {
-
-        throw new Error(
-            "Tool execution requires a valid project context in modular project mode; " +
-            `tool call for agent "${raw.agent || "unknown"}" arrived without one.`
         );
 
     }

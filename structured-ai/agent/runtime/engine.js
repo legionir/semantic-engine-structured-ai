@@ -5,9 +5,8 @@
 | Runtime engine kit (EXECUTION_PLAN Phase 16)
 |--------------------------------------------------------------------------
 |
-| Facade over the extracted loop. bind() is called from agent.js once the
-| live closures exist. Both RUNTIME_ENGINE_MODE values run this engine
-| (a move, not a fork — decision 35).
+| Canonical entry point for the extracted loop. bind() is called from
+| agent.js once the live closures exist.
 |--------------------------------------------------------------------------
 */
 
@@ -25,7 +24,6 @@ const AgentRun = require("./AgentRun");
 module.exports = {
     bind: context.bind,
     host: context.host,
-    runtimeEngineMode: context.runtimeEngineMode,
 
     ...RunState,
     ...RetryController,

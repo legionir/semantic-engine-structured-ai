@@ -17,7 +17,7 @@ const path = require("path");
 
 const REPO = path.resolve(__dirname, "..", "..");
 const hooks = require(path.join(REPO, "agent", "hooks"));
-const legacy = require(path.join(REPO, "agent", "lib", "hooks"));
+const legacy = require(path.join(REPO, "agent", "hooks"));
 
 const results = [];
 

@@ -248,14 +248,9 @@ function applyEnvironment(options) {
 
         }
 
-        /* Selecting a project asks for the project-aware execution
-           bundle: scoped run context (Phase 2/3), per-run isolation and
-           the project_context prompt message (Phase 5) engage together.
-           Without --project every flag stays untouched, so today's
-           single-project behavior is bit-identical. */
-        environment.PROJECT_CONTEXT_MODE = "modular";
-        environment.RUN_CONTEXT_MODE = "modular";
-        environment.PROMPT_BUILDER_MODE = "modular";
+        /* Project selection is part of the canonical execution path. The
+           runtime resolves the registered ProjectContext directly; there
+           is no process-wide rollout bundle to mutate. */
 
     }
 
@@ -685,7 +680,7 @@ async function runDiscussion(runtime, options) {
 
     const discussionDataRoot =
         projectContext?.dataRoot ||
-        require(path.join(REPO_ROOT, "agent", "lib", "dataRoot")).legacyDataRoot();
+        require(path.join(REPO_ROOT, "agent", "persistence", "DataRoot")).legacyDataRoot();
 
     const workspaceContext =
         projectContext

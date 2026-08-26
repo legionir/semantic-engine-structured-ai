@@ -6,6 +6,10 @@
 
 ---
 
+> **Execution status and verification:** the implementation is tracked in
+> [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md), including the Phase 30 canonical
+> rollout and final acceptance evidence.
+
 ## تصمیم معماری
 
 نباید ابتدا کل Structured AI را به‌صورت کامل refactor کنیم و بعد سراغ Multi-Project برویم.

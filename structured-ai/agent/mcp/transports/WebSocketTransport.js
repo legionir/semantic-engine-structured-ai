@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const http = require("http");
 const https = require("https");
 
-const settings = require("../../lib/storage");
+const settings = require("../../config");
 
 const protocol = require("../protocol");
 
