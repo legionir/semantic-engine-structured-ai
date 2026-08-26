@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۴ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۵ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۵ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۶ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -342,27 +342,27 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 
 ---
 
-## [🔴] فاز ۵: WorkerConfig schema، validation، نگاشت argv و flagهای embedding
+## [🟢] فاز ۵: WorkerConfig schema، validation، نگاشت argv و flagهای embedding
 
 **هدف:** یک schema type-safe برای پیکربندی Worker که هم CLI و هم UI از آن تغذیه شوند، و پر کردن شکاف واقعیِ نبودِ flagهای embedding (Baseline #18). معادل گام ۴ پلن مرجع + بخشی از گام ۱۲.
 
-### [🔴] گام ۱: تایپ‌ها و schema
+### [🟢] گام ۱: تایپ‌ها و schema
 
 `semantic-engine/src/gateway/types.ts` و `src/gateway/WorkerConfigSchema.ts`: `ProjectWorkerConfig` مطابق §۴ پلن مرجع (پروژه، `indexing{vectors,sqlite,blueprint,git,treeSitter}`، `watchOptions{debounceMs,blueprintMode}`، transport، security، embedding) به‌علاوهٔ JSON Schema معادل برای validation سمت سرور. `--json/--help/--version` عمداً بخشی از config **نیستند**.
 
-### [🔴] گام ۲: validation
+### [🟢] گام ۲: validation
 
 root وجود داشته باشد و directory باشد؛ canonical شود؛ پروژهٔ تکراری تشخیص داده شود؛ `dataDir` داخل `workspaceRoot` نباشد مگر override صریح؛ `debounceMs` در بازهٔ امن؛ portها یا توسط Gateway رزرو شوند یا آزاد باشند؛ **token هرگز در manifest/registry/لاگ به‌صورت plain text ذخیره نشود** (فقط env/secret reference).
 
-### [🔴] گام ۳: نگاشت config → argv (بدون shell)
+### [🟢] گام ۳: نگاشت config → argv (بدون shell)
 
 `src/gateway/workerArgv.ts`: تولید argv قطعی و white-list شده از config معتبر؛ هیچ shell string اجرا نشود؛ `commandPreview` فقط برای نمایش UI از همان تابع تولید شود.
 
-### [🔴] گام ۴: flagهای جدید CLI
+### [🟢] گام ۴: flagهای جدید CLI
 
 افزودن به `src/cli/args.ts`/`main.ts` و سیم‌کشی در `index-command.ts` و `watch-command.ts`: `--project-id`, `--data-dir`, `--socket`, `--gateway-managed` و embedding: `--embedding-provider <local|ollama|openai-compatible>`, `--embedding-model`, `--embedding-base-url`, `--embedding-api-key-env`, `--embedding-normalize/--no-embedding-normalize`. انتخاب provider باید از همان منطق `src/server/routes/jobRoutes.ts:60-80` بازاستفاده کند (`HashingEmbeddingGenerator` برای `local`، `RemoteEmbeddingGenerator` در غیر این صورت) تا دو مسیر واگرا نشوند؛ API key فقط از env خوانده شود. HELP در `main.ts` به‌روز شود.
 
-### [🔴] گام ۵: تست‌ها
+### [🟢] گام ۵: تست‌ها
 
 `WorkerConfigSchema.test.ts` (هر قاعدهٔ validation با یک تست)، `workerArgv.test.ts` (پایداری/قطعی بودن argv، نبود shell metachar، رد شدن option ناشناخته)، `embeddingFlags.test.ts` (انتخاب provider بدون network؛ نبود API key → خطای واضح؛ `normalize` روی `RemoteEmbeddingGenerator` اعمال شود).
 
@@ -371,6 +371,25 @@ root وجود داشته باشد و directory باشد؛ canonical شود؛ پ�
 - `semantic-engine index --help` و `worker --help` (پس از فاز ۷) flagهای جدید را نشان دهند.
 - مقدار نامعتبر **قبل از** start worker با پیام واضح رد شود (تست).
 - `npm run build && npm run lint && npm test` سبز؛ هیچ secret در خروجی `--json` ظاهر نشود (تست redaction).
+
+### وضعیت اجرای فاز ۵ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/gateway/types.ts`، `src/gateway/WorkerConfigSchema.ts`، `src/gateway/workerArgv.ts`، `src/vector/createEmbeddingGenerator.ts`، `src/cli/embeddingFromArgs.ts` + تست‌های `WorkerConfigSchema.test.ts` (۱۷)، `workerArgv.test.ts` (۲۸ از جمله تست جدول‌محور نگاشت)، `embeddingFlags.test.ts` (۸).
+**فایل‌های تغییرکرده:** `server/routes/jobRoutes.ts` (واگذاری انتخاب provider به کارخانهٔ مشترک)، `cli/commands/index-command.ts` و `watch-command.ts` (سیم‌کشی embedding)، `cli/main.ts` (help: بلوک `embedding` و flagهای جدید در هر دو بخش index/watch).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 187 passed / 187 total`، `Tests: 2619 passed / 2619 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۵: ۱۸۴ suite و ۲۵۶۶ تست → +۳ suite و +۵۳ تست).
+- تست جدول‌محور نگاشت: ۲۲ ردیف (۲۲ تست `it.each` از ۲۸ تست آن suite)، هر گزینهٔ عملیاتی جدول گام ۴ پلن مرجع (`--root`، `--project-id`، `--data-dir`، `--out`، `--vectors/--no-vectors`، `--sqlite`، `--no-blueprint`، `--no-git`، `--no-tree-sitter`، `--pretty`، `--no-watch`، `--debounce`، `--blueprint-mode`، `--skip-initial-index`، `--host`، `--port/--ui-port/--mcp-port`، `--socket`، `--http/--stdio/--web`، `--gateway-managed`، `--allow-remote`، `--embedding-*`) با معادل config+argv بررسی شد؛ `--json/--help/--version` هرگز در argv نمی‌آیند.
+- `node bin/semantic-engine.js --help` هر دو بخش index و watch را با flagهای جدید نشان می‌دهد (بررسی واقعی).
+- اجرای واقعی CLI: `index --root /tmp/p5-proj --embedding-provider local` → `indexed 1 files, 2 symbols` و `vectorChunks: 2` در ایندکس (یعنی provider صریح بدون `--vectors` هم vector می‌سازد)؛ `--embedding-provider cohere` → exit 1 با پیام `--embedding-provider must be one of: local, ollama, openai-compatible`؛ `--embedding-api-key-env NOPE_NOT_SET` → exit 1 با پیام «متغیر خالی یا ست‌نشده».
+- تست redaction: اجرای واقعی `runIndex` با provider راه دور و کلید `sk-secret-do-not-leak-123` در محیط → هیچ‌جای خروجی/خطا/stack اثری از کلید نیست (و خودِ شکست ثابت می‌کند مسیر CLI واقعاً به `RemoteEmbeddingGenerator` رسیده است).
+
+**سه تصمیم اجرایی (ثبت‌شده در ADR بخش ۷):**
+
+1. توکن worker اصلاً وارد argv نمی‌شود — حتی نام متغیرش؛ supervisor آن را در محیط پروسهٔ فرزند ست می‌کند (فاز ۶). `--embedding-api-key-env` فقط *نام* متغیر را می‌برد.
+2. `--embedding-provider` صریح یعنی `--vectors` روشن (مگر `--no-vectors` صریح)، وگرنه یک provider تنظیم‌شده بی‌اثر می‌ماند.
+3. انتخاب provider از `jobRoutes` به `vector/createEmbeddingGenerator` منتقل شد تا مسیر HTTP و CLI واگرا نشوند؛ `jobRoutes` حالا همان کارخانه را صدا می‌زند.
 
 ---
 

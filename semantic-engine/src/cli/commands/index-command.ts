@@ -12,7 +12,12 @@ import { createExtractors } from '../../pipeline/ExtractorFactory';
 import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { GitInfoCollector } from '../../core/git';
 import { VectorIndexer } from '../../vector/VectorIndexer';
-import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { HashingEmbeddingGenerator as FallbackHashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { IEmbeddingGenerator } from '../../vector/EmbeddingGenerator';
+import {
+  createEmbeddingGeneratorFromArgs,
+  embeddingRequested,
+} from '../embeddingFromArgs';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
@@ -81,12 +86,22 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       previousIndex = null;
     }
   }
-  const wantsVectors = boolOption(
-    args.options,
-    'vectors',
-    Boolean(previousIndex?.vectorChunks)
-  );
+  /*
+  | `--embedding-provider` صریح یعنی کاربر embedding می‌خواهد، پس vectorها هم
+  | روشن می‌شوند؛ در غیر این صورت همان رفتار قبلی (flag یا ایندکس قبلی).
+  */
+  const wantsVectors =
+    boolOption(args.options, 'vectors', Boolean(previousIndex?.vectorChunks)) ||
+    (embeddingRequested(args) && boolOption(args.options, 'vectors', true));
   const pretty = boolOption(args.options, 'pretty', true);
+
+  /*
+  | یک بار و پیش از scan ساخته می‌شود تا خطای provider یا کلید API همان‌جا
+  | دیده شود، نه بعد از خواندن کل مخزن.
+  */
+  const embeddingGenerator: IEmbeddingGenerator | undefined = wantsVectors
+    ? createEmbeddingGeneratorFromArgs(args) ?? new FallbackHashingEmbeddingGenerator()
+    : undefined;
 
   const extractors = createExtractors({
     workspaceRoot: root,
@@ -108,7 +123,7 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       */
       gitCollector: wantsGit ? new GitInfoCollector(root) : null,
       vectorIndexer: wantsVectors
-        ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
+        ? new VectorIndexer({ embeddingGenerator })
         : null,
       ...(previousIndex?.vectorChunks
         ? { previousVectorChunks: previousIndex.vectorChunks }

@@ -66,6 +66,11 @@ index options:
   --no-blueprint        skip blueprint.json
   --vectors             build vector chunks for semantic search (off by default)
   --sqlite              also write project-index.sqlite
+  --embedding-provider <p>   local (default) | ollama | openai-compatible
+  --embedding-model <m>      model name for a remote provider
+  --embedding-base-url <u>   endpoint for a remote provider
+  --embedding-api-key-env <n>  env var holding the API key (never the key)
+  --embedding-normalize      normalize vectors (default: yes)
   --no-git              skip git metrics
   --no-tree-sitter      heuristic extractors only
 
@@ -78,6 +83,11 @@ watch options:
   --debounce <ms>       batch window               (default: 500)
   --vectors             build/update vector chunks and embeddings
   --sqlite              write/update project-index.sqlite
+  --embedding-provider <p>   local (default) | ollama | openai-compatible
+  --embedding-model <m>      model name for a remote provider
+  --embedding-base-url <u>   endpoint for a remote provider
+  --embedding-api-key-env <n>  env var holding the API key (never the key)
+  --embedding-normalize      normalize vectors (default: yes)
   --no-blueprint        skip blueprint.json updates
   --blueprint-mode <m>  always (default) or threshold
   --skip-initial-index  internal: watch an existing index without rebuilding it
@@ -86,6 +96,13 @@ query options:
   --index <file>        path to project-index.json (default: <root>/.semantic-engine/…)
   --<name> <value>      passed through to the tool
   (no tool name)        list the available tools
+
+embedding:
+  --embedding-provider implies --vectors. "local" is deterministic hashing with
+  no native dependency; "ollama" and "openai-compatible" need
+  --embedding-base-url and --embedding-model. The API key is read from the
+  environment variable named by --embedding-api-key-env, never from the command
+  line, so it cannot end up in a process listing or a log.
 
 artifact location:
   generated data is written to the user data directory

@@ -339,7 +339,42 @@ reaches `child_process`: `globalSetup`
 process environment so spawned CLI children inherit it, and `setupFiles`
 (`src/test/setupDataDir.ts`) covers in-sandbox resolution.
 
-## 7. Verified baseline (2026-08-26)
+## 7. Worker configuration and embedding providers (فاز ۵)
+
+`src/gateway/types.ts` defines `ProjectWorkerConfig`: project identity,
+`indexing`, `watchOptions`, `service`, `security` and `embedding`.
+`WorkerConfigSchema.ts` supplies the defaults, the equivalent JSON Schema (used
+for server-side validation and, in فاز ۱۲, to generate the UI form) and
+`validateWorkerConfig`, which returns **every** problem at once.
+
+Rules worth knowing:
+
+- a `projectId` must be usable as a directory name;
+- `dataDir` and `socketPath` must not live inside the checkout;
+- `debounceMs` must be an integer in `[25, 60000]`;
+- a gateway-managed worker must not allow remote connections and must name the
+  environment variable holding its internal token;
+- **a secret is not a field**: passing `token` or `apiKey` in a config is a
+  validation error, and `redactWorkerConfig` projects onto known fields so a
+  future field cannot leak into a log or a manifest by accident.
+
+`workerArgv(config)` is the only place that turns a config into process
+arguments. It is deterministic, whitelisted, contains no shell
+metacharacters in its flags, and carries no secret — not even the token's
+variable name, which the supervisor sets in the child's environment instead
+(فاز ۶). `commandPreview` renders the same vector for display only.
+
+**Embedding** now has one decision point, `vector/createEmbeddingGenerator`,
+shared by `server/routes/jobRoutes.ts` and the CLI flags
+(`--embedding-provider|-model|-base-url|-api-key-env|-normalize`). `local` is
+deterministic hashing with no native dependency; `ollama` and
+`openai-compatible` require a base URL and a model and fail loudly otherwise.
+An API key is read from the environment variable *named* by
+`--embedding-api-key-env`, at the last moment, and never appears on a command
+line, in `--json` output, or in a log. Asking for a provider implies
+`--vectors`.
+
+## 8. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,
