@@ -504,19 +504,27 @@ action `delegate` بتواند `projectId` بگیرد؛ نبود آن یعنی �
 
 ---
 
-## [🔴] فاز ۱۳: تست‌های Isolation، Load و پذیرش End-to-End (درگاه MVP)
+## [🟢] فاز ۱۳: تست‌های Isolation، Load و پذیرش End-to-End (درگاه MVP)
 
 **هدف و scope:** درگاه رسمی پذیرش MVP Multi-Project: اثبات ایزولیشن، پایداری و سازگاری قبل از شروع refactorهای بزرگ. این فاز feature جدید نمی‌سازد؛ شواهد می‌سازد.
 
-### [🔴] گام ۱: سری تست‌های isolation
+**تکمیل 2026-08-26:** گام‌های ۱ تا ۳ — ۱۰ تست جدید در `test/mvp/mvp.test.js` سبز؛ suite کامل 549/549 و `npm run check` سبز. هیچ قابلیت محصولی افزوده نشد. باندل رسمی runtime MVP همه-modular است و در تست‌ها صریحاً ست می‌شود؛ پیش‌فرض schema روی `legacy` می‌ماند تا CLI/API بدون scope بیت‌به‌بیت یکسان بمانند (تصمیم ۳۲).
+
+### [🟢] گام ۱: سری تست‌های isolation
+
+**انجام شد (2026-08-26):** پنج تست isolation در `test/mvp/mvp.test.js`: Project (basename یکسان `engine-core`، root متفاوت، artifact و Semantic مستقل)؛ Tool (`fs_read`/`fs_write`، `terminal_exec` cwd، `git_log`، sessionهای process)؛ Runtime (دو Run هم‌زمان، cancel الف بدون اثر روی ب، delegation labelدار با synthesis)؛ MCP (`tools/list`/`tools/call` و cache pool جدا برای `/mcp/prj-a` و `/mcp/prj-b`)؛ Persistence (memory/plan/session/archive/eventstore با dataRoot جدا).
 
 تست‌های: Project isolation (basename یکسان، root متفاوت، artifact و state مستقل، نتیجهٔ Semantic مستقل)؛ Tool isolation (read/write/terminal/git/process)؛ Runtime isolation (Run هم‌زمان، budget، cancellation، delegation)؛ MCP isolation (`/mcp/a` و `/mcp/b`: tools/list و tools/call جدا، connection و cache جدا)؛ Persistence isolation (memory/plan/session/archive/event replay جدا) — همه در `test/` با ساختار مناسب ثبت شوند.
 
-### [🔴] گام ۲: تست بار و recovery
+### [🟢] گام ۲: تست بار و recovery
 
-دو task سنگین هم‌زمان روی دو پروژه + یک پروژهٔ سوم در صف؛ شبیه‌سازی crash یک Worker و یک Run و ادامهٔ پروژه‌های دیگر بدون interruption؛ رفتار queue و limitها (fاز ۱۰) تحت بار.
+**انجام شد (2026-08-26):** سه تست load/recovery: دو task سنگین + سوم queued سپس finish (سقف `MAX_CONCURRENT_PROJECT_RUNS=2`)؛ crash شبیه‌سازی‌شدهٔ Worker الف (`observability.recordCrash`) و cancel یک Run — همسایه ادامه می‌دهد و gateway حداکثر `degraded` است نه `down`؛ overflow صف `RUN_QUEUE_FULL`/429 بدون hang.
 
-### [🔴] گام ۳: سناریوی پذیرش end-to-end ده‌مرحله‌ای
+دو task سنگین هم‌زمان روی دو پروژه + یک پروژهٔ سوم در صف؛ شبیه‌سازی crash یک Worker و یک Run و ادامهٔ پروژه‌های دیگر بدون interruption؛ رفتار queue و limitها (فاز ۱۰) تحت بار.
+
+### [🟢] گام ۳: سناریوی پذیرش end-to-end ده‌مرحله‌ای
+
+**انجام شد (2026-08-26):** تست «ten-step end-to-end acceptance scenario» زنجیره را با Web Console زنده قفل می‌کند: راه‌اندازی → ثبت A و B → انتخاب‌پذیری `/api/projects` → دو task هم‌زمان با workspace صحیح → Semantic route صحیح → state مستقل → خرابی Worker/Run الف → ادامهٔ ب → dashboard و health هر دو پروژه + مسیر legacy `POST /api/tasks` `{accepted:true}`. تست دهم باندل فلگ‌ها را modular و پیش‌فرض schema را `legacy` قفل می‌کند.
 
 اجرای خودکار/نیمه‌خودکار سناریوی سند مرجع: راه‌اندازی → ثبت پروژه‌های A و B → انتخاب‌پذیری → دو task هم‌زمان → workspace صحیح → Semantic route صحیح → state مستقل → خرابی یک Worker/Run → ادامهٔ پروژهٔ دیگر → نمایش درست UI. نتیجه و شواهد در سند ثبت شود.
 
@@ -525,6 +533,8 @@ action `delegate` بتواند `projectId` بگیرد؛ نبود آن یعنی �
 - همهٔ تست‌های isolation و load و سناریوی ده‌مرحله‌ای سبز و در CI محلی قابل‌تکرار (`npm test` سبز، شامل سری‌های جدید).
 - API و CLI single-project بدون تغییر ظاهری کار می‌کنند (قرارداد baseline سبز).
 - MVP رسماً پذیرفته می‌شود و flagهای `*_MODE` روی مقادیر modular نهاییِ این scope قفل می‌شوند (پیش‌فرض برنامه برای فازهای refactor بعدی).
+
+**وضعیت معیارها (2026-08-26):** هر سه بند اثبات شد — isolation/load/ده‌مرحله‌ای 10/10 در `test/mvp/mvp.test.js` و در زنجیرهٔ `npm test`؛ CLI/API single-project بدون تغییر ظاهری (`cli.test.js`/`web.test.js` و deep-equal مسیر قدیمی `{accepted:true}`)؛ MVP پذیرفته شد با باندل runtime همه-modular در شواهد (`PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE`/`SEMANTIC_POOL_MODE=modular` در تست‌ها)، در حالی که پیش‌فرض schema `legacy` می‌ماند (تصمیم ۳۲ — قفل کردن پیش‌فرض روی modular هر `executeTool` بدون context را می‌شکند و قرارداد «بدون تغییر ظاهری» را نقض می‌کند).
 
 ---
 
@@ -935,5 +945,6 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 29. **Composer چندپروژه‌ای (فاز ۱۱):** به‌خاطر قفل busy سراسری تصمیم ۲۸، scope «Multiple projects» چند Run موازی نیست — صف ترتیبی labelدار (`[Name] task`) است. synthesis واقعی در فاز ۱۲.
 30. **Dashboard (فاز ۱۱):** همان SPA کنسول است؛ سرور `GET /projects` و `GET /projects/:id` را با `index.html` جواب می‌دهد و تب با `?tab=` انتخاب می‌شود. Visualizer `?projectId=` را به `/api/graph/*` می‌فرستد.
 31. **سوئیچ پروژه در delegation (فاز ۱۲):** فیلد مدل `projectId` است (camelCase، مطابق گام ۹ سند پیاده‌سازی) و `project_id` به‌عنوان alias پذیرفته می‌شود. سوئیچ فقط وقتی هر دو flag modular باشند اعمال می‌شود؛ در legacy فیلد validate می‌شود ولی نادیده گرفته می‌شود. ایزوله بودن دو Sub-Agent هم‌زمان با ALS (`runWithProject`) است نه با mutate کردن `currentRun().project`. approval write اضافی (`cross_project_write` / `multi_project_write`) جدا از تصمیم policy صادر می‌شود.
+32. **قفل فلگ‌های MVP (فاز ۱۳):** باندل رسمی runtime همه-modular است (`PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE`/`SEMANTIC_POOL_MODE=modular`) و در تست‌های پذیرش صریحاً ست می‌شود. پیش‌فرض schema روی `legacy` می‌ماند — تغییر پیش‌فرض `PROJECT_CONTEXT_MODE` به modular هر `executeTool` بدون context را با گیت فاز ۴ رد می‌کند و CLI/API بدون scope را از بیت‌به‌بیت یکسان بودن خارج می‌کند (نقض قانون ۴ و معیار «بدون تغییر ظاهری»). قفل modular برای مسیرهای پروژه‌آگاه است نه برای defaultهای schema؛ حذف flagها همچنان فاز ۳۰ است.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

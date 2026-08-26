@@ -10683,6 +10683,12 @@ async function main() {
 
         toolRuntime.shutdown();
 
+        try {
+            await eventstore.flush();
+        } catch {
+            /* a store flush must never hide the run result */
+        }
+
         /*
         | A final action that carries an error is a failed run,
         | even though the agent loop itself completed.
@@ -10697,6 +10703,12 @@ async function main() {
     } catch (error) {
 
         toolRuntime.shutdown();
+
+        try {
+            await eventstore.flush();
+        } catch {
+            /* a store flush must never hide the run result */
+        }
 
         console.error(
             "\nAgent failed:\n"

@@ -207,3 +207,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Approval نوشتن:** ابزارهای `fs_write`/`fs_edit`/`fs_mkdir`/`fs_move`/`fs_delete` روی پروژه‌ای غیر از پروژهٔ Run → approval جدا با `rule: "cross_project_write"`؛ هر write پس از delegation به بیش از یک پروژه → `rule: "multi_project_write"`. این approval علاوه بر تصمیم عادی policy است.
 - **Events:** `delegation:start`/`delegation:graph`/`delegation:end` فیلد additive `projectId` روی آیتم‌ها دارند. envelope `project_id` رویدادهای scoped فرزند، پروژهٔ همان Sub-Agent است. `policy:decision` فقط وقتی `project_id` دارد که پروژه‌ای واقعاً در scope باشد (مقدار null روی رویداد legacy stamp نمی‌شود).
 - **Exports additive:** `effectiveProject`, `effectiveProjectId`, `runWithProject`, `isMultiProjectTask` از `agent/agent.js`؛ `events.withProjectId`.
+
+## ۱۸. پذیرش MVP فاز ۱۳ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** این فاز فیلد/مسیر/action/event تازه‌ای اضافه نمی‌کند. شواهد isolation/load/ده‌مرحله‌ای در `test/mvp/mvp.test.js` (۱۰ تست) قفل شده‌اند و در زنجیرهٔ `npm test` اجرا می‌شوند.
+- **باندل runtime رسمی MVP:** `PROJECT_CONTEXT_MODE=modular`، `RUN_CONTEXT_MODE=modular`، `PROMPT_BUILDER_MODE=modular`، `SEMANTIC_POOL_MODE=modular` — فقط وقتی مسیر پروژه‌آگاه فعال است (تست‌ها صریحاً ست می‌کنند؛ CLI `--project` همان bundle سه‌تایی فاز ۷ را ست می‌کند).
+- **پیش‌فرض schema:** هر چهار flag بالا پیش‌فرض `legacy` می‌مانند (تصمیم ۳۲). CLI بدون `--project` و `POST /api/tasks` بدون تغییر ظاهری‌اند (بدنهٔ 202 `{accepted:true}` بیت‌به‌بیت).
+- **دوام eventstore روی خروج CLI:** `eventstore.flush()` قبل از `process.exit` در `bin/agent.js` و `agent.js#main` صدا زده می‌شود تا صف `appendQueued` با خروج ناگهانی از بین نرود (رفتار persistence فاز ۸؛ شکل فایل JSONL بدون تغییر).
