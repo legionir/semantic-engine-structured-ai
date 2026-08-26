@@ -84,9 +84,37 @@ display name only; moving is an explicit `relocate` (فاز ۲).
 
 `<dataRoot>/registry.json` is authoritative for Worker/Gateway routing.
 Registering a root that is already registered returns the existing record
-instead of creating a second one. An externally supplied id matching
-`^prj-[a-z0-9][a-z0-9-]{0,63}$` is adopted verbatim so structured-ai can keep
-the ids it already stored.
+instead of creating a second one. An externally supplied id is adopted
+verbatim so structured-ai can keep the ids it already stored.
+
+Implemented in `src/core/config/ProjectRegistry.ts`
+(atomic `registry.json`, corrupt files quarantined as
+`registry.json.corrupt-<ts>` instead of crashing, per-project
+`<dataRoot>/projects/<id>/manifest.json`).
+
+**Which ids are acceptable (refined in فاز ۲).** The generated form is
+`prj-…`, but ids already in the wild are freer: `serve` registers the
+workspace as `current` and `<basename>` (`serve-command.ts:171-173`) and
+`HttpServer.test.ts:173` expects `sample-app` to survive. Three validators
+therefore exist in `ProjectIdentity.ts`:
+
+| validator | charset | used for |
+|---|---|---|
+| `isValidProjectId` | `^prj-[a-z0-9][a-z0-9-]{0,63}$` | ids the engine generates |
+| `isSafeProjectId` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, no `..` | lookup keys / aliases |
+| `isPathSafeProjectId` | same, lowercase only | ids that become a **directory name** |
+
+Lowercase is required for directory names because macOS and Windows are
+case-insensitive: two ids differing only in case would collide on disk.
+
+**Aliases.** Every id a project has ever been registered under resolves
+through `ProjectService.getProject`, but `listProjects()` (and therefore
+`GET /api/v1/projects`) returns each project **once**. That is an intentional
+behaviour change: `serve` used to produce three rows for one workspace.
+
+**Not yet done:** `ProjectService` does not hydrate itself from the registry
+at startup; a fresh process starts empty and the Gateway loads projects in
+فاز ۹. Re-registering a known root still yields the persisted id.
 
 ### D5 — Worker transport
 
@@ -170,6 +198,19 @@ assertProjectId(id: string): string;                  // id is a directory name 
 // src/core/config/ProjectPaths.ts
 resolveProjectPaths(options: ResolveProjectPathsOptions): ProjectPaths;
 artifactRootFor(options: ResolveProjectPathsOptions): string;
+
+// src/core/config/ProjectRegistry.ts (فاز ۲)
+class ProjectRegistry {
+  register(input: RegisterProjectInput): ProjectRecord;   // duplicate root → existing record
+  get(idOrAlias: string): ProjectRecord | undefined;
+  getByRoot(rootPath: string): ProjectRecord | undefined;
+  list(): ProjectRecord[];
+  rename(id, name): ProjectRecord;                        // id never changes
+  relocate(id, newRoot): ProjectRecord;                   // explicit only; refuses a claimed root
+  remove(id): boolean;
+  touch(id): ProjectRecord | undefined;
+  writeManifest(record): string;                          // data root only
+}
 ```
 
 `ProjectPaths` separates the two kinds of path on purpose:

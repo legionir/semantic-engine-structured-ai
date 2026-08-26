@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۲ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ و ۲ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۳ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -86,7 +86,7 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 
 - **D1 — data root واحد و platform-aware:** Linux `$XDG_DATA_HOME/semantic-engine` (وگرنه `~/.local/share/semantic-engine`)، macOS `~/Library/Application Support/SemanticEngine`، Windows `%LOCALAPPDATA%/SemanticEngine`. override با `SEMANTIC_ENGINE_DATA_DIR`. مسیر **`.semantic-engine` تودرتو ساخته نمی‌شود** (رفع تناقض §۲٫۲ و §۳ پلن مرجع).
 - **D2 — کلیدهای پیکربندی از مسیر schema موجود:** `semanticEngine.dataDir` و `semanticEngine.artifactLocation` (enum: `in-root` | `external`) به `contracts/config.schema.json` اضافه می‌شوند؛ به‌خاطر `envVarNameFor` (Config.ts:105-110) به‌ترتیب `SEMANTIC_ENGINE_DATA_DIR` و `SEMANTIC_ENGINE_ARTIFACT_LOCATION` خوانده می‌شوند — بدون env موازی و دستی.
-- **D3 — scheme شناسه (تصمیم تأییدشدهٔ کارفرما، ۲۰۲۶-۰۸-۲۶):** `prj-<slug(name)>-<sha256(canonicalRoot)[0:8]>`، یعنی **دقیقاً** الگوریتم فعلی `structured-ai/agent/projects/ProjectRegistry.js:61`. registry موتور یک id خارجیِ معتبر (`^prj-[a-z0-9][a-z0-9-]{0,63}$`) را بدون تغییر می‌پذیرد تا دو طرف هم‌گرا بمانند. `prj-<uuid>` پلن مرجع **جایگزین** می‌شود (نه موازی)، چون routing به توافق دو registry نیاز دارد.
+- **D3 — scheme شناسه (تصمیم تأییدشدهٔ کارفرما، ۲۰۲۶-۰۸-۲۶):** `prj-<slug(name)>-<sha256(canonicalRoot)[0:8]>`، یعنی **دقیقاً** الگوریتم فعلی `structured-ai/agent/projects/ProjectRegistry.js:61`. registry موتور یک id خارجیِ بی‌خطر را بدون تغییر می‌پذیرد تا دو طرف هم‌گرا بمانند. **پالایش فاز ۲:** «بی‌خطر» دو سطح دارد — `isSafeProjectId` برای lookup/alias (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` بدون `..`) و `isPathSafeProjectId` (همان، فقط lowercase) برای وقتی شناسه نام پوشه می‌شود؛ دلیلش این است که شناسه‌های موجود در دنیا آزادترند (`serve` پروژه را با `current` و `<basename>` ثبت می‌کند و `HttpServer.test.ts:173` انتظار دارد `sample-app` همان id بماند) و اینکه macOS/Windows به بزرگی/کوچکی حروف حساس نیستند. الگوی `^prj-[a-z0-9][a-z0-9-]{0,63}$` برای شناسهٔ *تولیدشده* باقی است. `prj-<uuid>` پلن مرجع **جایگزین** می‌شود (نه موازی)، چون routing به توافق دو registry نیاز دارد.
 - **D4 — منبع حقیقت projectId:** registry موتور (`<dataRoot>/registry.json`) برای Worker/Gateway؛ structured-ai رکورد خودش را دارد و id را هنگام ثبت به موتور می‌دهد. کلید یکتایی **canonicalRoot** است، نه id: ثبت root تکراری همان رکورد را برمی‌گرداند.
 - **D5 — transport داخلی Worker:** پیش‌فرض loopback TCP با پورت ephemeral تخصیص‌یافته توسط Gateway + توکن داخلی worker. Unix domain socket به‌عنوان گزینهٔ دوم **فقط پس از** رفع `checkConnection` (فاز ۶) فعال می‌شود. `SO_REUSEPORT` ممنوع (مطابق پلن مرجع §۲٫۱).
 - **D6 — سیاست Origin پشت Gateway:** Gateway موظف است `Origin` ورودی را حذف و `X-Forwarded-For/Proto/Host` را اضافه کند؛ Worker در حالت `--gateway-managed` و **فقط با توکن داخلی معتبر** به trusted gateway اعتماد می‌کند. در حالت standalone رفتار فعلی (loopback + Origin) بدون تغییر می‌ماند.
@@ -178,23 +178,23 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 
 ---
 
-## [🔴] فاز ۲: ProjectRegistry، شناسهٔ پایدار و رفع collision موجود
+## [🟢] فاز ۲: ProjectRegistry، شناسهٔ پایدار و رفع collision موجود
 
 **هدف:** registry دائمی پروژه‌ها در data root و حذف باگ واقعیِ id مشتق از basename. معادل گام ۲ پلن مرجع + کار اصلاحی که بازبینی کد الزامی کرد.
 
-### [🔴] گام ۱: پیاده‌سازی `ProjectRegistry`
+### [🟢] گام ۱: پیاده‌سازی `ProjectRegistry`
 
 فایل جدید `semantic-engine/src/core/config/ProjectRegistry.ts`: بارگذاری/ذخیرهٔ `<dataRoot>/registry.json` (`{version:1, projects:[…]}`) با نوشتن atomic (tmp + rename) و بازیابی از فایل نیمه‌خراب (backup + شروع تمیز، بدون crash). متدها: `register`, `get`, `getByRoot`, `list`, `rename`, `relocate`, `remove`, `touch`.
 
-### [🔴] گام ۲: قواعد identity و یکتایی
+### [🟢] گام ۲: قواعد identity و یکتایی
 
 در `register`: (۱) canonicalize با `ProjectIdentity`، (۲) بررسی وجود و directory بودن root، (۳) اعمال سیاست symlink (مسیر canonical ذخیره می‌شود)، (۴) **root تکراری → بازگرداندن رکورد موجود** (نه ساخت جدید)، (۵) پذیرش id خارجی معتبر مطابق D3 و در غیر این صورت تولید با `projectIdFor`، (۶) ساخت `<artifactRoot>/manifest.json` با `{projectId,name,rootPath,createdAt,lastSeenAt}`. `rename` هرگز id را تغییر ندهد؛ `relocate` فقط با عملیات صریح و با به‌روزرسانی canonicalRoot.
 
-### [🔴] گام ۳: واگذاری `ProjectService` به registry و رفع overwrite
+### [🟢] گام ۳: واگذاری `ProjectService` به registry و رفع overwrite
 
 تغییر `semantic-engine/src/services/ProjectService.ts:49-52` تا id از registry/`ProjectIdentity` بیاید و `prj-${basename}` حذف شود؛ رفع تداخل `this.projects.set(id, managed)` (خط ۱۷۴) با dedupe بر پایهٔ canonicalRoot. **حفظ** signature فعلی `registerProject(projectPath, customId?, customName?)` و شکل پاسخ `projectRoutes.ts:12-52` تا UI و تست‌های فعلی نشکنند.
 
-### [🔴] گام ۴: تست‌های رگرسیون collision
+### [🟢] گام ۴: تست‌های رگرسیون collision
 
 `ProjectRegistry.test.ts` + تست سناریوی بازبینی: `/tmp/…/client-a/app` و `/tmp/…/client-b/app` → دو رکورد با دو id متفاوت و `listProjects().length === 2`؛ ثبت مجدد همان root → همان id و بدون رکورد جدید؛ rename → id ثابت؛ registry خراب → بازیابی بدون crash.
 
@@ -203,6 +203,25 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 - ثبت root تکراری پروژهٔ جدید نسازد؛ تغییر نام، projectId را تغییر ندهد.
 - `npm run build && npm test` سبز؛ به‌ویژه `npx jest src/services src/server src/core/config` بدون شکست.
 - هیچ فایل جدیدی در source root ساخته نشود (registry فقط در data root).
+
+### وضعیت اجرای فاز ۲ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `semantic-engine/src/core/config/ProjectRegistry.ts` + تست‌های `ProjectRegistry.test.ts`، `src/services/ProjectService.test.ts` (این سرویس تا امروز تست نداشت) و `src/server/projectRegistryRoutes.test.ts`.
+**فایل‌های تغییرکرده:** `ProjectService.ts` (کلید map از id به ریشهٔ canonical + `byId` برای aliasها + فیلد `aliases`)، `ProjectIdentity.ts` (+`isSafeProjectId`/`isPathSafeProjectId`/`assertPathSafeProjectId`)، `ProjectPaths.ts` (استفاده از اعتبارسنج path-safe)، `server/types.ts` (+`PlatformConfig.dataRoot`)، `HttpServer.ts` (تزریق registry)، `LodService.test.ts` (فیلد جدید)، barrelها، ADR.
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 و `npm run lint` بدون خروجی.
+- `npm test` → **`Test Suites: 177 passed / 177 total` و `Tests: 2528 passed / 2528 total`** (پیش از فاز ۲: ۱۷۴ suite و ۲۵۰۸ تست؛ یعنی +۳ suite و +۲۰ تست، بدون regression).
+- رگرسیون اصلی با اجرای واقعی اثبات شد: دو root با basename یکسان → دو id متفاوت و `listProjects().length === 2` (هم در `ProjectService` و هم از طریق `POST/GET /api/v1/projects` روی `HttpServer` واقعی).
+- ثبت مجدد همان root → همان id و بدون رکورد جدید؛ `rename` → id ثابت؛ `relocate` به root ثبت‌شده → خطا؛ registry خراب → قرنطینه به `registry.json.corrupt-<ts>` و ادامهٔ کار.
+- هیچ فایلی داخل source root ساخته نشد: تست‌ها `fs.readdirSync(root)` را با `['src']` مقایسه می‌کنند و `registry.json`/`manifest.json` فقط زیر data root هستند.
+
+**تغییرات رفتاری عمدی و ثبت‌شده (قانون ۵):**
+
+1. `listProjects()` دیگر برای یک workspace سه ردیف alias برنمی‌گرداند؛ هر پروژه یک بار ظاهر می‌شود و همهٔ aliasها (`current`، `prj-<basename>`، `<basename>`) همچنان در `getProject` resolve می‌شوند.
+2. شناسهٔ صریحی که نویسهٔ بی‌خطر ندارد (مثلاً `../escape`) به‌جای id، alias/رد می‌شود و id تولیدشده به‌کار می‌رود.
+3. `ProjectService` در شروع اجرا خودش را از registry پر نمی‌کند (پروسهٔ تازه خالی شروع می‌کند و ثبت مجدد همان id پایدار را برمی‌گرداند)؛ hydrate کردن وظیفهٔ Gateway در فاز ۹ است.
 
 ---
 

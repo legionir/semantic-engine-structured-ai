@@ -20,6 +20,7 @@ import { AuditLogger } from '../security/audit/AuditLogger';
 import { MetricsCollector } from '../observability/MetricsCollector';
 import { OpenTelemetryTracer } from '../observability/OpenTelemetryTracer';
 import { ProjectService } from '../services/ProjectService';
+import { ProjectRegistry } from '../core/config/ProjectRegistry';
 import { SearchService } from '../services/SearchService';
 import { CodeIntelligenceService } from '../services/CodeIntelligenceService';
 import { ContextService } from '../services/ContextService';
@@ -91,7 +92,10 @@ export class HttpServer {
       this.sse,
       config.projectsRoot ? path.join(config.projectsRoot, '.agent', 'jobs.json') : undefined
     );
-    this.projects = new ProjectService(config.projectsRoot);
+    this.projects = new ProjectService(
+      config.projectsRoot,
+      config.dataRoot ? { registry: new ProjectRegistry({ dataRoot: config.dataRoot }) } : {}
+    );
     this.indexingWorker = new IndexingWorker(this.jobQueue, this.projects);
     this.searchService = new SearchService();
     this.codeService = new CodeIntelligenceService();

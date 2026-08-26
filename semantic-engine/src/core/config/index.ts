@@ -43,12 +43,27 @@ export {
 } from './DataRootResolver';
 export type { ArtifactLocation, DataRootOptions } from './DataRootResolver';
 export {
+  MANIFEST_SCHEMA_VERSION,
+  PROJECT_MANIFEST_FILE,
+  ProjectRegistry,
+  REGISTRY_FILE,
+  REGISTRY_VERSION,
+  defaultRegistryPath,
+  ensureRegistryPath,
+} from './ProjectRegistry';
+export type { ProjectRecord, ProjectRegistryOptions, RegisterProjectInput } from './ProjectRegistry';
+export {
+  PATH_SAFE_PROJECT_ID_PATTERN,
   PROJECT_ID_MAX_LENGTH,
   PROJECT_ID_PATTERN,
   PROJECT_ID_PREFIX,
+  SAFE_PROJECT_ID_PATTERN,
+  assertPathSafeProjectId,
   assertProjectId,
   assertProjectRoot,
   canonicalizeRoot,
+  isPathSafeProjectId,
+  isSafeProjectId,
   isValidProjectId,
   projectIdFor,
   projectHash,

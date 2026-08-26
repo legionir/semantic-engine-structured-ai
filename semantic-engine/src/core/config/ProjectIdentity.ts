@@ -136,6 +136,51 @@ export function isValidProjectId(id: unknown): boolean {
   return PROJECT_ID_PATTERN.test(id);
 }
 
+/*
+|── شناسه‌هایی که از بیرون می‌آیند ──────────────────────────────────────────
+|
+| الگوی `prj-…` برای شناسهٔ *تولیدشده* است. ولی شناسه‌های موجود در دنیا
+| از قبل آزادترند: `serve` پروژهٔ ریشه را با `current` و `<basename>` ثبت
+| می‌کند (`serve-command.ts:171-173`) و `HttpServer.test.ts:173` انتظار دارد
+| `sample-app` همان id باقی بماند. پس دو اعتبارسنج دیگر لازم است:
+|
+|   - `isSafeProjectId`       — برای lookup/alias: بدون `/`، `\` و `..`
+|   - `isPathSafeProjectId`   — برای وقتی شناسه *نام پوشه* می‌شود: همان
+|                               قواعد، به‌علاوهٔ فقط حروف کوچک، چون روی
+|                               macOS/Windows دو شناسهٔ هم‌نام با تفاوت
+|                               بزرگی/کوچکی حروف به یک پوشه می‌خورند.
+*/
+
+/** شناسهٔ آزادِ داده‌شده از بیرون؛ فقط نویسه‌های بی‌خطر. */
+export const SAFE_PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** همان، ولی lowercase — تنها شکل مجاز برای نام پوشه. */
+export const PATH_SAFE_PROJECT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+export function isSafeProjectId(id: unknown): boolean {
+  if (typeof id !== 'string' || id.length > PROJECT_ID_MAX_LENGTH) return false;
+  if (id.includes('..')) return false;
+  return SAFE_PROJECT_ID_PATTERN.test(id);
+}
+
+export function isPathSafeProjectId(id: unknown): boolean {
+  if (typeof id !== 'string' || id.length > PROJECT_ID_MAX_LENGTH) return false;
+  if (id.includes('..')) return false;
+  return PATH_SAFE_PROJECT_ID_PATTERN.test(id);
+}
+
+/** مثل `assertProjectId`، برای شناسه‌ای که نام پوشه می‌شود. */
+export function assertPathSafeProjectId(id: string): string {
+  if (!isPathSafeProjectId(id)) {
+    throw new Error(
+      `Invalid project id: ${JSON.stringify(id)}. ` +
+        `A project id used as a directory name must match ${PATH_SAFE_PROJECT_ID_PATTERN} ` +
+        `(no path separators, no "..", lowercase only).`
+    );
+  }
+  return id;
+}
+
 /** Throws unless `id` is safe to use as a directory name and route segment. */
 export function assertProjectId(id: string): string {
   if (!isValidProjectId(id)) {

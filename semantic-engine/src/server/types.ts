@@ -59,6 +59,12 @@ export interface PlatformConfig {
   readonly maxBodyBytes?: number;
   readonly projectsRoot?: string;
   readonly staticDir?: string;
+  /**
+   * data root برای registry دائمی پروژه‌ها (`registry.json` و manifest هر
+   * پروژه). وقتی داده نشود، registry فقط در حافظه نگه داشته می‌شود و چیزی
+   * روی دیسک نوشته نمی‌شود — که برای تست‌ها رفتار درست است.
+   */
+  readonly dataRoot?: string;
 }
 
 // ── Graph View Model Types ───────────────────────────────────────────────

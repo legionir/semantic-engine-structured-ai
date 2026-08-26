@@ -104,13 +104,22 @@ export {
 export type { ArtifactLocation, DataRootOptions } from './core/config/DataRootResolver';
 export {
   PROJECT_ID_PATTERN,
+  assertPathSafeProjectId,
   assertProjectId,
   assertProjectRoot,
   canonicalizeRoot,
+  isPathSafeProjectId,
+  isSafeProjectId,
   isValidProjectId,
   projectIdFor,
   slugify,
 } from './core/config/ProjectIdentity';
+export { ProjectRegistry, REGISTRY_FILE, REGISTRY_VERSION } from './core/config/ProjectRegistry';
+export type {
+  ProjectRecord,
+  ProjectRegistryOptions,
+  RegisterProjectInput,
+} from './core/config/ProjectRegistry';
 export type { ExploreOptions, ExploredNode, ExplorationResult } from './graphs/SubgraphExplorer';
 export { ExplainSymbolTool } from './ai/tools/ExplainSymbolTool';
 export type { ExplainSymbolInput, SymbolExplanation } from './ai/tools/ExplainSymbolTool';

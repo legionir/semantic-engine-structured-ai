@@ -12,7 +12,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { ArtifactLocation, DEFAULT_ARTIFACT_LOCATION, resolveDataRoot } from './DataRootResolver';
-import { assertProjectId } from './ProjectIdentity';
+import { assertPathSafeProjectId } from './ProjectIdentity';
 
 export const PROJECT_OUTPUT_DIR = '.semantic-engine';
 export const LEGACY_PROJECT_OUTPUT_DIR = path.join('.agent', 'semantic');
@@ -219,7 +219,9 @@ export function artifactRootFor(options: ResolveProjectPathsOptions): string {
   | شناسه مستقیماً بخشی از مسیر است، پس پیش از هر `path.join` اعتبارسنجی
   | می‌شود؛ `prj-../other` باید خطا بدهد، نه یک مسیر بیرون‌زده بسازد.
   */
-  const projectId = assertProjectId(options.projectId);
+  /* `assertPathSafeProjectId` و نه `assertProjectId`: شناسه‌های موجود در
+     دنیا (`current`، `sample-app`) پیشوند `prj-` ندارند ولی بی‌خطرند. */
+  const projectId = assertPathSafeProjectId(options.projectId);
   const root = normalizeWorkspaceRoot(options.workspaceRoot);
 
   const outOverride = (options.outOverride ?? '').trim();
@@ -250,7 +252,8 @@ export function artifactRootFor(options: ResolveProjectPathsOptions): string {
  * `.semantic-engine` by hand is exactly the bug this module exists to end.
  */
 export function resolveProjectPaths(options: ResolveProjectPathsOptions): ProjectPaths {
-  const projectId = assertProjectId(options.projectId);
+  /* همان اعتبارسنجی `artifactRootFor`؛ شناسه نام پوشه می‌شود. */
+  const projectId = assertPathSafeProjectId(options.projectId);
   const workspaceRoot = normalizeWorkspaceRoot(options.workspaceRoot);
   const location = options.location ?? DEFAULT_ARTIFACT_LOCATION;
   const artifactRoot = artifactRootFor(options);
