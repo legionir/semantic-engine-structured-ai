@@ -222,3 +222,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Registry:** `loadRegistries()` از `RegistryLoader` می‌خواند؛ TOOLS از concat `tool-schemas/` می‌آید. `tools.json` snapshot سازگاری است. JSON خراب → `Registry file <path> is invalid JSON: ...`.
 - **Application:** exportهای additive `application`، `registryLoader`، `registryValidator`. `runAgent`/`main` از facade به `application` delegate می‌شوند (همان توابع bound).
 - **Live reload:** امضای registry شامل mtime/size فایل‌های `tool-schemas/` است (به‌جای فقط `tools.json`).
+
+## ۲۰. تغییرات additive فاز ۱۵ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** action envelope، نام/کد خطا، `response_diagnostics`، retry malformed و هر دو schema (`response_format.json` / `.strict.json`) دست‌نخورده‌اند. استخراج ساختاری است.
+- **Actions:** پیاده‌سازی در `agent/actions/`؛ `agent/agent.js` wrapper سازگار با همان exportها (`parseStructuredResponse`، `adaptNativeToolCalls`، `parseToolArguments`، `repairStructuredAction`، `readModelAction`، `isModelResponseError`، `validateAction`).
+- **Export additive:** `actions` از `agent/agent.js` همان kit را برمی‌گرداند. `bind({ toolsOf, events, logLine })` وابستگی زندهٔ registry/bus را تزریق می‌کند.
+- **AGENT_SCHEMA:** همچنان `fixed` است (پیش‌فرض `default`)؛ شاخهٔ strict فقط با مقدار startup و فایل `response_format.strict.json` فعال می‌شود.

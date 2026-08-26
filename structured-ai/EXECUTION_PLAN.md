@@ -579,15 +579,21 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 ---
 
-## [🔴] فاز ۱۵: Action Parser و Response Normalizer
+## [🟢] فاز ۱۵: Action Parser و Response Normalizer
 
 **هدف و scope:** خارج‌کردن خواندن/ترمیم/نرمال‌سازی/اعتبارسنجی پاسخ مدل از runtime loop. خروجی: `agent/actions/`.
 
-### [🔴] گام ۱: استخراج ماژول‌ها
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۸ تست جدید در `test/actions/parser.test.js` سبز. حلقهٔ اجرا هنوز در `agent.js` است (فاز ۱۶). wrapperهای تاریخی حفظ شدند (قانون ۷). هیچ قابلیت محصولی افزوده نشد.
+
+### [🟢] گام ۱: استخراج ماژول‌ها
+
+**انجام شد (2026-08-26):** `agent/actions/{ActionParser,NativeToolCallAdapter,ResponseRepair,ActionValidator,ActionNormalizer,ActionErrors,context,index}.js`. `actionKit.bind({ toolsOf, events, logLine })` از facade صدا زده می‌شود تا require چرخه‌ای به `agent.js` نباشد. exportهای wrapper (`parseStructuredResponse`، `adaptNativeToolCalls`، `parseToolArguments`، `repairStructuredAction`، `readModelAction`، `isModelResponseError`، `validateAction`) و همچنین `parseArguments`/`keepDeclaredArguments`/`malformedNoticeMessage`/`requestedDelegationProjectId` حفظ شدند.
 
 `ActionParser.js` (JSON، fenced JSON، provider response)، `NativeToolCallAdapter.js` (تبدیل native tool calls به action داخلی)، `ResponseRepair.js` (envelope ناقص، pathهای Markdown)، `ActionValidator.js` (schema و field matrix)، `ActionNormalizer.js` و `ActionErrors.js` را از `agent.js` استخراج کن. exportهای wrapper (`parseStructuredResponse`، `adaptNativeToolCalls`، `parseToolArguments`، `repairStructuredAction`، `readModelAction`، `isModelResponseError`، `validateAction`) حفظ شوند.
 
-### [🔴] گام ۲: قفل‌کردن رفتار خطا و retry
+### [🟢] گام ۲: قفل‌کردن رفتار خطا و retry
+
+**انجام شد (2026-08-26):** کدهای `UNREADABLE_RESPONSE` / `INVALID_ACTION` / `TRUNCATED_RESPONSE` / `MALFORMED_TOOL_ARGUMENTS` و فیلد `response_diagnostics` در noticeٔ malformed بدون تغییر قفل شدند. `AGENT_SCHEMA` همچنان process-fixed است؛ هر دو فایل `response_format.json` و `response_format.strict.json` باقی‌اند. fixtureهای فاز ۱ از طریق kit و wrapper سبز ماندند.
 
 پاسخ ناقص/خراب همان retry و error code و `response_diagnostics` فعلی را تولید کند؛ حالت strict/non-strict `response_format` حفظ شود. تست‌های malformed-response از fixtureهای فاز ۱ برابری خروجی را تأیید کنند.
 
@@ -595,6 +601,8 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 - همهٔ actionهای معتبر فعلی معتبر می‌مانند؛ native tool calls همان action قبلی را می‌سازند.
 - پیام‌های خطا و کدهای خطا (additive به استثنای سیاست) تغییر نکرده‌اند؛ تست‌های parser/validator جدید + suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند با `test/actions/parser.test.js` (8/8) و `test/contracts/actions.contract.test.js` اثبات شد — actionهای معتبر و native tool call همان envelope را می‌سازند؛ پیام/کد خطا و `response_diagnostics` بدون تغییر؛ wrapperها facade ماندند.
 
 ---
 
