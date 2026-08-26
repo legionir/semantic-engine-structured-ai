@@ -188,6 +188,7 @@ const hookRegistry = require("./lib/hooks");
 const application = require("./application");
 const actionKit = require("./actions");
 const runtimeEngine = require("./runtime/engine");
+const contextKit = require("./context");
 const registryLoader = require("./registry/RegistryLoader");
 const registryValidator = require("./registry/RegistryValidator");
 const AgentRegistry = require("./registry/AgentRegistry");
@@ -1283,340 +1284,38 @@ async function summariseTranscript(transcript, instruction) {
 | never happen without a copy landing here first.
 */
 
-const ARCHIVED_EXCHANGES = new WeakSet();
-
+/*
+| Context / memory / archive (EXECUTION_PLAN Phase 17). Implementation
+| lives in agent/context/ and agent/persistence/; these stay as
+| compatible wrappers so the runtime loop and the existing exports keep
+| their names and signatures (law 7).
+*/
 
 function archiveExchanges(messages, exchanges, scope) {
 
-    /*
-    | An exchange is archived once, at the moment it is complete, so the
-    | stored body is the full tool result rather than whatever survived
-    | compression. The set is keyed on the assistant message object, so
-    | nothing is added to what gets serialised into a request.
-    */
+    return contextKit.archiveExchanges(messages, exchanges, scope);
 
-    const fresh =
-        exchanges.filter(
-            exchange =>
-                !ARCHIVED_EXCHANGES.has(messages[exchange.start])
-        );
-
-    if (fresh.length === 0) {
-        return null;
-    }
-
-    try {
-
-        const report = archive.archiveEvents(
-            archive.eventsFromExchanges(
-                messages,
-                fresh,
-                {
-                    agent: scope || "main_agent",
-                    run: currentRun().id
-                }
-            )
-        );
-
-        for (const exchange of fresh) {
-
-            ARCHIVED_EXCHANGES.add(messages[exchange.start]);
-        }
-
-        return report;
-
-    } catch (error) {
-
-        logLine(
-            scope,
-            `Could not archive exchanges: ${error.message}`
-        );
-
-        return null;
-    }
 }
 
 
 async function foldIntoMemory(messages, scope) {
 
-    const exchanges =
-        findExchanges(messages);
+    return contextKit.foldIntoMemory(messages, scope);
 
-    const keep =
-        Math.max(
-            1,
-            settings.get("KEEP_RECENT_EXCHANGES")
-        );
-
-    const foldable =
-        exchanges.slice(
-            0,
-            Math.max(0, exchanges.length - keep)
-        );
-
-    if (foldable.length === 0) {
-        return null;
-    }
-
-    /*
-    | The material leaves the transcript whether or not the summariser
-    | succeeds, but it is only removed after a successful absorption.
-    */
-
-    const material =
-        foldable.map(exchange => {
-
-            const lines = [];
-
-            for (
-                let index = exchange.start;
-                index <= exchange.end;
-                index++
-            ) {
-
-                const message = messages[index];
-
-                if (message.role === "assistant") {
-
-                    lines.push(
-                        `called: ${
-                            (message.tool_calls || [])
-                                .map(call => call.function.name)
-                                .join(", ")
-                        }`
-                    );
-
-                    continue;
-                }
-
-                lines.push(`result: ${message.content}`);
-            }
-
-            return lines.join("\n");
-        }).join("\n");
-
-    const before =
-        conversationSize(messages);
-
-    /*
-    | The archive is written before the summariser is called, and it is
-    | written whether or not the summariser answers. Working memory is a
-    | lossy view of these exchanges; the archive is the copy that keeps
-    | the exact error text and the exact path, retrievable later with
-    | archive_search.
-    */
-
-    const archived =
-        archiveExchanges(messages, foldable, scope);
-
-    const absorbed =
-        await memoryStore.absorb(
-            memoryStore.loadMemory(),
-            material,
-            summariseTranscript,
-            {
-                getSignal: () => {
-                    assertRunActive("folding history into memory");
-                    return currentRun().controller?.signal;
-                }
-            }
-        );
-
-    if (absorbed.absorbed === 0) {
-
-        logLine(
-            scope,
-            `Could not fold history into memory (${
-                absorbed.failures[0] || "no chunk absorbed"
-            }); compressing mechanically instead.`
-        );
-
-        return null;
-    }
-
-    const condensed =
-        await memoryStore.condense(
-            absorbed.memory,
-            summariseTranscript
-        );
-
-    memoryStore.saveMemory(condensed.memory);
-
-    /*
-    | Drop the folded exchanges and refresh the memory message.
-    */
-
-    const first = foldable[0].start;
-
-    const last =
-        foldable[foldable.length - 1].end;
-
-    messages.splice(first, last - first + 1);
-
-    refreshMemoryMessage(messages, condensed.memory);
-
-    const report = {
-        folded_exchanges:
-            foldable.length,
-
-        chunks:
-            absorbed.chunks,
-
-        summary_calls:
-            absorbed.attempted,
-
-        skipped_chunks:
-            absorbed.skipped,
-
-        absorbed:
-            absorbed.absorbed,
-
-        condensed:
-            condensed.condensed,
-
-        archived:
-            archived
-                ? archived.added
-                : 0,
-
-        archive_duplicates:
-            archived
-                ? archived.duplicates
-                : 0,
-
-        before,
-
-        after:
-            conversationSize(messages)
-    };
-
-    logLine(
-        scope,
-        `Folded ${report.folded_exchanges} exchanges into memory with ${
-            report.summary_calls
-        } summariser call(s) across ${report.chunks} chunk(s)${
-            report.skipped_chunks
-                ? ` (${report.skipped_chunks} archive-only)`
-                : ""
-        }, ${
-            Math.round(report.before / 1000)
-        }k to ${
-            Math.round(report.after / 1000)
-        }k${
-            report.condensed
-                ? ", memory condensed"
-                : ""
-        }${
-            report.archived
-                ? `, ${report.archived} archived`
-                : ""
-        }`
-    );
-
-    events.emit("context:memory", {
-        agent: scope || "main_agent",
-        ...report
-    });
-
-    return report;
 }
 
 
-/*
-| One memory message, kept just after the task so it reads as
-| established knowledge rather than as a late correction.
-*/
-
 function refreshMemoryMessage(messages, memory) {
 
-    const message =
-        memoryStore.memoryMessage(memory);
+    return contextKit.refreshMemoryMessage(messages, memory);
 
-    const existing =
-        messages.findIndex(memoryStore.isMemoryMessage);
-
-    if (existing !== -1) {
-
-        messages[existing] = message;
-
-        return;
-    }
-
-    const firstUser =
-        messages.findIndex(
-            item => item.role === "user"
-        );
-
-    messages.splice(
-        firstUser === -1
-            ? messages.length
-            : firstUser + 1,
-        0,
-        message
-    );
 }
 
 
 async function maintainContext(messages, scope) {
 
-    const budget =
-        settings.get("MAX_CONTEXT_CHARS");
+    return contextKit.maintainContext(messages, scope);
 
-    const threshold =
-        budget * settings.get("CONTEXT_COMPACT_AT");
-
-    const size =
-        conversationSize(messages);
-
-    if (size < threshold) {
-        return null;
-    }
-
-    /*
-    | First try a real summary of the oldest material, then fall back to
-    | mechanical compression for whatever is still over budget.
-    */
-
-    if (
-        settings.get("CONTEXT_SUMMARY") === true &&
-        settings.get("MEMORY_ENABLED") === true
-    ) {
-
-        await foldIntoMemory(messages, scope);
-    }
-
-    const report =
-        compactConversation(messages, {
-            maxChars: threshold,
-
-            onDrop: (current, exchange) =>
-                archiveExchanges(current, [exchange], scope)
-        });
-
-    if (report.compacted) {
-
-        logLine(
-            scope,
-            `Context ${
-                Math.round(report.before / 1000)
-            }k of ${
-                Math.round(budget / 1000)
-            }k, compacted to ${
-                Math.round(report.after / 1000)
-            }k (light ${report.light}, medium ${
-                report.medium
-            }, heavy ${report.heavy}, dropped ${
-                report.dropped_exchanges
-            })`
-        );
-
-        events.emit("context:compacted", {
-            agent: scope || "main_agent",
-            ...report
-        });
-    }
-
-    return report;
 }
 
 
@@ -5340,6 +5039,14 @@ actionKit.bind({
     logLine
 });
 
+contextKit.bind({
+    events,
+    logLine,
+    currentRun,
+    assertRunActive,
+    summariseTranscript
+});
+
 runtimeEngine.bind({
     settings,
     events,
@@ -5414,8 +5121,8 @@ runtimeEngine.bind({
 |
 | The runtime only starts when executed directly, so the internals can
 | be imported and tested. Bindings above must run first: the extracted
-| engine (Phase 16) reads live closures through host() from the first
-| line of runAgentCore.
+| engine (Phase 16) and context kit (Phase 17) read live closures
+| through host() from the first line of runAgentCore / maintainContext.
 |--------------------------------------------------------------------------
 */
 
@@ -5575,6 +5282,7 @@ module.exports = {
     actions: actionKit,
     runtimeEngine,
     runtimeEngineMode: runtimeEngine.runtimeEngineMode,
+    context: contextKit,
 
     /*
     | Read through the store so a caller never caches a stale limit.

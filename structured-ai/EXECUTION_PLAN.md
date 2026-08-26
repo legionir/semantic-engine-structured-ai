@@ -606,42 +606,50 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 ---
 
-## [🔴] فاز ۱۶: Runtime Loop و Agent Orchestration
+## [🟢] فاز ۱۶: Runtime Loop و Agent Orchestration
 
 **هدف و scope:** استقلال حلقهٔ iteration، execution graph، delegation و budget. خروجی: `agent/runtime/` (تکمیل فاز ۳): `AgentRun.js`، `IterationRunner.js`، `ActionProcessor.js`، `ToolGraphExecutor.js`، `DelegationRunner.js`، `RetryController.js`، `RunState.js`، `ReportVerifier.js` (+ `RunBudget.js`/`RunCancellation.js` موجود).
 
-### [🔴] گام ۱: استخراج حلقه و dispatch
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۵ تست جدید در `test/runtime/engine.test.js` سبز؛ suite کامل 570/570. استخراج یک move است نه fork (تصمیم ۳۵). wrapperهای `agent.js` حفظ شدند.
 
-جریان `initialize → discover → hooks(before) → iteration loop (maintain context → refresh → request → parse → process → append) → hooks(after) → verify report` را به ماژول‌ها منتقل کن؛ `ActionProcessor` فقط dispatch کند: `tool_call` به `ToolGraphExecutor`، `delegate` به `DelegationRunner`، `final` به finalization. **پشت flag:** `RUNTIME_ENGINE_MODE`.
+### [🟢] گام ۱: استخراج حلقه و dispatch
 
-### [🔴] گام ۲: حفظ معنای اجرا
+**انجام شد (2026-08-26):** جریان iteration و dispatch به `agent/runtime/` منتقل شد. `runtimeEngine.bind` قبل از `require.main`. **پشت flag:** `RUNTIME_ENGINE_MODE` (پیش‌فرض `legacy`).
 
-ترتیب execution waveها، رفتار `depends_on`، max iterations، deadline، cancellation، بودجه و عمق delegation، و ReportVerifier (جلوگیری از ادعای تأییدنشده) دقیقاً حفظ شود؛ eventهای runtime همان زمان‌بندی و payload منطقی قبلی.
+### [🟢] گام ۲: حفظ معنای اجرا
+
+**انجام شد (2026-08-26):** ترتیب wave، `depends_on`، بودجه/عمق، ReportVerifier و eventها بدون تغییر. هر دو مقدار flag همان engine را اجرا می‌کنند؛ misspell = legacy.
 
 **معیار پذیرش:**
 
 - تست‌های runtime/e2e فعلی بدون تغییر سبزند؛ خروجی normalize‌شدهٔ یک سناریوی delegation با baseline برابر است.
 - در هر دو حالت flag رفتار برابر؛ suite سبز.
 
+**وضعیت معیارها (2026-08-26):** هر دو بند با `test/runtime/engine.test.js` (5/5) و suite 570/570 اثبات شد.
+
 ---
 
-## [🔴] فاز ۱۷: Context، Memory و Archive
+## [🟢] فاز ۱۷: Context، Memory و Archive
 
 **هدف و scope:** استقلال مدیریت context از runtime و persistence. خروجی: `agent/context/` + repositoryهای مرتبط در `agent/persistence/`.
 
-### [🔴] گام ۱: استخراج مدل context
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۷ تست جدید در `test/context/context.test.js` سبز؛ suite کامل 577/577 و `npm run check` سبز. استخراج یک move است نه fork؛ فلگ MODE تازه‌ای اعلان نشد (تصمیم ۳۶). wrapperهای `agent.js` و `lib/{context,memory,archive}.js` حفظ شدند (قانون ۷). هیچ قابلیت محصولی افزوده نشد.
 
-`ContextManager.js`، `ConversationSizer.js`، `ExchangeDetector.js`، `ContextCompactor.js`، `MemoryCoordinator.js`، `ArchiveCoordinator.js` را از `lib/context.js`، `lib/memory.js`، `lib/archive.js` و بخش‌های `agent.js` استخراج کن. رفتار: recent exchanges دست‌نخورده، فشرده‌سازی light/medium/heavy، fold به archive، نوشتن archive قبل از compaction، جای memory message دست‌نخورده. تنظیمات `MAX_CONTEXT_CHARS`، `CONTEXT_COMPACT_AT`، `KEEP_RECENT_EXCHANGES`، `CONTEXT_LIGHT_CHARS`، `CONTEXT_MEDIUM_CHARS`، `CONTEXT_SUMMARY`، `MEMORY_*`، `ARCHIVE_*` بدون تغییر.
+### [🟢] گام ۱: استخراج مدل context
 
-### [🔴] گام ۲: repositoryهای Memory/Archive
+**انجام شد (2026-08-26):** `agent/context/{ContextManager,ConversationSizer,ExchangeDetector,ContextCompactor,MemoryCoordinator,ArchiveCoordinator}.js` از `lib/context.js`، `lib/memory.js`، `lib/archive.js` و بخش‌های `agent.js` استخراج شدند. `contextKit.bind({events, logLine, currentRun, assertRunActive, summariseTranscript})` بعد از تعریف closureها و قبل از `require.main` صدا زده می‌شود. رفتار: recent exchanges دست‌نخورده، فشرده‌سازی light/medium/heavy، fold به archive، نوشتن archive قبل از compaction، جای memory message دست‌نخورده. تنظیمات `MAX_CONTEXT_CHARS`، `CONTEXT_COMPACT_AT`، `KEEP_RECENT_EXCHANGES`، `CONTEXT_LIGHT_CHARS`، `CONTEXT_MEDIUM_CHARS`، `CONTEXT_SUMMARY`، `MEMORY_*`، `ARCHIVE_*` بدون تغییر.
 
-`MemoryRepository.js` و `ArchiveRepository.js` در مسیر data root پروژه‌ای (فاز ۸) عمل کنند؛ `archive_search`/`archive_get` نتایج برابر baseline بدهند؛ بازیابی پس از restart حفظ.
+### [🟢] گام ۲: repositoryهای Memory/Archive
+
+**انجام شد (2026-08-26):** `agent/persistence/MemoryRepository.js` و `ArchiveRepository.js` همان مسیر data root فاز ۸ را مصرف می‌کنند. `lib/memory.js` و `lib/archive.js` wrapper سازگارند. `archive_search`/`archive_get` نتایج برابر repository می‌دهند؛ بازیابی پس از restart از روی فایل.
 
 **معیار پذیرش:**
 
 - تعداد/ترتیب پیام‌های نگه‌داشته‌شده و محل memory message برابر؛ جفت tool call/result از هم جدا نمی‌شود.
 - سقف context هیچ request بزرگ‌تری از قبل تولید نمی‌کند (تست با fixture compaction).
 - بازیابی memory/archive پس از restart و تست‌های archive/search سبز؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر سه بند با `test/context/context.test.js` (7/7)، `test/archive.test.js` 16/16 و `test/runtime.test.js` 105/105 اثبات شد؛ suite 577/577 سبز.
 
 ---
 
@@ -969,9 +977,11 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 33. **تقسیم tools.json (فاز ۱۴):** علاوه بر هفت گروه نام‌برده در سند refactor (`filesystem/process/git/code/planning/memory/mcp`)، خانواده‌های باقی‌مانده در فایل‌های جدا `search`، `network`، `introspection`، `knowledge` و `discussion` هستند تا هیچ ابزاری گم نشود (قانون ۱). ترتیب concat همان ترتیب تاریخی `tools.json` است.
 34. **منبع canonical ابزارها (فاز ۱۴):** loader از `tool-schemas/*.json` می‌خواند. `tools.json` به‌عنوان snapshot سازگاری باقی است تا `require(.../tools.json)` و تست‌هایی که فایل را JSON.parse می‌کنند نشکنند؛ محتوای آن با concat schemaها برابر است. حلقهٔ اجرا هنوز در `agent.js` است — استخراج کامل loop صریحاً فاز ۱۶ است.
 35. **استخراج loop فاز ۱۶ یک move است نه fork:** هر دو مقدار `RUNTIME_ENGINE_MODE` (`legacy` و `modular`) همان engine استخراج‌شده در `agent/runtime/` را اجرا می‌کنند تا دو پیاده‌سازی واگرا نشوند. فلگ برای حذف در فاز ۳۰ اعلان شده؛ مقدار غلط مثل بقیهٔ `*_MODE`ها رفتار legacy دارد. پیش‌فرض schema `legacy` می‌ماند (تصمیم ۳۲).
+36. **استخراج context فاز ۱۷ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۷ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `RUNTIME_ENGINE_MODE` فاز ۱۶). پیاده‌سازی واحد در `agent/context/` و `agent/persistence/` است؛ `lib/context.js`، `lib/memory.js`، `lib/archive.js` و توابع `agent.js` wrapper سازگارند تا فاز ۳۰.
+
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
-lanning/memory/mcp`)، خانواده‌های باقی‌مانده در فایل‌های جدا `search`، `network`، `introspection`، `knowledge` و `discussion` هستند تا هیچ ابزاری گم نشود (قانون ۱). ترتیب concat همان ترتیب تاریخی `tools.json` است.
-34. **منبع canonical ابزارها (فاز ۱۴):** loader از `tool-schemas/*.json` می‌خواند. `tools.json` به‌عنوان snapshot سازگاری باقی است تا `require(.../tools.json)` و تست‌هایی که فایل را JSON.parse می‌کنند نشکنند؛ محتوای آن با concat schemaها برابر است. حلقهٔ اجرا هنوز در `agent.js` است — استخراج کامل loop صریحاً فاز ۱۶ است.
+ `agent/persistence/` است؛ `lib/context.js`، `lib/memory.js`، `lib/archive.js` و توابع `agent.js` wrapper سازگارند تا فاز ۳۰.
+
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

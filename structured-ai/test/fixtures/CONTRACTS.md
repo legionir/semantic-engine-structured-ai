@@ -239,3 +239,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Runtime engine:** پیاده‌سازی حلقه در `agent/runtime/{AgentRun,IterationRunner,ActionProcessor,ToolGraphExecutor,DelegationRunner,RetryController,RunState,ReportVerifier}.js`؛ `agent/agent.js` wrapper سازگار با همان exportها (`runAgent`، `callAI`، `executeDependencyGraph`، `executeToolGraph`، `normalizeToolCalls`، `resolveArgumentReferences`، `validateDelegationPolicy`، `resolveDepthBudget`، `checkPerformedClaim`، ...).
 - **Export additive:** `runtimeEngine` و `runtimeEngineMode` از `agent/agent.js`. `bind({...})` وابستگی زندهٔ settings/events/run/tools را تزریق می‌کند.
 - **Flag:** `RUNTIME_ENGINE_MODE` (پیش‌فرض `legacy`). هر دو مقدار همان engine را اجرا می‌کنند (تصمیم ۳۵)؛ misspell = legacy. پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۲. تغییرات additive فاز ۱۷ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** compaction (light/medium/heavy)، pairing tool call/result، محل memory message، نوشتن archive قبل از drop/fold، `archive_search`/`archive_get`، مسیر data root فاز ۸، و تنظیمات `MAX_CONTEXT_CHARS`/`CONTEXT_*`/`MEMORY_*`/`ARCHIVE_*` دست‌نخورده‌اند. استخراج ساختاری است.
+- **Context kit:** پیاده‌سازی در `agent/context/{ContextManager,ConversationSizer,ExchangeDetector,ContextCompactor,MemoryCoordinator,ArchiveCoordinator}.js`؛ IO در `agent/persistence/{MemoryRepository,ArchiveRepository}.js`. `agent/lib/context.js`، `lib/memory.js` و `lib/archive.js` wrapper سازگار با همان exportها هستند.
+- **Export additive:** `context` از `agent/agent.js` همان kit را برمی‌گرداند. `bind({ events, logLine, currentRun, assertRunActive, summariseTranscript })` وابستگی زنده را تزریق می‌کند. wrapperهای `maintainContext`/`foldIntoMemory`/`refreshMemoryMessage`/`archiveExchanges` در facade می‌مانند (قانون ۷).
+- **Flag:** فاز ۱۷ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۶). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

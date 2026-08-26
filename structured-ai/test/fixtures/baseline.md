@@ -363,3 +363,31 @@
 | **مجموع** | **570/570 passed** |
 
 *نکته:* استخراج حلقهٔ اجرا بدون تغییر رفتار. هر دو مقدار `RUNTIME_ENGINE_MODE` همان engine را اجرا می‌کنند؛ wrapperهای `agent.js` حفظ شدند. سناریوی delegation normalize‌شده در هر دو حالت برابر است. `npm run check` سبز.
+
+## suite پایان فاز ۱۷ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` (جدید فاز ۱۷) | 7/7 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| ۱۴ فایل اصلی (ui.test.js ۴۰/۴۰، runtime.test.js ۱۰۵/۱۰۵، archive.test.js ۱۶/۱۶) | 420/420 passed |
+| **مجموع** | **577/577 passed** |
+
+*نکته:* استخراج context/memory/archive بدون تغییر رفتار. `lib/context.js`/`lib/memory.js`/`lib/archive.js` wrapperاند؛ جفت tool call/result جدا نمی‌شود؛ سقف context request را بزرگ‌تر نمی‌کند؛ بازیابی پس از restart حفظ است. فلگ MODE تازه‌ای اعلان نشد. `npm run check` سبز.
