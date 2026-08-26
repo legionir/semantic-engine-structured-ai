@@ -547,3 +547,39 @@
 | **مجموع** | **618/618 passed** |
 
 *نکته:* HookRegistry/Loader، condition، renderer، result و runner ماژولار شدند. runner همچنان از graph/executorهای موجود استفاده می‌کند، بنابراین policy/approval، telemetry، project context و eventهای `hook:*` حفظ شده‌اند. `npm run check` سبز.
+
+## suite پایان فاز ۲۳ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` (جدید فاز ۲۳) | 8/8 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، ui.test.js ۴۰/۴۰، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **626/626 passed** |
+
+*نکته:* Web Backend به facade، Router، request/response/middleware، SSE hub، controller/service/serializer graph و route inventory تفکیک شد. `WEB_SERVER_MODE=legacy` پیش‌فرض سازگار است و `WEB_SERVER_MODE=modular` با همان API/status/SSE قرارداد تأیید شد. `npm run check` سبز.

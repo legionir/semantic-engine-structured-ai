@@ -770,15 +770,21 @@ pendingها همان‌طور که فاز ۹ تعریف کرد per-project بم�
 
 ---
 
-## [🔴] فاز ۲۳: Web Backend
+## [🟢] فاز ۲۳: Web Backend
 
 **هدف و scope:** تفکیک `web/server.js` (‎~۷۲KB — اندازهٔ به‌روز، سند refactor مقدار ~۶۰KB را ذکر کرده) به server، router، controllerها، serviceها و serializerها بدون تغییر قرارداد. **پشت flag:** `WEB_SERVER_MODE`.
 
-### [🔴] گام ۱: inventory و contract test مسیرها
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — inventory کامل 42 مسیر method × path در `web/server/RouteInventory.js` و `test/fixtures/api-surface.json` ثبت شد؛ ساختار modular در `web/server/` ساخته و با `WEB_SERVER_MODE=modular` فعال می‌شود؛ suite کامل 626/626 و `npm run check` سبز. `web/server.js` facade انتخاب mode است، `LegacyWebServer.js` مسیر compatibility را نگه می‌دارد و `WebServer.js` lifecycle/router/controller/service graph modular را عرضه می‌کند؛ پاسخ‌ها و قراردادهای browser/API بدون تغییر باقی ماندند. تصمیم ۴۲ در پیوست ب.
+
+### [🟢] گام ۱: inventory و contract test مسیرها
+
+**انجام شد (2026-08-26):** تمام 42 route شامل APIهای قدیمی، session/call/graph، project-scoped، discussion، approval، metrics/health و static deep-link در `RouteInventory` فهرست شد؛ `api-surface.json` فیلد additive `method_paths` دارد و `test/web/routes.test.js` برابری inventory، matching پارامترها و wire contract را قفل می‌کند. `web.test.js` (28/28) و APIهای فاز ۹ سبز ماندند.
 
 همهٔ routeهای فعلی (شامل routeهای project-scoped فاز ۹ و discussion endpointها) فهرست و برای هر یک contract test (status + شکل JSON) ساخته شود.
 
-### [🔴] گام ۲: انتقال به controller/service
+### [🟢] گام ۲: انتقال به controller/service
+
+**انجام شد (2026-08-26):** `web/server/{WebServer,Router,RequestBody,Response,Middleware,SseHub}.js`، `controllers/` برای Task/Session/State/Settings/Approval/Mcp/Archive/Plan/Project/Run/Discussion، `services/` برای Task/Session/Settings/EventStream و `serializers/` ساخته شدند. `LegacyWebServer` از helperهای RequestBody/Response/Middleware/SseHub استفاده می‌کند؛ modular server روی یک Router با controller forwarding و lifecycle مستقل اجرا می‌شود. پیش‌فرض `WEB_SERVER_MODE=legacy` برای سازگاری حفظ و mode modular با `WEB_SERVER_MODE=modular` روی همان قراردادها تأیید شد؛ SSE، auth/rate-limit، session replay، approval، settings، MCP و project routes بدون regression هستند.
 
 ساختار `WebServer.js`، `Router.js`، `RequestBody.js`، `Response.js`، `Middleware.js`، `controllers/`(Task، Session، State، Settings، Approval، Mcp، Archive، Plan + Project/Run/Discussion controllers)، `services/`(Task، Session، Settings، EventStream)، `serializers/` و `SseHub.js` پیاده شود؛ handlerها یکی‌یکی منتقل شوند؛ server فقط routing/lifecycle نگه دارد. پاسخ‌ها و کدهای وضعیت دست‌نخورده؛ SSE قطع نشود.
 
@@ -786,6 +792,8 @@ pendingها همان‌طور که فاز ۹ تعریف کرد per-project بم�
 
 - contract test همهٔ endpointها سبز؛ approval UI/API، session replay، settings و MCP live reload کار می‌کند.
 - `web.test.js` و تست‌های API فاز ۹ سبز؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند اثبات شد — `test/web/routes.test.js` (8/8)، `test/web.test.js` (28/28)، `test/projects/project-api.test.js` (17/17)، `WEB_SERVER_MODE=modular node test/web.test.js` (28/28)، suite کامل 626/626 و `npm run check` سبز.
 
 ---
 
@@ -1011,6 +1019,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 40. **استخراج Policy/Approval فاز ۲۱ یک move است نه fork و فلگ تازه‌ای ندارد:** matching در `PolicyMatcher`، داده/validation در `PolicyRegistry`، lifecycle در `ApprovalManager`/`ApprovalStore` و error vocabulary در `PolicyErrors` قرار گرفت؛ `agent/lib/policy.js` wrapper و `PolicyEngine` enforcement واحد باقی ماندند. pendingهای Web Console از `ApprovalStore` استفاده می‌کنند، اما eventها، project attribution، حالت‌های `auto`/`prompt`/`deny` و gateway-level MCP approval همان قرارداد فاز ۹ را نگه می‌دارند.
 
 41. **استخراج Hooks فاز ۲۲ یک move است نه fork و فلگ تازه‌ای ندارد:** declaration/live reload در `HookLoader`/`HookRegistry`، شرط‌ها در `HookCondition`، templateها در `HookRenderer`، رکوردها در `HookResult` و execution در `HookRunner` قرار گرفتند. `agent/lib/hooks.js` و wrapperهای `agent.js` باقی ماندند؛ hookها همچنان از مسیر عادی tool/delegation/event عبور می‌کنند و رفتار `hooks.json` تغییر نکرد.
+
+42. **رول‌اوت Web Backend فاز ۲۳:** `WEB_SERVER_MODE` در schema با پیش‌فرض `legacy` و مقدار `modular` اعلان شد. `web/server.js` facade انتخاب mode است؛ helperهای request/response/middleware/SSE و route inventory در `web/server/` قرار گرفتند و `WebServer` با Router و controller/service/serializer graph روی همان handlerهای contract-tested کار می‌کند. هیچ route/status/body یا رفتار SSE تغییر نکرد؛ مسیر legacy برای rollback حفظ است تا فازهای بعدی انتقال domain handlerها را کامل کنند.
 
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**

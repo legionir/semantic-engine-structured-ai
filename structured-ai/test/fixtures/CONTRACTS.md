@@ -284,3 +284,11 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Facade:** `agent/lib/hooks.js` و exportهای `runHooks`/`hookRegistry` در `agent.js` wrapperهای سازگار هستند؛ هیچ module جدیدی به `agent.js` وابستگی ندارد.
 - **Execution:** HookRunner از executorهای عادی tool/delegation استفاده می‌کند؛ بنابراین policy/approval، telemetry، project context، dependency graph، cancellation و رویدادهای `hook:*` همان مسیر قبلی را حفظ می‌کنند.
 - **Flag:** فاز ۲۲ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۴۱). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۸. تغییرات additive فاز ۲۳ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** تمام routeها، methodها، status codeها، شکل JSON، authentication/rate-limit، session replay، approval، settings، MCP و SSE بدون تغییر معنایی حفظ شده‌اند؛ استخراج backend ساختاری است.
+- **Route inventory:** `web/server/RouteInventory.js` و فیلد additive `method_paths` در `test/fixtures/api-surface.json` مرجع 42 مسیر method × path هستند؛ پارامترهای dynamic با `:name` مستند می‌شوند.
+- **Web modules:** `web/server/{WebServer,Router,RequestBody,Response,Middleware,SseHub}.js` و `controllers/`، `services/` و `serializers/` مرزهای جدیدند. `web/server.js` facade mode و `LegacyWebServer.js` compatibility implementation را نگه می‌دارند.
+- **Modular rollout:** `WEB_SERVER_MODE` با پیش‌فرض `legacy` و مقدار `modular` از طریق settings schema خوانده می‌شود. در هر دو mode، `web.test.js` و APIهای project-scoped همان رفتار را دارند.
+- **SSE:** client filtering و keep-alive در `SseHub` encapsulate شده و project authorization روی eventهای live و snapshot حفظ شده است.

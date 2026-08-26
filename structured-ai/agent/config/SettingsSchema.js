@@ -1322,6 +1322,14 @@ const DEFINITIONS = [
         description: "Run state mode: 'legacy' keeps the process-global RUN/AGENT_BUDGET; 'modular' gives every run its own AgentRunContext via the RunManager so runs may execute concurrently (EXECUTION_PLAN phase 3 flag)."
     },
     {
+        key: "WEB_SERVER_MODE",
+        group: "web",
+        type: ENUM,
+        values: ["legacy", "modular"],
+        default: "legacy",
+        description: "Web backend mode: legacy keeps the monolithic compatibility server; modular routes through the extracted web/server modules (EXECUTION_PLAN phase 23)."
+    },
+    {
         key: "RUN_HISTORY_LIMIT",
         group: "runtime",
         type: NUMBER,
