@@ -723,15 +723,21 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 ---
 
-## [🔴] فاز ۲۱: Policy و Approval
+## [🟢] فاز ۲۱: Policy و Approval
 
 **هدف و scope:** استقلال boundary امنیتی: matching، lifecycle تأیید و enforcement. خروجی: `agent/policy/`.
 
-### [🔴] گام ۱: استخراج موتور و matcher
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — هشت تست مستقل در `test/policy/policy.test.js` سبز؛ suite کامل 610/610 و `npm run check` سبز. policy، approval و pendingهای Web Console از monolith خارج شدند؛ `agent/lib/policy.js` و `agent.js` wrapperهای سازگار باقی ماندند (قانون ۷). policy.json، نام ابزارها و payload رویدادهای deny/approval بدون تغییر معنایی حفظ شدند. تصمیم ۴۰ در پیوست ب.
+
+### [🟢] گام ۱: استخراج موتور و matcher
+
+**انجام شد (2026-08-26):** `agent/policy/{PolicyEngine,PolicyMatcher,PolicyRegistry,ApprovalManager,ApprovalStore,PolicyErrors,index}.js` ساخته شد. `PolicyMatcher` matching شرط‌ها/گروه‌ها/آخرین rule را مستقل انجام می‌دهد؛ `PolicyRegistry` گروه‌ها و validation ارجاع‌های policy را نگه می‌دارد؛ `ApprovalManager` حالت‌های `auto`/`prompt`/`deny`، terminal prompt، MCP trust escalation و gateway cache را مدیریت می‌کند؛ `PolicyEngine` تنها نقطهٔ enforce و audit callback باقی است. `agent/lib/policy.js` facade نازک است و اجرای ابزار همچنان پس از allowlist و resolution آرگومان از `PolicyEngine` عبور می‌کند.
 
 `PolicyEngine.js`، `PolicyMatcher.js`، `PolicyRegistry.js`، `ApprovalManager.js`، `ApprovalStore.js`، `PolicyErrors.js` را از `agent/lib/policy.js` و بخش‌های `agent.js`/`server.js` استخراج کن. flow: allowlist agent ← argument resolution ← PolicyMatcher ← allow/deny/approval ← execution ← audit event. حالت‌های `auto`، `prompt`، `deny` و approvalهای filesystem/terminal/MCP حفظ؛ policy روی آرگومان resolveشده اعمال شود؛ هیچ callای بدون عبور از policy.
 
-### [🔴] گام ۲: سازگاری approval با Multi-Project
+### [🟢] گام ۲: سازگاری approval با Multi-Project
+
+**انجام شد (2026-08-26):** `ApprovalStore` pending Map را برای API/کنسول encapsulate می‌کند و `ApprovalManager.createPendingHandler()` adapter رابط کاربری را می‌سازد؛ Web Console همان `approval:request`/`approval:resolved` و فیلد additive `project_id` را منتشر می‌کند و pendingها را per-project فیلتر می‌کند. approval اضافی cross-project/multi-project نیز از همان lifecycle مرکزی عبور می‌کند.
 
 pendingها همان‌طور که فاز ۹ تعریف کرد per-project بمانند؛ eventهای `policy:decision`/`approval:request`/`approval:resolved` payload سازگار (به‌علاوهٔ فیلدهای additive) داشته باشند.
 
@@ -739,6 +745,8 @@ pendingها همان‌طور که فاز ۹ تعریف کرد per-project بم�
 
 - تست‌های policy/approval (موجود در suite وب/runtime) سبز؛ deny/approval eventها payload قبلی+additive دارند.
 - `policy.json` فعلی بدون تغییر معنایی خوانده می‌شود؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند اثبات شد — `test/policy/policy.test.js` (8/8)، policy بخش `runtime.test.js` (10/10)، `mcp.test.js` (policyهای MCP در 37/37)، `web.test.js` (approval در 28/28)، `test/projects/project-api.test.js` و `test/runs/delegation-projects.test.js` سبز؛ suite کامل 610/610 و `npm run check` سبز.
 
 ---
 
@@ -993,6 +1001,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 37. **استخراج persistence فاز ۱۸ یک move است نه fork و فلگ تازه‌ای ندارد:** JSONهای کامل (session، memory، archive index) با temp+rename اتمیک نوشته می‌شوند؛ JSONL (journal، eventstore، archive segment) append-only می‌ماند و خط truncated در خواندن skip می‌شود. `SchemaVersion.migrate` برای نسخه‌های فعلی identity است.
 38. **استخراج tools فاز ۱۹ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۹ `*_MODE` جدیدی اعلان نمی‌کند. پیاده‌سازی واحد در `agent/tools/{ToolRuntime,ToolRegistryAdapter}` و گروه‌های `filesystem/`، `process/`، `code/`، `planning/`، `memory/` است؛ فایل‌های تاریخی `filesystem.js`/`process.js`/`code.js`/`plan.js`/`memory.js`/`fileinfo.js` و `tools/index.js` wrapper سازگارند تا فاز ۳۰. `code/SemanticClient.js` همان کلاس فاز ۶ را re-export می‌کند.
 39. **استخراج MCP فاز ۲۰ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `WEB_SERVER_MODE` فاز ۲۳). پیاده‌سازی واحد در `McpManager`/`McpConfigLoader`/`McpConfigValidator`/`McpConnection`/`McpCatalogue`/`McpTrustPolicy` و `protocol/` + `transports/*Transport.js` است؛ فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگارند تا فاز ۳۰.
+
+40. **استخراج Policy/Approval فاز ۲۱ یک move است نه fork و فلگ تازه‌ای ندارد:** matching در `PolicyMatcher`، داده/validation در `PolicyRegistry`، lifecycle در `ApprovalManager`/`ApprovalStore` و error vocabulary در `PolicyErrors` قرار گرفت؛ `agent/lib/policy.js` wrapper و `PolicyEngine` enforcement واحد باقی ماندند. pendingهای Web Console از `ApprovalStore` استفاده می‌کنند، اما eventها، project attribution، حالت‌های `auto`/`prompt`/`deny` و gateway-level MCP approval همان قرارداد فاز ۹ را نگه می‌دارند.
 
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**

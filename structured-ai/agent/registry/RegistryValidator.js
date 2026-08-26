@@ -1,13 +1,15 @@
 "use strict";
 
+const { policyProblems } = require("../policy/PolicyRegistry");
+
 /*
 |--------------------------------------------------------------------------
-| Registry Validator — EXECUTION_PLAN Phase 14
+| Registry Validator — EXECUTION_PLAN Phase 14 / 21
 |--------------------------------------------------------------------------
 |
 | Cross-checks the loaded registries against each other and against the
-| implemented tool names. A typo used to be dropped silently; now it is
-| a clear "Registry validation failed" list.
+| implemented tool names. Policy-specific matching references are owned by
+| PolicyRegistry; this module keeps the historical aggregate error surface.
 |--------------------------------------------------------------------------
 */
 
@@ -88,41 +90,13 @@ function validate({
 
     }
 
-    for (const rule of policy?.rules || []) {
-
-        for (const name of rule.tools || []) {
-
-            if (!name.includes("*") && !toolRegistry.has(name)) {
-
-                problems.push(
-                    `Policy rule "${rule.id}" references unknown tool "${name}".`
-                );
-
-            }
-
-        }
-
-        for (const group of rule.groups || []) {
-
-            if (!groups[group]) {
-
-                problems.push(
-                    `Policy rule "${rule.id}" references unknown tool group "${group}".`
-                );
-
-            }
-
-        }
-
-        if (!["allow", "deny", "require_approval"].includes(rule.action)) {
-
-            problems.push(
-                `Policy rule "${rule.id}" has an unknown action "${rule.action}".`
-            );
-
-        }
-
-    }
+    problems.push(
+        ...policyProblems({
+            policy,
+            toolGroups: groups,
+            tools: toolRegistry
+        })
+    );
 
     for (const skill of skills || []) {
 

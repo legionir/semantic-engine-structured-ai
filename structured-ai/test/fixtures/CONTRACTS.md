@@ -267,3 +267,12 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **MCP:** پیاده‌سازی در `agent/mcp/{McpManager,McpConfigLoader,McpConfigValidator,McpConnection,McpCatalogue,McpTrustPolicy}.js`، `protocol/{JsonRpcCodec,ContentLengthCodec,NdjsonCodec,McpErrors}.js` و `transports/{Stdio,Http,Sse,WebSocket}Transport.js`. فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگار با همان exportها هستند.
 - **Export additive:** `McpConnection` همان کلاس `McpClient` است. `config.serverVisibleTo` به `McpTrustPolicy` delegate می‌شود.
 - **Flag:** فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۹). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۶. تغییرات additive فاز ۲۱ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** policy.json، نام/گروه ابزارها، ترتیب آخرین rule، حالت‌های `auto`/`prompt`/`deny` و پیام‌های خطای policy/approval حفظ شده‌اند؛ استخراج ساختاری است.
+- **Policy:** پیاده‌سازی در `agent/policy/{PolicyEngine,PolicyMatcher,PolicyRegistry,PolicyErrors}.js`؛ `PolicyMatcher` روی آرگومان‌های resolveشده match می‌کند و `PolicyEngine` تنها نقطهٔ enforcement/audit است. `agent/lib/policy.js` facade سازگار باقی مانده است.
+- **Approval:** `ApprovalManager` lifecycle terminal prompt، handler تزریقی، MCP trust escalation و gateway-level cache را مدیریت می‌کند؛ `ApprovalStore` history و pending recordها را encapsulate می‌کند. `setApprovalHandler`، `getApprovalMode`، `setApprovalMode` و `resetGatewayApprovals` از facade همان exportهای قبلی‌اند.
+- **Multi-Project:** pendingها و eventهای `approval:request`/`approval:resolved` فیلد additive `project_id` و filtering per-project فاز ۹ را حفظ می‌کنند؛ approvalهای `cross_project_write`/`multi_project_write` از lifecycle مشترک عبور می‌کنند.
+- **Web adapter:** Web Console فقط adapter UI است و pending state را از `ApprovalStore` می‌گیرد؛ `state.approvals` برای سازگاری به‌صورت Map باقی مانده است.
+- **Flag:** فاز ۲۱ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۴۰). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

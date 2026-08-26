@@ -35,6 +35,7 @@ const MIME = {
 const CONSOLE_COOKIE = "structured_ai_console";
 
 const consoleAuth = require("../agent/lib/consoleAuth");
+const { ApprovalStore } = require("../agent/policy");
 
 
 function newConsoleToken() {
@@ -146,6 +147,11 @@ function createServer(runtime, options = {}) {
 
         projectId: null
     };
+
+    /* ApprovalStore owns pending approval lifecycle; state.approvals remains
+       the historical Map exposed by the test/launcher state surface. */
+    const approvalStore =
+        new ApprovalStore({ pending: state.approvals });
 
     const clients = new Set();
     const requestWindows = new Map();
@@ -722,76 +728,47 @@ function createServer(runtime, options = {}) {
 
 
     /*
-    | An approval becomes a pending question the browser can answer.
+    | An approval becomes a pending question the browser can answer. The
+    | policy layer creates the pending record; this adapter only connects it
+    | to the console's event stream and response endpoint.
     */
 
-    runtime.setApprovalHandler((evaluation, args) => {
-
-        const id =
-            `approval_${state.approvals.size + 1}_${Date.now()}`;
-
-        return new Promise(resolve => {
-
-            const projectId =
+    runtime.setApprovalHandler(
+        runtime.policyEngine.approvalManager.createPendingHandler({
+            store: approvalStore,
+            createId: (_evaluation, _args, store) =>
+                `approval_${store.pendingSize() + 1}_${Date.now()}`,
+            projectIdOf: evaluation =>
                 evaluation.project_id ||
                 (runtime.runManager && runtime.runManager.current
                     ? runtime.runManager.current()?.projectId
                     : null) ||
                 state.projectId ||
-                null;
+                null,
+            onRequest: (request, args) => {
 
-            const request = {
-                id,
-
-                agent:
-                    evaluation.agent,
-
-                tool:
-                    evaluation.tool,
-
-                reason:
-                    evaluation.reason,
-
-                groups:
-                    evaluation.groups,
-
-                arguments:
-                    args,
-
-                project_id:
-                    projectId,
-
-                requested_at:
-                    Date.now(),
-
-                resolve
-            };
-
-            state.approvals.set(id, request);
-
-            runtime.events.emit("approval:request", {
-                id,
-                agent: request.agent,
-                tool: request.tool,
-                reason: request.reason,
-                groups: request.groups,
-                arguments: args,
-                project_id: projectId
-            });
-        });
-    });
+                runtime.events.emit("approval:request", {
+                    id: request.id,
+                    agent: request.agent,
+                    tool: request.tool,
+                    reason: request.reason,
+                    groups: request.groups,
+                    arguments: args,
+                    project_id: request.project_id
+                });
+            }
+        })
+    );
 
 
     function resolveApproval(id, approved) {
 
         const request =
-            state.approvals.get(id);
+            approvalStore.removePending(id);
 
         if (!request) {
             return false;
         }
-
-        state.approvals.delete(id);
 
         request.resolve(approved);
 
@@ -860,7 +837,7 @@ function createServer(runtime, options = {}) {
                 ).length,
 
             pending_approvals:
-                [...state.approvals.values()].map(
+                approvalStore.pendingValues().map(
                     request => ({
                         id: request.id,
                         agent: request.agent,
@@ -1204,7 +1181,7 @@ function createServer(runtime, options = {}) {
 
             /* nothing may stay pending once the run is over */
 
-            for (const id of [...state.approvals.keys()]) {
+            for (const id of approvalStore.pendingKeys()) {
                 resolveApproval(id, false);
             }
 
@@ -2435,7 +2412,7 @@ function createServer(runtime, options = {}) {
                             sessions:
                                 sessions.listSessions(ctx.dataRoot),
                             pending_approvals:
-                                [...state.approvals.values()]
+                                approvalStore.pendingValues()
                                     .filter(item => item.project_id === record.id)
                                     .map(item => ({
                                         id: item.id,
@@ -2842,7 +2819,7 @@ function createServer(runtime, options = {}) {
 
                     runtime.cancelRun("web console");
 
-                    for (const id of [...state.approvals.keys()]) {
+                    for (const id of approvalStore.pendingKeys()) {
                         resolveApproval(id, false);
                     }
 

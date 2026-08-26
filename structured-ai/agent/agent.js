@@ -13,7 +13,7 @@ const {
     getApprovalMode,
     setApprovalMode,
     setApprovalHandler
-} = require("./lib/policy");
+} = require("./policy");
 
 const events = require("./lib/events");
 
@@ -891,155 +891,17 @@ const POLICY_ENGINE =
 
 function validateRegistries() {
 
-    const problems = [];
-
-    for (const tool of TOOLS_OF()) {
-
-        if (tool?.type !== "function") {
-
-            problems.push(
-                "tools.json contains an entry that is not a function tool."
-            );
-
-            continue;
-        }
-
-        if (!toolRuntime.hasTool(tool.function.name)) {
-
-            problems.push(
-                `Tool "${tool.function.name}" is declared in tools.json but has no implementation.`
-            );
-        }
-    }
-
-    for (const name of toolRuntime.implementedToolNames()) {
-
-        if (!TOOL_REGISTRY_OF().has(name)) {
-
-            problems.push(
-                `Tool "${name}" is implemented but not declared in tools.json.`
-            );
-        }
-    }
-
-    /*
-    | An MCP tool is declared by the server that offers it, not by this
-    | repository, so it is deliberately absent from tools.json and the
-    | two checks above must not look for it there.
-    */
-
-    for (
-        const [group, definition]
-        of Object.entries(TOOL_GROUPS_OF())
-    ) {
-
-        for (const name of definition.tools) {
-
-            if (!TOOL_REGISTRY_OF().has(name)) {
-
-                problems.push(
-                    `Tool group "${group}" references unknown tool "${name}".`
-                );
-            }
-        }
-    }
-
-    for (const rule of POLICY_OF().rules || []) {
-
-        for (const name of rule.tools || []) {
-
-            if (
-                !name.includes("*") &&
-                !TOOL_REGISTRY_OF().has(name)
-            ) {
-
-                problems.push(
-                    `Policy rule "${rule.id}" references unknown tool "${name}".`
-                );
-            }
-        }
-
-        for (const group of rule.groups || []) {
-
-            if (!TOOL_GROUPS_OF()[group]) {
-
-                problems.push(
-                    `Policy rule "${rule.id}" references unknown tool group "${group}".`
-                );
-            }
-        }
-
-        if (
-            ![
-                "allow",
-                "deny",
-                "require_approval"
-            ].includes(rule.action)
-        ) {
-
-            problems.push(
-                `Policy rule "${rule.id}" has an unknown action "${rule.action}".`
-            );
-        }
-    }
-
-    for (const skill of SKILLS_OF()) {
-
-        for (const name of skill.tools || []) {
-
-            if (!TOOL_REGISTRY_OF().has(name)) {
-
-                problems.push(
-                    `Skill "${skill.name}" references unknown tool "${name}".`
-                );
-            }
-        }
-    }
-
-    for (const agent of AGENTS_OF()) {
-
-        if (
-            agent.persona &&
-            !PERSONA_REGISTRY_OF().has(agent.persona)
-        ) {
-
-            problems.push(
-                `Agent "${agent.name}" references unknown persona "${agent.persona}".`
-            );
-        }
-
-        for (const name of agent.skills || []) {
-
-            if (!SKILL_REGISTRY_OF().has(name)) {
-
-                problems.push(
-                    `Agent "${agent.name}" references unknown skill "${name}".`
-                );
-            }
-        }
-
-        if (agent.tools !== "*") {
-
-            for (const name of agent.tools || []) {
-
-                if (!TOOL_REGISTRY_OF().has(name)) {
-
-                    problems.push(
-                        `Agent "${agent.name}" references unknown tool "${name}".`
-                    );
-                }
-            }
-        }
-    }
-
-    if (problems.length > 0) {
-
-        throw new Error(
-            `Registry validation failed:\n- ${problems.join("\n- ")}`
-        );
-    }
+    return registryValidator.validate({
+        tools: TOOLS_OF(),
+        groups: TOOL_GROUPS_OF(),
+        skills: SKILLS_OF(),
+        agents: AGENTS_OF(),
+        personas: PERSONAS_OF(),
+        policy: POLICY_OF(),
+        hasTool: name => toolRuntime.hasTool(name),
+        implementedToolNames: () => toolRuntime.implementedToolNames()
+    });
 }
-
 
 /*
 |--------------------------------------------------------------------------
@@ -2666,68 +2528,22 @@ function canModifyWorkspace(agentDefinition) {
 }
 
 
-/* Phase 12: extra approval for writes that leave the Sub-Agent's
-   project or that happen inside a task that already spans more than
-   one project. Policy's own decision (if any) still runs first. */
+/* Phase 12: the policy engine owns the extra approval for writes that
+   leave the Sub-Agent's project or happen in a multi-project task. */
 async function enforceCrossProjectWrite(toolName, args, agent) {
 
-    if (!delegationProjectSwitchEnabled()) {
-        return null;
-    }
-
-    if (!FILE_MUTATING_TOOLS.includes(toolName)) {
-        return null;
-    }
-
-    const run = currentRun();
-
-    const effective = effectiveProject(run.project);
-
-    const effectiveId =
-        projectIdOf(effective) || run.projectId || null;
-
-    const parentId =
-        run.projectId || projectIdOf(run.project) || null;
-
-    const cross =
-        Boolean(effectiveId && parentId && effectiveId !== parentId);
-
-    const multi = isMultiProjectTask(run);
-
-    if (!cross && !multi) {
-        return null;
-    }
-
-    const evaluation = {
-        tool: toolName,
-        agent: agent || "main_agent",
-        groups: POLICY_ENGINE.groupsFor(toolName),
-        decision: "require_approval",
-        reason:
-            cross
-                ? `cross-project write on "${effectiveId}" (run project is "${parentId}")`
-                : `write in a multi-project task (project "${effectiveId || parentId}")`,
-        rule:
-            cross
-                ? "cross_project_write"
-                : "multi_project_write",
-        project_id: effectiveId
-    };
-
-    const approval =
-        await POLICY_ENGINE.requestApproval(evaluation, args);
-
-    POLICY_ENGINE.onDecision({
-        ...evaluation,
-        approved: approval.approved,
-        approval_mode: approval.mode,
-        gateway_cached: approval.gateway_cached === true
+    return POLICY_ENGINE.enforceCrossProjectWrite({
+        toolName,
+        args,
+        agent,
+        enabled: delegationProjectSwitchEnabled(),
+        fileMutatingTools: FILE_MUTATING_TOOLS,
+        currentRun,
+        effectiveProject,
+        projectIdOf,
+        isMultiProjectTask
     });
-
-    return approval;
-
 }
-
 
 /*
 | The root profile, as configured, without running a whole agent to ask
@@ -2951,9 +2767,9 @@ function createMainAgentMessages(task) {
 | Permission Boundary
 |--------------------------------------------------------------------------
 |
-| Approval/Policy system is intentionally not implemented yet.
-|
-| This function is the future central enforcement point.
+| The policy boundary is enforced by the extracted policy engine. This
+| function remains the allowlist/availability guard used before that
+| boundary and is kept as a compatibility wrapper.
 |--------------------------------------------------------------------------
 */
 
@@ -5224,6 +5040,7 @@ module.exports = {
     setApprovalMode,
     setApprovalHandler,
     policyEngine: POLICY_ENGINE,
+    approvalManager: POLICY_ENGINE.approvalManager,
     /*
     | A live view: reading a property reloads the file if it changed.
     */
