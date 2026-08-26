@@ -750,17 +750,23 @@ pendingها همان‌طور که فاز ۹ تعریف کرد per-project بم�
 
 ---
 
-## [🔴] فاز ۲۲: Hooks
+## [🟢] فاز ۲۲: Hooks
 
 **هدف و scope:** تفکیک registry، شرط‌سنجی، rendering و اجرای hookها. خروجی: `agent/hooks/`.
 
-### [🔴] گام ۱: استخراج ماژول‌ها
+**تکمیل 2026-08-26:** گام ۱ — هشت تست مستقل در `test/hooks/hooks.test.js` سبز؛ suite کامل 618/618 و `npm run check` سبز. declaration/condition/renderer/runner از monolith جدا شدند؛ `agent/lib/hooks.js` و wrapperهای `agent.js` سازگار باقی ماندند (قانون ۷). ترتیب before/after، `on_failure`، templateها، eventها، hook commit و hook agent بدون تغییر معنایی حفظ شدند. تصمیم ۴۱ در پیوست ب.
+
+### [🟢] گام ۱: استخراج ماژول‌ها
+
+**انجام شد (2026-08-26):** `agent/hooks/{HookRegistry,HookLoader,HookCondition,HookRenderer,HookRunner,HookResult,index}.js` ساخته شد. `HookRegistry` validation/live reload و انتخاب hookهای فعال را انجام می‌دهد؛ `HookCondition` زبان شرط بسته را نگه می‌دارد؛ `HookRenderer` templateها را با type preservation render می‌کند؛ `HookResult` شکل رکوردها/گزارش‌ها را قفل می‌کند؛ `HookRunner` اجرای tool/agent/git_commit، budget، cancellation، dependency graph و event lifecycle را از `agent.js` می‌گیرد و همچنان از executorهای عادی عبور می‌دهد. `agent/lib/hooks.js` facade است و `hooks.test.js` بدون تغییر رفتار سبز مانده است.
 
 `HookRegistry.js`، `HookLoader.js`، `HookCondition.js`، `HookRenderer.js`، `HookRunner.js`، `HookResult.js` از `agent/lib/hooks.js` (‎~۱۷KB). رفتار: ترتیب before/after، `on_failure`، متغیرهای template، eventهای hook، hookهای نامعتبر/غیرفعال، hook commit و hook agent دقیقاً حفظ.
 
 **معیار پذیرش:**
 
 - `hooks.test.js` بدون تغییر سبز؛ `hooks.json` و `runHooks`/`hookRegistry` wrapper سازگار؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند اثبات شد — `test/hooks.test.js` (5/5) و `test/hooks/hooks.test.js` (8/8) سبز؛ suite کامل 618/618 و `npm run check` سبز. modules جدید هیچ require مستقیمی به `agent.js` ندارند؛ `state` و lifecycle hookها در تست runner مستقل تأیید شدند.
 
 ---
 
@@ -1003,6 +1009,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 39. **استخراج MCP فاز ۲۰ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `WEB_SERVER_MODE` فاز ۲۳). پیاده‌سازی واحد در `McpManager`/`McpConfigLoader`/`McpConfigValidator`/`McpConnection`/`McpCatalogue`/`McpTrustPolicy` و `protocol/` + `transports/*Transport.js` است؛ فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگارند تا فاز ۳۰.
 
 40. **استخراج Policy/Approval فاز ۲۱ یک move است نه fork و فلگ تازه‌ای ندارد:** matching در `PolicyMatcher`، داده/validation در `PolicyRegistry`، lifecycle در `ApprovalManager`/`ApprovalStore` و error vocabulary در `PolicyErrors` قرار گرفت؛ `agent/lib/policy.js` wrapper و `PolicyEngine` enforcement واحد باقی ماندند. pendingهای Web Console از `ApprovalStore` استفاده می‌کنند، اما eventها، project attribution، حالت‌های `auto`/`prompt`/`deny` و gateway-level MCP approval همان قرارداد فاز ۹ را نگه می‌دارند.
+
+41. **استخراج Hooks فاز ۲۲ یک move است نه fork و فلگ تازه‌ای ندارد:** declaration/live reload در `HookLoader`/`HookRegistry`، شرط‌ها در `HookCondition`، templateها در `HookRenderer`، رکوردها در `HookResult` و execution در `HookRunner` قرار گرفتند. `agent/lib/hooks.js` و wrapperهای `agent.js` باقی ماندند؛ hookها همچنان از مسیر عادی tool/delegation/event عبور می‌کنند و رفتار `hooks.json` تغییر نکرد.
 
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**

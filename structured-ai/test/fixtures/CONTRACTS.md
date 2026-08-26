@@ -276,3 +276,11 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Multi-Project:** pendingها و eventهای `approval:request`/`approval:resolved` فیلد additive `project_id` و filtering per-project فاز ۹ را حفظ می‌کنند؛ approvalهای `cross_project_write`/`multi_project_write` از lifecycle مشترک عبور می‌کنند.
 - **Web adapter:** Web Console فقط adapter UI است و pending state را از `ApprovalStore` می‌گیرد؛ `state.approvals` برای سازگاری به‌صورت Map باقی مانده است.
 - **Flag:** فاز ۲۱ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۴۰). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۷. تغییرات additive فاز ۲۲ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** `hooks.json`، ترتیب `before_task`/`after_task`، زبان شرط، templateها، `on_failure`، eventهای hook و نتیجهٔ hookها حفظ شده‌اند؛ استخراج ساختاری است.
+- **Hooks:** declaration و live reload در `agent/hooks/{HookLoader,HookRegistry}.js`، شرط در `HookCondition.js`، rendering در `HookRenderer.js`، result/report در `HookResult.js` و اجرای runtime در `HookRunner.js` قرار گرفت.
+- **Facade:** `agent/lib/hooks.js` و exportهای `runHooks`/`hookRegistry` در `agent.js` wrapperهای سازگار هستند؛ هیچ module جدیدی به `agent.js` وابستگی ندارد.
+- **Execution:** HookRunner از executorهای عادی tool/delegation استفاده می‌کند؛ بنابراین policy/approval، telemetry، project context، dependency graph، cancellation و رویدادهای `hook:*` همان مسیر قبلی را حفظ می‌کنند.
+- **Flag:** فاز ۲۲ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۴۱). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
