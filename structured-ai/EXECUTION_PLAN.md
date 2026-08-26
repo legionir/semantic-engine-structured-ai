@@ -797,19 +797,27 @@ pendingها همان‌طور که فاز ۹ تعریف کرد per-project بم�
 
 ---
 
-## [🔴] فاز ۲۴: Frontend Web Console
+## [🟢] فاز ۲۴: Frontend Web Console
 
 **هدف و scope:** تفکیک `web/public/app.js` (‎~۱۲۸KB — اندازهٔ به‌روز) به ماژول‌های مستقل بدون framework سنگین.
 
-### [🔴] گام ۱: تصمیم قالب ماژول — Unknown / Requires Verification
+**تکمیل 2026-08-26:** گام‌های ۱ تا ۳ — قالب native ESM بدون build step انتخاب و در `index.html` فعال شد؛ ۸ تست مستقل در `test/ui/modules.test.js` سبز؛ suite کامل 634/634 و `npm run check` سبز. domain moduleها و store/reducer ساخته شدند و `app.js` به‌عنوان compatibility renderer از bootstrap ماژولار import می‌شود تا تمام selectorها، modalها و رفتارهای موجود بدون regression حفظ شوند. تصمیم ۴۳ در پیوست ب.
+
+### [🟢] گام ۱: تصمیم قالب ماژول — native ESM
+
+**انجام شد (2026-08-26):** با توجه به اینکه Web Console بدون build step سرو می‌شود و server static serving مسیرهای زیر `public/` را مستقیم ارائه می‌کند، native browser ESM انتخاب شد: `<script type="module" src="/app/main.js">`؛ هیچ bundler یا dependency جدیدی اضافه نشد. `app.js` به‌عنوان asset سازگار باقی ماند و `main.js` آن را import می‌کند.
 
 قالب ماژول فرانت‌اند در اسناد مرجع تعیین نشده است. در همین گام تصمیم و مستند شود. **Assumption (پیش‌فرض اجرایی):** ESM نیتیو مرورگر (`<script type="module">`) بدون build step؛ اگر محدودیت نیتیو (مثل تعداد درخواست/سازگاری) اثبات شود، bundler سبک با خروجی به همان مسیرها انتخاب و این گام به‌روز شود.
 
-### [🔴] گام ۲: تقسیم به ماژول‌ها و store دامنه‌ای
+### [🟢] گام ۲: تقسیم به ماژول‌ها و store دامنه‌ای
+
+**انجام شد (2026-08-26):** `web/public/app/` با `main.js`، `store.js`، `api.js`، `event-stream.js`، `task-runner.js`، `chat.js`، `execution-view.js`، `event-view.js`، `settings-view.js`، `mcp-view.js`، `history-view.js`، `plan-view.js`، `modal-manager.js`، `markdown.js`، `direction.js`، `dom.js`، `formatters.js` و moduleهای project/runtime/approval ساخته شد. store domainهای `runtimeState`، `conversationState`، `executionState`، `eventState`، `approvalState`، `settingsState`، `mcpState`، `historyState`، `planState` و `projectState` را دارد و reducerهای eventهای runtime، approval، plan و project filtering را مصرف می‌کند. API/EventSource فقط URLهای relative می‌سازند و `projectId` را encode می‌کنند.
 
 `app/` را با `main.js`، `store.js`، `api.js`، `event-stream.js`، `task-runner.js`، `chat.js`، `execution-view.js`، `event-view.js`، `settings-view.js`، `mcp-view.js`، `history-view.js`، `plan-view.js`، `modal-manager.js`، `markdown.js`، `direction.js`، `dom.js`، `formatters.js` (+ ماژول‌های project فاز ۱۱) بساز. state به domainهای `runtimeState`، `conversationState`، `executionState`، `eventState`، `approvalState`، `settingsState`، `mcpState`، `historyState`، `planState` (+ projectState) تقسیم شود؛ reducerها همان eventهای فعلی+additive را مصرف کنند.
 
-### [🔴] گام ۳: حفظ رفتار کاربر
+### [🟢] گام ۳: حفظ رفتار کاربر
+
+**انجام شد (2026-08-26):** compatibility renderer موجود از `main.js` import می‌شود؛ `ui.test.js` بدون تغییر user-facing سبز است و تست moduleها وجود/ESM graph را قفل می‌کند. `markdown.js` خروجی امن مبتنی بر `textContent` دارد، `direction.js` RTL/LTR را تشخیص می‌دهد، `EventStream` هنگام project switch فقط stream پروژهٔ جاری را وصل می‌کند و reducer snapshot/event از duplicate state جلوگیری می‌کند. id/selectorهای `index.html` و Modal service دست‌نخورده‌اند.
 
 Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (`dir="rtl"` برای فارسی/عربی/عبری)، execution block per iteration، modal lifecycle پایدار در باز/بسته متوالی، event replay بدون duplicate، history، cancel، MCP settings، plan display و **همهٔ selectorها و idهای HTML** حفظ شوند.
 
@@ -817,6 +825,8 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 - تست‌های `ui.test.js`/`web.test.js` بدون تغییر user-facing سبز؛ replay duplicate ایجاد نمی‌کند؛ reasoning/پاسخ از بین نمی‌رود.
 - بارگذاری بدون build step (یا با خروجی build سازگار با مسیرهای فعلی) کار می‌کند؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند اثبات شد — `test/ui.test.js` (40/40)، `test/ui/modules.test.js` (8/8)، `test/web.test.js` (28/28)، `WEB_SERVER_MODE=modular node test/web.test.js` (28/28)، suite کامل 634/634 و `npm run check` سبز.
 
 ---
 
@@ -1021,6 +1031,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 41. **استخراج Hooks فاز ۲۲ یک move است نه fork و فلگ تازه‌ای ندارد:** declaration/live reload در `HookLoader`/`HookRegistry`، شرط‌ها در `HookCondition`، templateها در `HookRenderer`، رکوردها در `HookResult` و execution در `HookRunner` قرار گرفتند. `agent/lib/hooks.js` و wrapperهای `agent.js` باقی ماندند؛ hookها همچنان از مسیر عادی tool/delegation/event عبور می‌کنند و رفتار `hooks.json` تغییر نکرد.
 
 42. **رول‌اوت Web Backend فاز ۲۳:** `WEB_SERVER_MODE` در schema با پیش‌فرض `legacy` و مقدار `modular` اعلان شد. `web/server.js` facade انتخاب mode است؛ helperهای request/response/middleware/SSE و route inventory در `web/server/` قرار گرفتند و `WebServer` با Router و controller/service/serializer graph روی همان handlerهای contract-tested کار می‌کند. هیچ route/status/body یا رفتار SSE تغییر نکرد؛ مسیر legacy برای rollback حفظ است تا فازهای بعدی انتقال domain handlerها را کامل کنند.
+
+43. **قالب frontend فاز ۲۴:** native browser ESM بدون build step انتخاب شد؛ `index.html` فقط `modal.js` کلاسیک و `/app/main.js` ماژولار را بارگذاری می‌کند. `app/main.js` ماژول‌های domain/store/API/SSE/view را در یک graph صریح expose می‌کند و `app.js` compatibility renderer را برای حفظ behavior و embedهای موجود import می‌کند. APIها relative هستند؛ projectId encode می‌شود؛ selector/id، markdown امن و RTL/LTR تغییر نمی‌کنند.
 
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**

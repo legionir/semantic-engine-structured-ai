@@ -292,3 +292,11 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Web modules:** `web/server/{WebServer,Router,RequestBody,Response,Middleware,SseHub}.js` و `controllers/`، `services/` و `serializers/` مرزهای جدیدند. `web/server.js` facade mode و `LegacyWebServer.js` compatibility implementation را نگه می‌دارند.
 - **Modular rollout:** `WEB_SERVER_MODE` با پیش‌فرض `legacy` و مقدار `modular` از طریق settings schema خوانده می‌شود. در هر دو mode، `web.test.js` و APIهای project-scoped همان رفتار را دارند.
 - **SSE:** client filtering و keep-alive در `SseHub` encapsulate شده و project authorization روی eventهای live و snapshot حفظ شده است.
+
+## ۲۹. تغییرات additive فاز ۲۴ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **قالب frontend:** native browser ESM بدون build step انتخاب شد؛ `index.html` بعد از `modal.js`، `/app/main.js` را با `type="module"` بارگذاری می‌کند.
+- **Domain modules:** `web/public/app/` شامل bootstrap، store/reducers، API، SSE، task، chat، execution، events، settings، MCP، history، plan، modal، markdown، direction، DOM، formatters و project/runtime/approval selectors است.
+- **Compatibility:** `app.js` به‌عنوان renderer سازگار باقی مانده و از `app/main.js` import می‌شود؛ `/app.js` همچنان به‌عنوان asset موجود است تا embedها و تست‌های فعلی نشکنند. selector/idهای `index.html` و Modal lifecycle تغییر نکرده‌اند.
+- **State/security:** store با domainهای جدا و reducerهای additive کار می‌کند؛ EventStream URL نسبی و `projectId` encode‌شده می‌سازد؛ API client هیچ endpoint absolute یا localhost ندارد؛ markdown با `textContent` و direction با تشخیص RTL امن می‌ماند.
+- **Flag:** فاز ۲۴ flag جدیدی اعلان نمی‌کند (تصمیم ۴۳). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

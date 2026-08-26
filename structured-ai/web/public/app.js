@@ -1,6 +1,10 @@
 "use strict";
 
 /*
+| Compatibility renderer. The no-build ESM entry point at app/main.js imports
+| this file while domain modules in app/ own the migration seams; the file is
+| kept as a classic-compatible asset for existing embeds and UI tests.
+|
 | The console keeps no state of its own beyond what the runtime reports:
 | every box on screen is rebuilt from the event stream, so a reload
 | reproduces the same picture from the snapshot.
