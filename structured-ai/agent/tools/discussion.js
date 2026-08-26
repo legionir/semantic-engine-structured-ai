@@ -1,6 +1,7 @@
 "use strict";
 
-const path = require("path");
+const { DiscussionService } = require("../discussion/DiscussionService");
+const { resolveDiscussionContext } = require("../discussion/DiscussionContext");
 
 /**
  * discussion_start tool
@@ -43,9 +44,7 @@ function agentRuntime() {
  * argument), because a silent fallback would make the tool report
  * canned opinions as if the specialists had spoken.
  */
-function createCaller(task, { mock = false } = {}) {
-
-    const runtime = agentRuntime();
+function createCaller(task, { mock = false, runtime = agentRuntime() } = {}) {
 
     const { createLlmCaller } = getEngine();
 
@@ -122,17 +121,6 @@ function mockCaller(task) {
     };
 }
 
-/**
- * The events are what the web console's Discussion panel and the CLI
- * stream display; without a bus (unit tests) they are simply skipped.
- */
-function emit(runtime, type, payload) {
-
-    if (runtime?.events?.emit) {
-        runtime.events.emit(type, payload);
-    }
-}
-
 /*
 | Tools receive a single object: their declared arguments plus _agent,
 | the name of the caller, which no schema uses. The mock flag rides in
@@ -144,13 +132,6 @@ async function discussion_start(args) {
 
     const task = args.task;
     const personas = args.personas;
-
-    /*
-    | 0 is a falsy trap: "max_rounds || 5" would silently turn a
-    | zero-round request into five rounds, so the default only applies
-    | to values that are not integers at all.
-    */
-
     const max_rounds =
         Number.isInteger(args.max_rounds)
             ? args.max_rounds
@@ -180,97 +161,28 @@ async function discussion_start(args) {
     }
 
     const runtime = agentRuntime();
+    const context = resolveDiscussionContext(runtime);
+    const caller = createCaller(task, {
+        mock: args.mock === true,
+        runtime
+    });
 
-    const discussionId =
-        `discussion-${Date.now().toString(36)}-${Math.random()
-            .toString(36)
-            .slice(2, 8)}`;
-
-    const caller = createCaller(task, { mock: args.mock === true });
-
-    const { DiscussionEngine } = getEngine();
-
-    const engine = new DiscussionEngine({
-        task,
+    const result = await new DiscussionService({ runtime }).run({
+        task: task.trim(),
         personas,
         maxRounds: max_rounds,
-        /* the panel shares the runtime's parallel-agent budget */
-        maxParallel:
-            runtime?.settings?.get?.("MAX_PARALLEL_AGENTS") || 4,
+        projectId: context.projectId,
+        projectContext: context.project,
         llmCaller: caller,
-        workspaceContext:
-            args.workspace ||
-            args.workspace_root ||
-            "",
-        onMessage: message => {
-            emit(runtime, "discussion:message", {
-                id: discussionId,
-                round: message.round,
-                persona: message.persona,
-                persona_name: message.persona_name,
-                content: message.content,
-                tools_used: message.tools_used || []
-            });
-        },
-        onRound: round => {
-            emit(runtime, "discussion:round", {
-                id: discussionId,
-                round: round.round,
-                messages: round.messages.length
-            });
-        },
-        onObserver: (observerDecision, round) => {
-            emit(runtime, "discussion:observer", {
-                id: discussionId,
-                round,
-                decision: observerDecision.decision,
-                agreements: observerDecision.agreements || [],
-                open_points: observerDecision.open_points || [],
-                unaddressed: observerDecision.unaddressed || [],
-                instructions: observerDecision.instructions || {}
-            });
-        }
+        persist: true
     });
 
-    emit(runtime, "discussion:start", {
-        id: discussionId,
-        task,
-        personas,
-        max_rounds
-    });
-
-    const startedAt = Date.now();
-
-    let result;
-
-    try {
-        result = await engine.run();
-    } catch (error) {
-        emit(runtime, "discussion:error", {
-            id: discussionId,
-            error: error.message
-        });
-        throw error;
-    }
-
-    emit(runtime, "discussion:finish", {
-        id: discussionId,
-        total_rounds: result.total_rounds,
-        hit_max_rounds: result.hit_max_rounds,
-        stopped_reason: result.stopped_reason || null,
-        final_report: result.final_report,
-        duration_ms: Date.now() - startedAt
-    });
-
-    /*
-    | The tool result is the synthesis, not the transcript dump: the
-    | final report the observer produced, with the rounds attached as
-    | truncated evidence for the main agent to attribute claims to.
-    */
     return {
         ok: true,
-        id: discussionId,
-        task,
+        id: result.id,
+        project_id: result.project_id || null,
+        transcript_id: result.transcript_id || result.id,
+        task: task.trim(),
         personas,
         total_rounds: result.total_rounds,
         hit_max_rounds: result.hit_max_rounds,
@@ -281,7 +193,7 @@ async function discussion_start(args) {
             messages: round.messages.map(message => ({
                 persona: message.persona,
                 persona_name: message.persona_name,
-                content: message.content.slice(0, 2000)
+                content: String(message.content || "").slice(0, 2000)
             }))
         })),
         observer_decisions: result.observer_decisions.map(decision => ({

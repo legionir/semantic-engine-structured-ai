@@ -5962,8 +5962,13 @@ el("taskForm").addEventListener("submit", async submitEvent => {
 
         el("runButton").disabled = true;
 
+        const discussionUrl =
+            state.currentProjectId
+                ? `/api/projects/${encodeURIComponent(state.currentProjectId)}/discussions`
+                : "/api/discussion";
+
         const response =
-            await fetch("/api/discussion", {
+            await fetch(discussionUrl, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ task, personas, max_rounds: maxRounds })

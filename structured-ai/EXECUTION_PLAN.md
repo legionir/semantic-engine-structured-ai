@@ -890,19 +890,27 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 ---
 
-## [🔴] فاز ۲۸: ماژولارسازی و یکپارچه‌سازی ماژول Discussion (جبران شکاف)
+## [🟢] فاز ۲۸: ماژولارسازی و یکپارچه‌سازی ماژول Discussion (جبران شکاف)
 
 **هدف و scope:** ماژول `agent/discussion/` (~۵۰KB در ۸ فایل: `engine`، `index`، `loopDetector`، `observerRunner`، `personaRunner`، `personas`، `transcript`، `types`) + ابزار `agent/tools/discussion.js` (~۱۱KB) + بخش‌های `web/server.js` (۵۲ ارجاع) در هیچ‌کدام از اسناد مرجع پوشش نداشته‌اند. این فاز جای آن‌ها را در معماری هدف تعیین و اجرا می‌کند. **پیش‌نیاز فازهای ۱۴–۱۶:** discussion از طریق `callAI` (مسیر request رانتایم) با endpoint resolution نقش‌محور کار می‌کند؛ بنابراین پس از تثبیت لایه‌های application/runtime اجرا می‌شود.
 
-### [🔴] گام ۱: inventory مسئولیت‌ها و قراردادها
+**تکمیل 2026-08-26:** گام‌های ۱ تا ۳ — هشت تست contract/isolation جدید در `test/discussion/project-discussion.test.js` سبز؛ suite کامل 669/669 و `npm run check` سبز. DiscussionService/DiscussionContext و TranscriptRepository ساخته شدند؛ `DiscussionEngine` همچنان pure و بدون وابستگی به `agent.js` است؛ transcript پروژه‌ای atomic، قابل list/replay و eventها project-labeled هستند. تصمیم ۴۷ در پیوست ب.
+
+### [🟢] گام ۱: inventory مسئولیت‌ها و قراردادها
+
+**انجام شد (2026-08-26):** مرزها ثبت و اجرا شدند: DiscussionEngine ارکستراسیون round، PersonaRunner/ObserverRunner فراخوانی LLM و budget، LoopDetector، TranscriptStore مدل in-memory، TranscriptRepository persistence، personas/registry، ابزار `discussion_start` و APIهای project discussion. تست‌های `discussion.test.js` (23/23)، tool و route contract در پروژهٔ جدید سبز هستند.
 
 مرزهای ماژول را مستند کن: DiscussionEngine (ارکستر rounds)، PersonaRunner/ObserverRunner (فراخوانی LLM با `callAI` و `MAX_PARALLEL_AGENTS` budget)، LoopDetector، TranscriptStore (در حافظه)، personas ثابت + پروفایل‌های `discussion_*` در registry (که از تبلیغ delegation فیلتر می‌شوند)، ابزار `discussion_start`، endpointها/UI وب (۵۲ ارجاع در server.js). قرارداد هر سطح (tool args، APIها، eventها) مشخص و contract test ساخته شود.
 
-### [🔴] گام ۲: سازگاری Multi-Project
+### [🟢] گام ۲: سازگاری Multi-Project
+
+**انجام شد (2026-08-26):** `DiscussionContext` پروژهٔ معتبر را فقط از runtime/registry می‌سازد و `workspace`/`workspace_root` قابل جعل از tool args را نادیده می‌گیرد. `DiscussionService` برای projectId/projectContext، endpoint resolution، project-labeled `discussion:*` events و persistence به `dataRoot` تزریق می‌شود. `TranscriptRepository` از `JsonRepository`/AtomicFile استفاده می‌کند و فهرست/replay را per-project جدا می‌کند؛ `dataRoot` scaffold دایرکتوری `discussion/` را نیز می‌سازد.
 
 discussion باید ProjectContext/RunContext فعلی را مصرف کند: `workspaceContext` و endpoint resolution از context پروژه؛ eventهای آن `projectId`/`runId` حمل کنند. **تصمیم تأییدشده (2026-08-25):** transcript discussion به‌صورت **per-project پایدار** می‌شود — علاوه‌بر `TranscriptStore` فعلیِ درون‌حافظه‌ای، خلاصه/خروجی هر session بحث در `dataRoot` پروژه (فاز ۸) با repository ساخته‌شده در فاز ۱۸ ذخیره و قابل مرور/replay شود؛ این تفاوت رفتاری به‌عنوان بهبود محصول تعمدی در همین گام مستند می‌گردد (قانون ثابت ۴).
 
-### [🔴] گام ۳: ورود به ساختار هدف
+### [🟢] گام ۳: ورود به ساختار هدف
+
+**انجام شد (2026-08-26):** `agent/discussion/DiscussionService.js` و `DiscussionContext.js` application boundary هستند و به globalهای `agent.js` وابسته نیستند؛ runtime/CLI/tool/Web فقط runtime facade و caller را تزریق می‌کنند. endpointهای `GET/POST /api/projects/:projectId/discussions` و replay هر transcript به API و route inventory افزوده شدند؛ UI برای project فعال از مسیر scoped استفاده می‌کند و `/api/discussion` legacy باقی مانده است.
 
 جای نهایی ماژول در ساختار refactor تعیین و اجرا شود (پیشنهاد: باقی‌ماندن در `agent/discussion/` با facade `index.js` تزریق‌پذیر — `createLlmCaller` به‌جای وابستگی به globalهای `agent.js` روی interface application (فاز ۱۴) سوار شود)؛ وابستگی معکوس `discussion ← agent.js` حذف شود.
 
@@ -911,6 +919,8 @@ discussion باید ProjectContext/RunContext فعلی را مصرف کند: `wo
 - `discussion.test.js` بدون تغییر رفتار سبز؛ discussion همراه Runهای پروژه‌ای درست (context صحیح، event labelدار) کار می‌کند.
 - transcript هر بحث در `dataRoot` همان پروژه ذخیره و بازیابی می‌شود؛ transcript پروژهٔ الف در ب دیده نمی‌شود (تست isolation).
 - contract testهای discussion (tool + API) موجود؛ وابستگی جهتی تمیز (بدون require چرخه‌ای به `agent.js`)؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر سه بند اثبات شد — `test/discussion/project-discussion.test.js` (8/8)، `test/discussion.test.js` (23/23)، API project discussion و event project labeling، persistence atomic/replay/isolation و suite کامل 669/669 سبز.
 
 ---
 
@@ -1058,6 +1068,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 45. **استخراج CLI/REPL فاز ۲۶ یک move است نه fork:** parsing و dispatch در `agent/cli/`، interactive lifecycle و approval/input/output در `agent/interactive/` قرار گرفتند؛ `bin/agent.js` و `bin/interactive.js` wrapper سازگارند. گزینه‌های فعلی، `--json`، exit codeها، stdout/stderr، commandهای REPL و approval prompt بدون تغییر معنایی باقی ماندند؛ `backfill-eventstore.js` خارج از مسیر تغییر نگه داشته شد.
 
 46. **استخراج Event Contract فاز ۲۷ یک move است نه fork:** تولید/sequence/correlation در `EventBus` و `EventContext`، validation در `EventValidator`، inventory در `EventTypes`، projection/replay در `EventProjector` و redaction در `EventRedactor` قرار گرفتند. `agent/lib/events.js` facade باقی ماند؛ eventstore/journal/UI event business خام را می‌گیرند و log/external redaction صریح و جداست. نام‌ها و envelope موجود حذف یا rename نشدند.
+
+47. **Discussion فاز ۲۸ یک application boundary پروژه‌آگاه دارد:** `DiscussionService` caller/runtime/context/event lifecycle را inject می‌کند، `DiscussionEngine` و `TranscriptStore` از `agent.js` مستقل می‌مانند، و `TranscriptRepository` با persistence atomic در `dataRoot` پروژه می‌نویسد. APIهای project-scoped برای start/list/replay افزوده شدند؛ `/api/discussion` و ابزار/CLI legacy حفظ شدند؛ transcript خام برای replay نگه داشته و project دیگر به آن دسترسی ندارد.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 - مورد باز ثبت‌شده‌ای باقی نمانده است؛ Assumption قالب ESM در تصمیم ۴۳ حل شد.

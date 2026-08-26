@@ -50,6 +50,7 @@ const { SseHub } = require("./SseHub");
 
 const consoleAuth = require("../../agent/lib/consoleAuth");
 const { ApprovalStore } = require("../../agent/policy");
+const { DiscussionService } = require("../../agent/discussion/DiscussionService");
 
 
 function createServer(runtime, options = {}) {
@@ -1154,17 +1155,24 @@ function createServer(runtime, options = {}) {
             )
         );
 
+    const discussionService =
+        new DiscussionService({ runtime });
 
-    async function startDiscussion({ task, personas, maxRounds }) {
+
+    async function startDiscussion({
+        task,
+        personas,
+        maxRounds,
+        projectId = null,
+        projectContext = null
+    }) {
 
         const {
-            DiscussionEngine,
             createLlmCaller,
             PERSONAS
         } = DISCUSSION_MODULE;
 
         const available = PERSONAS.map(persona => persona.id);
-
         const unknown = personas.filter(id => !available.includes(id));
 
         if (unknown.length > 0) {
@@ -1181,25 +1189,40 @@ function createServer(runtime, options = {}) {
                 ? createLlmCaller({ callAI: runtime.callAI })
                 : createLlmCaller({ endpointFor: runtime.endpointFor });
 
-        const discussion = {
-            id:
-                `discussion-${Date.now().toString(36)}`,
-            status: "running",
-            task,
-            personas,
-            max_rounds: maxRounds,
-            started_at: Date.now(),
-            finished_at: null,
-            rounds: [],
-            observer_decisions: [],
-            final_report: null,
-            total_rounds: 0,
-            hit_max_rounds: false,
-            stopped_reason: null,
-            error: null
-        };
+        const started =
+            discussionService.start({
+                task,
+                personas,
+                maxRounds,
+                projectId,
+                projectContext,
+                llmCaller: caller,
+                maxParallel: runtime.settings.get("MAX_PARALLEL_AGENTS"),
+                persist: true,
+                defer: true,
+                onFinish: (result, discussion) => {
+                    if (result.final_report?.summary) {
+                        addMessage({
+                            role: "assistant",
+                            kind: "discussion-report",
+                            content: result.final_report.summary
+                        });
+                    }
 
-        state.discussion = discussion;
+                    discussion.rounds = discussion.rounds || [];
+                },
+                onError: (error, discussion) => {
+                    addMessage({
+                        role: "assistant",
+                        kind: "error",
+                        content: `discussion failed: ${error.message}`
+                    });
+                    discussion.status = "failed";
+                }
+            });
+
+        state.discussion = started.record;
+        state.projectId = projectId || null;
 
         addMessage({
             role: "user",
@@ -1208,120 +1231,8 @@ function createServer(runtime, options = {}) {
             personas
         });
 
-        runtime.events.emit("discussion:start", {
-            id: discussion.id,
-            task,
-            personas,
-            max_rounds: maxRounds
-        });
-
-        const engine =
-            new DiscussionEngine({
-                task,
-                personas,
-                maxRounds,
-                /* the panel shares the runtime's parallel-agent budget */
-                maxParallel: runtime.settings.get("MAX_PARALLEL_AGENTS"),
-                llmCaller: caller,
-                workspaceContext:
-                    `Workspace root: ${runtime.createRuntimeContext().runtime.workspace_root}`,
-                onMessage: message => {
-
-                    runtime.events.emit("discussion:message", {
-                        id: discussion.id,
-                        round: message.round,
-                        persona: message.persona,
-                        persona_name: message.persona_name,
-                        content: message.content.slice(0, 8000)
-                    });
-                },
-                onRound: round => {
-
-                    discussion.rounds.push({
-                        round: round.round,
-                        messages: round.messages.map(message => ({
-                            persona: message.persona,
-                            persona_name: message.persona_name,
-                            content: message.content.slice(0, 8000)
-                        }))
-                    });
-
-                    runtime.events.emit("discussion:round", {
-                        id: discussion.id,
-                        round: round.round,
-                        messages: round.messages.length
-                    });
-                },
-                onObserver: (observerDecision, round) => {
-
-                    discussion.observer_decisions.push({
-                        round,
-                        decision: observerDecision.decision,
-                        agreements: observerDecision.agreements || [],
-                        open_points: observerDecision.open_points || [],
-                        unaddressed: observerDecision.unaddressed || [],
-                        instructions: observerDecision.instructions || {}
-                    });
-
-                    runtime.events.emit("discussion:observer", {
-                        id: discussion.id,
-                        round,
-                        decision: observerDecision.decision,
-                        agreements: observerDecision.agreements || [],
-                        open_points: observerDecision.open_points || [],
-                        unaddressed: observerDecision.unaddressed || [],
-                        instructions: observerDecision.instructions || {}
-                    });
-                }
-            });
-
-        try {
-
-            const result =
-                await engine.run();
-
-            discussion.status = "done";
-            discussion.final_report = result.final_report;
-            discussion.total_rounds = result.total_rounds;
-            discussion.hit_max_rounds = result.hit_max_rounds;
-            discussion.stopped_reason = result.stopped_reason || null;
-            discussion.finished_at = Date.now();
-
-            runtime.events.emit("discussion:finish", {
-                id: discussion.id,
-                total_rounds: result.total_rounds,
-                hit_max_rounds: result.hit_max_rounds,
-                stopped_reason: result.stopped_reason || null,
-                final_report: result.final_report
-            });
-
-            if (result.final_report?.summary) {
-                addMessage({
-                    role: "assistant",
-                    kind: "discussion-report",
-                    content: result.final_report.summary
-                });
-            }
-
-        } catch (error) {
-
-            discussion.status = "failed";
-            discussion.error = error.message;
-            discussion.finished_at = Date.now();
-
-            runtime.events.emit("discussion:error", {
-                id: discussion.id,
-                error: error.message
-            });
-
-            addMessage({
-                role: "assistant",
-                kind: "error",
-                content: `discussion failed: ${error.message}`
-            });
-        }
+        return started.promise;
     }
-
 
     function serveStatic(req, res, pathname) {
 
@@ -2212,6 +2123,108 @@ function createServer(runtime, options = {}) {
                         return;
                     }
 
+                    if (suffix === "/discussions" && req.method === "GET") {
+
+                        requireAccess(projectId, "project:read");
+                        const record = requireRecord(projectId);
+                        const ctx = runtime.projects.createProjectContext(record);
+
+                        sendJson(res, 200, {
+                            project_id: record.id,
+                            discussions: discussionService.list({
+                                projectId: record.id,
+                                projectContext: ctx
+                            })
+                        });
+                        return;
+                    }
+
+                    if (
+                        suffix.startsWith("/discussions/") &&
+                        req.method === "GET"
+                    ) {
+
+                        requireAccess(projectId, "project:read");
+                        const record = requireRecord(projectId);
+                        const discussionId = decodeURIComponent(
+                            suffix.slice("/discussions/".length)
+                        );
+                        const ctx = runtime.projects.createProjectContext(record);
+                        const discussion = discussionService.load(discussionId, {
+                            projectId: record.id,
+                            projectContext: ctx
+                        });
+
+                        if (!discussion) {
+                            sendJson(res, 404, { error: "unknown discussion" });
+                            return;
+                        }
+
+                        sendJson(res, 200, {
+                            project_id: record.id,
+                            discussion
+                        });
+                        return;
+                    }
+
+                    if (suffix === "/discussions" && req.method === "POST") {
+
+                        requireAccess(projectId, "project:write");
+                        const record = requireRecord(projectId);
+                        const body = await readBody(req);
+                        const task = typeof body.task === "string" ? body.task.trim() : "";
+                        const personas = Array.isArray(body.personas)
+                            ? body.personas.filter(id => typeof id === "string").map(id => id.trim()).filter(Boolean)
+                            : [];
+                        const maxRounds = Number.isInteger(body.max_rounds) ? body.max_rounds : 5;
+
+                        if (task === "" || personas.length === 0 || maxRounds < 1 || maxRounds > 10) {
+                            sendJson(res, 400, {
+                                error: task === ""
+                                    ? "task is required"
+                                    : personas.length === 0
+                                        ? "personas is required: a non-empty array of persona ids"
+                                        : "max_rounds must be between 1 and 10"
+                            });
+                            return;
+                        }
+
+                        const ctx = runtime.projects.createProjectContext(record);
+                        const known = DISCUSSION_MODULE.listPersonas().map(persona => persona.id);
+                        const unknown = personas.find(id => !known.includes(id));
+
+                        if (unknown) {
+                            sendJson(res, 400, {
+                                error: `unknown persona: ${unknown}; available: ${known.join(", ")}`
+                            });
+                            return;
+                        }
+
+                        if (busy()) {
+                            sendJson(res, 409, {
+                                error: state.status === "running"
+                                    ? "a task is already running"
+                                    : "a discussion is already running"
+                            });
+                            return;
+                        }
+
+                        startDiscussion({
+                            task,
+                            personas,
+                            maxRounds,
+                            projectId: record.id,
+                            projectContext: ctx
+                        }).catch(() => {});
+
+                        sendJson(res, 202, {
+                            accepted: true,
+                            id: state.discussion.id,
+                            project_id: record.id
+                        });
+                        return;
+                    }
+
                     if (suffix === "/state" && req.method === "GET") {
 
                         requireAccess(projectId, "project:read");
@@ -2557,7 +2570,7 @@ function createServer(runtime, options = {}) {
                             */
                             const discussion = state.discussion;
 
-                            if (discussion) {
+                            if (discussion && discussion.status !== "failed") {
                                 discussion.status = "failed";
                                 discussion.error = error.message;
                                 discussion.finished_at = Date.now();

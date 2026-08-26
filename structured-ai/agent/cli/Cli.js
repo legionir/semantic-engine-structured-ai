@@ -644,7 +644,8 @@ async function runDiscussion(runtime, options) {
     const {
         DiscussionEngine,
         createLlmCaller,
-        PERSONAS
+        PERSONAS,
+        transcriptRepository
     } =
         require(path.join(REPO_ROOT, "agent", "discussion"));
 
@@ -666,12 +667,33 @@ async function runDiscussion(runtime, options) {
     | the main run can act on it afterwards.
     */
 
+    let projectContext = null;
+
+    if (options.project) {
+        const record = runtime.projects.registry().get(options.project);
+        projectContext = runtime.projects.createProjectContext(record);
+    }
+
     const workspace =
+        projectContext?.workspaceRoot ||
         runtime.createRuntimeContext().runtime.workspace_root;
 
+    const discussionProjectId =
+        projectContext?.projectId ||
+        options.project ||
+        null;
+
+    const discussionDataRoot =
+        projectContext?.dataRoot ||
+        require(path.join(REPO_ROOT, "agent", "lib", "dataRoot")).legacyDataRoot();
+
     const workspaceContext =
-        `Workspace root: ${workspace}\n` +
-        `Platform: ${process.platform} (${process.version})`;
+        projectContext
+            ? `Project: ${projectContext.projectName} (${discussionProjectId})\n` +
+              `Workspace root: ${workspace}\n` +
+              `Platform: ${process.platform} (${process.version})`
+            : `Workspace root: ${workspace}\n` +
+              `Platform: ${process.platform} (${process.version})`;
 
     if (!options.quiet) {
         process.stderr.write(
@@ -688,6 +710,12 @@ async function runDiscussion(runtime, options) {
             maxParallel: runtime.settings.get("MAX_PARALLEL_AGENTS"),
             llmCaller: createLlmCaller({ callAI: runtime.callAI }),
             workspaceContext,
+            projectId: discussionProjectId,
+            projectContext,
+            dataRoot: discussionDataRoot,
+            discussionId: `discussion-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+            transcriptRepository,
+            persistTranscript: true,
             onMessage: message => {
 
                 if (!options.quiet) {

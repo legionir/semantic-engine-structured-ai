@@ -326,3 +326,12 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Redaction:** event durable برای replay/نویسنده تغییر نمی‌کند؛ `redactForLog` secretها و source material را برای log/external surface mask می‌کند و `logObject` از آن استفاده می‌کند.
 - **Observability:** metric/health consumer event bus باقی می‌ماند و business event تولید نمی‌کند؛ تفکیک سری‌های project/global و سلامت پروژه‌ها حفظ شده است.
 - **Flag:** فاز ۲۷ flag جدیدی اعلان نمی‌کند (تصمیم ۴۶). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۳. تغییرات additive فاز ۲۸ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **Discussion boundary:** `DiscussionService` و `DiscussionContext` runtime caller، project identity، event attribution و lifecycle را inject می‌کنند؛ `DiscussionEngine`، `PersonaRunner`، `ObserverRunner`، `LoopDetector` و `TranscriptStore` بدون require چرخه‌ای به `agent.js` کار می‌کنند.
+- **Transcript persistence:** `TranscriptRepository` با `JsonRepository`/AtomicFile سند کامل هر discussion را در `<project dataRoot>/discussion/<id>.json` ذخیره می‌کند؛ rounds، observer decisions، final report، status و خطا برای replay حفظ می‌شوند. synthetic/legacy به `.agent/discussion` map می‌شود و فایل‌های قدیمی حذف نمی‌شوند.
+- **Project isolation:** `GET/POST /api/projects/:projectId/discussions` و `GET /api/projects/:projectId/discussions/:discussionId` فقط dataRoot همان project را می‌خوانند/می‌نویسند؛ project دیگر transcript را list یا replay نمی‌کند؛ permission chain فاز ۹ حفظ است.
+- **Events/UI/CLI:** eventهای `discussion:*` project_id additive دارند؛ UI برای project فعال به route scoped می‌رود و `/api/discussion` legacy باقی است؛ CLI `--discussion --project` transcript را در context پروژه ذخیره می‌کند.
+- **Security:** workspace/root از runtime/registry می‌آید؛ `workspace` و `workspace_root` از آرگومان tool برای identity پذیرفته نمی‌شوند؛ caller همچنان از `callAI` role-based runtime استفاده می‌کند.
+- **Flag:** فاز ۲۸ flag جدیدی اعلان نمی‌کند (تصمیم ۴۷). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

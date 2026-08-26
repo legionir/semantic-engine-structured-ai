@@ -56,6 +56,23 @@ export const getProjectMetrics = id =>
 export const getProjectHealth = id =>
   request(`/api/projects/${encodeURIComponent(id)}/health`);
 
+export const getProjectDiscussions = id =>
+  request(`/api/projects/${encodeURIComponent(id)}/discussions`);
+
+export const getProjectDiscussion = (projectId, discussionId) =>
+  request(`/api/projects/${encodeURIComponent(projectId)}/discussions/${encodeURIComponent(discussionId)}`);
+
+export const postDiscussion = (task, personas, maxRounds, projectId = null) =>
+  request(
+    projectId
+      ? `/api/projects/${encodeURIComponent(projectId)}/discussions`
+      : "/api/discussion",
+    {
+      method: "POST",
+      body: JSON.stringify({ task, personas, max_rounds: maxRounds })
+    }
+  );
+
 
 export const postTask = (task, projectId) =>
   request(

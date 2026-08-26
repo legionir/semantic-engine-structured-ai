@@ -44,7 +44,8 @@ const SCAFFOLD_DIRS = [
     "eventstore",
     "searches",
     "processes",
-    "logs"
+    "logs",
+    "discussion"
 ];
 
 /* Roots whose central layout has already been materialised this
