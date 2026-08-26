@@ -15,7 +15,7 @@ const {
     setApprovalHandler
 } = require("./policy");
 
-const events = require("./lib/events");
+const events = require("./events");
 
 const settings = require("./lib/storage");
 const journal = require("./lib/journal");
@@ -490,10 +490,15 @@ function logObject(
         return;
     }
 
+    const safeValue =
+        typeof events.redactForLog === "function"
+            ? events.redactForLog(value)
+            : value;
+
     LOG_STREAM(
         `${logScope(scope)} ${label}:\n${
             JSON.stringify(
-                value,
+                safeValue,
                 null,
                 2
             )

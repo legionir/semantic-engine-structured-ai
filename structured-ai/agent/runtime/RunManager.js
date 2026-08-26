@@ -25,7 +25,7 @@
 const { AsyncLocalStorage } = require("async_hooks");
 
 const AgentRunContext = require("./AgentRunContext");
-const events = require("../lib/events");
+const events = require("../events");
 const settings = require("../lib/storage");
 
 

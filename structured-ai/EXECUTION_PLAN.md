@@ -870,17 +870,23 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 ---
 
-## [🔴] فاز ۲۷: Event Contract و Observability Boundaries
+## [🟢] فاز ۲۷: Event Contract و Observability Boundaries
 
 **هدف و scope:** تفکیک تولید، اعتبارسنجی، ذخیره، replay و نمایش eventها با قرارداد پایدار. خروجی: `agent/events/`.
 
-### [🔴] گام ۱: لایهٔ events
+**تکمیل 2026-08-26:** گام ۱ — هشت تست مستقل در `test/events/events.test.js` سبز؛ suite کامل 661/661 و `npm run check` سبز. EventBus، context، validator، type inventory، projector و redactor از `agent/lib/events.js` استخراج شدند؛ consumerهای runtime/MCP/skills به مسیر canonical جدید متصل شدند و facade legacy حفظ شد. رویدادهای durable خام می‌مانند، projection/log redaction جداست و Observability همچنان consumer مستقل event bus است. تصمیم ۴۶ در پیوست ب.
+
+### [🟢] گام ۱: لایهٔ events
+
+**انجام شد (2026-08-26):** `agent/events/{EventBus,EventTypes,EventValidator,EventContext,EventProjector,EventRedactor,index}.js` ساخته شد. `EventContext` AsyncLocalStorage و project/run/turn attribution را نگه می‌دارد؛ `EventValidator` envelope را validate می‌کند؛ `EventProjector` فیلتر project stream و aggregate metadata را جدا کرده؛ `EventRedactor` secretها و source material را فقط برای log/external projection mask می‌کند؛ EventBus sequence و payload precedence تاریخی را حفظ می‌کند. `agent/lib/events.js` wrapper سازگار است و eventstore/journal/UI همان eventهای business را مصرف می‌کنند.
 
 `EventBus.js`، `EventTypes.js`، `EventValidator.js`، `EventContext.js`، `EventProjector.js`، `EventRedactor.js` را بساز. نام‌های event فعلی حفظ؛ payload validation اضافه شود؛ secret و source content در log/redaction ماسک شوند؛ journal و eventstore همان eventها را ذخیره کنند؛ UI همان eventها (+ additive) را replay کند؛ telemetry از business event جدا باشد. تعریف مستند `turnId` (خروجی فاز ۹) در contract درج شود.
 
 **معیار پذیرش:**
 
 - contract test رویدادها (فاز ۱ + گسترش) سبز؛ replay در UI خراب نمی‌شود؛ دادهٔ پروژه‌ای در رویداد پروژهٔ دیگر ظاهر نمی‌شود (تست isolation)؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر چهار بند اثبات شد — `test/events/events.test.js` (8/8)، `test/contracts/events.contract.test.js` (5/5)، `eventstore.test.js` (5/5)، `journal.test.js` (2/2)، runtime/MCP/UI regressionها و suite کامل 661/661 سبز. EventTypes با inventory fixture برابر است؛ concurrent context و `withProjectId` ایزوله‌اند؛ project projector و redaction تست شده‌اند؛ logObject از `redactForLog` استفاده می‌کند.
 
 ---
 
@@ -1050,6 +1056,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 44. **Visualizer فاز ۲۵ یک graph مستقل از console دارد:** `visualizer/main.js` native ESM، `graph-store`/`graph-model`/`selection-state` state را از chat console جدا می‌کنند؛ API client همهٔ projectIdها را encode و worker layout با fallback deterministic کار می‌کند. `visualizer.js` compatibility renderer برای direct embed/rollback باقی می‌ماند و هیچ API/status یا graph interaction حذف نمی‌شود.
 
 45. **استخراج CLI/REPL فاز ۲۶ یک move است نه fork:** parsing و dispatch در `agent/cli/`، interactive lifecycle و approval/input/output در `agent/interactive/` قرار گرفتند؛ `bin/agent.js` و `bin/interactive.js` wrapper سازگارند. گزینه‌های فعلی، `--json`، exit codeها، stdout/stderr، commandهای REPL و approval prompt بدون تغییر معنایی باقی ماندند؛ `backfill-eventstore.js` خارج از مسیر تغییر نگه داشته شد.
+
+46. **استخراج Event Contract فاز ۲۷ یک move است نه fork:** تولید/sequence/correlation در `EventBus` و `EventContext`، validation در `EventValidator`، inventory در `EventTypes`، projection/replay در `EventProjector` و redaction در `EventRedactor` قرار گرفتند. `agent/lib/events.js` facade باقی ماند؛ eventstore/journal/UI event business خام را می‌گیرند و log/external redaction صریح و جداست. نام‌ها و envelope موجود حذف یا rename نشدند.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 - مورد باز ثبت‌شده‌ای باقی نمانده است؛ Assumption قالب ESM در تصمیم ۴۳ حل شد.

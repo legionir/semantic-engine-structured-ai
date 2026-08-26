@@ -317,3 +317,12 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Output:** `--json` همچنان فقط action JSON معتبر روی stdout می‌دهد؛ progress، error و approval output روی stderr/stdout تاریخی باقی می‌مانند؛ error action شکل قبلی را حفظ می‌کند.
 - **Migration safety:** parsing قبل از load کردن runtime انجام می‌شود؛ `--project`/`--migrate`، project root registry، session history و `backfill-eventstore.js` بدون تغییر معنایی حفظ شده‌اند.
 - **Flag:** فاز ۲۶ flag جدیدی اعلان نمی‌کند (تصمیم ۴۵). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۲. تغییرات additive فاز ۲۷ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **Event modules:** تولید و correlation در `agent/events/EventBus.js` و `EventContext.js`، inventory در `EventTypes.js`، validation در `EventValidator.js`، projection در `EventProjector.js` و redaction در `EventRedactor.js` قرار گرفتند؛ `agent/lib/events.js` facade سازگار است.
+- **Envelope:** فیلدهای `seq`، `type`، `at`، `run_id`، `turn_id`، `scope` و `iteration` حفظ شدند؛ `project_id` فقط به‌صورت additive روی scopeهای پروژه‌ای می‌آید؛ payload صریح بر context مقدم است.
+- **Projection:** استریم پروژهٔ جاری eventهای همان پروژه را کامل، eventهای global را metadata aggregate و eventهای پروژهٔ دیگر را حذف می‌کند؛ replay از همان projector استفاده می‌کند.
+- **Redaction:** event durable برای replay/نویسنده تغییر نمی‌کند؛ `redactForLog` secretها و source material را برای log/external surface mask می‌کند و `logObject` از آن استفاده می‌کند.
+- **Observability:** metric/health consumer event bus باقی می‌ماند و business event تولید نمی‌کند؛ تفکیک سری‌های project/global و سلامت پروژه‌ها حفظ شده است.
+- **Flag:** فاز ۲۷ flag جدیدی اعلان نمی‌کند (تصمیم ۴۶). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

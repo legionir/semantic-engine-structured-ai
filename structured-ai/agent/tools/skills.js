@@ -3,7 +3,7 @@ const path = require("path");
 
 const settings = require("../lib/storage");
 
-const events = require("../lib/events");
+const events = require("../events");
 
 const { isInsideRoot, truncateText } = require("../lib/workspace");
 
