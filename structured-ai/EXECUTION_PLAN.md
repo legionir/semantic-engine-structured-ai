@@ -850,17 +850,23 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 ---
 
-## [🔴] فاز ۲۶: CLI و Interactive REPL
+## [🟢] فاز ۲۶: CLI و Interactive REPL
 
 **هدف و scope:** استقلال CLI اصلی و REPL. خروجی: `agent/cli/` و `agent/interactive/`.
 
-### [🔴] گام ۱: تفکیک parsing و commandها
+**تکمیل 2026-08-26:** گام ۱ — ده تست مستقل در `test/cli/modules.test.js` سبز؛ suite کامل 653/653 و `npm run check` سبز. parsing، command dispatch، output، one-shot run، serve و interactive entrypoint از binها جدا شدند؛ wrapperهای `bin/agent.js` و `bin/interactive.js` باقی ماندند و رفتار flagها/JSON/stdout/REPL حفظ شد. تصمیم ۴۵ در پیوست ب.
+
+### [🟢] گام ۱: تفکیک parsing و commandها
+
+**انجام شد (2026-08-26):** `agent/cli/{ArgParser,CommandRegistry,OutputFormatter,RunCommand,ServeCommand,InteractiveCommand,HelpCommand,Cli,index}.js` و `agent/interactive/{Repl,ReplCommands,InputReader,OutputRenderer,ApprovalPrompt,index}.js` ساخته شدند. `ArgParser` همهٔ flagهای فعلی از جمله `--project`/`--migrate`/`--json` را قبل از load runtime parse می‌کند؛ `CommandRegistry` dispatch help/serve/interactive را انجام می‌دهد؛ binها facadeهای نازک هستند. REPL از command vocabulary، input ordering، output renderer و approval prompt تزریق‌شده استفاده می‌کند؛ `backfill-eventstore.js` مستقل و بدون تغییر باقی ماند.
 
 از `bin/agent.js` و `bin/interactive.js` (logic تعبیه‌شده) بساز: `ArgParser.js`، `CommandRegistry.js`، `OutputFormatter.js`، `RunCommand.js`، `ServeCommand.js`، `InteractiveCommand.js`، `HelpCommand.js` و `Repl.js`، `ReplCommands.js`، `InputReader.js`، `OutputRenderer.js`، `ApprovalPrompt.js`. binها wrapper نازک شوند. رفتار: commandها و فلگ‌های فعلی (شامل `--project` فاز ۷)، `--json` فقط JSON معتبر روی stdout، log stream و final output فعلی، فرمان‌های REPL (`/help`، `/clear`، `/history`، `/approve`، `/tools`، `/save`) و approval prompt سازگار با runtime.
 
 **معیار پذیرش:**
 
 - `cli.test.js` و `interactive.test.js` بدون تغییر سبز؛ `bin/backfill-eventstore.js` کار می‌کند؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر دو بند اثبات شد — `test/cli.test.js` (19/19)، `test/interactive.test.js` (12/12)، `test/cli/modules.test.js` (10/10)، syntax check تمام CLI/REPL moduleها و suite کامل 653/653 سبز.
 
 ---
 
@@ -1042,6 +1048,8 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 
 
 44. **Visualizer فاز ۲۵ یک graph مستقل از console دارد:** `visualizer/main.js` native ESM، `graph-store`/`graph-model`/`selection-state` state را از chat console جدا می‌کنند؛ API client همهٔ projectIdها را encode و worker layout با fallback deterministic کار می‌کند. `visualizer.js` compatibility renderer برای direct embed/rollback باقی می‌ماند و هیچ API/status یا graph interaction حذف نمی‌شود.
+
+45. **استخراج CLI/REPL فاز ۲۶ یک move است نه fork:** parsing و dispatch در `agent/cli/`، interactive lifecycle و approval/input/output در `agent/interactive/` قرار گرفتند؛ `bin/agent.js` و `bin/interactive.js` wrapper سازگارند. گزینه‌های فعلی، `--json`، exit codeها، stdout/stderr، commandهای REPL و approval prompt بدون تغییر معنایی باقی ماندند؛ `backfill-eventstore.js` خارج از مسیر تغییر نگه داشته شد.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 - مورد باز ثبت‌شده‌ای باقی نمانده است؛ Assumption قالب ESM در تصمیم ۴۳ حل شد.

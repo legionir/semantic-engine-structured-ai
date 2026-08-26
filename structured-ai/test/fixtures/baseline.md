@@ -660,3 +660,45 @@
 | **مجموع** | **643/643 passed** |
 
 *نکته:* Visualizer با native ESM به graph domainهای مستقل تفکیک شد؛ API و state پروژه‌آگاه، worker layout deterministic، fallback، focus/selection، inspector و direct-embed compatibility renderer تأیید شدند. `npm run check` سبز.
+
+## suite پایان فاز ۲۶ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` | 8/8 passed |
+| `test/ui.test.js` | 40/40 passed |
+| `test/ui/modules.test.js` | 8/8 passed |
+| `test/ui/visualizer.test.js` | 9/9 passed |
+| `test/cli.test.js` | 19/19 passed |
+| `test/cli/modules.test.js` (جدید فاز ۲۶) | 10/10 passed |
+| `test/interactive.test.js` | 12/12 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **653/653 passed** |
+
+*نکته:* CLI و REPL به moduleهای `agent/cli/` و `agent/interactive/` تفکیک شدند؛ binها wrapper سازگارند، JSON/stdout/stderr، exit codeها و commandهای REPL حفظ شده‌اند. `npm run check` سبز.

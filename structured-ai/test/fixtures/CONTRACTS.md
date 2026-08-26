@@ -309,3 +309,11 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Layout/selection:** worker layout deterministic است و در نبود Worker یا خطای worker به layout grid deterministic fallback می‌کند؛ focus depth، resolved-only، node selection، drill-down و inspector metadata حفظ می‌شوند.
 - **Security:** متن label/signature/connection با `textContent`/DOM API رندر می‌شود و خروجی inspector مسیر HTML خام ندارد؛ graph interactions و endpointهای موجود حذف یا rename نشده‌اند.
 - **Flag:** فاز ۲۵ flag جدیدی اعلان نمی‌کند (تصمیم ۴۴). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۱. تغییرات additive فاز ۲۶ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **CLI:** `agent/cli/` شامل `ArgParser`، `CommandRegistry`، `OutputFormatter`، commandهای Help/Run/Serve/Interactive و facade `Cli` است؛ `bin/agent.js` wrapper سازگار باقی مانده است. تمام flagها و exit codeها حفظ شده‌اند.
+- **Interactive:** `agent/interactive/` شامل `Repl`، `ReplCommands`، `InputReader`، `OutputRenderer` و `ApprovalPrompt` است؛ `bin/interactive.js` مسیر قدیمی را حفظ می‌کند. commandهای `/help`، `/clear`، `/history`، `/approve`، `/tools` و `/save` و ترتیب input/approval تغییر نکرده‌اند.
+- **Output:** `--json` همچنان فقط action JSON معتبر روی stdout می‌دهد؛ progress، error و approval output روی stderr/stdout تاریخی باقی می‌مانند؛ error action شکل قبلی را حفظ می‌کند.
+- **Migration safety:** parsing قبل از load کردن runtime انجام می‌شود؛ `--project`/`--migrate`، project root registry، session history و `backfill-eventstore.js` بدون تغییر معنایی حفظ شده‌اند.
+- **Flag:** فاز ۲۶ flag جدیدی اعلان نمی‌کند (تصمیم ۴۵). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
