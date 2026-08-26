@@ -246,3 +246,10 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Context kit:** پیاده‌سازی در `agent/context/{ContextManager,ConversationSizer,ExchangeDetector,ContextCompactor,MemoryCoordinator,ArchiveCoordinator}.js`؛ IO در `agent/persistence/{MemoryRepository,ArchiveRepository}.js`. `agent/lib/context.js`، `lib/memory.js` و `lib/archive.js` wrapper سازگار با همان exportها هستند.
 - **Export additive:** `context` از `agent/agent.js` همان kit را برمی‌گرداند. `bind({ events, logLine, currentRun, assertRunActive, summariseTranscript })` وابستگی زنده را تزریق می‌کند. wrapperهای `maintainContext`/`foldIntoMemory`/`refreshMemoryMessage`/`archiveExchanges` در facade می‌مانند (قانون ۷).
 - **Flag:** فاز ۱۷ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۶). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۳. تغییرات additive فاز ۱۸ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** مسیر فایل‌ها (فاز ۸ و `.agent/` legacy)، شکل JSON/JSONL، `safeId` session، replay session قدیمی، و skip خط خراب در eventstore/journal دست‌نخورده‌اند. استخراج ساختاری است.
+- **Persistence:** پیاده‌سازی در `agent/persistence/{AtomicFile,JsonRepository,SafeIdentifier,SchemaVersion,SessionRepository,JournalRepository,EventStoreRepository}.js`؛ `MemoryRepository`/`ArchiveRepository` JSON را اتمیک می‌نویسند. `agent/lib/sessions.js`، `lib/journal.js` و `lib/eventstore.js` wrapper سازگار با همان exportها هستند.
+- **Atomic write:** سند JSON کامل با temp+rename؛ crash قبل از rename فایل قبلی را نگه می‌دارد. JSONL append-only است و خط truncated در خواندن skip می‌شود.
+- **Flag:** فاز ۱۸ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۷). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

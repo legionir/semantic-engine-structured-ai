@@ -18,6 +18,9 @@ const crypto = require("crypto");
 
 const settings = require("../lib/storage");
 const dataRoot = require("../lib/dataRoot");
+const JsonRepository = require("./JsonRepository");
+const AtomicFile = require("./AtomicFile");
+const SchemaVersion = require("./SchemaVersion");
 
 
 /*
@@ -56,7 +59,7 @@ const dataRoot = require("../lib/dataRoot");
 |--------------------------------------------------------------------------
 */
 
-const INDEX_VERSION = "1";
+const INDEX_VERSION = SchemaVersion.CURRENT.archive;
 
 /*
 | A record is important because of what it did, not because of how it
@@ -133,14 +136,15 @@ function loadIndex(root) {
 
     const file = indexPath(root);
 
-    if (!fs.existsSync(file)) {
+    const parsed = JsonRepository.readJson(file, null);
+
+    if (!parsed) {
         return emptyIndex();
     }
 
     try {
 
-        const parsed =
-            JSON.parse(fs.readFileSync(file, "utf8"));
+        SchemaVersion.migrate("archive", parsed);
 
         const index = emptyIndex();
 
@@ -173,15 +177,9 @@ function loadIndex(root) {
 
 function saveIndex(index, root) {
 
-    fs.mkdirSync(archiveDirectory(root), { recursive: true });
-
     index.updated_at = new Date().toISOString();
 
-    fs.writeFileSync(
-        indexPath(root),
-        `${JSON.stringify(index, null, 2)}\n`,
-        "utf8"
-    );
+    JsonRepository.writeJson(indexPath(root), index);
 
     return index;
 }

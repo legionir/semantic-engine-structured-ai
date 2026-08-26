@@ -1,10 +1,10 @@
 "use strict";
 
-const fs = require("fs");
 const path = require("path");
 
-const settings = require("../lib/storage");
 const dataRoot = require("../lib/dataRoot");
+const JsonRepository = require("./JsonRepository");
+const SchemaVersion = require("./SchemaVersion");
 
 
 /*
@@ -44,7 +44,7 @@ function memoryPath(root) {
 function emptyMemory() {
 
     const memory = {
-        version: 1,
+        version: SchemaVersion.CURRENT.memory,
         updated_at: null,
         chunks_absorbed: 0
     };
@@ -61,14 +61,15 @@ function loadMemory(root) {
 
     const file = memoryPath(root);
 
-    if (!fs.existsSync(file)) {
+    const parsed = JsonRepository.readJson(file, null);
+
+    if (!parsed) {
         return emptyMemory();
     }
 
     try {
 
-        const parsed =
-            JSON.parse(fs.readFileSync(file, "utf8"));
+        SchemaVersion.migrate("memory", parsed);
 
         const memory = emptyMemory();
 
@@ -99,15 +100,9 @@ function saveMemory(memory, root) {
 
     const file = memoryPath(root);
 
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-
     memory.updated_at = new Date().toISOString();
 
-    fs.writeFileSync(
-        file,
-        `${JSON.stringify(memory, null, 2)}\n`,
-        "utf8"
-    );
+    JsonRepository.writeJson(file, memory);
 
     return memory;
 }

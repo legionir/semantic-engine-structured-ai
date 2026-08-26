@@ -653,23 +653,27 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 ---
 
-## [🔴] فاز ۱۸: Persistence Repositories و Atomicity
+## [🟢] فاز ۱۸: Persistence Repositories و Atomicity
 
 **هدف و scope:** فایل‌فرمت‌های session، memory، journal، eventstore و archive از implementation domain جدا شوند؛ نوشتن اتمیک و مقاوم به corruption.
 
-### [🔴] گام ۱: لایهٔ پایه
+**تکمیل 2026-08-26:** گام‌های ۱ و ۲ — ۹ تست جدید در `test/persistence/repositories.test.js` سبز؛ suite کامل 586/586 و `npm run check` سبز. استخراج یک move است نه fork؛ فلگ MODE تازه‌ای اعلان نشد (تصمیم ۳۷). `lib/{sessions,journal,eventstore}.js` wrapper ماندند (قانون ۷). قالب و مسیر فایل‌ها تغییر نکرد.
 
-`AtomicFile.js` (temp + rename)، `JsonRepository.js`، `SafeIdentifier.js`، `SchemaVersion.js` را بساز؛ قالب و محل فایل‌ها (مسیرهای فاز ۸ و `.agent/` legacy) تغییر نکند.
+### [🟢] گام ۱: لایهٔ پایه
 
-### [🔴] گام ۲: repositoryهای domain
+**انجام شد (2026-08-26):** `agent/persistence/{AtomicFile,JsonRepository,SafeIdentifier,SchemaVersion}.js`. نوشتن JSON با temp+rename؛ JSONL همچنان append-only با skip خط خراب/truncated. مسیرهای فاز ۸ و `.agent/` legacy دست‌نخورده.
 
-`SessionRepository.js`، `JournalRepository.js`، `EventStoreRepository.js` (+ تکمیل `MemoryRepository`/`ArchiveRepository` فاز ۱۷) با fallback کنترل‌شده برای فایل خراب و version/migration handler. safe ID فعلی sessionها حفظ شود.
+### [🟢] گام ۲: repositoryهای domain
+
+**انجام شد (2026-08-26):** `SessionRepository.js`، `JournalRepository.js`، `EventStoreRepository.js`؛ `MemoryRepository`/`ArchiveRepository` روی AtomicFile/JsonRepository سوار شدند. `SchemaVersion.migrate` برای نسخهٔ فعلی identity است و سند ناشناخته runtime را متوقف نمی‌کند. `safeId` تاریخی session حفظ شد.
 
 **معیار پذیرش:**
 
 - فایل‌های موجود بدون migration دستی خوانده می‌شوند؛ replay session قدیمی سالم.
 - crash وسط write فایل ناقص نمی‌گذارد (تست تزریق خطا)؛ خرابی یک فایل runtime را (مگر طبق قرارداد فعلی) متوقف نمی‌کند.
 - suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر سه بند با `test/persistence/repositories.test.js` (9/9)، `journal.test.js` 2/2، `eventstore.test.js` 5/5، `archive.test.js` 16/16 و suite 586/586 اثبات شد.
 
 ---
 
@@ -978,10 +982,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 34. **منبع canonical ابزارها (فاز ۱۴):** loader از `tool-schemas/*.json` می‌خواند. `tools.json` به‌عنوان snapshot سازگاری باقی است تا `require(.../tools.json)` و تست‌هایی که فایل را JSON.parse می‌کنند نشکنند؛ محتوای آن با concat schemaها برابر است. حلقهٔ اجرا هنوز در `agent.js` است — استخراج کامل loop صریحاً فاز ۱۶ است.
 35. **استخراج loop فاز ۱۶ یک move است نه fork:** هر دو مقدار `RUNTIME_ENGINE_MODE` (`legacy` و `modular`) همان engine استخراج‌شده در `agent/runtime/` را اجرا می‌کنند تا دو پیاده‌سازی واگرا نشوند. فلگ برای حذف در فاز ۳۰ اعلان شده؛ مقدار غلط مثل بقیهٔ `*_MODE`ها رفتار legacy دارد. پیش‌فرض schema `legacy` می‌ماند (تصمیم ۳۲).
 36. **استخراج context فاز ۱۷ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۷ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `RUNTIME_ENGINE_MODE` فاز ۱۶). پیاده‌سازی واحد در `agent/context/` و `agent/persistence/` است؛ `lib/context.js`، `lib/memory.js`، `lib/archive.js` و توابع `agent.js` wrapper سازگارند تا فاز ۳۰.
-
-**موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
-10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
- `agent/persistence/` است؛ `lib/context.js`، `lib/memory.js`، `lib/archive.js` و توابع `agent.js` wrapper سازگارند تا فاز ۳۰.
+37. **استخراج persistence فاز ۱۸ یک move است نه fork و فلگ تازه‌ای ندارد:** JSONهای کامل (session، memory، archive index) با temp+rename اتمیک نوشته می‌شوند؛ JSONL (journal، eventstore، archive segment) append-only می‌ماند و خط truncated در خواندن skip می‌شود. `SchemaVersion.migrate` برای نسخه‌های فعلی identity است.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
