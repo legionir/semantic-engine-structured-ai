@@ -21,6 +21,9 @@ import {
   workspaceRootFromIndex,
 } from '../../core/config/ProjectPaths';
 import { loadBlueprintBeside } from '../../ai/discovery/loadBlueprint';
+import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
+import { resolveDataRoot } from '../../core/config/DataRootResolver';
+import { artifactLocationFromArgs, indexLookupFromArgs } from '../projectPathsFromArgs';
 import {
   HttpGuard,
   DEFAULT_HOST,
@@ -31,7 +34,21 @@ import {
 
 export function resolveIndexPath(args: ParsedArgs, cwd: string): string {
   const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? cwd);
-  return resolveProjectIndexPath(root, stringOption(args.options, 'index'));
+  const lookup = indexLookupFromArgs(args, root);
+
+  /*
+  | وقتی artifact بیرون از root نگه داشته می‌شود، ایندکس قدیمیِ داخل root یک
+  | بار کپی می‌شود تا از دست نرود؛ در حالت پیش‌فرض `in-root` این فراخوانی
+  | عمداً هیچ کاری نمی‌کند.
+  */
+  migrateLegacyArtifacts({
+    workspaceRoot: root,
+    projectId: lookup.projectId ?? '',
+    location: lookup.location,
+    ...(lookup.dataRoot !== undefined ? { dataRoot: lookup.dataRoot } : {}),
+  });
+
+  return resolveProjectIndexPath(root, stringOption(args.options, 'index'), lookup);
 }
 
 export function loadIndex(indexPath: string): ProjectIndex | { error: string } {
@@ -156,6 +173,13 @@ async function runPlatform(
     token,
     allowRemote: boolOption(args.options, 'allowRemote', false),
     projectsRoot: workspaceRoot,
+    /*
+    | state پروسه (صف jobها و telemetry) دیگر داخل checkout نوشته نمی‌شود؛
+    | جای آن data directory کاربر است. `resolveDataRoot` چیزی روی دیسک
+    | نمی‌سازد، پس اگر هرگز job اجرا نشود فایلی هم ساخته نمی‌شود.
+    */
+    dataRoot: resolveDataRoot({ env: process.env }),
+    artifactLocation: artifactLocationFromArgs(args, process.env),
   });
 
   const started = await server.start();

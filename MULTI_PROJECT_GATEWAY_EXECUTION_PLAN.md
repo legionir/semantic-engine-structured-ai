@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ و ۲ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۳ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۳ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۴ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -225,37 +225,37 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 
 ---
 
-## [🔴] فاز ۳: انتقال artifact به data directory (بدون تغییر پیش‌فرض)
+## [🟢] فاز ۳: انتقال artifact به data directory (بدون تغییر پیش‌فرض)
 
 **هدف:** همهٔ مسیرهای نوشتن/خواندن از `resolveProjectPaths` بیایند، artifactهای ثانویه هم منتقل شوند، و migration از legacy با حفظ داده پیاده شود. **پیش‌فرض در پایان این فاز هنوز `in-root` است** تا فاز ۴ بتواند flip را هماهنگ انجام دهد. معادل گام ۱ (wiring) و گام ۳ پلن مرجع.
 
-### [🔴] گام ۱: مسیر نوشتن در pipeline
+### [🟢] گام ۱: مسیر نوشتن در pipeline
 
 `IndexPipeline`/`OutputWriter` (`src/pipeline/OutputWriter.ts:21-32` با `outputDir`) و `src/cli/commands/index-command.ts:34-37`: `outputDir` از `resolveProjectPaths`؛ `--out` صریح (مطلق یا نسبی) به‌عنوان override محفوظ بماند (D10)؛ `project-artifacts.manifest.json` در همان `artifactRoot` نوشته شود.
 
-### [🔴] گام ۲: watch/serve/start
+### [🟢] گام ۲: watch/serve/start
 
 `WatchPipeline` (`src/pipeline/WatchPipeline.ts:48-52`) و `serve-command.ts:176-182` و `:258-262` (که امروز `--out path.dirname(indexPath)` را به `watch` پاس می‌دهند) از همان resolver استفاده کنند تا مسیر watch و write هرگز واگرا نشوند.
 
-### [🔴] گام ۳: artifactهای ثانویه
+### [🟢] گام ۳: artifactهای ثانویه
 
 انتقال `JobManager` state file (`src/server/HttpServer.ts:92` → `<artifactRoot>/jobs.json`) و telemetry spans (`:182` → `<artifactRoot>/telemetry/spans.json`) و لاگ workerها به `<artifactRoot>/logs/`؛ ساخت `locks/`, `events/`, `snapshots/` زیر `artifactRoot`. علت: بدون این‌ها معیار «root پروژه dirty نشود» برآورده نمی‌شود (Baseline #13).
 
-### [🔴] گام ۴: migration از legacy (کپی، بدون حذف)
+### [🟢] گام ۴: migration از legacy (کپی، بدون حذف)
 
 خواندن با همان `indexPathCandidates()` موجود؛ اگر مسیر جدید نبود: یافتن artifact معتبر legacy → کپی به `artifactRoot` → ساخت manifest با `{migratedFrom, migratedAt, migrationMode: "copy-readonly-legacy"}` → **حذف نکردن** legacy → نوشتن‌های بعدی فقط در مسیر جدید. artifact خراب/ناتمام → وضعیت `stale` یا `missing` و ادامهٔ کار بدون crash.
 
-### [🔴] گام ۵: SQLite و مرز دسترسی
+### [🟢] گام ۵: SQLite و مرز دسترسی
 
 `QueryIndexTool`/`queryPolicy` (`allowedRoot`) روی `artifactRoot` جدید تنظیم شوند؛ `validateDatabasePath` همچنان path escape را رد کند (تست). `semantic-engine serve/query/watch` همه از یک `artifactRoot` استفاده کنند.
 
-### [🔴] گام ۶: به‌روزرسانی ۱۸ فایل تست وابسته
+### [🟢] گام ۶: به‌روزرسانی ۱۸ فایل تست وابسته
 
 فهرست دقیق (از `grep -rl`):
 `src/ai/AiToolCommandHandler.phase45.test.ts`, `src/ai/tools/queryPolicy.test.ts`, `src/cli/cli.test.ts`, `src/cli/commands/readyBeforeSignal.phase49.test.ts`, `src/cli/serve-watch.test.ts`, `src/core/config/ProjectPaths.test.ts`, `src/core/config/defaultIgnorePatterns.test.ts`, `src/export/JsonExporter.phase24.test.ts`, `src/host/FileWatcher.test.ts`, `src/incremental/IncrementalCost.phase26.test.ts`, `src/incremental/IncrementalEngine.phase25.test.ts`, `src/lsp/DiagnosticsProvider.integration.test.ts`, `src/lsp/LspEnrichmentService.integration.test.ts`, `src/pipeline/IndexPipeline.diagnostics.test.ts`, `src/pipeline/IndexPipeline.test.ts`, `src/pipeline/OutputWriter.test.ts`, `src/pipeline/WatchPipeline.test.ts`, `src/server/requestPathBlocking.test.ts`.
 هرکجا تست به «محل پیش‌فرض artifact» تکیه دارد، `SEMANTIC_ENGINE_DATA_DIR` روی tmpdir ست شود؛ تست‌هایی که صریحاً `--out` می‌دهند بدون تغییر بمانند.
 
-### [🔴] گام ۷: gate جلوگیری از بازگشت
+### [🟢] گام ۷: gate جلوگیری از بازگشت
 
 اسکریپت جدید `semantic-engine/scripts/check-artifact-location.js` (و افزودنش به `npm run test:gate`) که بررسی کند هیچ `path.join(<root>, '.semantic-engine')` جدیدی خارج از `ProjectPaths.ts` و کد migration نوشته نشده، و اتصال آن به `scripts/check-tests.js` موجود.
 
@@ -265,6 +265,28 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 - migration از هر سه مسیر legacy با تست پوشش داده شود؛ فایل legacy پس از migration هنوز وجود داشته باشد.
 - `<root>/.agent/jobs.json` و `<root>/.agent/telemetry/` دیگر ساخته نشوند (تست).
 - `npm run build && npm run lint && npm test` سبز (baseline تأییدشده: ۱۷۰ suite و ۲۴۸۳ تست سبز) و `npm run test:gate` سبز.
+
+### وضعیت اجرای فاز ۳ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/core/config/migrateLegacyArtifacts.ts`، `src/cli/projectPathsFromArgs.ts`، `scripts/check-artifact-location.js` + تست‌های `migrateLegacyArtifacts.test.ts` (۹)، `cli/commands/artifactLocationExternal.test.ts` (۴)، `cli/projectPathsFromArgs.test.ts` (۸)، `server/runtimeArtifacts.test.ts` (۲)، `ai/tools/queryIndexArtifactRoot.test.ts` (۳).
+**فایل‌های تغییرکرده:** `ProjectPaths.ts` (+`RUNTIME_DIR`، +`IndexLookupOptions` روی `indexPathCandidates`/`resolveProjectIndexPath`)، `index-command.ts`، `watch-command.ts`، `serve-command.ts`، `query-command.ts`، `ai/mcp/cli.ts`، `HttpServer.ts` (state پروسه به `<dataRoot>/runtime/`)، `server/types.ts` (+`artifactLocation`)، `ProjectService.ts` (مقصد نوشتن/خواندن در حالت external + پاس دادن `artifactRoot`)، `ai/AiToolRegistry.ts` (+`artifactRoot`)، `package.json` (`test:gate`).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → fixture ساخته شد، **`Test Suites: 182 passed / 182 total` و `Tests: 2554 passed / 2554 total`**، «all suites ran» و «artifact location gate: ok» (baseline پیش از فاز ۳: ۱۷۷ suite و ۲۵۲۸ تست → +۵ suite و +۲۶ تست).
+- **حالت external با CLI واقعی:** `runIndex` با `SEMANTIC_ENGINE_ARTIFACT_LOCATION=external` و `SEMANTIC_ENGINE_DATA_DIR` → `project-index.json`، `blueprint.json` و `project-artifacts.manifest.json` زیر `<dataRoot>/projects/<projectId>/` و `fs.readdirSync(root) === ['src']` (یعنی هیچ چیزی داخل checkout ساخته نشد).
+- **بدون تغییر پیش‌فرض:** تست فاز ۱ هنوز سبز است — `index --root <tmp>` همان `<tmp>/.semantic-engine/…` را می‌نویسد و `--out` مطلق مثل قبل کار می‌کند.
+- **migration:** از هر سه مسیر legacy (`.semantic-engine`، `.agent/semantic`، `semantic`) کپی انجام شد، `migration.json` با `migrationMode: copy-readonly-legacy` نوشته شد، و فایل‌های legacy پس از migration هنوز موجود بودند؛ ایندکس خراب → `corrupt-legacy` بدون throw.
+- **artifactهای ثانویه:** پس از `start()`/`stop()` روی `HttpServer` واقعی، `<dataRoot>/runtime/telemetry/spans.json` ساخته می‌شود و `<projectsRoot>/.agent` هرگز ساخته نمی‌شود.
+- **SQLite:** `query_index` با `allowedRoot` برابر artifactRoot، مسیر نسبی را قبول و مسیر بیرون‌زده (`../../../../etc/passwd.sqlite` و مسیر مطلق بیرونی) را با خطای policy رد می‌کند.
+
+**نکتهٔ صادقانه دربارهٔ گام ۶:** هیچ‌کدام از آن ۱۸ فایل تست نیازی به تغییر نداشتند، چون پیش‌فرض `in-root` دست‌نخورده ماند و آن تست‌ها یا `--out`/`outputPath` صریح می‌دهند یا به همان پیش‌فرض تکیه دارند. فهرست به‌عنوان ثبت ریسک معتبر می‌ماند و در فاز ۴ (که پیش‌فرض عوض می‌شود) دوباره بررسی می‌شود.
+
+**سه تصمیم اجرایی که در ADR ثبت شد:**
+
+1. state سطح پروسه (jobs/telemetry) زیر `<dataRoot>/runtime/` می‌رود نه زیر `projects/<id>/`، چون به یک پروژهٔ خاص وابسته نیست؛ وقتی `dataRoot` داده نشود اصلاً persist نمی‌شود (رفتار درست برای تست‌ها).
+2. `AiToolRegistry` حالا `artifactRoot` صریح می‌گیرد؛ تا پیش از این، مسیر SQLite از `resolveProjectIndexPath(workspaceRoot)` حدس زده می‌شد که در حالت external به فایل ناموجود می‌رسید.
+3. gate فقط نام دقیق پوشهٔ artifact را می‌گیرد، نه هر رشته‌ای که با آن شروع شود — تا فایل موقت `.semantic-engine-doctor-<pid>` در `doctor-command.ts:104` (که پاک هم می‌شود) گیر نیفتد.
 
 ---
 

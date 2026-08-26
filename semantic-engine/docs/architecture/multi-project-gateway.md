@@ -199,6 +199,14 @@ assertProjectId(id: string): string;                  // id is a directory name 
 resolveProjectPaths(options: ResolveProjectPathsOptions): ProjectPaths;
 artifactRootFor(options: ResolveProjectPathsOptions): string;
 
+// src/core/config/migrateLegacyArtifacts.ts (فاز ۳)
+migrateLegacyArtifacts(options): MigrationResult;   // copy, never delete
+
+// src/cli/projectPathsFromArgs.ts (فاز ۳)
+projectPathsFromArgs(args, workspaceRoot, env?): ProjectPaths;
+indexLookupFromArgs(args, workspaceRoot, env?): IndexLookupOptions;
+artifactLocationFromArgs(args, env?): ArtifactLocation;
+
 // src/core/config/ProjectRegistry.ts (فاز ۲)
 class ProjectRegistry {
   register(input: RegisterProjectInput): ProjectRecord;   // duplicate root → existing record
@@ -246,7 +254,62 @@ Rules that follow from this and are enforced by tests:
 
 ---
 
-## 5. Verified baseline (2026-08-26)
+## 5. Artifact resolution and migration (فاز ۳)
+
+**Resolution order** — identical for `index`, `watch`, `serve`, `ui`, `start`,
+`query` and the standalone MCP entry point, all through
+`src/cli/projectPathsFromArgs.ts`:
+
+```text
+--out (explicit, absolute or relative to the root)
+  > --data-dir / SEMANTIC_ENGINE_DATA_DIR
+  > platform default (D1)
+```
+
+The *location* comes from `--artifact-location` or
+`SEMANTIC_ENGINE_ARTIFACT_LOCATION`; the default is still `in-root`, so nothing
+changes until فاز ۴ flips it. A project id is `--project-id` when given and
+path-safe, otherwise `projectIdFor(basename, canonicalRoot)` — deterministic,
+so repeated runs land in the same directory.
+
+**Read order** in `external` mode: the data directory first, then the three
+in-root legacy locations as readable fallbacks
+(`indexPathCandidates(workspaceRoot, lookup)`).
+
+**Migration** (`migrateLegacyArtifacts`) copies `project-index.json`,
+`blueprint.json`, `project-index.sqlite` and `project-artifacts.manifest.json`
+from the first existing legacy directory into the artifact root and writes
+`migration.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "migratedFrom": "/repo/app/.agent/semantic",
+  "migratedAt": "2026-08-26T12:00:00.000Z",
+  "migrationMode": "copy-readonly-legacy",
+  "files": ["project-index.json", "blueprint.json"]
+}
+```
+
+Legacy files are **never deleted**. A legacy index that fails to parse returns
+`corrupt-legacy` instead of throwing, so one broken checkout cannot stop the
+server; the project simply stays `stale`/`missing`.
+
+**Process state** — job queue state and telemetry spans used to be written to
+`<projectsRoot>/.agent/` (two such files are committed in this repository).
+They now live in `<dataRoot>/runtime/` (`jobs.json`, `telemetry/spans.json`),
+and when no `dataRoot` is configured nothing is persisted at all. Per-project
+`locks/`, `logs/`, `events/` and `snapshots/` live under the artifact root.
+
+**Gate** — `scripts/check-artifact-location.js` (wired into `npm run
+test:gate`) fails when any non-test source file builds a path from the literal
+`'.semantic-engine'` outside the allowlist
+(`core/config/ProjectPaths.ts`, `core/config/defaultIgnorePatterns.ts`,
+`services/source/SourceSyncService.ts`). Only the exact directory name counts,
+so `doctor`'s temporary `.semantic-engine-doctor-<pid>` write probe is not
+flagged.
+
+## 6. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

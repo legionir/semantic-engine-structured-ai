@@ -15,11 +15,11 @@ import { WatchPipeline } from '../../pipeline/WatchPipeline';
 import { IncrementalEngine } from '../../incremental/IncrementalEngine';
 import { VectorIndexer } from '../../vector/VectorIndexer';
 import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { projectPathsFromArgs } from '../projectPathsFromArgs';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { GitInfoCollector } from '../../core/git';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
-import { DEFAULT_OUTPUT_DIR } from './index-command';
 import { normalizeWorkspaceRoot } from '../../core/config/ProjectPaths';
 import { waitForShutdown } from './serve-command';
 
@@ -99,7 +99,8 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     return { code: EXIT.usage, error: error instanceof Error ? error.message : String(error) };
   }
 
-  const outputDir = path.resolve(root, stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR);
+  /* همان resolver دستور `index`؛ watch و write هرگز واگرا نمی‌شوند. */
+  const outputDir = projectPathsFromArgs(args, root).artifactRoot;
   const pidPath = path.join(outputDir, PID_FILE_NAME);
 
   const claim = claimPidFile(pidPath);

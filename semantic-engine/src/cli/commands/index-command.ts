@@ -17,6 +17,8 @@ import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
 import { normalizeWorkspaceRoot, PROJECT_OUTPUT_DIR } from '../../core/config/ProjectPaths';
+import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
+import { projectPathsFromArgs } from '../projectPathsFromArgs';
 
 export const DEFAULT_OUTPUT_DIR = PROJECT_OUTPUT_DIR;
 
@@ -31,10 +33,26 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
     };
   }
 
-  const outputDir = path.resolve(
-    root,
-    stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR
-  );
+  /*
+  | مسیر artifact فقط از `resolveProjectPaths` می‌آید. `--out` صریح همان معنای
+  | قبلی را دارد (`path.resolve(root, out)`)، پس یک `--out` مطلق امروز و فردا
+  | یک کار می‌کند؛ فقط پیش‌فرض است که با
+  | `SEMANTIC_ENGINE_ARTIFACT_LOCATION=external` به data directory می‌رود.
+  */
+  const projectPaths = projectPathsFromArgs(args, root);
+  const outputDir = projectPaths.artifactRoot;
+
+  /*
+  | پیش از هر خواندن/نوشتن: اگر artifact قدیمی داخل root باشد و مقصد بیرون،
+  | یک بار کپی می‌شود (بدون حذف legacy). در حالت `in-root` این فراخوانی عمداً
+  | هیچ کاری نمی‌کند.
+  */
+  const migration = migrateLegacyArtifacts({
+    workspaceRoot: root,
+    projectId: projectPaths.projectId,
+    location: projectPaths.location,
+    dataRoot: projectPaths.dataRoot,
+  });
 
   const wantsSqlite = boolOption(
     args.options,
@@ -118,6 +136,11 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
         indexPath: written.indexPath,
         blueprintPath: written.blueprintPath,
         sqlitePath: written.sqlitePath,
+        artifactRoot: outputDir,
+        artifactLocation: projectPaths.location,
+        ...(migration.migrated
+          ? { migratedFrom: migration.from, migrationMode: 'copy-readonly-legacy' }
+          : {}),
       },
       text:
         `indexed ${stats.files} files, ${stats.symbols} symbols in ${stats.durationMs}ms\n` +

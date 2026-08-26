@@ -2,6 +2,7 @@
  * Platform Core V1 — Server Types & Route Contracts.
  */
 
+import type { ArtifactLocation } from '../core/config/DataRootResolver';
 import * as http from 'http';
 import { AuthContext, PermissionScope } from '../security/rbac/types';
 
@@ -65,6 +66,11 @@ export interface PlatformConfig {
    * روی دیسک نوشته نمی‌شود — که برای تست‌ها رفتار درست است.
    */
   readonly dataRoot?: string;
+  /**
+   * کجا artifact نوشته/خوانده شود: `in-root` (پیش‌فرض فعلی) یا `external`.
+   * از `SEMANTIC_ENGINE_ARTIFACT_LOCATION` توسط CLI پر می‌شود.
+   */
+  readonly artifactLocation?: ArtifactLocation;
 }
 
 // ── Graph View Model Types ───────────────────────────────────────────────

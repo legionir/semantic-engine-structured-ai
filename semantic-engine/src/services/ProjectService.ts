@@ -11,9 +11,16 @@ import { AiToolRegistry } from '../ai/AiToolRegistry';
 import { loadBlueprintBeside } from '../ai/discovery/loadBlueprint';
 import { BlueprintIndex } from '../ai/discovery/BlueprintIndex';
 import { AnalysisGraph } from './analysis/AnalysisGraph';
-import { canonicalIndexPath, normalizeWorkspaceRoot, resolveProjectIndexPath } from '../core/config/ProjectPaths';
+import {
+  canonicalIndexPath,
+  normalizeWorkspaceRoot,
+  resolveProjectIndexPath,
+  resolveProjectPaths,
+} from '../core/config/ProjectPaths';
+import { ArtifactLocation, DEFAULT_ARTIFACT_LOCATION } from '../core/config/DataRootResolver';
+import { migrateLegacyArtifacts } from '../core/config/migrateLegacyArtifacts';
 import type { ProjectRecord, ProjectRegistry } from '../core/config/ProjectRegistry';
-import { canonicalizeRoot, isSafeProjectId, projectIdFor } from '../core/config/ProjectIdentity';
+import { canonicalizeRoot, isPathSafeProjectId, isSafeProjectId, projectIdFor } from '../core/config/ProjectIdentity';
 
 const MAX_INDEX_BYTES = 256 * 1024 * 1024;
 const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
@@ -81,11 +88,48 @@ export class ProjectService {
     const id = record?.id ?? previous?.id ?? this.deriveId(rootPath, name, requestedId);
     const aliases = this.mergeAliases(previous, record, id, requestedId);
 
-    /* `.semantic-engine` is canonical. `resolveProjectIndexPath` keeps the
-       old Structured AI sidecar location readable during migration without
-       ever making it the destination for a new index. */
-    const canonicalPath = canonicalIndexPath(rootPath);
-    const actualIndexPath = resolveProjectIndexPath(rootPath);
+    /*
+    | مقصد نوشتن و مسیر خواندن جدا از هم تصمیم گرفته می‌شوند:
+    |
+    |   - `canonicalPath` جایی است که ایندکس بعدی نوشته می‌شود (در حالت
+    |     `external` زیر data root)؛
+    |   - `actualIndexPath` اولین ایندکس موجود است، شامل fallbackهای legacy،
+    |     تا ایندکس قدیمی خواندنی بماند بدون آنکه مقصد شود.
+    |
+    | شناسهٔ artifact از ریشه ساخته می‌شود، نه از id نمایشی سرویس (که می‌تواند
+    | alias باشد) — پس دو alias از یک پروژه به یک پوشه می‌رسند.
+    */
+    const location: ArtifactLocation =
+      this.options.artifactLocation ?? DEFAULT_ARTIFACT_LOCATION;
+    const artifactProjectId =
+      record && isPathSafeProjectId(record.id)
+        ? record.id
+        : projectIdFor(name, canonicalizeRoot(rootPath));
+    const lookup = {
+      location,
+      projectId: artifactProjectId,
+      ...(this.options.dataRoot !== undefined ? { dataRoot: this.options.dataRoot } : {}),
+    };
+
+    if (location === 'external') {
+      migrateLegacyArtifacts({
+        workspaceRoot: rootPath,
+        projectId: artifactProjectId,
+        location,
+        ...(this.options.dataRoot !== undefined ? { dataRoot: this.options.dataRoot } : {}),
+      });
+    }
+
+    const canonicalPath =
+      location === 'external'
+        ? resolveProjectPaths({
+            projectId: artifactProjectId,
+            workspaceRoot: rootPath,
+            location: 'external',
+            ...(this.options.dataRoot !== undefined ? { dataRoot: this.options.dataRoot } : {}),
+          }).indexPath
+        : canonicalIndexPath(rootPath);
+    const actualIndexPath = resolveProjectIndexPath(rootPath, undefined, lookup);
 
     /*
     | SE-PERF-01، یک محدودیتِ شناخته‌شده و نه رفع‌شده.
@@ -158,6 +202,8 @@ export class ProjectService {
         registry = new AiToolRegistry({
           reader,
           workspaceRoot: rootPath,
+          /* SQLite کنار همین ایندکس است — در حالت external یعنی data root. */
+          artifactRoot: path.dirname(actualIndexPath),
           projectHash: index.generatedAt,
           enableCache: true,
           ...(blueprint ? { blueprint } : {}),
@@ -408,4 +454,8 @@ export class ProjectService {
 export interface ProjectServiceOptions {
   /** registry دائمی پروژه‌ها؛ بدون آن، شناسه‌ها فقط در حافظه نگه داشته می‌شوند. */
   readonly registry?: ProjectRegistry;
+  /** کجا نوشته شود؛ پیش‌فرض `in-root` (رفتار فعلی). */
+  readonly artifactLocation?: ArtifactLocation;
+  /** data root صریح؛ در غیر این صورت `resolveDataRoot` تصمیم می‌گیرد. */
+  readonly dataRoot?: string;
 }

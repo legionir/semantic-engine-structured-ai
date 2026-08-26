@@ -21,6 +21,11 @@ import {
   resolveProjectIndexPath,
   workspaceRootFromIndex,
 } from '../../core/config/ProjectPaths';
+import type { IndexLookupOptions } from '../../core/config/ProjectPaths';
+import { artifactLocationOrDefault, DATA_DIR_ENV_VAR } from '../../core/config/DataRootResolver';
+import { canonicalizeRoot, projectIdFor } from '../../core/config/ProjectIdentity';
+import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
+import { ARTIFACT_LOCATION_ENV_VAR } from '../../cli/projectPathsFromArgs';
 import {
   HttpGuard,
   DEFAULT_HOST,
@@ -39,6 +44,20 @@ interface ParsedCliArgs {
   readonly allowRemote: boolean;
   readonly maxBodyBytes: number;
   readonly watch: boolean;
+}
+
+/**
+ * همان قراردادی که CLI دارد، بدون `ParsedArgs`: نقطهٔ ورود MCP آرگومان‌های
+ * خودش را می‌پارسد، ولی مسیر artifact نباید جای دیگری تصمیم گرفته شود.
+ */
+function indexLookupFor(workspaceRoot: string): IndexLookupOptions {
+  const location = artifactLocationOrDefault(process.env[ARTIFACT_LOCATION_ENV_VAR]);
+  const dataDir = process.env[DATA_DIR_ENV_VAR];
+  return {
+    location,
+    projectId: projectIdFor(path.basename(workspaceRoot), canonicalizeRoot(workspaceRoot)),
+    ...(dataDir !== undefined && dataDir.trim() !== '' ? { dataRoot: dataDir } : {}),
+  };
 }
 
 function valueAfter(argv: string[], flag: string): string | undefined {
@@ -69,8 +88,20 @@ function parseArgs(argv: string[]): ParsedCliArgs {
   const positional = positionalArgument(argv);
   const rootPath = valueAfter(argv, '--root');
   const explicitIndex = valueAfter(argv, '--index') ?? positional;
+  const workspaceRoot = rootPath ? normalizeWorkspaceRoot(rootPath) : undefined;
+  const lookup = workspaceRoot ? indexLookupFor(workspaceRoot) : undefined;
+  if (workspaceRoot && lookup) {
+    migrateLegacyArtifacts({
+      workspaceRoot,
+      projectId: lookup.projectId ?? '',
+      location: lookup.location,
+      ...(lookup.dataRoot !== undefined ? { dataRoot: lookup.dataRoot } : {}),
+    });
+  }
   const projectIndexPath = explicitIndex
-    ?? (rootPath ? resolveProjectIndexPath(normalizeWorkspaceRoot(rootPath)) : '');
+    ?? (workspaceRoot && lookup
+      ? resolveProjectIndexPath(workspaceRoot, undefined, lookup)
+      : '');
   const rawPort = valueAfter(argv, '--port');
   const rawMaxBody = valueAfter(argv, '--max-body');
 

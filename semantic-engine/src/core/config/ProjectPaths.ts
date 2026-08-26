@@ -12,7 +12,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { ArtifactLocation, DEFAULT_ARTIFACT_LOCATION, resolveDataRoot } from './DataRootResolver';
-import { assertPathSafeProjectId } from './ProjectIdentity';
+import { assertPathSafeProjectId, isPathSafeProjectId } from './ProjectIdentity';
 
 export const PROJECT_OUTPUT_DIR = '.semantic-engine';
 export const LEGACY_PROJECT_OUTPUT_DIR = path.join('.agent', 'semantic');
@@ -71,29 +71,68 @@ export function canonicalIndexPath(workspaceRoot: string): string {
 }
 
 /**
+ * گزینه‌های پیدا کردن ایندکس وقتی artifact بیرون از root نگه داشته می‌شود.
+ * همه اختیاری‌اند: بدون آن‌ها رفتار دقیقاً مثل قبل است.
+ */
+export interface IndexLookupOptions {
+  readonly location?: ArtifactLocation;
+  readonly projectId?: string;
+  readonly dataRoot?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly platform?: string;
+  readonly homeDir?: string;
+}
+
+/**
  * Candidate index locations, ordered from current to legacy. The canonical
  * candidate is returned even when it does not exist so callers have a stable
  * path to report in an error.
+ *
+ * در حالت `external` مسیر data directory *اول* می‌آید و مسیرهای in-root به
+ * عنوان fallback خواندنی باقی می‌مانند — همان ترتیبی که گام ۳ پلن خواسته.
  */
-export function indexPathCandidates(workspaceRoot: string): string[] {
+export function indexPathCandidates(
+  workspaceRoot: string,
+  options: IndexLookupOptions = {}
+): string[] {
   const root = normalizeWorkspaceRoot(workspaceRoot);
-  return [
+  const inRoot = [
     path.join(root, PROJECT_OUTPUT_DIR, PROJECT_INDEX_FILE),
     path.join(root, LEGACY_PROJECT_OUTPUT_DIR, PROJECT_INDEX_FILE),
     path.join(root, LEGACY_FLAT_OUTPUT_DIR, PROJECT_INDEX_FILE),
   ];
+
+  const location = options.location ?? DEFAULT_ARTIFACT_LOCATION;
+  const projectId = options.projectId ?? '';
+  if (location !== 'external' || !isPathSafeProjectId(projectId)) return inRoot;
+
+  const external = path.join(
+    artifactRootFor({
+      projectId,
+      workspaceRoot: root,
+      location: 'external',
+      ...(options.dataRoot !== undefined ? { dataRoot: options.dataRoot } : {}),
+      ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(options.platform !== undefined ? { platform: options.platform } : {}),
+      ...(options.homeDir !== undefined ? { homeDir: options.homeDir } : {}),
+    }),
+    PROJECT_INDEX_FILE
+  );
+
+  return [external, ...inRoot];
 }
 
 /** Resolve an explicit file, or the first existing/default index for a root. */
 export function resolveProjectIndexPath(
   workspaceRoot: string,
-  explicitPath?: string
+  explicitPath?: string,
+  options: IndexLookupOptions = {}
 ): string {
   if (explicitPath && explicitPath.trim() !== '') {
     return path.resolve(explicitPath);
   }
 
-  const candidates = indexPathCandidates(workspaceRoot);
+  const candidates = indexPathCandidates(workspaceRoot, options);
   return candidates.find(candidate => fs.existsSync(candidate)) ?? candidates[0]!;
 }
 
@@ -173,6 +212,13 @@ export const LOCKS_DIR = 'locks';
 export const LOGS_DIR = 'logs';
 export const EVENTS_DIR = 'events';
 export const SNAPSHOTS_DIR = 'snapshots';
+
+/**
+ * state سطح پروسه (صف jobها، telemetry) زیر data root. این‌ها به یک پروژهٔ
+ * خاص وابسته نیستند، پس کنار `projects/` می‌نشینند نه داخل آن — و مهم‌تر از
+ * همه، هرگز داخل source root.
+ */
+export const RUNTIME_DIR = 'runtime';
 
 /** تمام مسیرهای یک پروژه، تفکیک‌شده به source و generated data. */
 export interface ProjectPaths {

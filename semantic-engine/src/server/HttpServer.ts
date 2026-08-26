@@ -21,6 +21,7 @@ import { MetricsCollector } from '../observability/MetricsCollector';
 import { OpenTelemetryTracer } from '../observability/OpenTelemetryTracer';
 import { ProjectService } from '../services/ProjectService';
 import { ProjectRegistry } from '../core/config/ProjectRegistry';
+import { RUNTIME_DIR } from '../core/config/ProjectPaths';
 import { SearchService } from '../services/SearchService';
 import { CodeIntelligenceService } from '../services/CodeIntelligenceService';
 import { ContextService } from '../services/ContextService';
@@ -53,6 +54,8 @@ import { createChatRoutes, LlmConfigStore } from './routes/chatRoutes';
 export class HttpServer {
   private server?: http.Server;
   private readonly routes: RouteDefinition[] = [];
+  /** `<dataRoot>/runtime` — state پروسه، بیرون از source root. */
+  private readonly runtimeDir?: string;
   readonly security: SecurityPipeline;
   readonly sse: SseManager;
   readonly ws: WebSocketManager;
@@ -88,13 +91,26 @@ export class HttpServer {
     this.metricsCollector = new MetricsCollector();
     this.tracer = new OpenTelemetryTracer();
     this.jobQueue = new InMemoryQueueAdapter();
+    /*
+    | state پروسه هرگز داخل checkout نوشته نمی‌شود (قبلاً
+    | `<projectsRoot>/.agent/jobs.json` بود و ریپو را dirty می‌کرد). جای آن
+    | `<dataRoot>/runtime/` است؛ وقتی dataRoot داده نشده، اصلاً persist
+    | نمی‌شود — که برای تست‌ها رفتار درست است.
+    */
+    this.runtimeDir = config.dataRoot
+      ? path.join(config.dataRoot, RUNTIME_DIR)
+      : undefined;
     this.jobs = new JobManager(
       this.sse,
-      config.projectsRoot ? path.join(config.projectsRoot, '.agent', 'jobs.json') : undefined
+      this.runtimeDir ? path.join(this.runtimeDir, 'jobs.json') : undefined
     );
     this.projects = new ProjectService(
       config.projectsRoot,
-      config.dataRoot ? { registry: new ProjectRegistry({ dataRoot: config.dataRoot }) } : {}
+      {
+        ...(config.dataRoot ? { registry: new ProjectRegistry({ dataRoot: config.dataRoot }) } : {}),
+        ...(config.dataRoot ? { dataRoot: config.dataRoot } : {}),
+        ...(config.artifactLocation ? { artifactLocation: config.artifactLocation } : {}),
+      }
     );
     this.indexingWorker = new IndexingWorker(this.jobQueue, this.projects);
     this.searchService = new SearchService();
@@ -182,8 +198,8 @@ export class HttpServer {
     this.projects.dispose();
     this.sse.close();
     this.ws.close();
-    if (this.config.projectsRoot) {
-      await this.tracer.flush(path.join(this.config.projectsRoot, '.agent', 'telemetry', 'spans.json'));
+    if (this.runtimeDir) {
+      await this.tracer.flush(path.join(this.runtimeDir, 'telemetry', 'spans.json'));
     }
     if (this.server) {
       await new Promise<void>(resolve => {

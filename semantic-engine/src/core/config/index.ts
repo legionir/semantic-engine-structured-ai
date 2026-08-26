@@ -16,6 +16,7 @@ export {
   LOCKS_DIR,
   LOGS_DIR,
   EVENTS_DIR,
+  RUNTIME_DIR,
   SNAPSHOTS_DIR,
   artifactRootFor,
   canonicalIndexPath,
@@ -26,7 +27,18 @@ export {
   workspaceRootFromIndexPath,
   workspaceRootFromIndex,
 } from './ProjectPaths';
-export type { ProjectPaths, ResolveProjectPathsOptions } from './ProjectPaths';
+export type {
+  IndexLookupOptions,
+  ProjectPaths,
+  ResolveProjectPathsOptions,
+} from './ProjectPaths';
+export {
+  MIGRATION_FILE,
+  MIGRATION_MODE_COPY_READONLY,
+  MIGRATION_SCHEMA_VERSION,
+  migrateLegacyArtifacts,
+} from './migrateLegacyArtifacts';
+export type { MigrationResult, MigrationStatus } from './migrateLegacyArtifacts';
 export {
   ARTIFACT_LOCATIONS,
   DATA_DIR_CONFIG_KEY,
