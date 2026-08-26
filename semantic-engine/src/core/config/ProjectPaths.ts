@@ -11,6 +11,8 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { ArtifactLocation, DEFAULT_ARTIFACT_LOCATION, resolveDataRoot } from './DataRootResolver';
+import { assertProjectId } from './ProjectIdentity';
 
 export const PROJECT_OUTPUT_DIR = '.semantic-engine';
 export const LEGACY_PROJECT_OUTPUT_DIR = path.join('.agent', 'semantic');
@@ -139,4 +141,136 @@ export function workspaceRootFromIndex(
       : workspaceRootFromIndexPath(indexPath);
 
   return normalizeWorkspaceRoot(persistedRoot);
+}
+
+/*
+|── پروژهٔ واحد: تفکیک source از artifact (فاز ۱) ─────────────────────────
+|
+| تا اینجا این ماژول فقط یک سؤال داشت: «project-index.json کجاست؟». Gateway
+| چندپروژه‌ای سؤال بزرگ‌تری دارد: «همهٔ artifactهای *این* پروژه کجا
+| نوشته/خوانده شوند؟» — و پاسخ باید در CLI، Worker، Gateway، MCP و UI یکی
+| باشد، وگرنه هرکدام یک ریشهٔ کمی متفاوت حدس می‌زنند.
+|
+| دو قانون:
+|
+|   1. `workspaceRoot` همیشه source است و هرگز با artifact قاطی نمی‌شود.
+|   2. `artifactRoot` یا داخل root است (رفتار امروز، `in-root`) یا زیر data
+|      directory کاربر (`external`). انتخاب با `artifactLocation` است و
+|      `--out` صریح، مثل امروز، بر هر دو مقدم است.
+|
+| در فاز ۱ هیچ رفتاری عوض نمی‌شود: پیش‌فرض `in-root` است و خروجی
+| `resolveProjectPaths` با `canonicalIndexPath` می‌خواند.
+*/
+
+/** زیرپوشهٔ پروژه‌ها در data root. */
+export const PROJECTS_DIR_NAME = 'projects';
+
+export const BLUEPRINT_FILE = 'blueprint.json';
+export const SQLITE_FILE = 'project-index.sqlite';
+export const PROJECT_ARTIFACTS_MANIFEST_FILE = 'project-artifacts.manifest.json';
+
+export const LOCKS_DIR = 'locks';
+export const LOGS_DIR = 'logs';
+export const EVENTS_DIR = 'events';
+export const SNAPSHOTS_DIR = 'snapshots';
+
+/** تمام مسیرهای یک پروژه، تفکیک‌شده به source و generated data. */
+export interface ProjectPaths {
+  /** شناسهٔ پایدار؛ بخشی از مسیر artifact در حالت `external`. */
+  readonly projectId: string;
+  /** ریشهٔ source — فقط خواندن. */
+  readonly workspaceRoot: string;
+  /** کجا نوشته می‌شود. */
+  readonly location: ArtifactLocation;
+  /** data root مؤثر (همیشه پر است؛ در حالت `in-root` فقط برای گزارش). */
+  readonly dataRoot: string;
+  /** ریشهٔ همهٔ artifactهای این پروژه. */
+  readonly artifactRoot: string;
+  readonly indexPath: string;
+  readonly blueprintPath: string;
+  readonly sqlitePath: string;
+  readonly manifestPath: string;
+  readonly lockDir: string;
+  readonly logDir: string;
+}
+
+export interface ResolveProjectPathsOptions {
+  readonly projectId: string;
+  readonly workspaceRoot: string;
+  /** data root صریح؛ در غیر این صورت از `resolveDataRoot` می‌آید. */
+  readonly dataRoot?: string;
+  /** `--out`؛ مثل امروز بر هر دو حالت مقدم است. */
+  readonly outOverride?: string;
+  readonly location?: ArtifactLocation;
+  /** برای تست: env/platform/homeDir به `resolveDataRoot` پاس داده می‌شود. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly platform?: string;
+  readonly homeDir?: string;
+}
+
+/**
+ * ریشهٔ artifact یک پروژه.
+ *
+ * `outOverride` دقیقاً همان معنا را دارد که در `index-command` داشت
+ * (`path.resolve(root, out)`)، پس یک `--out` مطلق امروز و فردا یک کار می‌کند.
+ */
+export function artifactRootFor(options: ResolveProjectPathsOptions): string {
+  /*
+  | شناسه مستقیماً بخشی از مسیر است، پس پیش از هر `path.join` اعتبارسنجی
+  | می‌شود؛ `prj-../other` باید خطا بدهد، نه یک مسیر بیرون‌زده بسازد.
+  */
+  const projectId = assertProjectId(options.projectId);
+  const root = normalizeWorkspaceRoot(options.workspaceRoot);
+
+  const outOverride = (options.outOverride ?? '').trim();
+  if (outOverride !== '') {
+    return path.resolve(root, outOverride);
+  }
+
+  const location = options.location ?? DEFAULT_ARTIFACT_LOCATION;
+  if (location === 'external') {
+    const explicitDataRoot = (options.dataRoot ?? '').trim();
+    const dataRoot = explicitDataRoot !== ''
+      ? path.resolve(explicitDataRoot)
+      : resolveDataRoot({
+          env: options.env,
+          platform: options.platform,
+          homeDir: options.homeDir,
+        });
+    return path.join(dataRoot, PROJECTS_DIR_NAME, projectId);
+  }
+
+  return path.join(root, PROJECT_OUTPUT_DIR);
+}
+
+/**
+ * Every path one project owns, in one object.
+ *
+ * Callers must not re-derive any of these; a caller that joins
+ * `.semantic-engine` by hand is exactly the bug this module exists to end.
+ */
+export function resolveProjectPaths(options: ResolveProjectPathsOptions): ProjectPaths {
+  const projectId = assertProjectId(options.projectId);
+  const workspaceRoot = normalizeWorkspaceRoot(options.workspaceRoot);
+  const location = options.location ?? DEFAULT_ARTIFACT_LOCATION;
+  const artifactRoot = artifactRootFor(options);
+
+  return {
+    projectId,
+    workspaceRoot,
+    location,
+    dataRoot: resolveDataRoot({
+      dataDir: options.dataRoot,
+      env: options.env,
+      platform: options.platform,
+      homeDir: options.homeDir,
+    }),
+    artifactRoot,
+    indexPath: path.join(artifactRoot, PROJECT_INDEX_FILE),
+    blueprintPath: path.join(artifactRoot, BLUEPRINT_FILE),
+    sqlitePath: path.join(artifactRoot, SQLITE_FILE),
+    manifestPath: path.join(artifactRoot, PROJECT_ARTIFACTS_MANIFEST_FILE),
+    lockDir: path.join(artifactRoot, LOCKS_DIR),
+    logDir: path.join(artifactRoot, LOGS_DIR),
+  };
 }

@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🔴 پیاده‌سازی نشده — این سند پلن اجرایی معتبر است
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۲ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -123,31 +123,31 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 
 # پلن اجرایی
 
-## [🔴] فاز ۱: قرارداد پایه — مسیرها، کلیدهای پیکربندی و شناسهٔ پروژه
+## [🟢] فاز ۱: قرارداد پایه — مسیرها، کلیدهای پیکربندی و شناسهٔ پروژه
 
 **هدف:** تثبیت contract قبل از هر تغییر رفتاری: data root، ساختار `ProjectPaths`، کلیدهای config و الگوریتم شناسه. **خروجی این فاز فقط قرارداد + تست است؛ هیچ رفتاری در CLI تغییر نمی‌کند.** معادل گام ۰ و بخش API گام ۱ پلن مرجع.
 
-### [🔴] گام ۱: ماژول `DataRootResolver`
+### [🟢] گام ۱: ماژول `DataRootResolver`
 
 فایل جدید `semantic-engine/src/core/config/DataRootResolver.ts` با `resolveDataRoot({ dataDir?, env?, platform? })` مطابق D1: ترتیب اولویت `dataDir` صریح → `env.SEMANTIC_ENGINE_DATA_DIR` → مسیر platform-aware. ساخت directory با mode `0o700`، خطای واضح وقتی مسیر وجود دارد ولی directory نیست یا قابل نوشتن نیست. `platform` و `env` تزریق‌پذیر باشند تا تست بدون تغییر ماشین ممکن شود.
 
-### [🔴] گام ۲: کلیدهای جدید در `contracts/config.schema.json`
+### [🟢] گام ۲: کلیدهای جدید در `contracts/config.schema.json`
 
 افزودن `semanticEngine.dataDir` (string، default `''`) و `semanticEngine.artifactLocation` (enum `in-root|external`، **default در این فاز `in-root`**) با `description` و `default` — چون `src/host/configSchemaSync.test.ts:85-93` داشتن default، پیشوند `semanticEngine.` و `additionalProperties:false` را الزامی می‌کند. افزودن تست که `envVarNameFor` برای این دو کلید دقیقاً `SEMANTIC_ENGINE_DATA_DIR` و `SEMANTIC_ENGINE_ARTIFACT_LOCATION` می‌دهد.
 
-### [🔴] گام ۳: ماژول `ProjectIdentity`
+### [🟢] گام ۳: ماژول `ProjectIdentity`
 
 فایل جدید `semantic-engine/src/core/config/ProjectIdentity.ts`: `canonicalizeRoot(root)` (با `fs.realpathSync` و fallback متنی وقتی مسیر وجود ندارد)، `slugify(name)`، `projectIdFor(name, canonicalRoot)` مطابق D3 (هم‌الگوریتم با `structured-ai/agent/projects/ProjectRegistry.js:61`)، `isValidProjectId(id)` و `assertProjectId(id)`. خروجی باید برای ورودی یکسان قطعی (deterministic) باشد.
 
-### [🔴] گام ۴: تکامل `ProjectPaths` بدون شکستن API موجود
+### [🟢] گام ۴: تکامل `ProjectPaths` بدون شکستن API موجود
 
 به `semantic-engine/src/core/config/ProjectPaths.ts` افزودن: `resolveProjectPaths({ projectId, workspaceRoot, dataRoot?, outOverride? }) → ProjectPaths` (با فیلدهای `workspaceRoot, dataRoot, artifactRoot, indexPath, blueprintPath, sqlitePath, manifestPath, lockDir, logDir`) و `artifactRootFor(...)`. **بدون تغییر** در `normalizeWorkspaceRoot`، `canonicalIndexPath`، `indexPathCandidates`، `resolveProjectIndexPath`، `workspaceRootFromIndex` و exportهای `semantic-engine/src/index.ts:74-76`. اگر `artifactLocation === 'in-root'` یا `outOverride` داده شده باشد، `artifactRoot` همان مسیر فعلی می‌شود.
 
-### [🔴] گام ۵: ثبت ADR معماری
+### [🟢] گام ۵: ثبت ADR معماری
 
 ساخت `semantic-engine/docs/architecture/` (امروز فقط `docs/panel-archive.html` وجود دارد) و نوشتن `multi-project-gateway.md`: تصمیم‌های D1…D11، قرارداد `ProjectPaths` و `ProjectWorkerConfig`، جدول endpointهای worker/gateway، و ارجاع به Baseline بالای همین سند.
 
-### [🔴] گام ۶: تست‌های فاز
+### [🟢] گام ۶: تست‌های فاز
 
 `DataRootResolver.test.ts` (سه پلتفرم با env جعلی، override، `SEMANTIC_ENGINE_DATA_DIR`، خطای مسیر نامعتبر، mode 0700)، `ProjectIdentity.test.ts` (دو root با basename یکسان → دو id متفاوت؛ rename نام → id یکسان وقتی persist شده؛ id معتبر/نامعتبر)، `ProjectPaths.external.test.ts` (تفکیک `workspaceRoot` از `artifactRoot`، override با `--out` مطلق و نسبی).
 
@@ -157,6 +157,24 @@ cd structured-ai && npm run test:semantic              # test/mcp/semantic.test.
 - **بدون تغییر رفتاری:** اجرای واقعی `semantic-engine index --root <tmp>` همچنان `<tmp>/.semantic-engine/project-index.json` بنویسد و این با یک تست e2e اثبات شود.
 - `grep -rn "path.join(.*'\.semantic-engine'" src/` هیچ مورد جدیدی خارج از `ProjectPaths.ts` نشان ندهد.
 - فایل ADR وجود داشته باشد و D1…D11 را پوشش دهد.
+
+### وضعیت اجرای فاز ۱ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `semantic-engine/src/core/config/DataRootResolver.ts`، `ProjectIdentity.ts`، `semantic-engine/docs/architecture/multi-project-gateway.md` و تست‌های `DataRootResolver.test.ts`، `ProjectIdentity.test.ts`، `ProjectPaths.external.test.ts`، `src/cli/commands/artifactLocationDefault.test.ts`.
+**فایل‌های تغییرکرده:** `ProjectPaths.ts` (فقط افزودنی)، `contracts/config.schema.json` (+۲ کلید)، `src/core/config/index.ts` و `src/index.ts` (export افزودنی).
+
+**verification اجراشده:**
+
+- `npm run build` → `tsc -p ./` exit 0؛ `npm run lint` → `eslint src` بدون خروجی.
+- `npm test` → **`Test Suites: 174 passed / 174 total` و `Tests: 2508 passed / 2508 total`** (baseline پیش از فاز: ۱۷۰ suite و ۲۴۸۳ تست؛ یعنی +۴ suite و +۲۵ تست، بدون regression).
+- `npx jest src/core/config src/host/configSchemaSync.test.ts src/cli/commands/artifactLocationDefault.test.ts` → ۸ suite و ۴۵ تست سبز.
+- بدون تغییر رفتاری با اجرای واقعی `runIndex` اثبات شد: `indexPath` هنوز `<root>/.semantic-engine/project-index.json` است و data directory دست‌نخورده می‌ماند؛ `--out` مطلق هم مثل قبل کار می‌کند.
+- grep gate: تنها `path.join(…, '.semantic-engine')`های کد غیرتستی، موارد از قبل موجود `defaultIgnorePatterns.ts:31` و `SourceSyncService.ts:142,194` هستند؛ مورد جدیدی خارج از `ProjectPaths.ts` اضافه نشده.
+
+**دو پالایش نسبت به متن گام‌ها (طبق قانون ۱۲ ثبت می‌شود):**
+
+1. `resolveDataRoot` عمداً **بدون I/O** است و ساخت directory با `ensureDataRoot` (mode `0700` + بررسی نوشتن‌پذیری) انجام می‌شود؛ تزریق `env`/`platform`/`homeDir` هر سه پلتفرم را روی هر ماشینی تست‌پذیر می‌کند.
+2. `semanticEngine.dataDir` در schema به‌جای `''` از `["string","null"]` با `default: null` استفاده می‌کند تا با `semanticEngine.treeSitter.grammarDir` هم‌سبک باشد؛ رشتهٔ خالی در `resolveDataRoot` هم «مقدار نبودن» حساب می‌شود.
 
 ---
 
