@@ -1410,15 +1410,10 @@ async function main() {
             );
         }
 
-        require(
-            path.join(REPO_ROOT, "agent", "tools")
-        ).shutdown();
-
-        try {
-            await runtime.eventstore.flush();
-        } catch {
-            /* a store flush must never hide the run result */
-        }
+        await runtime.application.lifecycle.shutdown({
+            tools: require(path.join(REPO_ROOT, "agent", "tools")),
+            eventstore: runtime.eventstore
+        });
 
         process.exit(
             runtime.isRunCancelled()
@@ -1427,17 +1422,10 @@ async function main() {
         );
     }
 
-    require(
-        path.join(REPO_ROOT, "agent", "tools")
-    ).shutdown();
-
-    /* Queued eventstore writes must land before process.exit, which
-       otherwise skips the drain of the event loop (Phase 8 durability). */
-    try {
-        await runtime.eventstore.flush();
-    } catch {
-        /* a store flush must never hide the run result */
-    }
+    await runtime.application.lifecycle.shutdown({
+        tools: require(path.join(REPO_ROOT, "agent", "tools")),
+        eventstore: runtime.eventstore
+    });
 
     if (options.json) {
 

@@ -285,3 +285,28 @@
 | **مجموع** | **549/549 passed** |
 
 *نکته:* این فاز قابلیت محصولی ندارد. isolation (project/tool/runtime/MCP/persistence)، load/recovery (سقف هم‌زمانی، crash Worker، overflow صف) و سناریوی ده‌مرحله‌ای e2e با Console زنده قفل شدند. باندل runtime MVP همه-modular است و در تست‌ها ست می‌شود؛ پیش‌فرض schema `legacy` می‌ماند (تصمیم ۳۲) تا CLI/API بدون scope بیت‌به‌بیت یکسان بمانند.
+
+## suite پایان فاز ۱۴ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` (جدید فاز ۱۴) | 8/8 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| ۱۴ فایل اصلی (ui.test.js ۴۰/۴۰) | 420/420 passed |
+| **مجموع** | **557/557 passed** |
+
+*نکته:* استخراج Config/Registry/Application بدون تغییر رفتار. `lib/storage.js` wrapper است؛ loader همان آرایهٔ tools.json را از `tool-schemas/` می‌سازد؛ facade همان exportها را دارد.

@@ -538,23 +538,33 @@ action `delegate` بتواند `projectId` بگیرد؛ نبود آن یعنی �
 
 ---
 
-## [🔴] فاز ۱۴: Application Layer، Config و Registry
+## [🟢] فاز ۱۴: Application Layer، Config و Registry
 
 **هدف و scope:** آغاز refactorهای بزرگ: جداسازی نقطهٔ ورود runtime از منطق داخلی (facade سازگار) و خارج‌کردن تنظیمات و registryهای declarative از monolith. خروجی: `agent/application/` و `agent/config/` و `agent/registry/(loader|validator|...)`.
 
-### [🔴] گام ۱: لایهٔ Application و facade سازگار
+**تکمیل 2026-08-26:** گام‌های ۱ تا ۴ — ۸ تست جدید در `test/application/application.test.js` سبز؛ suite کامل 557/557 و `npm run check` سبز. حلقهٔ اجرا هنوز در `agent.js` است (استخراج کامل loop فاز ۱۶)؛ application فقط bind/lifecycle/session است. `lib/storage.js` wrapper سازگار روی `agent/config` است. تصمیم ۳۳–۳۴ در پیوست ب.
+
+### [🟢] گام ۱: لایهٔ Application و facade سازگار
+
+**انجام شد (2026-08-26):** `agent/application/{run-agent,run-session,lifecycle,index}.js`. `bind()` بعد از ساخت engine صدا زده می‌شود تا require چرخه‌ای نباشد. `module.exports.runAgent`/`main` به application delegate می‌شوند؛ shutdown/signal به `lifecycle` منتقل شد (CLI هم همان را مصرف می‌کند).
 
 `agent/application/run-agent.js` (+ `run-session.js`، `lifecycle.js`) را بساز؛ startup/shutdown و lifecycle به آن منتقل شود؛ `agent/agent.js` facade موقت بماند و **همهٔ exportهای فعلی** (runAgent، main، callAI، parseStructuredResponse، adaptNativeToolCalls، validateAction، executeDependencyGraph، resolveTools، createRuntimeContext، maintainContext، refreshRuntimeContext، memoryStore، project، sessions، eventstore، openProject، persistProject، mcp و سایر موارد موجود) دقیقاً حفظ شود. eventهای `run:start`/`run:end` payload قبلی را داشته باشند.
 
-### [🔴] گام ۲: تفکیک Config
+### [🟢] گام ۲: تفکیک Config
+
+**انجام شد (2026-08-26):** `SettingsSchema` / `SettingsResolver` / `SettingsStore` / `SecretMasker`. اولویت override ← env ← default و masking snapshot بیت‌به‌بیت همان است. `agent/lib/storage.js` فقط `require("../config")` است (قانون ۷).
 
 `agent/config/SettingsSchema.js`، `SettingsStore.js`، `SettingsResolver.js`، `SecretMasker.js` را از `agent/lib/storage.js` (‎~۴۴KB) استخراج کن: schema (type/default/min-max/توضیح)، get/set/reset/sourceOf/snapshot، اولویت env/فایل/override فعلی حفظ، masking secretها در UI/log/context حفظ. تغییر setting از UI همچنان از iteration بعدی اثر کند.
 
-### [🔴] گام ۳: تفکیک Registry و تقسیم tools.json
+### [🟢] گام ۳: تفکیک Registry و تقسیم tools.json
+
+**انجام شد (2026-08-26):** `RegistryLoader` schemaهای `tool-schemas/` را به همان آرایه concat می‌کند (parity با `tools.json`)؛ `RegistryValidator` همان پیام‌های «Registry validation failed» را می‌دهد؛ Mapها از `AgentRegistry`/`ToolRegistry`/`SkillRegistry`. فایل‌های JSON دیگر در محل قبلی‌اند. live reload با mtime/size شامل فایل‌های schema است. JSON خراب خطای `invalid JSON` با نام فایل می‌دهد نه SyntaxError خام.
 
 `RegistryLoader.js`، `RegistryValidator.js`، `AgentRegistry.js`، `ToolRegistry.js`، `SkillRegistry.js` را بساز و `loadRegistries()` فعلی با live reload (mtime/size) به loader جدید منتقل شود. `agent/registry/tools.json` (‎~۶۱KB) به گروه‌های `tool-schemas/{filesystem,process,git,code,planning,memory,mcp}.json` تقسیم شود و loader خروجی را در قالب آرایهٔ فعلی برگرداند (مدل و runtime تغییری نبینند). سایر فایلها (agents.json، personas.json، skills.json، tool_groups.json، policy.json، mcp_servers.json، hooks.json) در محل فعلی بمانند و از طریق loader خوانده شوند.
 
-### [🔴] گام ۴: wrapperهای سازگار در agent.js
+### [🟢] گام ۴: wrapperهای سازگار در agent.js
+
+**انجام شد (2026-08-26):** facade exportهای قبلی را حفظ کرد و `application`/`registryLoader`/`registryValidator` را additive افزود. `resolveTools("*")` همان نام‌های tools.json را می‌دهد (تست parity). حلقه و parser هنوز در `agent.js`اند تا فاز ۱۵/۱۶.
 
 facade فقط delegate باشد و business logic جدیدی در آن نیاید؛ خروجی `resolveTools()` قبل/بعد برابر؛ registry خراب خطای واضح بدهد نه crash مبهم.
 
@@ -564,6 +574,8 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 - تمام settingها با default/type/اولویت قبلی موجودند؛ snapshot ماسک‌شده است.
 - loader جدید همان آرایهٔ tools قدیمی را تولید می‌کند (تست parity)؛ live reload کار می‌کند.
 - suite سبز؛ `npm run check` سبز.
+
+**وضعیت معیارها (2026-08-26):** هر چهار بند با `test/application/application.test.js` (8/8) و suite 557/557 اثبات شد — سطح export `agent.js` قفل است، `storage.js` همان API config است، snapshot secret را ندارد، concat schemaها = `tools.json`، JSON خراب پیام واضح می‌دهد، `cli.test.js`/`runtime.test.js` live reload سیاست را حفظ کردند.
 
 ---
 
@@ -946,5 +958,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 30. **Dashboard (فاز ۱۱):** همان SPA کنسول است؛ سرور `GET /projects` و `GET /projects/:id` را با `index.html` جواب می‌دهد و تب با `?tab=` انتخاب می‌شود. Visualizer `?projectId=` را به `/api/graph/*` می‌فرستد.
 31. **سوئیچ پروژه در delegation (فاز ۱۲):** فیلد مدل `projectId` است (camelCase، مطابق گام ۹ سند پیاده‌سازی) و `project_id` به‌عنوان alias پذیرفته می‌شود. سوئیچ فقط وقتی هر دو flag modular باشند اعمال می‌شود؛ در legacy فیلد validate می‌شود ولی نادیده گرفته می‌شود. ایزوله بودن دو Sub-Agent هم‌زمان با ALS (`runWithProject`) است نه با mutate کردن `currentRun().project`. approval write اضافی (`cross_project_write` / `multi_project_write`) جدا از تصمیم policy صادر می‌شود.
 32. **قفل فلگ‌های MVP (فاز ۱۳):** باندل رسمی runtime همه-modular است (`PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE`/`SEMANTIC_POOL_MODE=modular`) و در تست‌های پذیرش صریحاً ست می‌شود. پیش‌فرض schema روی `legacy` می‌ماند — تغییر پیش‌فرض `PROJECT_CONTEXT_MODE` به modular هر `executeTool` بدون context را با گیت فاز ۴ رد می‌کند و CLI/API بدون scope را از بیت‌به‌بیت یکسان بودن خارج می‌کند (نقض قانون ۴ و معیار «بدون تغییر ظاهری»). قفل modular برای مسیرهای پروژه‌آگاه است نه برای defaultهای schema؛ حذف flagها همچنان فاز ۳۰ است.
+33. **تقسیم tools.json (فاز ۱۴):** علاوه بر هفت گروه نام‌برده در سند refactor (`filesystem/process/git/code/planning/memory/mcp`)، خانواده‌های باقی‌مانده در فایل‌های جدا `search`، `network`، `introspection`، `knowledge` و `discussion` هستند تا هیچ ابزاری گم نشود (قانون ۱). ترتیب concat همان ترتیب تاریخی `tools.json` است.
+34. **منبع canonical ابزارها (فاز ۱۴):** loader از `tool-schemas/*.json` می‌خواند. `tools.json` به‌عنوان snapshot سازگاری باقی است تا `require(.../tools.json)` و تست‌هایی که فایل را JSON.parse می‌کنند نشکنند؛ محتوای آن با concat schemaها برابر است. حلقهٔ اجرا هنوز در `agent.js` است — استخراج کامل loop صریحاً فاز ۱۶ است.
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

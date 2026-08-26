@@ -214,3 +214,11 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **باندل runtime رسمی MVP:** `PROJECT_CONTEXT_MODE=modular`، `RUN_CONTEXT_MODE=modular`، `PROMPT_BUILDER_MODE=modular`، `SEMANTIC_POOL_MODE=modular` — فقط وقتی مسیر پروژه‌آگاه فعال است (تست‌ها صریحاً ست می‌کنند؛ CLI `--project` همان bundle سه‌تایی فاز ۷ را ست می‌کند).
 - **پیش‌فرض schema:** هر چهار flag بالا پیش‌فرض `legacy` می‌مانند (تصمیم ۳۲). CLI بدون `--project` و `POST /api/tasks` بدون تغییر ظاهری‌اند (بدنهٔ 202 `{accepted:true}` بیت‌به‌بیت).
 - **دوام eventstore روی خروج CLI:** `eventstore.flush()` قبل از `process.exit` در `bin/agent.js` و `agent.js#main` صدا زده می‌شود تا صف `appendQueued` با خروج ناگهانی از بین نرود (رفتار persistence فاز ۸؛ شکل فایل JSONL بدون تغییر).
+
+## ۱۹. تغییرات additive فاز ۱۴ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** نام ابزار، schema، event، API و CLI تغییر نکرد. استخراج ساختاری است.
+- **Config:** پیاده‌سازی در `agent/config/`؛ `agent/lib/storage.js` wrapper سازگار با همان exportها (`get/set/reset/sourceOf/snapshot/all/describe/definitionOf/definitions/bus`).
+- **Registry:** `loadRegistries()` از `RegistryLoader` می‌خواند؛ TOOLS از concat `tool-schemas/` می‌آید. `tools.json` snapshot سازگاری است. JSON خراب → `Registry file <path> is invalid JSON: ...`.
+- **Application:** exportهای additive `application`، `registryLoader`، `registryValidator`. `runAgent`/`main` از facade به `application` delegate می‌شوند (همان توابع bound).
+- **Live reload:** امضای registry شامل mtime/size فایل‌های `tool-schemas/` است (به‌جای فقط `tools.json`).

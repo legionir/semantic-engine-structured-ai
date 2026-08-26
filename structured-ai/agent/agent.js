@@ -185,6 +185,13 @@ const {
 const archive = require("./lib/archive");
 const hookRegistry = require("./lib/hooks");
 
+const application = require("./application");
+const registryLoader = require("./registry/RegistryLoader");
+const registryValidator = require("./registry/RegistryValidator");
+const AgentRegistry = require("./registry/AgentRegistry");
+const ToolRegistry = require("./registry/ToolRegistry");
+const SkillRegistry = require("./registry/SkillRegistry");
+
 
 /*
 |--------------------------------------------------------------------------
@@ -718,21 +725,8 @@ function registryFiles() {
 
 function registrySignature() {
 
-    return Object.values(registryFiles())
-        .map(file => {
+    return registryLoader.signatureOf(schemaFileName());
 
-            try {
-
-                const stats = fs.statSync(file);
-
-                return `${file}:${stats.mtimeMs}:${stats.size}`;
-
-            } catch {
-
-                return `${file}:missing`;
-            }
-        })
-        .join("|");
 }
 
 
@@ -748,14 +742,8 @@ function loadRegistries(force) {
         return REGISTRY.data;
     }
 
-    const data = {};
-
-    for (
-        const [name, file]
-        of Object.entries(registryFiles())
-    ) {
-        data[name] = readJSON(file);
-    }
+    const data =
+        registryLoader.load(schemaFileName());
 
     data.PERSONA_REGISTRY =
         new Map(
@@ -765,25 +753,13 @@ function loadRegistries(force) {
         );
 
     data.SKILL_REGISTRY =
-        new Map(
-            data.SKILLS.map(
-                skill => [skill.name, skill]
-            )
-        );
+        SkillRegistry.fromList(data.SKILLS);
 
     data.TOOL_REGISTRY =
-        new Map(
-            data.TOOLS
-                .filter(item => item?.type === "function")
-                .map(item => [item.function.name, item])
-        );
+        ToolRegistry.fromList(data.TOOLS);
 
     data.AGENT_REGISTRY =
-        new Map(
-            data.AGENTS.map(
-                agent => [agent.name, agent]
-            )
-        );
+        AgentRegistry.fromList(data.AGENTS);
 
     REGISTRY.data = data;
     REGISTRY.signature = signature;
@@ -10738,9 +10714,18 @@ if (require.main === module) {
 }
 
 
-module.exports = {
+application.bind({
     runAgent,
     main,
+    tools: toolRuntime,
+    eventstore,
+    cancelRun
+});
+
+
+module.exports = {
+    runAgent: application.runAgent,
+    main: application.main,
 
     /*
     | A plain model call through the role-based endpoint resolution,
@@ -10878,6 +10863,14 @@ module.exports = {
     isMultiProjectTask,
 
     settings,
+
+    /*
+    | Application / config / registry surface (Phase 14). Additive;
+    | existing export names keep their signatures.
+    */
+    application,
+    registryLoader,
+    registryValidator,
 
     /*
     | Read through the store so a caller never caches a stale limit.
