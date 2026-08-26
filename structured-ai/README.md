@@ -23,6 +23,12 @@
 
 ---
 
+> **Execution record:** the canonical rollout status and verification history are in
+> [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md). The corresponding refactor and
+> multi-project design documents are [`REFACTOR_EXECUTION_PLAN.md`](REFACTOR_EXECUTION_PLAN.md),
+> [`MULTI_PROJECT_IMPLEMENTATION_PLAN.md`](MULTI_PROJECT_IMPLEMENTATION_PLAN.md) and
+> [`MULTI_PROJECT_REFACTOR_ORDER_PLAN.md`](MULTI_PROJECT_REFACTOR_ORDER_PLAN.md).
+
 ## ۱. معرفی و منشور معماری سیستم
 
 ### ۱.۱ قرارداد اکشن ساختاریافته (Structured Action Contract)
@@ -44,39 +50,40 @@
 
 ```text
 structured-ai/
-├── bin/
-│   ├── agent.js                 # رابط اصلی خط فرمان (CLI)
-│   ├── interactive.js           # نشست تعاملی ترمینال (REPL)
-│   └── backfill-eventstore.js   # ابزار بک‌فیل لاگ‌ها و رویدادها
+├── bin/                         # agent، interactive و backfill entrypoints
 ├── agent/
-│   ├── agent.js                 # حلقه هماهنگ‌کننده اصلی، مدیریت ساب‌ایجنت‌ها و زمان‌بندی
-│   ├── config/                  # دستورالعمل‌های سیستمی و پرامپت‌ها
-│   ├── lib/                     # ماژول‌های هسته ران‌تایم
-│   │   ├── context.js           # بودجه‌بندی و فشرده‌سازی تدریجی کانتکست
-│   │   ├── events.js            # سیستم رویدادهای ساختاریافته
-│   │   ├── policy.js            # موتور پالیسی، تأییدیه‌ها و اعتبارسنجی فرامین
-│   │   ├── workspace.js         # گارد امنیت مرزهای دیسک
-│   │   ├── semantic.js          # پوستهٔ سازگاری؛ به agent/mcp/semantic.js می‌رسد
-│   │   ├── memory.js            # حافظه کاری و بایگانی رویدادها
-│   │   └── storage.js           # مدیریت داینامیک تنظیمات و Hot-reload
-│   ├── mcp/                     # لایهٔ اتصال به سرورهای MCP
-│   │   ├── protocol.js          # پیام‌های JSON-RPC، فریمینگ و بازکردن نتیجهٔ ابزار
-│   │   ├── client.js            # یک سرور، یک کلاینت: handshake و tools/list و tools/call
-│   │   ├── manager.js           # رجیستری سرورها و کاتالوگ ابزارها با فضای‌نام
-│   │   ├── config.js            # خواندن .mcp.json و لایه‌های پیکربندی
-│   │   ├── semantic.js          # Semantic Engine به‌عنوان یک سرور MCP داخلی
-│   │   └── transports/          # stdio · http · sse · websocket
-│   ├── registry/                # رجیستری ابزارها، نقش‌ها، اسکیل‌ها و پالیسی‌ها
-│   ├── schema/                  # اسکیمای سخت‌گیرانه (Strict JSON Schema) اکشن مدل
-│   └── tools/                   # پیاده‌سازی ابزارهای سیستمی و هوش کد
+│   ├── agent.js                # public application entrypoint and bindings
+│   ├── actions/                # action parsing, repair and validation
+│   ├── application/            # run/session lifecycle
+│   ├── cli/                    # argument parsing and command dispatch
+│   ├── config/                 # SettingsSchema، SettingsStore، secrets
+│   ├── context/                # context budget، workspace boundary، memory
+│   ├── discussion/             # discussion engine، service و transcripts
+│   ├── events/                 # event bus، validation، projection، redaction
+│   ├── hooks/                  # hook loading، conditions، rendering، runner
+│   ├── interactive/            # REPL input/output و approval prompt
+│   ├── mcp/                    # manager، connection، config، protocol و transports
+│   ├── persistence/            # atomic JSON، JSONL، repositories و data roots
+│   ├── policy/                 # policy matching، approval و errors
+│   ├── projects/               # registry، context، migration و workspace profile
+│   ├── prompt/                 # main/sub-agent/runtime/request builders
+│   ├── registry/               # JSON registries و split tool schemas
+│   ├── runtime/                # RunManager، engine، scheduler و telemetry
+│   └── tools/                  # ToolRuntime و گروه‌های filesystem/process/code/
+│                                 # planning/memory/git/network/search/skills/mcp
 ├── web/
-│   ├── server.js                # وب‌سرور کنسول و مدیریت نشست‌ها
-│   └── public/                  # دارایی‌های فرانت‌اند کنسول و Visualizer
-├── test/                        # سوئیت کامل آزمون‌های یکپارچگی و ران‌تایم
-└── semantic-engine/             # موتور مستقل تحلیل کد و گراف معنایی
+│   ├── server.js               # canonical WebServer entrypoint
+│   ├── server/                 # router، middleware، controllers، services
+│   └── public/                 # app/ و visualizer/ native browser modules
+├── test/                       # domain-based unit, contract و e2e suites
+└── semantic-engine/            # gateway/engine مستقل Semantic (اختیاری)
 ```
 
----
+در rollout نهایی Phase 30 هیچ facade انتخاب‌کننده‌ای برای حالت legacy وجود
+ندارد. `agent/config`، `agent/persistence`، `agent/mcp`، `agent/tools` و
+`web/server` مسیرهای canonical هستند. ریشهٔ `.agent/` فقط به‌عنوان data layout
+سازگار برای synthetic default خوانده می‌شود؛ این موضوع با نگه‌داشتن کد legacy
+یا flag اجرایی تفاوت دارد.
 
 ## ۳. پیش‌نیازها و راه‌اندازی سریع
 
@@ -167,126 +174,105 @@ node bin/agent.js -w /path/to/project --discussion --personas security,frontend 
 
 ## ۵. جدول کامل پیکربندی و متغیرهای محیطی
 
-تنظیمات سیستم بدون نیاز به ری‌استارت پروسه از طریق رابط کاربری وب، فایل‌های رجیستری یا متغیرهای محیطی قابل تغییر هستند:
+تنظیمات runtime فقط از `agent/config/SettingsStore.js` و
+`agent/config/SettingsSchema.js` خوانده می‌شوند. مقدارهای قابل تغییر از طریق
+کنسول وب، فایل profile یا environment با همان precedence واحد resolve می‌شوند.
 
-| متغیر محیطی | مقدار پیش‌فرض | شرح عملکرد |
-|---|:---:|---|
-| `AGENT_BASE_URL` | `http://localhost:4414/v1` | آدرس اندپوینت سازگار با OpenAI `/chat/completions` |
-| `AGENT_API_KEY` | `""` | کلید احراز هویت اندپوینت مدل |
-| `AGENT_MODEL` | `qwen2.5-coder` | نام مدل زبانی پیش‌فرض برای ارکستراتور |
-| `AGENT_TEMPERATURE` | `0.1` | میزان خلاقیت و تصادفی بودن پاسخ مدل |
-| `AGENT_MAX_ITERATIONS`| `25` | حداکثر تعداد تکرار حلقه ارکستراتور در هر تسک |
-| `AGENT_RUN_DEADLINE_MS`| `120000` (۲ دقیقه) | مهلت زمانی کل اجرای تسک قبل از توقف اجباری |
-| `CONTEXT_MAX_BUDGET` | `60000` | سقف توکن مکالمه قبل از اعمال فشرده‌سازی تدریجی |
-| `CONTEXT_COMPACT_TRIGGER`| `0.8` (۸۰٪) | آستانه شروع فشرده‌سازی خودکار پیام‌های قدیمی |
-| `POLICY_APPROVAL_MODE`| `prompt` | نحوه برخورد با فرامین حساس (`prompt`, `auto`, `deny`) |
-| `SEMANTIC_ENABLED` | `true` | فعال بودن ارتباط با موتور معنایی Semantic Engine |
-| `SEMANTIC_ENGINE_URL`| `""` | آدرس سرور ریموت موتور معنایی (در صورت خالی بودن: Stdio محلی) |
-| `SEMANTIC_TRANSPORT` | `auto` | ترنسپورت MCP موتور معنایی (`auto`, `stdio`, `http`, `sse`, `websocket`) |
-| `MCP_ENABLED` | `true` | فعال بودن اتصال به سرورهای MCP |
-| `MCP_SERVERS` | `""` | تعریف سرورها به‌صورت JSON در محیط؛ بر فایل‌ها اولویت دارد |
-| `MCP_EXPOSE_TOOLS` | `both` | نحوهٔ معرفی ابزارها به مدل (`namespaced`, `gateway`, `both`) |
-| `MCP_AUTO_DISCOVER` | `false` | کشف ابزارهای هر سرور در شروع هر ران؛ برای جلوگیری از اجرای خودکار config workspace خاموش است |
-| `MCP_TRUST_PROJECT_CONFIG` | `false` | اجازه‌ی اجرای stdio MCP از config پروژه/workspace؛ فقط برای repository مورد اعتماد روشن شود |
-| `MCP_DISCOVERY_TTL_MS`| `300000` | مدت اعتبار کاتالوگ کشف‌شده پیش از پرسش دوباره |
-| `MCP_CALL_TIMEOUT_MS`| `60000` | مهلت یک فراخوانی ابزار روی سرور MCP |
-| `MCP_CONNECT_TIMEOUT_MS`| `20000` | مهلت handshake و خواندن فهرست ابزارها |
-| `MCP_MAX_TOOLS` | `200` | سقف ابزارهای MCP معرفی‌شده به مدل |
-| `MCP_MAX_MESSAGE_BYTES`| `16777216` | بزرگ‌ترین پیام قابل‌قبول از یک سرور MCP |
-| `MCP_ALLOW_RUNTIME_ADD`| `true` | اجازهٔ افزودن/حذف سرور در حین اجرا |
-| `MCP_APPROVAL` | `inherit` | نیاز به تأیید برای فراخوانی MCP (`inherit`, `always`, `never`) |
-| `CONSOLE_RESULT_CHARS`| `1000` | طول کاراکتر پیش‌نمایش خروجی در استریم وب‌کنسول |
-| `EVENTSTORE_ENABLED` | `true` | فعال بودن ثبت لاگ رویدادها در دایرکتوری `.agent/` |
+| متغیر | مقدار پیش‌فرض/رفتار | شرح |
+|---|---|---|
+| `WORKSPACE_ROOT` | `process.cwd()` | ریشهٔ ثابت اجرای process و fallback پروژهٔ synthetic |
+| `STRUCTURED_AI_DATA_HOME` | `~/.local/share/structured-ai` | registry و data root مرکزی پروژه‌ها |
+| `AGENT_BASE_URL` | endpoint سازگار با OpenAI | مسیر `/chat/completions` مدل |
+| `AGENT_API_KEY` | خالی | کلید مدل؛ در log و پاسخ mask می‌شود |
+| `AGENT_MODEL` | `auto-switch` | مدل اصلی runtime |
+| `AGENT_APPROVAL` | `prompt` | `auto`، `prompt` یا `deny` برای approval policy |
+| `PROCESS_SANDBOX_MODE` | `deny` | `deny`، `bwrap` یا `test` (فقط harness) |
+| `SEMANTIC_ENABLED` | `true` | فعال بودن Semantic Engine |
+| `SEMANTIC_ENGINE_URL` | خالی | endpoint اختیاری semantic gateway |
+| `SEMANTIC_TRANSPORT` | `auto` | `stdio`، `http`، `sse` یا `websocket` |
+| `MCP_ENABLED` | `true` | فعال بودن MCP manager |
+| `MCP_AUTO_DISCOVER` | `false` | کشف خودکار configهای workspace |
+| `MCP_TRUST_PROJECT_CONFIG` | `false` | trust لازم برای stdio پروژه |
+| `MCP_ALLOW_RUNTIME_ADD` | `true` | افزودن/حذف runtime MCP، مشروط به policy |
+| `MCP_APPROVAL` | `inherit` | approval برای فراخوانی MCP |
+| `EVENTSTORE_ENABLED` | `true` | ذخیرهٔ eventهای durable |
+| `JOURNAL_ENABLED` | `true` | ذخیرهٔ journal per-agent |
+| `MAX_RUN_MS` | `600000` | سقف wall-clock هر run |
+| `MAX_TOTAL_AGENTS` | `15` | سقف sub-agent هر run |
+| `MAX_PARALLEL_AGENTS` | `4` | سقف اجرای موازی sub-agentها |
+| `MAX_PARALLEL_TOOLS` | `8` | سقف اجرای موازی toolها |
+| `MAX_CONTEXT_CHARS` | `300000` | بودجهٔ کل conversation |
 
----
+فلگ‌های rollout موقت مراحل قبل (`PROJECT_CONTEXT_MODE`، `RUN_CONTEXT_MODE`،
+`PROMPT_BUILDER_MODE`، `SEMANTIC_POOL_MODE`، `RUNTIME_ENGINE_MODE` و
+`WEB_SERVER_MODE`) در Phase 30 از schema و runtime حذف شده‌اند؛ همهٔ مسیرها
+اکنون implementation canonical را اجرا می‌کنند و setting ناشناخته خطای واضح
+می‌دهد. برای فهرست کامل ۱۶۳ setting به `SettingsSchema.js` مراجعه کنید.
 
 ## ۶. مستندات کامل اندپوینت‌های سرور وب کنسول (Web Server & REST / SSE API)
 
-هنگامی که کنسول وب با `--serve <port>` اجرا می‌شود، اندپوینت‌های زیر در دسترس کلاینت‌ها قرار دارند:
+سرور canonical با `node bin/agent.js --serve <port> -w <path>` اجرا می‌شود.
+تمام APIها token-protected هستند و method/path کامل در
+[`test/fixtures/api-surface.json`](test/fixtures/api-surface.json) و
+`web/server/RouteInventory.js` ثبت شده‌اند.
 
----
+### مسیرهای اصلی
 
-### ۱. ثبت و اجرای تسک جدید
-* **مسیر:** `POST /api/tasks`
-* **ورودی:** `{ "task": "تست‌های پروژه را اجرا کن" }`
-* **خروجی:** `{ "ok": true, "session_id": "sess_182a" }`
+| روش | مسیر | پاسخ قراردادی |
+|---|---|---|
+| `POST` | `/api/tasks` | `202 {"accepted":true}` برای مسیر single-project تاریخی |
+| `GET` | `/api/events` | SSE event stream؛ با `projectId` قابل فیلتر است |
+| `GET` | `/api/state` | snapshot وضعیت، messages، events، approvals و run |
+| `POST` | `/api/cancel` | لغو run جاری |
+| `POST` | `/api/approval-mode` | تغییر `auto`/`prompt`/`deny` |
+| `GET/POST` | `/api/settings` | مشاهده یا تغییر settingهای schema |
+| `GET` | `/api/health`، `/api/metrics`، `/api/stats` | سلامت و metrics gateway/project |
+| `GET/POST` | `/api/mcp` | وضعیت یا افزودن MCP server |
+| `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
+| `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
+| `GET` | `/api/graph/:view` | graph/neighborhood/impact دادهٔ Semantic |
 
----
+### API پروژه‌ها
 
-### ۱٫۱. شروع بحث چندجانبه
-* **مسیر:** `POST /api/discussion`
-* **ورودی:** `{ "task": "طراحی ذخیره‌سازی نشست با JWT", "personas": ["security", "frontend", "backend"], "max_rounds": 3 }`
-* **خروجی:** `{ "accepted": true, "id": "discussion-..." }` — دورها به‌صورت پس‌زمینه اجرا و رویدادهای `discussion:start`، `discussion:message`، `discussion:round`، `discussion:observer`، `discussion:finish` از طریق `/api/events` استریم می‌شوند؛ وضعیت کامل همیشه در `/api/state` (فیلد `discussion`) موجود است.
-* **لیست پرسونای قابل انتخاب:** `GET /api/discussion/personas`
+| روش | مسیر | توضیح |
+|---|---|---|
+| `GET` | `/api/projects` | فهرست پروژه‌های ثبت‌شده، با فیلتر token |
+| `POST` | `/api/projects` | ثبت پروژه با `rootPath` و permissionهای آن |
+| `GET/PATCH/DELETE` | `/api/projects/:projectId` | دریافت، ویرایش یا حذف یک registry record |
+| `GET` | `/api/projects/:projectId/state` | snapshot محدود به همان پروژه |
+| `GET` | `/api/projects/:projectId/events` | event stream پروژه‌ای |
+| `GET` | `/api/projects/:projectId/sessions` | sessionهای همان پروژه |
+| `POST` | `/api/projects/:projectId/tasks` یا `/chat` | اجرای task با پاسخ `202 {accepted, project_id}` |
+| `POST` | `/api/projects/:projectId/cancel` | لغو فقط runهای همان پروژه |
+| `GET` | `/api/projects/:projectId/health` یا `/metrics` | سلامت و metrics همان پروژه |
+| `GET/POST` | `/api/projects/:projectId/discussions` | list یا شروع discussion پایدار |
+| `GET` | `/api/projects/:projectId/discussions/:discussionId` | replay transcript کامل همان پروژه |
 
----
+### Discussion و approval
 
-### ۲. استریم زندهٔ رویدادها (Server-Sent Events)
-* **مسیر:** `GET /api/events`
-* **تایپ‌های رویداد ارسالی:**
-  - `task.start` / `task.done` — آغاز و پایان تسک
-  - `iteration.start` — شروع یک دور تحلیل توسط مدل
-  - `agent.delegate` — ایجاد یک ساب‌ایجنت جدید
-  - `tool.call` / `tool.result` — اجرای ابزار به همراه زمان و خروجی
-  - `approval.request` / `approval.resolved` — درخواست تأیید انسانی
-  - `plan.updated` — تغییرات زنده در مراحل و شواهد پلن کاربری
+`POST /api/discussion` و `GET /api/discussion/personas` برای مسیر legacy
+discussion حفظ شده‌اند. مسیر project-scoped علاوه بر `accepted`، شناسهٔ
+پروژه و discussion را برمی‌گرداند:
 
----
-
-### ۳. دریافت وضعیت ران‌تایم و ایجنت‌ها
-* **مسیر:** `GET /api/state`
-* **نمونه پاسخ:**
 ```json
 {
-  "running": false,
-  "workspace": "/home/user/project",
-  "approval_mode": "prompt",
-  "pending_approvals_count": 0,
-  "stats": { "iterations": 4, "tool_calls": 12, "delegations": 1 },
-  "semantic_status": { "available": true, "index_state": "fresh" },
-  "mcp": { "enabled": true, "tools": 7, "servers": [{ "name": "github", "state": "ready", "tools": 7 }] }
+  "accepted": true,
+  "id": "discussion-...",
+  "project_id": "prj-a"
 }
 ```
 
----
+رونوشت کامل در `<project dataRoot>/discussion/<discussion-id>.json` با
+نوشتار atomic نگه‌داری می‌شود. پروژهٔ دیگر نه در list آن را می‌بیند و نه
+می‌تواند replay کند. Eventهای discussion شامل `project_id` هستند.
 
-### ۴. تأیید یا رد درخواست‌های حساس (Approvals)
-* **مسیر:** `POST /api/approvals/:id`
-* **ورودی:** `{ "decision": "allow" }` یا `{ "decision": "deny" }`
-* **خروجی:** `{ "ok": true, "id": "appr_12" }`
+### استریم و امنیت
 
----
-
-### ۵. دریافت جزئیات کامل یک فراخوانی (Call Inspection)
-برای جلوگیری از سنگین شدن استریم رویدادها، آرگومان‌ها و نتایج حجیم به صورت کش ذخیره و با این اندپوینت فراخوانی می‌شوند:
-* **مسیر:** `GET /api/calls/:key`
-* **خروجی:** `{ "key": "call_1", "tool": "fs_read", "args": {...}, "result": {...} }`
-
----
-
-### ۶. لغو آنی تسک در حال اجرا
-* **مسیر:** `POST /api/cancel`
-* **خروجی:** `{ "ok": true, "message": "Run cancelled" }`
-
----
-
-### ۷. تغییر زندهٔ حالت تأییدیه پالیسی
-* **مسیر:** `POST /api/approval-mode`
-* **ورودی:** `{ "mode": "auto" }` یا `{ "mode": "prompt" }` یا `{ "mode": "deny" }`
-
----
-
-### ۸. مشاهده و تغییر زندهٔ تنظیمات ران‌تایم
-* **مسیرها:** `GET /api/settings` · `POST /api/settings`
-* **نمونه ورودی تغییر تنظیمات:**
-```json
-{
-  "key": "AGENT_MAX_ITERATIONS",
-  "value": 30
-}
-```
-
----
+`GET /api/events?projectId=<id>` فقط eventهای همان پروژه را می‌فرستد؛ eventهای
+global در stream پروژه‌ای صرفاً metadata aggregate هستند. token master یا
+توکن scoped با permissionهای `project:read`، `project:write`،
+`semantic:query` و `semantic:index` کنترل می‌شود. خطاهای validation کلید
+`error` و در صورت نیاز `code` را به‌صورت additive حفظ می‌کنند.
 
 ## ۷. کاتالوگ کامل ابزارها و گروه‌ها (Tools & Tool Groups)
 
@@ -456,13 +442,13 @@ MCP_SERVERS                       متغیر محیطی، بالاترین او�
 اکنون همهٔ آن‌ها در `agent/mcp/` است و موتور معنایی به‌عنوان یک **سرور MCP داخلی به نام `semantic-engine`** ثبت می‌شود. چیزی که در `agent/mcp/semantic.js` باقی مانده فقط همان بخشی است که واقعاً به خود موتور مربوط است: یافتن مسیر باینری، بررسی در دسترس بودن، سنجش کهنگی ایندکس روی دیسک، و نشست‌های ایندکس.
 
 ```text
-agent/tools/code.js  ──►  agent/mcp/semantic.js  ──►  manager  ──►  یکی از چهار ترنسپورت
+agent/tools/code/  ──►  agent/mcp/semantic.js  ──►  McpManager  ──►  یکی از چهار ترنسپورت
    (ابزارهای code_*)          (فقط منطق موتور)         (مشترک)
 ```
 
 نتیجهٔ عملی:
 
-* **ابزارهای `code_*` بدون هیچ تغییری کار می‌کنند** و مسیر قدیمی `agent/lib/semantic.js` هنوز معتبر است.
+* **ابزارهای `code_*` بدون هیچ تغییری کار می‌کنند** و از مسیر canonical `agent/mcp/semantic.js` و `ProjectSemanticResolver` استفاده می‌کنند.
 * موتور معنایی هم می‌تواند از هر چهار ترنسپورت استفاده کند؛ `SEMANTIC_TRANSPORT` یا صرفاً مقداردهی `SEMANTIC_ENGINE_URL` آن را انتخاب می‌کند.
 * یک پروژه می‌تواند در `.mcp.json` سروری با همین نام تعریف کند و موتور خودکار را کاملاً جایگزین کند.
 * **پایش کهنگی ایندکس (Staleness Check)** مثل قبل باقی است: اگر ایندکس کهنه یا غایب باشد، ایجنت راهنمایی می‌گیرد و به ابزارهای متنی جایگزین سوییچ می‌کند.
@@ -471,22 +457,72 @@ agent/tools/code.js  ──►  agent/mcp/semantic.js  ──►  manager  ─�
 
 ## ۱۲. آزمون‌ها و ارزیابی کیفیت
 
-مجموعه آزمون‌های پلتفرم تمامی جنبه‌های ران‌تایم، ابزارها، هوک‌ها، سرور وب و ایجنت‌ها را پوشش می‌دهد:
+سوئیت با Node scriptهای مستقل و بدون dependency تست‌رانر اجرا می‌شود. ساختار
+domain-based و contractهای عمومی در [`test/README.md`](test/README.md) ثبت شده‌اند.
 
 ```bash
-# اجرای کلیه آزمون‌های ران‌تایم Structured AI
+npm run check
 npm test
-
-# اجرای آزمون‌های مجزا
-npm run test:tools        # آزمون کلیه ابزارهای سیستمی
-npm run test:runtime      # آزمون موتور پالیسی، ران‌تایم و کانتکست
-npm run test:semantic     # آزمون موتور معنایی و ابزارهای code_*
-npm run test:mcp          # آزمون چهار ترنسپورت، کاتالوگ و پالیسی MCP
-npm run test:web          # آزمون سرور وب کنسول و روت‌های API
-npm run test:cli          # آزمون‌های خط فرمان و پارامترها
+npm run test:contracts
+npm run test:tools
+npm run test:mcp
+npm run test:runtime
+npm run test:context
+npm run test:persistence
+npm run test:projects
+npm run test:discussion
+npm run test:web
+npm run test:ui
+npm run test:e2e
 ```
 
----
+در verification نهایی Phase 30، تعداد تست‌ها **694/694** در 49 entrypoint و
+تماماً سبز است. `npm test` ترتیب serial را حفظ می‌کند و testهای contract قبل
+از integration/e2e اجرا می‌شوند.
+
+## ۱۳. راهنمای توسعهٔ canonical
+
+### افزودن tool
+
+1. declaration را در schema گروه متناظر زیر `agent/registry/tool-schemas/` اضافه کنید.
+2. implementation را در گروه canonical زیر `agent/tools/<group>/` قرار دهید و
+   آن را از `index.js` همان گروه export کنید.
+3. `ToolRuntime.js` را برای اتصال نام model-facing به implementation به‌روز
+   کنید و policy/group مربوط را در registry ثبت کنید.
+4. برای schema و اجرای واقعی، contract/unit test در `test/contracts/` و
+   `test/tools/` اضافه کنید؛ `ToolRegistryAdapter.assertParity()` باید سبز بماند.
+
+### افزودن skill یا agent
+
+- skillهای declarative در `agent/registry/skills.json` و منابع حجیم در
+  `agent/skills/<name>/` قرار می‌گیرند؛ `SkillTools` آن‌ها را lazy می‌خواند.
+- agent profile در `agent/registry/agents.json` و personaهای discussion در
+  `agent/registry/personas.json` ثبت می‌شوند. toolها و policy آن profile باید
+  هم‌زمان contract-tested باشند.
+
+### تغییر prompt یا event
+
+- sectionهای prompt در builderهای `agent/prompt/` اضافه می‌شوند و request
+  contract باید در `test/contracts/prompt.contract.test.js` و differential
+  test به‌روزرسانی شود.
+- event جدید باید در `agent/events/EventTypes.js` و producer/consumer متناظر
+  ثبت شود. event durable خام می‌ماند؛ redaction فقط برای log/external
+  projection است و contract test isolation الزامی است.
+
+### افزودن یا اجرای project
+
+پروژه از طریق `ProjectRegistry` یا `POST /api/projects` ثبت می‌شود؛ root از
+registry خوانده می‌شود و هویت از model/tool arguments پذیرفته نمی‌شود. state
+پایدار project در `STRUCTURED_AI_DATA_HOME/projects/<id>/` قرار می‌گیرد و
+synthetic default برای سازگاری از `<workspace>/.agent/` استفاده می‌کند.
+برای اجرای پروژهٔ مشخص:
+
+```bash
+node bin/agent.js --project <project-id> "task"
+```
+
+هیچ rollout flag یا compatibility facade دیگری برای فعال‌سازی این مسیر لازم
+نیست.
 
 ## مجوز (License)
 این پروژه تحت مجوز **MIT** منتشر شده است.

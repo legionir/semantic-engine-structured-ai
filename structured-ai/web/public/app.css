@@ -1026,3 +1026,134 @@ button.ghost.active {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ------------------------------------------------------- multi-project UI */
+
+.task-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.task-scope label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.task-scope select {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 2px 6px;
+}
+
+.task-scope-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.task-scope-list label {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.chip.health-ok { color: var(--ok); border-color: var(--ok); }
+.chip.health-degraded { color: var(--warn); border-color: var(--warn); }
+.chip.health-down { color: var(--bad); border-color: var(--bad); }
+
+.project-dashboard {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.project-dashboard[hidden] { display: none; }
+
+.dashboard-head { padding: 12px 16px; }
+
+.dashboard-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-tabs button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dashboard-tabs button.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(110, 168, 254, .08);
+}
+
+.dashboard-body {
+  padding: 14px 16px;
+  overflow: auto;
+  flex: 1;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.dashboard-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--panel-2);
+}
+
+.dashboard-card h3 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.project-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+
+.project-row .name { flex: 1; font-weight: 600; }
+
+.labeled-run {
+  border-left: 3px solid var(--accent);
+  padding: 4px 8px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.chat { padding-bottom: 280px; }

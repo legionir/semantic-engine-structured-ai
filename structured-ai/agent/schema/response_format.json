@@ -145,6 +145,18 @@
                       "type": "string"
                     },
                     "description": "Required array of delegation ids that must finish first. Use [] when independent; every id must exist in this same delegation graph."
+                  },
+                  "projectId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Optional registered project id for this sub-agent. Omit or null to inherit the active project. A nested delegation with a different projectId starts a new scoped sub-agent; the current sub-agent's project cannot change mid-loop."
                   }
                 },
                 "required": [

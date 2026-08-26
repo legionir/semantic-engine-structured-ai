@@ -3,6 +3,9 @@
 const { PERSONAS, OBSERVER } = require("./personas");
 const { DiscussionEngine } = require("./engine");
 const { TranscriptStore } = require("./transcript");
+const { TranscriptRepository, transcriptRepository } = require("./TranscriptRepository");
+const { DiscussionService } = require("./DiscussionService");
+const DiscussionContext = require("./DiscussionContext");
 const { PersonaRunner } = require("./personaRunner");
 const { ObserverRunner } = require("./observerRunner");
 const { LoopDetector } = require("./loopDetector");
@@ -118,6 +121,10 @@ module.exports = {
     OBSERVER,
     DiscussionEngine,
     TranscriptStore,
+    TranscriptRepository,
+    transcriptRepository,
+    DiscussionService,
+    DiscussionContext,
     PersonaRunner,
     ObserverRunner,
     LoopDetector,

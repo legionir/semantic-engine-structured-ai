@@ -4,7 +4,7 @@ const path = require("path");
 const {
     WORKSPACE_ROOT,
     capResult
-} = require("./lib/workspace");
+} = require("./context/WorkspaceBoundary");
 
 const toolRuntime = require("./tools");
 
@@ -13,13 +13,151 @@ const {
     getApprovalMode,
     setApprovalMode,
     setApprovalHandler
-} = require("./lib/policy");
+} = require("./policy");
 
-const events = require("./lib/events");
+const events = require("./events");
 
-const settings = require("./lib/storage");
-const journal = require("./lib/journal");
-const eventstore = require("./lib/eventstore");
+const settings = require("./config");
+const journal = require("./persistence/JournalRepository");
+const eventstore = require("./persistence/EventStoreRepository");
+
+const projects = require("./projects");
+
+const projectRuntime = require("./runtime");
+
+const {
+    AgentRunContext,
+    runManager,
+    runScheduler,
+    observability,
+    runWithProject,
+    effectiveProject,
+    effectiveProjectId,
+    projectIdOf,
+    noteDelegationProject,
+    isMultiProjectTask
+} = projectRuntime;
+
+const promptKit = require("./prompt");
+
+/*
+| Prompt kit wiring (EXECUTION_PLAN Phase 5). The injected builders and
+| resolvers are created lazily on first use: every dependency they take
+| is a closure over live registry/settings/run state, so nothing ages,
+| and are constructed lazily so live registry/settings state is always used.
+*/
+
+let TOOL_RESOLVER = null;
+
+let SKILL_RESOLVER = null;
+
+let PROMPT_FACADE = null;
+
+
+function toolResolver() {
+
+    if (!TOOL_RESOLVER) {
+
+        TOOL_RESOLVER =
+            promptKit.createToolResolver({
+                TOOL_REGISTRY_OF: () => TOOL_REGISTRY_OF(),
+                mcpToolDeclarations: () => mcpToolDeclarations()
+            });
+
+    }
+
+    return TOOL_RESOLVER;
+
+}
+
+
+function skillResolver() {
+
+    if (!SKILL_RESOLVER) {
+
+        SKILL_RESOLVER =
+            promptKit.createSkillResolver({
+                SKILL_REGISTRY_OF: () => SKILL_REGISTRY_OF(),
+                isActiveSkill: skill => isActiveSkill(skill)
+            });
+
+    }
+
+    return SKILL_RESOLVER;
+
+}
+
+
+function promptFacade() {
+
+    if (!PROMPT_FACADE) {
+
+        PROMPT_FACADE =
+            promptKit.createPromptBuilder({
+                listProjects:
+                    () => projects.registry().list(),
+
+                main: {
+                    systemPrompt: () => systemPrompt(),
+                    executionRules: () => executionRules(),
+                    skillIndex: () => skillIndex(),
+                    PERSONAS_OF: () => PERSONAS_OF(),
+                    AGENTS_OF: () => AGENTS_OF(),
+                    discussionPersonaNames: () => discussionPersonaNames(),
+                    describeCapability: agent => describeCapability(agent),
+                    mayDelegate: () => mayDelegate(mainAgentProfile()),
+                    readTask: () => readTask()
+                },
+
+                subAgent: {
+                    resolveAgentCapabilities:
+                        agentDefinition =>
+                            resolveAgentCapabilities(agentDefinition),
+                    executionRules:
+                        agentDefinition => executionRules(agentDefinition),
+                    mayDelegate:
+                        agentDefinition => mayDelegate(agentDefinition)
+                },
+
+                runtimeContext: {
+                    CONFIGURED_RUNTIME_OF: () => CONFIGURED_RUNTIME_OF(),
+                    detectEnvironment: () => detectEnvironment(),
+                    detectRepository: () =>
+                        detectRepository(
+                            effectiveProject(currentRun().project)
+                                ? effectiveProject(currentRun().project).workspaceRoot
+                                : undefined
+                        ),
+                    workspaceRoot: () =>
+                        effectiveProject(currentRun().project)
+                            ? effectiveProject(currentRun().project).workspaceRoot
+                            : WORKSPACE_ROOT,
+                    planSummary: () => currentPlanSummary(),
+                    memorySizeChars: () =>
+                        memoryStore.memorySize(memoryStore.loadMemory()),
+                    archiveStats: () => archive.stats(),
+                    policySummary: () => POLICY_ENGINE.summary(),
+                    endpointOverview: () => endpointOverview(),
+                    agentsSpawned: () => currentAgentBudget().spawned,
+                    runStartedAt: () => currentRun().started_at,
+                    runRemainingMs: () => runRemainingMs(),
+                    mcpContext: () => mcpContext()
+                },
+
+                request: {
+                    endpointFor:
+                        (role, agentDefinition) =>
+                            endpointFor(role, agentDefinition),
+                    RESPONSE_FORMAT_OF: () => RESPONSE_FORMAT_OF()
+                }
+            });
+
+    }
+
+    return PROMPT_FACADE;
+
+}
+
 
 journal.attach(events.bus);
 eventstore.attach(events.bus);
@@ -28,17 +166,28 @@ const {
     conversationSize,
     compactConversation,
     findExchanges
-} = require("./lib/context");
+} = require("./context");
 
-const memoryStore = require("./lib/memory");
+const memoryStore = require("./context/Memory");
 
 const {
     _skillIndex: skillIndex,
     _isActiveSkill: isActiveSkill
 } = require("./tools/skills");
 
-const archive = require("./lib/archive");
-const hookRegistry = require("./lib/hooks");
+const archive = require("./persistence/ArchiveRepository");
+const hookRegistry = require("./hooks");
+const HookRunner = require("./hooks/HookRunner").HookRunner;
+
+const application = require("./application");
+const actionKit = require("./actions");
+const runtimeEngine = require("./runtime/engine");
+const contextKit = require("./context");
+const registryLoader = require("./registry/RegistryLoader");
+const registryValidator = require("./registry/RegistryValidator");
+const AgentRegistry = require("./registry/AgentRegistry");
+const ToolRegistry = require("./registry/ToolRegistry");
+const SkillRegistry = require("./registry/SkillRegistry");
 
 
 /*
@@ -334,10 +483,15 @@ function logObject(
         return;
     }
 
+    const safeValue =
+        typeof events.redactForLog === "function"
+            ? events.redactForLog(value)
+            : value;
+
     LOG_STREAM(
         `${logScope(scope)} ${label}:\n${
             JSON.stringify(
-                value,
+                safeValue,
                 null,
                 2
             )
@@ -573,21 +727,8 @@ function registryFiles() {
 
 function registrySignature() {
 
-    return Object.values(registryFiles())
-        .map(file => {
+    return registryLoader.signatureOf(schemaFileName());
 
-            try {
-
-                const stats = fs.statSync(file);
-
-                return `${file}:${stats.mtimeMs}:${stats.size}`;
-
-            } catch {
-
-                return `${file}:missing`;
-            }
-        })
-        .join("|");
 }
 
 
@@ -603,14 +744,8 @@ function loadRegistries(force) {
         return REGISTRY.data;
     }
 
-    const data = {};
-
-    for (
-        const [name, file]
-        of Object.entries(registryFiles())
-    ) {
-        data[name] = readJSON(file);
-    }
+    const data =
+        registryLoader.load(schemaFileName());
 
     data.PERSONA_REGISTRY =
         new Map(
@@ -620,25 +755,13 @@ function loadRegistries(force) {
         );
 
     data.SKILL_REGISTRY =
-        new Map(
-            data.SKILLS.map(
-                skill => [skill.name, skill]
-            )
-        );
+        SkillRegistry.fromList(data.SKILLS);
 
     data.TOOL_REGISTRY =
-        new Map(
-            data.TOOLS
-                .filter(item => item?.type === "function")
-                .map(item => [item.function.name, item])
-        );
+        ToolRegistry.fromList(data.TOOLS);
 
     data.AGENT_REGISTRY =
-        new Map(
-            data.AGENTS.map(
-                agent => [agent.name, agent]
-            )
-        );
+        AgentRegistry.fromList(data.AGENTS);
 
     REGISTRY.data = data;
     REGISTRY.signature = signature;
@@ -767,155 +890,17 @@ const POLICY_ENGINE =
 
 function validateRegistries() {
 
-    const problems = [];
-
-    for (const tool of TOOLS_OF()) {
-
-        if (tool?.type !== "function") {
-
-            problems.push(
-                "tools.json contains an entry that is not a function tool."
-            );
-
-            continue;
-        }
-
-        if (!toolRuntime.hasTool(tool.function.name)) {
-
-            problems.push(
-                `Tool "${tool.function.name}" is declared in tools.json but has no implementation.`
-            );
-        }
-    }
-
-    for (const name of toolRuntime.implementedToolNames()) {
-
-        if (!TOOL_REGISTRY_OF().has(name)) {
-
-            problems.push(
-                `Tool "${name}" is implemented but not declared in tools.json.`
-            );
-        }
-    }
-
-    /*
-    | An MCP tool is declared by the server that offers it, not by this
-    | repository, so it is deliberately absent from tools.json and the
-    | two checks above must not look for it there.
-    */
-
-    for (
-        const [group, definition]
-        of Object.entries(TOOL_GROUPS_OF())
-    ) {
-
-        for (const name of definition.tools) {
-
-            if (!TOOL_REGISTRY_OF().has(name)) {
-
-                problems.push(
-                    `Tool group "${group}" references unknown tool "${name}".`
-                );
-            }
-        }
-    }
-
-    for (const rule of POLICY_OF().rules || []) {
-
-        for (const name of rule.tools || []) {
-
-            if (
-                !name.includes("*") &&
-                !TOOL_REGISTRY_OF().has(name)
-            ) {
-
-                problems.push(
-                    `Policy rule "${rule.id}" references unknown tool "${name}".`
-                );
-            }
-        }
-
-        for (const group of rule.groups || []) {
-
-            if (!TOOL_GROUPS_OF()[group]) {
-
-                problems.push(
-                    `Policy rule "${rule.id}" references unknown tool group "${group}".`
-                );
-            }
-        }
-
-        if (
-            ![
-                "allow",
-                "deny",
-                "require_approval"
-            ].includes(rule.action)
-        ) {
-
-            problems.push(
-                `Policy rule "${rule.id}" has an unknown action "${rule.action}".`
-            );
-        }
-    }
-
-    for (const skill of SKILLS_OF()) {
-
-        for (const name of skill.tools || []) {
-
-            if (!TOOL_REGISTRY_OF().has(name)) {
-
-                problems.push(
-                    `Skill "${skill.name}" references unknown tool "${name}".`
-                );
-            }
-        }
-    }
-
-    for (const agent of AGENTS_OF()) {
-
-        if (
-            agent.persona &&
-            !PERSONA_REGISTRY_OF().has(agent.persona)
-        ) {
-
-            problems.push(
-                `Agent "${agent.name}" references unknown persona "${agent.persona}".`
-            );
-        }
-
-        for (const name of agent.skills || []) {
-
-            if (!SKILL_REGISTRY_OF().has(name)) {
-
-                problems.push(
-                    `Agent "${agent.name}" references unknown skill "${name}".`
-                );
-            }
-        }
-
-        if (agent.tools !== "*") {
-
-            for (const name of agent.tools || []) {
-
-                if (!TOOL_REGISTRY_OF().has(name)) {
-
-                    problems.push(
-                        `Agent "${agent.name}" references unknown tool "${name}".`
-                    );
-                }
-            }
-        }
-    }
-
-    if (problems.length > 0) {
-
-        throw new Error(
-            `Registry validation failed:\n- ${problems.join("\n- ")}`
-        );
-    }
+    return registryValidator.validate({
+        tools: TOOLS_OF(),
+        groups: TOOL_GROUPS_OF(),
+        skills: SKILLS_OF(),
+        agents: AGENTS_OF(),
+        personas: PERSONAS_OF(),
+        policy: POLICY_OF(),
+        hasTool: name => toolRuntime.hasTool(name),
+        implementedToolNames: () => toolRuntime.implementedToolNames()
+    });
 }
-
 
 /*
 |--------------------------------------------------------------------------
@@ -974,7 +959,16 @@ function detectEnvironment() {
 | not, and never has to guess the branch.
 */
 
-function detectRepository() {
+/* The repository is discovered from the workspace rather than declared,
+| so the model is never told there is a git repository when there is
+| not, and never has to guess the branch. In modular mode the runtime
+| passes the calling run's project root, so a cross-root project sees
+| its own repository rather than the process workspace's.
+*/
+
+function detectRepository(root) {
+
+    const detectRoot = root || WORKSPACE_ROOT;
 
     const declared =
         CONFIGURED_RUNTIME_OF().repository || {};
@@ -988,7 +982,7 @@ function detectRepository() {
                     "git",
                     argv,
                     {
-                        cwd: WORKSPACE_ROOT,
+                        cwd: detectRoot,
                         stdio: ["ignore", "pipe", "ignore"],
                         timeout: settings.get("REPO_DETECT_TIMEOUT_MS")
                     }
@@ -1002,10 +996,10 @@ function detectRepository() {
         }
     };
 
-    const root =
+    const toplevel =
         run(["rev-parse", "--show-toplevel"]);
 
-    if (!root) {
+    if (!toplevel) {
 
         return {
             ...declared,
@@ -1028,10 +1022,10 @@ function detectRepository() {
 
         available: true,
 
-        root,
+        root: toplevel,
 
         is_workspace_root:
-            root === WORKSPACE_ROOT,
+            toplevel === detectRoot,
 
         branch:
             run(["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -1151,381 +1145,43 @@ async function summariseTranscript(transcript, instruction) {
 | never happen without a copy landing here first.
 */
 
-const ARCHIVED_EXCHANGES = new WeakSet();
-
+/*
+| Context / memory / archive (EXECUTION_PLAN Phase 17). Implementation
+| lives in agent/context/ and agent/persistence/; these stay as
+| compatible wrappers so the runtime loop and the existing exports keep
+| their names and signatures (law 7).
+*/
 
 function archiveExchanges(messages, exchanges, scope) {
 
-    /*
-    | An exchange is archived once, at the moment it is complete, so the
-    | stored body is the full tool result rather than whatever survived
-    | compression. The set is keyed on the assistant message object, so
-    | nothing is added to what gets serialised into a request.
-    */
+    return contextKit.archiveExchanges(messages, exchanges, scope);
 
-    const fresh =
-        exchanges.filter(
-            exchange =>
-                !ARCHIVED_EXCHANGES.has(messages[exchange.start])
-        );
-
-    if (fresh.length === 0) {
-        return null;
-    }
-
-    try {
-
-        const report = archive.archiveEvents(
-            archive.eventsFromExchanges(
-                messages,
-                fresh,
-                {
-                    agent: scope || "main_agent",
-                    run: RUN.id
-                }
-            )
-        );
-
-        for (const exchange of fresh) {
-
-            ARCHIVED_EXCHANGES.add(messages[exchange.start]);
-        }
-
-        return report;
-
-    } catch (error) {
-
-        logLine(
-            scope,
-            `Could not archive exchanges: ${error.message}`
-        );
-
-        return null;
-    }
 }
 
 
 async function foldIntoMemory(messages, scope) {
 
-    const exchanges =
-        findExchanges(messages);
+    return contextKit.foldIntoMemory(messages, scope);
 
-    const keep =
-        Math.max(
-            1,
-            settings.get("KEEP_RECENT_EXCHANGES")
-        );
-
-    const foldable =
-        exchanges.slice(
-            0,
-            Math.max(0, exchanges.length - keep)
-        );
-
-    if (foldable.length === 0) {
-        return null;
-    }
-
-    /*
-    | The material leaves the transcript whether or not the summariser
-    | succeeds, but it is only removed after a successful absorption.
-    */
-
-    const material =
-        foldable.map(exchange => {
-
-            const lines = [];
-
-            for (
-                let index = exchange.start;
-                index <= exchange.end;
-                index++
-            ) {
-
-                const message = messages[index];
-
-                if (message.role === "assistant") {
-
-                    lines.push(
-                        `called: ${
-                            (message.tool_calls || [])
-                                .map(call => call.function.name)
-                                .join(", ")
-                        }`
-                    );
-
-                    continue;
-                }
-
-                lines.push(`result: ${message.content}`);
-            }
-
-            return lines.join("\n");
-        }).join("\n");
-
-    const before =
-        conversationSize(messages);
-
-    /*
-    | The archive is written before the summariser is called, and it is
-    | written whether or not the summariser answers. Working memory is a
-    | lossy view of these exchanges; the archive is the copy that keeps
-    | the exact error text and the exact path, retrievable later with
-    | archive_search.
-    */
-
-    const archived =
-        archiveExchanges(messages, foldable, scope);
-
-    const absorbed =
-        await memoryStore.absorb(
-            memoryStore.loadMemory(),
-            material,
-            summariseTranscript,
-            {
-                getSignal: () => {
-                    assertRunActive("folding history into memory");
-                    return RUN.controller?.signal;
-                }
-            }
-        );
-
-    if (absorbed.absorbed === 0) {
-
-        logLine(
-            scope,
-            `Could not fold history into memory (${
-                absorbed.failures[0] || "no chunk absorbed"
-            }); compressing mechanically instead.`
-        );
-
-        return null;
-    }
-
-    const condensed =
-        await memoryStore.condense(
-            absorbed.memory,
-            summariseTranscript
-        );
-
-    memoryStore.saveMemory(condensed.memory);
-
-    /*
-    | Drop the folded exchanges and refresh the memory message.
-    */
-
-    const first = foldable[0].start;
-
-    const last =
-        foldable[foldable.length - 1].end;
-
-    messages.splice(first, last - first + 1);
-
-    refreshMemoryMessage(messages, condensed.memory);
-
-    const report = {
-        folded_exchanges:
-            foldable.length,
-
-        chunks:
-            absorbed.chunks,
-
-        summary_calls:
-            absorbed.attempted,
-
-        skipped_chunks:
-            absorbed.skipped,
-
-        absorbed:
-            absorbed.absorbed,
-
-        condensed:
-            condensed.condensed,
-
-        archived:
-            archived
-                ? archived.added
-                : 0,
-
-        archive_duplicates:
-            archived
-                ? archived.duplicates
-                : 0,
-
-        before,
-
-        after:
-            conversationSize(messages)
-    };
-
-    logLine(
-        scope,
-        `Folded ${report.folded_exchanges} exchanges into memory with ${
-            report.summary_calls
-        } summariser call(s) across ${report.chunks} chunk(s)${
-            report.skipped_chunks
-                ? ` (${report.skipped_chunks} archive-only)`
-                : ""
-        }, ${
-            Math.round(report.before / 1000)
-        }k to ${
-            Math.round(report.after / 1000)
-        }k${
-            report.condensed
-                ? ", memory condensed"
-                : ""
-        }${
-            report.archived
-                ? `, ${report.archived} archived`
-                : ""
-        }`
-    );
-
-    events.emit("context:memory", {
-        agent: scope || "main_agent",
-        ...report
-    });
-
-    return report;
 }
 
 
-/*
-| One memory message, kept just after the task so it reads as
-| established knowledge rather than as a late correction.
-*/
-
 function refreshMemoryMessage(messages, memory) {
 
-    const message =
-        memoryStore.memoryMessage(memory);
+    return contextKit.refreshMemoryMessage(messages, memory);
 
-    const existing =
-        messages.findIndex(memoryStore.isMemoryMessage);
-
-    if (existing !== -1) {
-
-        messages[existing] = message;
-
-        return;
-    }
-
-    const firstUser =
-        messages.findIndex(
-            item => item.role === "user"
-        );
-
-    messages.splice(
-        firstUser === -1
-            ? messages.length
-            : firstUser + 1,
-        0,
-        message
-    );
 }
 
 
 async function maintainContext(messages, scope) {
 
-    const budget =
-        settings.get("MAX_CONTEXT_CHARS");
+    return contextKit.maintainContext(messages, scope);
 
-    const threshold =
-        budget * settings.get("CONTEXT_COMPACT_AT");
-
-    const size =
-        conversationSize(messages);
-
-    if (size < threshold) {
-        return null;
-    }
-
-    /*
-    | First try a real summary of the oldest material, then fall back to
-    | mechanical compression for whatever is still over budget.
-    */
-
-    if (
-        settings.get("CONTEXT_SUMMARY") === true &&
-        settings.get("MEMORY_ENABLED") === true
-    ) {
-
-        await foldIntoMemory(messages, scope);
-    }
-
-    const report =
-        compactConversation(messages, {
-            maxChars: threshold,
-
-            onDrop: (current, exchange) =>
-                archiveExchanges(current, [exchange], scope)
-        });
-
-    if (report.compacted) {
-
-        logLine(
-            scope,
-            `Context ${
-                Math.round(report.before / 1000)
-            }k of ${
-                Math.round(budget / 1000)
-            }k, compacted to ${
-                Math.round(report.after / 1000)
-            }k (light ${report.light}, medium ${
-                report.medium
-            }, heavy ${report.heavy}, dropped ${
-                report.dropped_exchanges
-            })`
-        );
-
-        events.emit("context:compacted", {
-            agent: scope || "main_agent",
-            ...report
-        });
-    }
-
-    return report;
 }
 
 
 function refreshRuntimeContext(messages) {
-
-    for (const message of messages) {
-
-        if (
-            message.role !== "system" ||
-            typeof message.content !== "string" ||
-            !message.content.startsWith("{")
-        ) {
-            continue;
-        }
-
-        let parsed;
-
-        try {
-
-            parsed = JSON.parse(message.content);
-
-        } catch {
-
-            continue;
-        }
-
-        if (parsed.type !== "runtime_context") {
-            continue;
-        }
-
-        message.content =
-            JSON.stringify({
-                type: "runtime_context",
-
-                context: createRuntimeContext()
-            });
-
-        return true;
-    }
-
-    return false;
+    return promptFacade().refreshRuntimeContext(messages);
 }
 
 
@@ -1533,7 +1189,7 @@ function currentPlanSummary() {
 
     try {
 
-        const plan = require("./tools/plan");
+        const plan = require("./tools/planning");
 
         return plan._summarise(plan._loadPlan());
 
@@ -1551,7 +1207,7 @@ function currentPlanView() {
 
     try {
 
-        const planTools = require("./tools/plan");
+        const planTools = require("./tools/planning");
         const plan = planTools._loadPlan();
 
         return {
@@ -1573,120 +1229,7 @@ function currentPlanView() {
 
 
 function createRuntimeContext() {
-
-    return {
-        ...CONFIGURED_RUNTIME_OF(),
-
-        environment:
-            detectEnvironment(),
-
-        repository:
-            detectRepository(),
-
-        workspace: {
-            ...(CONFIGURED_RUNTIME_OF().workspace || {}),
-
-            root:
-                WORKSPACE_ROOT
-        },
-
-        /*
-        | The group catalogue used to travel here as well: 2.7K
-        | characters describing tools whose full schemas are already in
-        | the request. Groups are how the policy reasons, not how the
-        | agent calls anything, so what the agent needs is the policy
-        | summary below, not the taxonomy behind it.
-        */
-
-        plan:
-            currentPlanSummary(),
-
-        memory: {
-            enabled:
-                settings.get("MEMORY_ENABLED") === true,
-
-            size_chars:
-                memoryStore.memorySize(memoryStore.loadMemory()),
-
-            chunk_chars:
-                settings.get("MEMORY_CHUNK_CHARS"),
-
-            max_summary_calls:
-                settings.get("MEMORY_MAX_SUMMARY_CALLS"),
-
-            summary_parallelism:
-                settings.get("MEMORY_SUMMARY_PARALLELISM")
-        },
-
-        /*
-        | The agent is told how much history is retrievable, otherwise
-        | it has no reason to search an archive it cannot see.
-        */
-
-        archive:
-            archive.stats(),
-
-        policy:
-            POLICY_ENGINE.summary(),
-
-        endpoints:
-            endpointOverview(),
-
-        runtime: {
-            workspace_root:
-                WORKSPACE_ROOT,
-
-            max_iterations:
-                settings.get("MAX_ITERATIONS"),
-
-            max_agent_depth:
-                settings.get("MAX_AGENT_DEPTH"),
-
-            max_parallel_tools:
-                settings.get("MAX_PARALLEL_TOOLS"),
-
-            max_parallel_agents:
-                settings.get("MAX_PARALLEL_AGENTS"),
-
-            max_total_agents:
-                settings.get("MAX_TOTAL_AGENTS"),
-
-            agents_spawned:
-                AGENT_BUDGET.spawned,
-
-            agents_remaining:
-                Math.max(
-                    0,
-                    settings.get("MAX_TOTAL_AGENTS") - AGENT_BUDGET.spawned
-                ),
-
-            iterations_per_agent:
-                settings.get("MAX_ITERATIONS"),
-
-            max_run_ms:
-                settings.get("MAX_RUN_MS"),
-
-            max_request_ms:
-                settings.get("MAX_REQUEST_MS"),
-
-            max_context_chars:
-                settings.get("MAX_CONTEXT_CHARS"),
-
-            run_remaining_ms:
-                RUN.started_at
-                    ? Math.max(0, runRemainingMs())
-                    : settings.get("MAX_RUN_MS")
-        },
-
-        /*
-        | Which external servers this run can reach. Named rather than
-        | counted, because an agent that knows a "github" server exists
-        | asks it something; one told there are two servers does not.
-        */
-
-        mcp:
-            mcpContext()
-    };
+    return promptFacade().runtimeContextMessage();
 }
 
 
@@ -1749,13 +1292,45 @@ const RUN = {
     after_hooks_ran: false,
     main_agent_definition: null,
     task: "",
-    turnCounter: 0
+    turnCounter: 0,
+    /*
+    | The ProjectContext this run is scoped to (Phase 2). Null in legacy
+    | mode: nothing downstream may branch on it yet — consumers arrive
+    | with the project-aware tool runtime in Phase 4.
+    */
+    project: null
 };
+
+
+/*
+| The compat accessors of EXECUTION_PLAN Phase 3: every read/write the
+| engine used to aim at the global RUN and AGENT_BUDGET goes through
+| these. In legacy mode (and anywhere outside a run's async scope) they
+| resolve to the same globals as before, so behavior is unchanged; in
+| modular mode each run's async chain resolves to its own
+| AgentRunContext, which is what lets two runs share a process without
+| sharing messages, budgets or cancellation.
+*/
+
+function currentRun() {
+
+    return runManager.current() || RUN;
+
+}
+
+
+function currentAgentBudget() {
+
+    const context = runManager.current();
+
+    return context ? context.agentBudget : AGENT_BUDGET;
+
+}
 
 
 function startRun() {
 
-    RUN.started_at = Date.now();
+    currentRun().started_at = Date.now();
 
     /*
     | Archived records outlive the process, so they carry the run they
@@ -1763,36 +1338,58 @@ function startRun() {
     | failure from this morning's.
     */
 
-    RUN.id =
-        `run-${new Date(RUN.started_at).toISOString()
-            .replace(/[:.]/g, "-")}`;
+    /*
+    | A modular run keeps the id the RunManager issued when its context
+    | was created, so the run is addressable before startRun; the legacy
+    | global RUN always regenerates its id from the fresh start
+    | timestamp, exactly as it historically does.
+    */
+
+    if (
+        !(currentRun() instanceof AgentRunContext) ||
+        !currentRun().id
+    ) {
+
+        currentRun().id =
+            `run-${new Date(currentRun().started_at).toISOString()
+                .replace(/[:.]/g, "-")}`;
+
+    }
 
     /* Every event emitted from now on carries this run_id in its
        correlation envelope, so the journal, session and archive can
        attribute events to the same run. */
-    events.setContext({ run_id: RUN.id });
+    events.setContext({ run_id: currentRun().id });
 
-    RUN.controller = new AbortController();
-    RUN.cancelled_reason = null;
-    RUN.inHook = false;
-    RUN.hook_phase = null;
-    RUN.hook_started_at = 0;
-    RUN.hook_deadline_at = null;
-    RUN.hook_results = {};
-    RUN.after_hooks_ran = false;
-    RUN.main_agent_definition = null;
-    RUN.task = "";
-    RUN.turnCounter = 0;
+    currentRun().controller = new AbortController();
+    currentRun().cancelled_reason = null;
+    currentRun().inHook = false;
+    currentRun().hook_phase = null;
+    currentRun().hook_started_at = 0;
+    currentRun().hook_deadline_at = null;
+    currentRun().hook_results = {};
+    currentRun().after_hooks_ran = false;
+    currentRun().main_agent_definition = null;
+    currentRun().task = "";
+    currentRun().turnCounter = 0;
+    currentRun().project = null;
 
     /*
     | Whatever belongs to a single run is cleared here, so every entry
     | point gets the same clean slate, not only runAgent.
     */
 
-    RUN.carried =
-        toolRuntime.startRunScope();
+    /* A modular run resets only its own tool scope (search sessions,
+       telemetry buckets); the legacy start resets process-wide state
+       exactly as it always has. */
+    currentRun().carried =
+        toolRuntime.startRunScope(
+            currentRun() instanceof AgentRunContext
+                ? currentRun().id
+                : undefined
+        );
 
-    return RUN.carried;
+    return currentRun().carried;
 }
 
 
@@ -1803,16 +1400,16 @@ function startRun() {
 
 function runDeadlineAt() {
 
-    if (RUN.inHook && RUN.hook_deadline_at) {
-        return RUN.hook_deadline_at;
+    if (currentRun().inHook && currentRun().hook_deadline_at) {
+        return currentRun().hook_deadline_at;
     }
 
-    if (!RUN.started_at) {
+    if (!currentRun().started_at) {
         return null;
     }
 
     return (
-        RUN.started_at +
+        currentRun().started_at +
         settings.get("MAX_RUN_MS")
     );
 }
@@ -1821,13 +1418,13 @@ function runDeadlineAt() {
 function cancelRun(reason) {
 
     if (
-        !RUN.controller ||
-        RUN.controller.signal.aborted
+        !currentRun().controller ||
+        currentRun().controller.signal.aborted
     ) {
         return;
     }
 
-    RUN.cancelled_reason = reason;
+    currentRun().cancelled_reason = reason;
 
     if (reason === "deadline") {
 
@@ -1838,7 +1435,52 @@ function cancelRun(reason) {
         });
     }
 
-    RUN.controller.abort();
+    currentRun().controller.abort();
+}
+
+
+/*
+| Cancellation is addressable by run id. A
+| caller that holds no async scope of the run — a web cancel endpoint,
+| a test — names the run instead of whichever run happens to be current
+| process-wide. Awaiting the run's promise still reports the failure to
+| its own caller; every other run keeps going. Returns false when no
+| tracked run has that id.
+*/
+function cancelRunById(runId, reason) {
+
+    const context = runManager.get(runId);
+
+    if (!context) {
+        return false;
+    }
+
+    if (
+        !context.controller ||
+        context.controller.signal.aborted
+    ) {
+        return true;
+    }
+
+    context.cancelled_reason = reason;
+
+    if (reason === "deadline") {
+
+        events.emit("run:deadline", {
+            run_id: context.runId,
+            project_id: context.projectId,
+            agent: "main_agent",
+            max_run_ms: settings.get("MAX_RUN_MS"),
+            elapsed_ms:
+                context.started_at
+                    ? Date.now() - context.started_at
+                    : 0
+        });
+    }
+
+    context.cancellation.abort();
+
+    return true;
 }
 
 
@@ -1857,16 +1499,16 @@ function runRemainingMs() {
 function isRunCancelled() {
 
     return Boolean(
-        RUN.controller &&
-        RUN.controller.signal.aborted
+        currentRun().controller &&
+        currentRun().controller.signal.aborted
     );
 }
 
 
 function runElapsedMs() {
 
-    return RUN.started_at
-        ? Date.now() - RUN.started_at
+    return currentRun().started_at
+        ? Date.now() - currentRun().started_at
         : 0;
 }
 
@@ -1878,9 +1520,9 @@ function runElapsedMs() {
 
 function budgetSentence() {
 
-    if (RUN.inHook) {
+    if (currentRun().inHook) {
 
-        return `the ${RUN.hook_phase || "hook"} budget of ${
+        return `the ${currentRun().hook_phase || "hook"} budget of ${
             settings.get("HOOK_TIMEOUT_MS")
         } ms (HOOK_TIMEOUT_MS) was spent`;
     }
@@ -1897,11 +1539,11 @@ function assertRunActive(what) {
 
         throw new Error(
             `Run cancelled${
-                RUN.cancelled_reason
-                    ? ` (${RUN.cancelled_reason})`
+                currentRun().cancelled_reason
+                    ? ` (${currentRun().cancelled_reason})`
                     : ""
             }: ${what}${
-                RUN.cancelled_reason === "deadline"
+                currentRun().cancelled_reason === "deadline"
                     ? ` — ${budgetSentence()}`
                     : ""
             }`
@@ -1984,22 +1626,22 @@ function createRequestSignal(timeoutOverride) {
         */
 
         state.reason =
-            RUN.cancelled_reason === "deadline"
+            currentRun().cancelled_reason === "deadline"
                 ? budgetSentence()
                 : `run cancelled (${
-                    RUN.cancelled_reason || "unknown"
+                    currentRun().cancelled_reason || "unknown"
                 })`;
 
         controller.abort();
     };
 
-    if (RUN.controller) {
+    if (currentRun().controller) {
 
-        if (RUN.controller.signal.aborted) {
+        if (currentRun().controller.signal.aborted) {
             onRunAbort();
         } else {
 
-            RUN.controller.signal.addEventListener(
+            currentRun().controller.signal.addEventListener(
                 "abort",
                 onRunAbort,
                 {
@@ -2021,9 +1663,9 @@ function createRequestSignal(timeoutOverride) {
 
             clearTimeout(timer);
 
-            if (RUN.controller) {
+            if (currentRun().controller) {
 
-                RUN.controller.signal.removeEventListener(
+                currentRun().controller.signal.removeEventListener(
                     "abort",
                     onRunAbort
                 );
@@ -2050,7 +1692,7 @@ const AGENT_BUDGET = {
 
 function resetAgentBudget() {
 
-    AGENT_BUDGET.spawned = 0;
+    currentAgentBudget().spawned = 0;
 }
 
 
@@ -2058,7 +1700,7 @@ function remainingAgentBudget() {
 
     return Math.max(
         0,
-        settings.get("MAX_TOTAL_AGENTS") - AGENT_BUDGET.spawned
+        settings.get("MAX_TOTAL_AGENTS") - currentAgentBudget().spawned
     );
 }
 
@@ -2067,10 +1709,10 @@ function consumeAgentBudget(
     agentName
 ) {
 
-    AGENT_BUDGET.spawned++;
+    currentAgentBudget().spawned++;
 
     if (
-        AGENT_BUDGET.spawned >
+        currentAgentBudget().spawned >
         settings.get("MAX_TOTAL_AGENTS")
     ) {
 
@@ -2115,11 +1757,8 @@ function mcpToolDeclarations() {
 
 function mcpToolRegistry() {
 
-    return new Map(
-        mcpToolDeclarations().map(
-            tool => [tool.function.name, tool]
-        )
-    );
+    /* Moved to agent/prompt/ToolResolver.js (Phase 5). */
+    return toolResolver().mcpRegistry();
 }
 
 
@@ -2170,33 +1809,9 @@ async function discoverMcpTools() {
 
 function resolveTools(toolNames) {
 
-    /*
-    | "*" grants every registered tool. Used by the root orchestrator
-    | profile; sub-agent profiles should list tools explicitly.
-    */
-
-    if (toolNames === "*") {
-
-        return [
-            ...TOOL_REGISTRY_OF().values(),
-            ...mcpToolDeclarations()
-        ];
-    }
-
-    if (!Array.isArray(toolNames)) {
-        return [];
-    }
-
-    const fromMcp =
-        mcpToolRegistry();
-
-    return toolNames
-        .map(
-            name =>
-                TOOL_REGISTRY_OF().get(name) ||
-                fromMcp.get(name)
-        )
-        .filter(Boolean);
+    /* Moved to agent/prompt/ToolResolver.js (Phase 5); the wrapper keeps
+       every call site and the live-registry behavior identical. */
+    return toolResolver().resolve(toolNames);
 }
 
 
@@ -2208,19 +1823,8 @@ function resolveTools(toolNames) {
 
 function resolveSkills(skillNames) {
 
-    if (!Array.isArray(skillNames)) {
-        return [];
-    }
-
-    return skillNames
-        .map(
-            name =>
-                SKILL_REGISTRY_OF().get(name)
-        )
-        .filter(
-            skill =>
-                skill && isActiveSkill(skill)
-        );
+    /* Moved to agent/prompt/SkillResolver.js (Phase 5). */
+    return skillResolver().resolve(skillNames);
 }
 
 
@@ -2472,90 +2076,7 @@ function resolveAgentCapabilities(
 function buildAgentSystemPrompt(
     agentDefinition
 ) {
-
-    const capabilities =
-        resolveAgentCapabilities(
-            agentDefinition
-        );
-
-    const personaText =
-        capabilities.persona?.system_prompt ||
-        "";
-
-    return [
-        personaText,
-
-        executionRules(agentDefinition),
-
-        {
-            type: "agent_runtime_rules",
-
-            rules: [
-                "You are an Agent inside a hierarchical Agent Runtime.",
-                "You were given one task by a parent agent; complete that task and report back.",
-                "Use only the tools provided by the runtime.",
-                "Use only the skills assigned to your Agent Profile.",
-                "Return your findings with the final action; the parent agent sees only that response.",
-                "Never fabricate tool results.",
-                "Never claim an operation succeeded unless runtime results confirm it."
-            ]
-        },
-
-        /*
-        | A specialist's own skills are its job, so they are in its
-        | prompt by default: two to five of them, and one skipped
-        | skill_get would cost it the expertise it was created for.
-        | SKILLS_INLINE_FOR_SUBAGENTS trades that for the index when the
-        | tokens matter more.
-        */
-
-        {
-            type: "skills",
-
-            note:
-                settings.get("SKILLS_INLINE_FOR_SUBAGENTS") === true
-                    ? undefined
-                    : "Names only. Read one with skill_get before doing that kind of work.",
-
-            skills:
-                settings.get("SKILLS_INLINE_FOR_SUBAGENTS") === true
-                    ? capabilities.skills
-                    : capabilities.skills.map(
-                        skill => ({
-                            name: skill.name,
-                            description: skill.description
-                        })
-                    )
-        },
-
-        {
-            type: "output_contract",
-
-            output_contract:
-                agentDefinition.output_contract ||
-                [
-                    "Report only results confirmed by runtime execution."
-                ]
-        },
-
-        {
-            type: "delegation_policy",
-            delegation:
-                agentDefinition.delegation ||
-                {
-                    enabled: false,
-                    max_depth: 0,
-                    max_children: 0
-                }
-        }
-    ]
-        .map(
-            item =>
-                typeof item === "string"
-                    ? item
-                    : JSON.stringify(item)
-        )
-        .join("\n\n");
+    return promptFacade().subAgentSystemPrompt(agentDefinition);
 }
 
 
@@ -2565,88 +2086,8 @@ function buildAgentSystemPrompt(
 |--------------------------------------------------------------------------
 */
 
-function buildAgentRequest({
-    messages,
-    agentDefinition,
-    tools,
-    responseFormat,
-    role,
-    withSchema = true
-}) {
-
-    const profile =
-        endpointFor(role, agentDefinition);
-
-    if (responseFormat === null) {
-
-        /*
-        | A plain completion, used by the summariser.
-        */
-
-        const request = {
-            model:
-                profile.model,
-
-            messages,
-
-            temperature:
-                agentDefinition &&
-                agentDefinition.temperature !== undefined
-                    ? agentDefinition.temperature
-                    : profile.temperature
-        };
-
-        if (
-            agentDefinition &&
-            agentDefinition.max_tokens
-        ) {
-            request.max_tokens = agentDefinition.max_tokens;
-        }
-
-        return request;
-    }
-
-    const request = {
-        model:
-            profile.model,
-
-        messages,
-
-        temperature:
-            profile.temperature,
-
-        tools,
-
-        parallel_tool_calls:
-            true
-    };
-
-    /*
-    | The schema is sent unless this endpoint has already refused it.
-    | Without it the model still has the contract in its instructions,
-    | and the parser accepts a native tool call either way.
-    */
-
-    if (withSchema) {
-
-        request.response_format =
-            RESPONSE_FORMAT_OF();
-    }
-
-    /*
-    | Left out by default, because a gateway that caps the answer for us
-    | is easier to see than a ceiling we set silently. When an answer is
-    | being cut off mid-write, this is the knob that fixes it.
-    */
-
-    const ceiling =
-        settings.get("MAX_RESPONSE_TOKENS");
-
-    if (ceiling > 0) {
-        request.max_tokens = ceiling;
-    }
-
-    return request;
+function buildAgentRequest(options) {
+    return promptFacade().request(options);
 }
 
 
@@ -2743,6 +2184,23 @@ function canModifyWorkspace(agentDefinition) {
 }
 
 
+/* Phase 12: the policy engine owns the extra approval for writes that
+   leave the Sub-Agent's project or happen in a multi-project task. */
+async function enforceCrossProjectWrite(toolName, args, agent) {
+
+    return POLICY_ENGINE.enforceCrossProjectWrite({
+        toolName,
+        args,
+        agent,
+        enabled: delegationProjectSwitchEnabled(),
+        fileMutatingTools: FILE_MUTATING_TOOLS,
+        currentRun,
+        effectiveProject,
+        projectIdOf,
+        isMultiProjectTask
+    });
+}
+
 /*
 | The root profile, as configured, without running a whole agent to ask
 | whether it may delegate.
@@ -2780,65 +2238,17 @@ function mayDelegate(agentDefinition) {
 | that does not fit would be worse than not delegating at all.
 */
 
-function delegationHintMessage(planSummary, remainingAgents) {
+function delegationHintMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.delegationHintMessage(...args);
 
-        content:
-            JSON.stringify({
-                type: "runtime_notice",
-
-                notice: "delegation_available",
-
-                agents_remaining: remainingAgents,
-
-                open_steps:
-                    planSummary.pending + planSummary.in_progress,
-
-                assigned_steps:
-                    planSummary.assigned_open_steps || [],
-
-                instruction:
-                    (planSummary.assigned_open_steps || []).length > 0
-                        ? `The plan already assigns open work to agent profiles: ${
-                            planSummary.assigned_open_steps
-                                .map(step => `${step.id} → ${step.agent}`)
-                                .join(", ")
-                        }. Delegate independent assigned steps to those exact profiles in one action instead of continuing alone. Keep only sequential work that depends on state you hold.`
-                        : "You have been working alone while the plan still has open steps and the whole agent budget is unspent. Steps that do not depend on each other can run at the same time, each in its own context: hand them to sub-agents in one delegate action, and keep for yourself only what depends on state you hold. If the remaining work really is one sequential thread, say so in your next answer and carry on."
-            })
-    };
 }
 
 
-function shouldHintDelegation(progress, planSummary, agentDefinition) {
+function shouldHintDelegation(...args) {
 
-    const after =
-        settings.get("DELEGATION_NUDGE_AFTER");
+    return runtimeEngine.shouldHintDelegation(...args);
 
-    if (
-        after === 0 ||
-        !mayDelegate(agentDefinition) ||
-        progress.delegations > 0 ||
-        (progress.delegationHints || 0) >=
-            settings.get("MAX_DELEGATION_NUDGES")
-    ) {
-        return false;
-    }
-
-    if (progress.tools < after) {
-        return false;
-    }
-
-    if (
-        !planSummary.exists ||
-        planSummary.pending + planSummary.in_progress < 2
-    ) {
-        return false;
-    }
-
-    return remainingAgentBudget() >= 2;
 }
 
 
@@ -2850,216 +2260,17 @@ function shouldHintDelegation(progress, planSummary, agentDefinition) {
 | the runtime cannot know which of the two is the lie.
 */
 
-function checkPerformedClaim(action, progress, scope) {
+function checkPerformedClaim(...args) {
 
-    const claim = action?.performed;
+    return runtimeEngine.checkPerformedClaim(...args);
 
-    if (!claim || typeof claim !== "object") {
-        return null;
-    }
-
-    const executed =
-        toolRuntime.executedToolNames
-            ? toolRuntime.executedToolNames()
-            : [];
-
-    const problems = [];
-
-    for (const tool of claim.tools || []) {
-
-        if (!executed.includes(tool)) {
-
-            problems.push(
-                `claimed ${tool}, which the runtime never executed`
-            );
-        }
-    }
-
-    if (
-        (claim.agents || []).length > 0 &&
-        progress.delegations === 0
-    ) {
-
-        problems.push(
-            `claimed ${
-                (claim.agents || []).join(", ")
-            }, but nothing was delegated`
-        );
-    }
-
-    if (
-        (claim.files_changed || []).length > 0 &&
-        !executed.some(
-            name => FILE_MUTATING_TOOLS.includes(name)
-        )
-    ) {
-
-        problems.push(
-            `claimed ${
-                claim.files_changed.length
-            } changed file(s), but no write ran`
-        );
-    }
-
-    if (problems.length === 0) {
-        return null;
-    }
-
-    logLine(
-        scope || "main_agent",
-        `The answer claims work the runtime did not do: ${
-            problems.join("; ")
-        }`
-    );
-
-    events.emit("report:mismatch", {
-        agent: scope || "main_agent",
-        problems,
-        claimed: claim,
-        executed
-    });
-
-    return problems;
 }
 
 
 function createMainAgentMessages(task) {
-
-    return [
-
-        {
-            role: "system",
-            content:
-                systemPrompt()
-        },
-
-        {
-            role: "system",
-            content:
-                executionRules()
-        },
-
-        {
-            role: "system",
-            content:
-                JSON.stringify({
-                    type:
-                        "runtime_context",
-
-                    context:
-                        createRuntimeContext()
-                })
-        },
-
-        {
-            role: "system",
-            content:
-                JSON.stringify({
-                    type:
-                        "available_skills",
-
-                    note:
-                        "Names and descriptions only. Call skill_get before doing that kind of work to read its procedure and constraints.",
-
-                    skills:
-                        skillIndex()
-                })
-        },
-
-        /*
-        | Personas exist so an ad-hoc agent can be composed. An agent
-        | that may not delegate has no use for the catalogue, so it is
-        | added below only when it can.
-        |
-        | Discussion personas are left out on purpose: they are not
-        | delegation targets, they are run by the discussion engine
-        | through discussion_start, and advertising all sixteen of
-        | them would tax every request for a flow the orchestrator
-        | reaches with a single tool call.
-        */
-
-        mayDelegate(mainAgentProfile())
-            ? {
-                role: "system",
-                content:
-                    JSON.stringify({
-                        type:
-                            "available_personas",
-
-                        note:
-                            "For composing an ad-hoc agent when no profile fits.",
-
-                        personas:
-                            PERSONAS_OF()
-                                .filter(
-                                    persona =>
-                                        !discussionPersonaNames().has(
-                                            persona.name
-                                        )
-                                )
-                                .map(
-                                    persona => ({
-                                        name:
-                                            persona.name,
-
-                                        description:
-                                            persona.description
-                                    })
-                                )
-                    })
-            }
-            : null,
-
-        {
-            role: "system",
-            content:
-                JSON.stringify({
-                    type:
-                        "available_agents",
-
-                    agents:
-                        AGENTS_OF()
-                            .filter(
-                                agent =>
-                                    agent.name !==
-                                        "main_agent" &&
-                                    !agent.name.startsWith(
-                                        "discussion_"
-                                    )
-                            )
-                            .map(
-                            /*
-                            | What choosing a specialist needs: what it
-                            | is for and what it is allowed to do. Its
-                            | output contract, its skills and its tool
-                            | list are the sub-agent's own business, and
-                            | were 3K characters of every request.
-                            */
-
-                            agent => ({
-                                name:
-                                    agent.name,
-
-                                description:
-                                    agent.description,
-
-                                ...describeCapability(agent),
-
-                                can_delegate:
-                                    Boolean(agent.delegation?.enabled)
-                            })
-                        )
-                })
-        },
-
-        {
-            role: "user",
-            content:
-                task && task.trim() !== ""
-                    ? task
-                    : readTask()
-        }
-    ].filter(Boolean);
+    return promptFacade().mainMessages(task, {
+        project: effectiveProject(currentRun().project)
+    });
 }
 
 
@@ -3068,40 +2279,16 @@ function createMainAgentMessages(task) {
 | Permission Boundary
 |--------------------------------------------------------------------------
 |
-| Approval/Policy system is intentionally not implemented yet.
-|
-| This function is the future central enforcement point.
+| The policy boundary is enforced by the extracted policy engine. This
+| function remains the allowlist/availability guard used before that
+| boundary and is kept as a compatibility wrapper.
 |--------------------------------------------------------------------------
 */
 
-function assertToolAllowed(
-    toolName,
-    allowedTools
-) {
+function assertToolAllowed(...args) {
 
-    if (
-        !TOOL_REGISTRY_OF().has(toolName) &&
-        !toolRuntime.mcp._hasDiscoveredTool(toolName)
-    ) {
+    return runtimeEngine.assertToolAllowed(...args);
 
-        throw new Error(
-            `Tool is not available: ${toolName}`
-        );
-    }
-
-    if (!toolRuntime.hasTool(toolName)) {
-
-        throw new Error(
-            `Tool is declared but not implemented: ${toolName}`
-        );
-    }
-
-    if (!allowedTools.has(toolName)) {
-
-        throw new Error(
-            `Tool "${toolName}" is not allowed for this agent.`
-        );
-    }
 }
 
 
@@ -3113,133 +2300,14 @@ function assertToolAllowed(
 
 function parseArguments(value, toolName) {
 
-    if (
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value)
-    ) {
-        return value;
-    }
-
-    if (typeof value === "string") {
-
-        if (value.trim() === "") {
-            return {};
-        }
-
-        try {
-
-            const parsed =
-                JSON.parse(value);
-
-            if (
-                parsed &&
-                typeof parsed === "object" &&
-                !Array.isArray(parsed)
-            ) {
-                return parsed;
-            }
-
-            throw new Error("not an object");
-
-        } catch {
-
-            throw new Error(
-                `Arguments for "${toolName}" are a string that is not a JSON object.`
-            );
-        }
-    }
-
-    return {};
+    return actionKit.parseArguments(value, toolName);
 }
 
 
-function normalizeToolCalls(
-    toolCalls
-) {
+function normalizeToolCalls(...args) {
 
-    /*
-    | A generated id must not collide with one the model chose, or the
-    | whole action would be rejected for a duplicate it never wrote.
-    */
+    return runtimeEngine.normalizeToolCalls(...args);
 
-    const taken =
-        new Set(
-            toolCalls
-                .map(call => call && call.id)
-                .filter(Boolean)
-        );
-
-    const generateId = index => {
-
-        let candidate =
-            `call_${index + 1}`;
-
-        let suffix = 1;
-
-        while (taken.has(candidate)) {
-
-            candidate = `call_${index + 1}_${suffix}`;
-
-            suffix++;
-        }
-
-        taken.add(candidate);
-
-        return candidate;
-    };
-
-    return toolCalls.map(
-        (call, index) => {
-
-            const parsedArguments =
-                parseArguments(
-                    call.arguments,
-                    call.name
-                );
-
-            const pathRepair =
-                repairMarkdownPathArguments(
-                    call.name,
-                    parsedArguments
-                );
-
-            if (pathRepair.repaired_fields.length > 0) {
-
-                events.emit("response:repaired", {
-                    repair: "markdown_path",
-                    tool: call.name,
-                    repaired_fields: pathRepair.repaired_fields
-                });
-
-                logLine(
-                    null,
-                    `Repaired Markdown links in ${call.name}.${
-                        pathRepair.repaired_fields.join(`, ${call.name}.`)
-                    }.`
-                );
-            }
-
-            return {
-                id:
-                    call.id ||
-                    generateId(index),
-
-                name:
-                    call.name,
-
-                /* Arguments may arrive as an object or, under a strict
-                   schema, as a JSON encoded string. */
-                arguments:
-                    pathRepair.arguments,
-
-                depends_on:
-                    Array.isArray(call.depends_on)
-                        ? call.depends_on
-                        : []
-            };
-        }
-    );
 }
 
 
@@ -3249,55 +2317,10 @@ function normalizeToolCalls(
 |--------------------------------------------------------------------------
 */
 
-function validateDependencyGraph(
-    items
-) {
+function validateDependencyGraph(...args) {
 
-    const ids =
-        new Set();
+    return runtimeEngine.validateDependencyGraph(...args);
 
-    for (
-        const item
-        of items
-    ) {
-
-        if (ids.has(item.id)) {
-
-            throw new Error(
-                `Duplicate dependency id: ${item.id}`
-            );
-        }
-
-        ids.add(item.id);
-    }
-
-    for (
-        const item
-        of items
-    ) {
-
-        for (
-            const dependency
-            of item.depends_on
-        ) {
-
-            if (!ids.has(dependency)) {
-
-                throw new Error(
-                    `Unknown dependency: ${dependency}`
-                );
-            }
-
-            if (
-                dependency === item.id
-            ) {
-
-                throw new Error(
-                    `Item cannot depend on itself: ${item.id}`
-                );
-            }
-        }
-    }
 }
 
 
@@ -3315,211 +2338,17 @@ function validateDependencyGraph(
 | anything, which gives the waves and a name for the shape.
 */
 
-function describeGraph(items, maxParallel) {
+function describeGraph(...args) {
 
-    const remaining =
-        new Map(items.map(item => [item.id, item]));
+    return runtimeEngine.describeGraph(...args);
 
-    const done = new Set();
-
-    const waves = [];
-
-    while (remaining.size > 0) {
-
-        const ready =
-            [...remaining.values()].filter(
-                item =>
-                    (item.depends_on || []).every(
-                        dependency => done.has(dependency)
-                    )
-            );
-
-        if (ready.length === 0) {
-
-            /* a cycle: the executor will report it, this is only a view */
-            break;
-        }
-
-        const batch =
-            ready.slice(0, Math.max(1, maxParallel));
-
-        waves.push(batch.map(item => item.id));
-
-        for (const item of batch) {
-
-            done.add(item.id);
-
-            remaining.delete(item.id);
-        }
-    }
-
-    const dependent =
-        items.some(
-            item => (item.depends_on || []).length > 0
-        );
-
-    const shape =
-        items.length <= 1
-            ? "single"
-            : !dependent
-                ? "parallel"
-                : waves.every(wave => wave.length === 1)
-                    ? "sequential"
-                    : "graph";
-
-    return {
-        shape,
-
-        waves,
-
-        widest:
-            waves.reduce(
-                (widest, wave) =>
-                    Math.max(widest, wave.length),
-                0
-            )
-    };
 }
 
 
-async function executeDependencyGraph({
-    items,
-    executor,
-    maxParallel
-}) {
+async function executeDependencyGraph(...args) {
 
-    validateDependencyGraph(
-        items
-    );
+    return await runtimeEngine.executeDependencyGraph(...args);
 
-    const remaining =
-        new Map(
-            items.map(
-                item => [
-                    item.id,
-                    item
-                ]
-            )
-        );
-
-    const results =
-        new Map();
-
-    while (
-        remaining.size > 0
-    ) {
-
-        const ready = [];
-
-        for (
-            const item
-            of remaining.values()
-        ) {
-
-            const dependenciesComplete =
-                item.depends_on.every(
-                    dependency =>
-                        results.has(
-                            dependency
-                        )
-                );
-
-            if (
-                dependenciesComplete
-            ) {
-                ready.push(item);
-            }
-        }
-
-        if (
-            ready.length === 0
-        ) {
-
-            throw new Error(
-                "Dependency graph contains a cycle or unresolved dependency."
-            );
-        }
-
-        const batch =
-            ready.slice(
-                0,
-                maxParallel
-            );
-
-        const batchResults =
-            await Promise.all(
-                batch.map(
-                    async item => {
-
-                        try {
-
-                            const result =
-                                await executor(
-                                    item,
-                                    results
-                                );
-
-                            return {
-                                id:
-                                    item.id,
-
-                                success:
-                                    true,
-
-                                result
-                            };
-
-                        } catch (error) {
-
-                            return {
-                                id:
-                                    item.id,
-
-                                success:
-                                    false,
-
-                                result:
-                                    null,
-
-                                error: {
-                                    code:
-                                        error.name ||
-                                        "EXECUTION_ERROR",
-
-                                    message:
-                                        error.message,
-
-                                    retryable:
-                                        false
-                                }
-                            };
-                        }
-                    }
-                )
-            );
-
-        for (
-            const result
-            of batchResults
-        ) {
-
-            results.set(
-                result.id,
-                result
-            );
-
-            remaining.delete(
-                result.id
-            );
-        }
-    }
-
-    return items.map(
-        item =>
-            results.get(
-                item.id
-            )
-    );
 }
 
 
@@ -3538,239 +2367,25 @@ async function executeDependencyGraph({
 |--------------------------------------------------------------------------
 */
 
-const REFERENCE_PATTERN =
-    /\$\{([A-Za-z0-9_.-]+)\}/g;
 
+function readReferencePath(...args) {
 
-function readReferencePath(
-    value,
-    segments,
-    expression
-) {
+    return runtimeEngine.readReferencePath(...args);
 
-    let current = value;
-
-    for (const segment of segments) {
-
-        if (
-            current === null ||
-            current === undefined
-        ) {
-
-            throw new Error(
-                `Reference "${expression}" cannot be resolved: "${segment}" is not reachable.`
-            );
-        }
-
-        if (Array.isArray(current)) {
-
-            const index =
-                Number(segment);
-
-            if (!Number.isInteger(index)) {
-
-                throw new Error(
-                    `Reference "${expression}" expects a numeric index for an array, received "${segment}".`
-                );
-            }
-
-            current = current[index];
-
-            continue;
-        }
-
-        if (typeof current !== "object") {
-
-            throw new Error(
-                `Reference "${expression}" cannot descend into "${segment}".`
-            );
-        }
-
-        current = current[segment];
-    }
-
-    return current;
 }
 
 
-function resolveReference(
-    expression,
-    results,
-    allowedIds
-) {
+function resolveReference(...args) {
 
-    const [id, ...segments] =
-        expression.split(".");
+    return runtimeEngine.resolveReference(...args);
 
-    if (!allowedIds.includes(id)) {
-
-        throw new Error(
-            `Reference "${expression}" points at "${id}", which is not listed in depends_on.`
-        );
-    }
-
-    void 0;
-
-    const entry =
-        results.get(id);
-
-    if (!entry) {
-
-        throw new Error(
-            `Reference "${expression}" points at an unknown call: ${id}`
-        );
-    }
-
-    if (!entry.success) {
-
-        throw new Error(
-            `Reference "${expression}" points at "${id}", which failed: ${
-                entry.error?.message || "unknown error"
-            }`
-        );
-    }
-
-    return readReferencePath(
-        entry,
-        segments,
-        expression
-    );
 }
 
 
-function resolveArgumentReferences(
-    value,
-    results,
-    allowedIds,
-    knownIds
-) {
+function resolveArgumentReferences(...args) {
 
-    /*
-    | Only an expression that names a call in this action is a
-    | reference. Anything else is ordinary text: file content routinely
-    | contains ${...}, for example a JavaScript template literal, and
-    | rewriting or rejecting that would corrupt the file.
-    */
+    return runtimeEngine.resolveArgumentReferences(...args);
 
-    const isReference = expression => {
-
-        const id =
-            expression.split(".")[0];
-
-        return (
-            allowedIds.includes(id) ||
-            (
-                knownIds
-                    ? knownIds.has(id)
-                    : false
-            )
-        );
-    };
-
-    if (typeof value === "string") {
-
-        /*
-        | $${...} is an explicit escape for a literal ${...}. It is
-        | protected before the scan and restored afterwards.
-        */
-
-        const ESCAPE = "\u0000ESCAPED_REFERENCE\u0000";
-
-        const guarded =
-            value.replace(/\$\$\{/g, ESCAPE);
-
-        const restore = text =>
-            text.split(ESCAPE).join("${");
-
-        const matches =
-            [...guarded.matchAll(REFERENCE_PATTERN)]
-                .filter(
-                    match => isReference(match[1])
-                );
-
-        if (matches.length === 0) {
-            return restore(guarded);
-        }
-
-        /*
-        | A string that is exactly one reference keeps the original
-        | type, so an object or number is not stringified.
-        */
-
-        if (
-            matches.length === 1 &&
-            matches[0][0] === guarded
-        ) {
-
-            return resolveReference(
-                matches[0][1],
-                results,
-                allowedIds
-            );
-        }
-
-        return restore(
-            guarded.replace(
-                REFERENCE_PATTERN,
-                (match, expression) => {
-
-                    if (!isReference(expression)) {
-                        return match;
-                    }
-
-                    const resolved =
-                        resolveReference(
-                            expression,
-                            results,
-                            allowedIds
-                        );
-
-                    return typeof resolved === "string"
-                        ? resolved
-                        : JSON.stringify(resolved);
-                }
-            )
-        );
-    }
-
-    if (Array.isArray(value)) {
-
-        return value.map(
-            item =>
-                resolveArgumentReferences(
-                    item,
-                    results,
-                    allowedIds,
-                    knownIds
-                )
-        );
-    }
-
-    if (
-        value &&
-        typeof value === "object"
-    ) {
-
-        const output = {};
-
-        for (
-            const [key, item]
-            of Object.entries(value)
-        ) {
-
-            output[key] =
-                resolveArgumentReferences(
-                    item,
-                    results,
-                    allowedIds,
-                    knownIds
-                );
-        }
-
-        return output;
-    }
-
-    return value;
 }
 
 
@@ -3780,400 +2395,11 @@ function resolveArgumentReferences(
 |--------------------------------------------------------------------------
 */
 
-let GRAPH_SEQUENCE = 0;
 
+async function executeToolGraph(...args) {
 
-async function executeToolGraph(
-    toolCalls,
-    allowedTools,
-    scope,
-    context = {}
-) {
+    return await runtimeEngine.executeToolGraph(...args);
 
-    const calls =
-        normalizeToolCalls(
-            toolCalls
-        );
-
-    const callIds =
-        new Set(
-            calls.map(call => call.id)
-        );
-
-    const maxParallel =
-        settings.get("MAX_PARALLEL_TOOLS");
-
-    const graph =
-        describeGraph(calls, maxParallel);
-
-    const graphId =
-        `graph_${++GRAPH_SEQUENCE}`;
-
-    /*
-    | Which wave a call belongs to is what makes "parallel" visible
-    | afterwards: two calls in the same wave really did run together.
-    */
-
-    const waveOf = new Map();
-
-    graph.waves.forEach((wave, index) => {
-
-        for (const id of wave) {
-            waveOf.set(id, index);
-        }
-    });
-
-    logLine(
-        scope,
-        `Executing tool graph (${calls.length} call(s), ${
-            graph.shape
-        }, ${graph.waves.length} wave(s)).`
-    );
-
-    events.emit("tool:graph", {
-        agent:
-            scope || "main_agent",
-
-        scope:
-            scope || "main_agent",
-
-        graph_id:
-            graphId,
-
-        iteration:
-            context.iteration || null,
-
-        hook:
-            context.hook || null,
-
-        shape:
-            graph.shape,
-
-        waves:
-            graph.waves,
-
-        max_parallel:
-            maxParallel,
-
-        calls:
-            calls.map(call => ({
-                id: call.id,
-                name: call.name,
-                depends_on: call.depends_on,
-                wave: waveOf.get(call.id) ?? null
-            }))
-    });
-
-    const results =
-        await executeDependencyGraph({
-
-            items: calls,
-
-            maxParallel:
-                settings.get("MAX_PARALLEL_TOOLS"),
-
-            executor:
-                async (
-                    call,
-                    results
-                ) => {
-
-                    assertRunActive(
-                        `tool ${call.name}`
-                    );
-
-                    assertToolAllowed(
-                        call.name,
-                        allowedTools
-                    );
-
-                    const resolved =
-                        resolveArgumentReferences(
-                            call.arguments,
-                            results,
-                            call.depends_on,
-                            callIds
-                        );
-
-                    /*
-                    | An argument the tool does not declare used to be
-                    | dropped in silence, so "fs_read with a content
-                    | field" looked like a successful read instead of the
-                    | mistake it is. The call still runs, and the result
-                    | says what was ignored.
-                    */
-
-                    const checked =
-                        keepDeclaredArguments(call.name, resolved);
-
-                    const resolvedArguments =
-                        checked.dropped.length > 0
-                            ? checked.arguments
-                            : resolved;
-
-                    if (checked.dropped.length > 0) {
-
-                        logLine(
-                            scope,
-                            `${call.name} does not take ${
-                                checked.dropped.join(", ")
-                            }; ignored`
-                        );
-
-                        events.emit("tool:arguments_ignored", {
-                            agent: scope || "main_agent",
-                            scope: scope || "main_agent",
-                            id: call.id,
-                            name: call.name,
-                            dropped: checked.dropped
-                        });
-                    }
-
-                    /*
-                    | Policy is evaluated on the resolved arguments, so a
-                    | value injected by a dependency cannot slip past a
-                    | rule that inspects arguments.
-                    */
-
-                    await POLICY_ENGINE.enforce(
-                        call.name,
-                        resolvedArguments,
-                        scope || "main_agent"
-                    );
-
-                    logObject(
-                        scope,
-                        `Tool ${call.id} -> ${call.name}`,
-                        resolvedArguments
-                    );
-
-                    events.emit("tool:start", {
-                        agent:
-                            scope || "main_agent",
-
-                        scope:
-                            scope || "main_agent",
-
-                        id:
-                            call.id,
-
-                        name:
-                            call.name,
-
-                        graph_id:
-                            graphId,
-
-                        shape:
-                            graph.shape,
-
-                        wave:
-                            waveOf.get(call.id) ?? null,
-
-                        depends_on:
-                            call.depends_on,
-
-                        iteration:
-                            context.iteration || null,
-
-                        hook:
-                            context.hook || null,
-
-                        arguments:
-                            resolvedArguments
-                    });
-
-                    const startedAt = Date.now();
-
-                    try {
-
-                        const result =
-                            await toolRuntime.executeTool(
-                                call.name,
-                                resolvedArguments,
-                                {
-                                    agent: scope || "main_agent"
-                                }
-                            );
-
-                        /*
-                        | Loading a skill is a decision, not plumbing,
-                        | so the operator sees which agent took it.
-                        */
-
-                        if (
-                            call.name === "skill_get" &&
-                            result &&
-                            Array.isArray(result.skills)
-                        ) {
-
-                            logLine(
-                                scope,
-                                `Loaded skill ${
-                                    result.skills
-                                        .map(skill => skill.name)
-                                        .join(", ")
-                                }`
-                            );
-                        }
-
-                        /*
-                        | The warning travels with the result, because
-                        | that is the only place the model reliably
-                        | reads.
-                        */
-
-                        if (
-                            checked.dropped.length > 0 &&
-                            result &&
-                            typeof result === "object" &&
-                            !Array.isArray(result)
-                        ) {
-
-                            result.ignored_arguments =
-                                checked.dropped;
-
-                            result.note =
-                                `${call.name} does not take ${
-                                    checked.dropped.join(", ")
-                                }. Those arguments were ignored; use the tool that does, or drop them.`;
-                        }
-
-                        /*
-                        | A command that exits non-zero is data, not a
-                        | tool failure, so the runtime keeps going. The
-                        | console said "ok" for it, which is how a build
-                        | that never ran looked like a build that
-                        | passed, so the code travels with the event.
-                        */
-
-                        events.emit("tool:end", {
-                            agent:
-                                scope || "main_agent",
-
-                            scope:
-                                scope || "main_agent",
-
-                            id:
-                                call.id,
-
-                            name:
-                                call.name,
-
-                            graph_id:
-                                graphId,
-
-                            wave:
-                                waveOf.get(call.id) ?? null,
-
-                            iteration:
-                                context.iteration || null,
-
-                            hook:
-                                context.hook || null,
-
-                            arguments:
-                                resolvedArguments,
-
-                            exit_code:
-                                result &&
-                                typeof result === "object"
-                                    ? result.exit_code
-                                    : undefined,
-
-                            warning:
-                                result &&
-                                typeof result === "object"
-                                    ? result.warning
-                                    : undefined,
-
-                            success: true,
-
-                            duration_ms:
-                                Date.now() - startedAt,
-
-                            result
-                        });
-
-                        return result;
-
-                    } catch (error) {
-
-                        events.emit("tool:end", {
-                            agent:
-                                scope || "main_agent",
-
-                            scope:
-                                scope || "main_agent",
-
-                            id:
-                                call.id,
-
-                            name:
-                                call.name,
-
-                            graph_id:
-                                graphId,
-
-                            wave:
-                                waveOf.get(call.id) ?? null,
-
-                            iteration:
-                                context.iteration || null,
-
-                            hook:
-                                context.hook || null,
-
-                            arguments:
-                                resolvedArguments,
-
-                            success: false,
-
-                            duration_ms:
-                                Date.now() - startedAt,
-
-                            error:
-                                error.message
-                        });
-
-                        throw error;
-                    }
-                }
-        });
-
-    /*
-    | Each result carries the tool name so the model can read the
-    | tool message without correlating ids by itself.
-    */
-
-    const named =
-        results.map(
-            (result, index) => ({
-                ...result,
-
-                name:
-                    calls[index].name
-            })
-        );
-
-    for (
-        const result
-        of named
-    ) {
-
-        logObject(
-            scope,
-            `Tool result ${result.id} (${
-                result.success
-                    ? "success"
-                    : "failed"
-            })`,
-            result.success
-                ? result.result
-                : result.error
-        );
-    }
-
-    return named;
 }
 
 
@@ -4190,102 +2416,24 @@ async function executeToolGraph(
 | a request that the server rejected on its merits is not.
 */
 
-function isRetryableStatus(status) {
+function isRetryableStatus(...args) {
 
-    return (
-        status === 408 ||
-        status === 409 ||
-        status === 425 ||
-        status === 429 ||
-        status >= 500
-    );
+    return runtimeEngine.isRetryableStatus(...args);
+
 }
 
 
-function retryDelayMs(attempt, retryAfterHeader) {
+function retryDelayMs(...args) {
 
-    if (retryAfterHeader) {
+    return runtimeEngine.retryDelayMs(...args);
 
-        const seconds =
-            Number(retryAfterHeader);
-
-        if (Number.isFinite(seconds)) {
-
-            return Math.min(
-                seconds * 1000,
-                30000
-            );
-        }
-    }
-
-    const backoff =
-        settings.get("RETRY_BASE_MS") * Math.pow(2, attempt - 1);
-
-    return Math.min(
-        backoff + Math.floor(Math.random() * settings.get("RETRY_BASE_MS")),
-        30000
-    );
 }
 
 
-async function callAI(options) {
+async function callAI(...args) {
 
-    let lastError;
+    return await runtimeEngine.callAI(...args);
 
-    for (
-        let attempt = 1;
-        attempt <= settings.get("MAX_REQUEST_RETRIES") + 1;
-        attempt++
-    ) {
-
-        try {
-
-            return await sendAgentRequest(options);
-
-        } catch (error) {
-
-            lastError = error;
-
-            const retryable =
-                error.retryable === true;
-
-            if (
-                !retryable ||
-                attempt > settings.get("MAX_REQUEST_RETRIES")
-            ) {
-                throw error;
-            }
-
-            const delay =
-                retryDelayMs(
-                    attempt,
-                    error.retryAfter
-                );
-
-            if (runRemainingMs() <= delay) {
-
-                throw new Error(
-                    `${error.message} (no time left in the run budget to retry)`
-                );
-            }
-
-            logLine(
-                options.scope,
-                `Request failed (${
-                    error.message.slice(0, 120)
-                }); retrying in ${delay} ms [attempt ${
-                    attempt
-                }/${settings.get("MAX_REQUEST_RETRIES")}]`
-            );
-
-            await new Promise(
-                resolve =>
-                    setTimeout(resolve, delay)
-            );
-        }
-    }
-
-    throw lastError;
 }
 
 
@@ -4584,6 +2732,11 @@ async function performAgentRequest({
 |--------------------------------------------------------------------------
 | Response Parser
 |--------------------------------------------------------------------------
+|
+| Implementation lives in agent/actions/ (EXECUTION_PLAN Phase 15). The
+| functions below stay as compatible wrappers so the runtime loop and the
+| existing exports keep their names and signatures.
+|--------------------------------------------------------------------------
 */
 
 /*
@@ -4607,126 +2760,7 @@ async function performAgentRequest({
 
 function parseToolArguments(raw) {
 
-    const text =
-        stripCodeFence(String(raw)).trim();
-
-    try {
-
-        const parsed = JSON.parse(text);
-
-        /*
-        | Arguments are always an object. An array or a bare value parses
-        | cleanly and would then reach a tool as nonsense, so it is
-        | refused here rather than deeper in.
-        */
-
-        if (
-            parsed &&
-            typeof parsed === "object" &&
-            !Array.isArray(parsed)
-        ) {
-
-            return {
-                arguments: parsed,
-                repaired: false
-            };
-        }
-
-        return { failed: "the arguments are not a JSON object" };
-
-    } catch {
-
-        /* fall through to the salvage pass */
-    }
-
-    const start = text.indexOf("{");
-
-    if (start === -1) {
-
-        return { failed: "there is no JSON object in the arguments" };
-    }
-
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-
-    for (let index = start; index < text.length; index++) {
-
-        const character = text[index];
-
-        if (escaped) {
-
-            escaped = false;
-
-            continue;
-        }
-
-        if (character === "\\" && inString) {
-
-            escaped = true;
-
-            continue;
-        }
-
-        if (character === '"') {
-
-            inString = !inString;
-
-            continue;
-        }
-
-        if (inString) {
-            continue;
-        }
-
-        if (character === "{") {
-
-            depth++;
-
-            continue;
-        }
-
-        if (character !== "}") {
-            continue;
-        }
-
-        depth--;
-
-        if (depth !== 0) {
-            continue;
-        }
-
-        const candidate =
-            text.slice(start, index + 1);
-
-        try {
-
-            const parsed = JSON.parse(candidate);
-
-            if (
-                !parsed ||
-                typeof parsed !== "object" ||
-                Array.isArray(parsed)
-            ) {
-                return { failed: "the arguments are not a JSON object" };
-            }
-
-            return {
-                arguments: parsed,
-
-                repaired: true,
-
-                ignored:
-                    text.slice(index + 1).trim()
-            };
-
-        } catch {
-
-            return { failed: "the arguments are not valid JSON" };
-        }
-    }
-
-    return { failed: "the arguments are not valid JSON" };
+    return actionKit.parseToolArguments(raw);
 }
 
 
@@ -4738,360 +2772,49 @@ function parseToolArguments(raw) {
 
 function keepDeclaredArguments(name, args) {
 
-    const declared =
-        TOOLS_OF().find(
-            tool => tool.function.name === name
-        );
-
-    const properties =
-        declared?.function?.parameters?.properties;
-
-    if (!properties) {
-
-        return { arguments: args, dropped: [] };
-    }
-
-    const kept = {};
-    const dropped = [];
-
-    for (const [key, value] of Object.entries(args)) {
-
-        if (Object.prototype.hasOwnProperty.call(properties, key)) {
-
-            kept[key] = value;
-
-            continue;
-        }
-
-        dropped.push(key);
-    }
-
-    return { arguments: kept, dropped };
+    return actionKit.keepDeclaredArguments(name, args);
 }
 
 
 function modelResponseError(message, code, details) {
 
-    const error = new Error(message);
-
-    error.model_response = true;
-
-    error.code = code || "MALFORMED_RESPONSE";
-
-    error.details =
-        details && typeof details === "object"
-            ? details
-            : {};
-
-    return error;
+    return actionKit.modelResponseError(message, code, details);
 }
 
 
 function isModelResponseError(error) {
 
-    return Boolean(error && error.model_response === true);
+    return actionKit.isModelResponseError(error);
 }
 
 
 function responsePreview(data, limit = 2400) {
 
-    const message =
-        data?.choices?.[0]?.message;
-
-    if (!message) {
-        return null;
-    }
-
-    let value;
-
-    if (
-        typeof message.content === "string" &&
-        message.content.trim() !== ""
-    ) {
-
-        value = message.content.trim();
-
-    } else if (
-        message.content &&
-        typeof message.content === "object"
-    ) {
-
-        value = message.content;
-
-    } else if (Array.isArray(message.tool_calls)) {
-
-        value = {
-            tool_calls:
-                message.tool_calls
-        };
-    }
-
-    if (value === undefined) {
-        return null;
-    }
-
-    const text =
-        typeof value === "string"
-            ? value
-            : JSON.stringify(value);
-
-    return text.length > limit
-        ? `${text.slice(0, limit)}…[truncated]`
-        : text;
+    return actionKit.responsePreview(data, limit);
 }
 
 
 function truncatedResponseError(data) {
 
-    const choice = data?.choices?.[0];
-    const finishReason = choice?.finish_reason;
-
-    if (!["length", "max_tokens"].includes(finishReason)) {
-        return null;
-    }
-
-    const content =
-        typeof choice?.message?.content === "string"
-            ? choice.message.content
-            : "";
-
-    const nativeCalls =
-        Array.isArray(choice?.message?.tool_calls)
-            ? choice.message.tool_calls
-            : [];
-
-    const detectedAction =
-        /"action"\s*:\s*"(tool_call|delegate|final)"/.exec(content)?.[1] ||
-        (nativeCalls.length > 0 ? "tool_call" : null);
-
-    const detectedTool =
-        detectedAction === "tool_call"
-            ? (
-                /"name"\s*:\s*"([^"]+)"/.exec(content)?.[1] ||
-                nativeCalls[0]?.function?.name ||
-                null
-            )
-            : null;
-
-    const completionTokens =
-        Number.isFinite(data?.usage?.completion_tokens)
-            ? data.usage.completion_tokens
-            : null;
-
-    return modelResponseError(
-        `The endpoint truncated the model response${
-            completionTokens !== null
-                ? ` after ${completionTokens} completion tokens`
-                : ""
-        } (finish_reason: "${finishReason}"); the partial action was not executed. Raise MAX_RESPONSE_TOKENS if this endpoint supports a larger output, or return a smaller complete action.`,
-        "TRUNCATED_RESPONSE",
-        {
-            truncated: true,
-            finish_reason: finishReason,
-            completion_tokens: completionTokens,
-            output_chars:
-                content.length || JSON.stringify(nativeCalls).length,
-            detected_action: detectedAction,
-            tool: detectedTool,
-            rejected_response: responsePreview(data)
-        }
-    );
+    return actionKit.truncatedResponseError(data);
 }
 
 
 function compactToolParameterSchema(name) {
 
-    const tool =
-        TOOLS_OF().find(
-            item => item.function.name === name
-        );
-
-    const parameters =
-        tool?.function?.parameters;
-
-    if (!parameters) {
-        return null;
-    }
-
-    const properties = {};
-
-    for (
-        const [key, definition]
-        of Object.entries(parameters.properties || {})
-    ) {
-
-        properties[key] = {
-            type:
-                definition.type ||
-                (
-                    definition.anyOf
-                        ? definition.anyOf.map(item => item.type).filter(Boolean)
-                        : undefined
-                ),
-
-            enum:
-                definition.enum,
-
-            description:
-                typeof definition.description === "string"
-                    ? definition.description.slice(0, 300)
-                    : undefined
-        };
-
-        for (const field of Object.keys(properties[key])) {
-
-            if (properties[key][field] === undefined) {
-                delete properties[key][field];
-            }
-        }
-    }
-
-    return {
-        tool: name,
-        arguments_must_be:
-            settings.get("AGENT_SCHEMA") === "strict"
-                ? "one JSON object encoded as a string"
-                : "one JSON object",
-        required:
-            parameters.required ||
-            [],
-        properties,
-        additional_properties_allowed:
-            parameters.additionalProperties !== false
-    };
+    return actionKit.compactToolParameterSchema(name);
 }
 
 
 function canonicalActionExamples() {
 
-    const argumentsValue =
-        settings.get("AGENT_SCHEMA") === "strict"
-            ? JSON.stringify({
-                path: "IMPLEMENTATION_PLAN.md"
-            })
-            : {
-                path: "IMPLEMENTATION_PLAN.md"
-            };
-
-    return {
-        tool_call: {
-            version: "1.0",
-            action: "tool_call",
-            tool_calls: [
-                {
-                    id: "read_plan",
-                    name: "fs_read",
-                    arguments: argumentsValue,
-                    depends_on: []
-                }
-            ],
-            delegations: null,
-            response: null,
-            data: null,
-            error: null,
-            performed: null
-        },
-
-        delegate: {
-            version: "1.0",
-            action: "delegate",
-            tool_calls: null,
-            delegations: [
-                {
-                    id: "analyze_1",
-                    agent: "code_analysis",
-                    persona: null,
-                    skills: null,
-                    tools: null,
-                    task:
-                        "Inspect the relevant files and report findings with evidence.",
-                    depends_on: []
-                }
-            ],
-            response: null,
-            data: null,
-            error: null,
-            performed: null
-        },
-
-        final: {
-            version: "1.0",
-            action: "final",
-            tool_calls: null,
-            delegations: null,
-            response: {
-                type: "text",
-                content: "The actual result for the user."
-            },
-            data: null,
-            error: null,
-            performed: null
-        }
-    };
+    return actionKit.canonicalActionExamples();
 }
 
 
 function malformedRepairHint(reason, details) {
 
-    const action =
-        details?.detected_action;
-
-    if (details?.truncated) {
-
-        return "The endpoint cut the previous answer off before its JSON closed. Return one much smaller complete action now; do not resend the full oversized payload. Prefer a concise change or a localized fs_edit. For a genuinely large new file, write a temporary path in bounded chunks across iterations (overwrite first, append later), then move it into place only after it is complete.";
-    }
-
-    const missingTopLevel =
-        /missing required top-level field "([^"]+)"/i.exec(reason);
-
-    if (missingTopLevel) {
-
-        return `Return the complete top-level ${action || "action"} envelope. The field "${missingTopLevel[1]}" was absent; copy the closest valid shape exactly and replace only its example values.`;
-    }
-
-    const missingCallFields =
-        /Tool call is missing required field\(s\): ([^.]+)\./i.exec(reason);
-
-    if (missingCallFields) {
-
-        return `Every tool_calls item must contain id, name, arguments and depends_on. This item is missing ${missingCallFields[1]}; use one arguments object and use depends_on: [] only when the call is genuinely independent.`;
-    }
-
-    if (/Each tool call must be an object/i.test(reason)) {
-
-        return "Every tool_calls item must be one object with exactly id, name, arguments and depends_on. Remove prose and misplaced envelope values from the array, but do not omit an intended call.";
-    }
-
-    if (
-        action === "delegate" &&
-        /delegations/i.test(reason)
-    ) {
-
-        return "You selected delegate but did not provide a delegation. If you really need a sub-agent, keep action=delegate and add at least one complete delegation. If your next step is reading, searching, running, or writing, change action to tool_call and call the tool now.";
-    }
-
-    if (
-        action === "tool_call" &&
-        /tool_calls/i.test(reason)
-    ) {
-
-        return "You selected tool_call but did not provide a call. Add at least one complete tool call. Do not describe the intended call in data, response, or prose.";
-    }
-
-    if (
-        action === "final" ||
-        /Final response/i.test(reason)
-    ) {
-
-        return "action=final requires a non-null response object with type and content. If an operation is still needed, do not use final; return tool_call or delegate with a non-empty active array.";
-    }
-
-    if (details?.tool) {
-
-        return `Rewrite the arguments for "${details.tool}" as exactly one JSON object containing only that tool's declared parameters. Do not append prose, result fields, or another object.`;
-    }
-
-    return "Rebuild the whole response from one canonical example. Choose the action from the operation you are returning now, replace the example values, and keep every inactive field null.";
+    return actionKit.malformedRepairHint(reason, details);
 }
 
 
@@ -5104,109 +2827,7 @@ function malformedRepairHint(reason, details) {
 
 function malformedNoticeMessage(error, attempt, retryLimit) {
 
-    const reason =
-        typeof error === "string"
-            ? error
-            : error?.message || "Malformed model response.";
-
-    const code =
-        typeof error === "object" && error?.code
-            ? error.code
-            : "MALFORMED_RESPONSE";
-
-    const details =
-        typeof error === "object" && error?.details
-            ? error.details
-            : {};
-
-    const examples =
-        canonicalActionExamples();
-
-    const detectedAction =
-        ["tool_call", "delegate", "final"].includes(
-            details.detected_action
-        )
-            ? details.detected_action
-            : null;
-
-    const maximumAttempts =
-        retryLimit + 1;
-
-    return {
-        role: "user",
-
-        content:
-            JSON.stringify({
-                type: "runtime_notice",
-                notice: "malformed_response",
-
-                correction_attempt: {
-                    attempt,
-                    maximum_attempts: maximumAttempts,
-                    attempts_left:
-                        Math.max(0, maximumAttempts - attempt)
-                },
-
-                error: {
-                    code,
-                    message: reason
-                },
-
-                response_diagnostics:
-                    details.truncated
-                        ? {
-                            finish_reason: details.finish_reason,
-                            completion_tokens: details.completion_tokens,
-                            output_chars: details.output_chars
-                        }
-                        : null,
-
-                rejected_response:
-                    details.rejected_response ||
-                    null,
-
-                detected_action: detectedAction,
-
-                repair: {
-                    instruction:
-                        "Your previous answer was rejected before any action ran. Do not repeat it. Return a corrected replacement as exactly one JSON object, with no Markdown fence or prose before or after it.",
-
-                    issue_specific:
-                        malformedRepairHint(reason, details),
-
-                    action_field_matrix: {
-                        tool_call:
-                            "tool_calls must be a non-empty array; delegations, response, data, error and performed must be null.",
-                        delegate:
-                            "delegations must be a non-empty array; tool_calls, response, data, error and performed must be null.",
-                        final:
-                            "response must be a non-null {type, content} object; tool_calls and delegations must be null. data, error and performed are final-only."
-                    },
-
-                    closest_valid_shape:
-                        detectedAction
-                            ? examples[detectedAction]
-                            : null,
-
-                    canonical_complete_examples:
-                        examples,
-
-                    expected_tool_arguments:
-                        details.tool
-                            ? compactToolParameterSchema(details.tool)
-                            : null,
-
-                    checklist: [
-                        "version is the top-level literal string 1.0, never an item inside tool_calls or delegations",
-                        "action matches the one active field",
-                        "the active array is not empty, or final response is non-null",
-                        "all inactive and non-final fields are null",
-                        "all required nested fields are present",
-                        "the output contains one JSON object and nothing else"
-                    ]
-                }
-            })
-    };
+    return actionKit.malformedNoticeMessage(error, attempt, retryLimit);
 }
 
 /*
@@ -5223,371 +2844,13 @@ function malformedNoticeMessage(error, attempt, retryLimit) {
 
 function repairMarkdownPathArguments(name, args) {
 
-    if (
-        !args ||
-        typeof args !== "object" ||
-        Array.isArray(args)
-    ) {
-        return { arguments: args, repaired_fields: [] };
-    }
-
-    const declared =
-        TOOLS_OF().find(
-            tool => tool.function.name === name
-        );
-
-    const properties =
-        declared?.function?.parameters?.properties || {};
-
-    const pathFields =
-        new Set([
-            "path",
-            "paths",
-            "cwd",
-            "source",
-            "destination"
-        ]);
-
-    const repaired = { ...args };
-    const fields = [];
-
-    const clean = value => {
-
-        if (typeof value !== "string") {
-            return value;
-        }
-
-        return value.replace(
-            /\[([^\]\r\n]+)\]\(https?:\/\/[^)\s]+\)/g,
-            "$1"
-        );
-    };
-
-    for (const [field, value] of Object.entries(args)) {
-
-        if (
-            !pathFields.has(field) ||
-            !Object.prototype.hasOwnProperty.call(properties, field)
-        ) {
-            continue;
-        }
-
-        const next =
-            Array.isArray(value)
-                ? value.map(clean)
-                : clean(value);
-
-        if (JSON.stringify(next) !== JSON.stringify(value)) {
-            repaired[field] = next;
-            fields.push(field);
-        }
-    }
-
-    return {
-        arguments: repaired,
-        repaired_fields: fields
-    };
+    return actionKit.repairMarkdownPathArguments(name, args);
 }
 
 
 function repairStructuredAction(value) {
 
-    if (
-        !value ||
-        typeof value !== "object" ||
-        Array.isArray(value) ||
-        !["tool_call", "delegate", "final"].includes(value.action)
-    ) {
-
-        return {
-            action: value,
-            repaired: false,
-            moved_fields: [],
-            defaulted_fields: [],
-            removed_items: [],
-            argument_repairs: []
-        };
-    }
-
-    const activeField =
-        value.action === "tool_call"
-            ? "tool_calls"
-            : value.action === "delegate"
-                ? "delegations"
-                : null;
-
-    const action = {
-        ...value,
-
-        ...(activeField && Array.isArray(value[activeField])
-            ? { [activeField]: [...value[activeField]] }
-            : {})
-    };
-
-    const moved = [];
-    const defaulted = [];
-    const removed = [];
-    const argumentRepairs = [];
-
-    if (activeField && Array.isArray(action[activeField])) {
-
-        const expectedNull =
-            value.action === "tool_call"
-                ? new Set(["delegations", "response", "data", "error", "performed"])
-                : new Set(["tool_calls", "response", "data", "error", "performed"]);
-
-        const canMove = (field, fieldValue) => {
-
-            if (
-                Object.prototype.hasOwnProperty.call(action, field) ||
-                field === activeField
-            ) {
-                return false;
-            }
-
-            if (field === "version") {
-                return fieldValue === "1.0";
-            }
-
-            return expectedNull.has(field) && fieldValue === null;
-        };
-
-        while (action[activeField].length > 0) {
-
-            const last =
-                action[activeField][action[activeField].length - 1];
-
-            let field;
-            let fieldValue;
-            let remove = 0;
-
-            if (
-                Array.isArray(last) &&
-                last.length === 2 &&
-                typeof last[0] === "string"
-            ) {
-
-                [field, fieldValue] = last;
-                remove = 1;
-
-            } else if (
-                action[activeField].length >= 2 &&
-                typeof action[activeField][action[activeField].length - 2] === "string"
-            ) {
-
-                field = action[activeField][action[activeField].length - 2];
-                fieldValue = last;
-                remove = 2;
-
-            } else if (
-                typeof last === "string"
-            ) {
-
-                /* The model sometimes closes the object one bracket too
-                   late and drops the envelope pair as a single trailing
-                   string item instead of two tokens or an array pair, e.g.
-                   "version": "1.0". Version's value is protocol-fixed, so
-                   recovering it deterministically (never guessing) is safe
-                   and avoids burning a malformed retry on the same bracket
-                   mistake. Only version is treated this way; any other
-                   trailing string is left alone. */
-                const leakedVersion =
-                    /^"?version"?\s*:\s*"?([^"]*)"?$/.exec(
-                        last
-                    );
-
-                if (
-                    leakedVersion &&
-                    leakedVersion[1] === "1.0"
-                ) {
-
-                    field = "version";
-                    fieldValue = "1.0";
-                    remove = 1;
-                }
-            }
-
-            if (!remove || !canMove(field, fieldValue)) {
-                break;
-            }
-
-            action[activeField].splice(-remove, remove);
-            action[field] = fieldValue;
-            moved.unshift(field);
-        }
-
-        /* A dangling "version" item is also impossible array content. The
-           value is protocol-fixed, so removing it and defaulting below is
-           deterministic rather than a guess. */
-        if (
-            !Object.prototype.hasOwnProperty.call(action, "version") &&
-            action[activeField][action[activeField].length - 1] === "version"
-        ) {
-
-            action[activeField].pop();
-            removed.push(`${activeField}[-1]:version`);
-        }
-    }
-
-    /* Version 1.0 is runtime metadata with one legal value. Requiring a weak
-       model to repeat it correctly adds failure surface but no information. */
-    if (!Object.prototype.hasOwnProperty.call(action, "version")) {
-        action.version = "1.0";
-        defaulted.push("version");
-    }
-
-    /* Missing inactive envelope fields carry no model-owned information: for
-       the selected branch their only valid value is null. The final-only data,
-       error and performed fields also define absence as null. Filling those
-       deterministic values is safe; active fields such as tool_calls,
-       delegations and response are deliberately never invented. */
-    const envelopeDefaults = {
-        tool_call: {
-            delegations: null,
-            response: null,
-            data: null,
-            error: null,
-            performed: null
-        },
-        delegate: {
-            tool_calls: null,
-            response: null,
-            data: null,
-            error: null,
-            performed: null
-        },
-        final: {
-            tool_calls: null,
-            delegations: null,
-            data: null,
-            error: null,
-            performed: null
-        }
-    };
-
-    for (
-        const [field, fieldValue]
-        of Object.entries(envelopeDefaults[action.action])
-    ) {
-
-        if (!Object.prototype.hasOwnProperty.call(action, field)) {
-            action[field] = fieldValue;
-            defaulted.push(field);
-        }
-    }
-
-    if (action.action === "tool_call" && Array.isArray(action.tool_calls)) {
-
-        action.tool_calls =
-            action.tool_calls.map(call => {
-
-                if (
-                    !call ||
-                    typeof call !== "object" ||
-                    Array.isArray(call)
-                ) {
-                    return call;
-                }
-
-                /* depends_on is fixed protocol metadata whose only legal
-                   value for an independent call is []. normalizeToolCalls
-                   and adaptNativeToolCalls both already default a missing
-                   depends_on, so rejecting it here only spends a retry on
-                   a value the runtime can derive deterministically. Only a
-                   genuinely absent field is defaulted; a malformed value
-                   (e.g. a plain string) is left alone so it still fails
-                   loudly rather than silently dropping a dependency the
-                   model meant to declare. */
-                let normalized = call;
-
-                if (
-                    !Object.prototype.hasOwnProperty.call(call, "depends_on")
-                ) {
-
-                    normalized = {
-                        ...call,
-                        depends_on: []
-                    };
-
-                    defaulted.push(
-                        `${activeField}.${call.id || "?"}.depends_on`
-                    );
-                }
-
-                const pathRepair =
-                    repairMarkdownPathArguments(
-                        normalized.name,
-                        normalized.arguments
-                    );
-
-                if (pathRepair.repaired_fields.length > 0) {
-
-                    argumentRepairs.push({
-                        call_id: normalized.id || null,
-                        tool: normalized.name,
-                        fields: pathRepair.repaired_fields
-                    });
-
-                    return {
-                        ...normalized,
-                        arguments: pathRepair.arguments
-                    };
-                }
-
-                return normalized;
-            });
-    }
-
-    /* Delegations have the same fixed-protocol depends_on default as tool
-       calls, and executeDelegations already defaults a missing depends_on to
-       []. validateAction would otherwise reject it and spend a retry on a
-       value the runtime can derive, so the same repair is applied here. The
-       model-owned fields (agent, persona, task, tools, skills) are never
-       invented; only a genuinely absent depends_on is defaulted. */
-    if (action.action === "delegate" && Array.isArray(action.delegations)) {
-
-        action.delegations =
-            action.delegations.map(delegation => {
-
-                if (
-                    !delegation ||
-                    typeof delegation !== "object" ||
-                    Array.isArray(delegation)
-                ) {
-                    return delegation;
-                }
-
-                if (
-                    !Object.prototype.hasOwnProperty.call(delegation, "depends_on")
-                ) {
-
-                    defaulted.push(
-                        `${activeField}.${delegation.id || "?"}.depends_on`
-                    );
-
-                    return {
-                        ...delegation,
-                        depends_on: []
-                    };
-                }
-
-                return delegation;
-            });
-    }
-
-    return {
-        action,
-        repaired:
-            moved.length > 0 ||
-            defaulted.length > 0 ||
-            removed.length > 0 ||
-            argumentRepairs.length > 0,
-        moved_fields: moved,
-        defaulted_fields: defaulted,
-        removed_items: removed,
-        argument_repairs: argumentRepairs,
-        source_field: activeField
-    };
+    return actionKit.repairStructuredAction(value);
 }
 
 /*
@@ -5598,137 +2861,7 @@ function repairStructuredAction(value) {
 
 function readModelAction(data) {
 
-    let parsed;
-
-    try {
-
-        parsed = parseStructuredResponse(data);
-
-    } catch (error) {
-
-        /* A response capped mid-JSON is not an unexplained parser failure.
-           The finish reason is authoritative and lets the correction prompt
-           ask for a bounded write instead of repeating the same large action. */
-        const truncated = truncatedResponseError(data);
-
-        if (truncated) {
-            throw truncated;
-        }
-
-        const rejectedResponse =
-            responsePreview(data);
-
-        if (isModelResponseError(error)) {
-
-            error.details = {
-                ...(error.details || {}),
-
-                rejected_response:
-                    error.details?.rejected_response ||
-                    rejectedResponse
-            };
-
-            throw error;
-        }
-
-        throw modelResponseError(
-            error.message,
-            "UNREADABLE_RESPONSE",
-            {
-                rejected_response:
-                    rejectedResponse
-            }
-        );
-    }
-
-    const envelopeRepair =
-        repairStructuredAction(parsed.structured);
-
-    if (envelopeRepair.repaired) {
-
-        parsed.structured = envelopeRepair.action;
-
-        /* The corrected action, not the malformed source string, belongs in
-           the following tool conversation and any persisted session. */
-        parsed.message.content =
-            JSON.stringify(parsed.structured);
-
-        const reportableRepair =
-            envelopeRepair.moved_fields.length > 0 ||
-            envelopeRepair.removed_items.length > 0 ||
-            envelopeRepair.argument_repairs.length > 0;
-
-        /* Defaulting fixed protocol metadata is normalisation, not an error.
-           DeepSeek omits version routinely, so emitting a warning for every
-           iteration only floods the event log with "repaired" noise. */
-        if (reportableRepair) {
-
-            events.emit("response:repaired", {
-                repair: "action_envelope",
-                tool: "action_envelope",
-                dropped: [],
-                source_field: envelopeRepair.source_field,
-                moved_fields: envelopeRepair.moved_fields,
-                defaulted_fields: envelopeRepair.defaulted_fields,
-                removed_items: envelopeRepair.removed_items,
-                argument_repairs: envelopeRepair.argument_repairs
-            });
-
-            const repairs = [
-                envelopeRepair.moved_fields.length > 0
-                    ? `moved ${envelopeRepair.moved_fields.join(", ")} out of ${envelopeRepair.source_field}`
-                    : null,
-                envelopeRepair.defaulted_fields.length > 0
-                    ? `defaulted ${envelopeRepair.defaulted_fields.join(", ")}`
-                    : null,
-                envelopeRepair.removed_items.length > 0
-                    ? `removed ${envelopeRepair.removed_items.join(", ")}`
-                    : null,
-                envelopeRepair.argument_repairs.length > 0
-                    ? `cleaned Markdown links from ${
-                        envelopeRepair.argument_repairs
-                            .flatMap(item => item.fields.map(field => `${item.tool}.${field}`))
-                            .join(", ")
-                    }`
-                    : null
-            ].filter(Boolean);
-
-            logLine(
-                null,
-                `Repaired the action envelope: ${repairs.join("; ")}.`
-            );
-        }
-    }
-
-    try {
-
-        validateAction(parsed.structured);
-
-    } catch (error) {
-
-        throw modelResponseError(
-            error.message,
-            "INVALID_ACTION",
-            {
-                detected_action:
-                    parsed.structured?.action ||
-                    null,
-
-                tool:
-                    parsed.structured?.action === "tool_call" &&
-                    Array.isArray(parsed.structured.tool_calls) &&
-                    parsed.structured.tool_calls.length === 1
-                        ? parsed.structured.tool_calls[0]?.name || null
-                        : null,
-
-                rejected_response:
-                    responsePreview(data) ||
-                    JSON.stringify(parsed.structured).slice(0, 2400)
-            }
-        );
-    }
-
-    return parsed;
+    return actionKit.readModelAction(data);
 }
 
 
@@ -5917,163 +3050,7 @@ function reportThinking(message, scope, agent, depth, iteration) {
 
 function adaptNativeToolCalls(message) {
 
-    const nativeCalls =
-        Array.isArray(message.tool_calls)
-            ? message.tool_calls
-            : [];
-
-    if (nativeCalls.length === 0) {
-        return null;
-    }
-
-    return {
-        version: "1.0",
-
-        action: "tool_call",
-
-        tool_calls:
-            nativeCalls.map(
-                (call, index) => {
-
-                    const name =
-                        call?.function?.name;
-
-                    if (!name) {
-
-                        throw modelResponseError(
-                            "Native tool call is missing a function name.",
-                            "MISSING_TOOL_NAME"
-                        );
-                    }
-
-                    let parsedArguments = {};
-
-                    const rawArguments =
-                        call.function.arguments;
-
-                    if (
-                        typeof rawArguments === "string" &&
-                        rawArguments.trim() !== ""
-                    ) {
-
-                        const read =
-                            parseToolArguments(rawArguments);
-
-                        if (read.failed) {
-
-                            throw modelResponseError(
-                                `Native tool call "${name}" has arguments that are not valid JSON: ${
-                                    read.failed
-                                }.`,
-                                "MALFORMED_TOOL_ARGUMENTS",
-                                {
-                                    detected_action:
-                                        "tool_call",
-
-                                    tool:
-                                        name,
-
-                                    rejected_arguments:
-                                        String(rawArguments).slice(0, 1200)
-                                }
-                            );
-                        }
-
-                        parsedArguments = read.arguments;
-
-                        if (read.repaired) {
-
-                            /*
-                            | A salvaged object often carries the keys of
-                            | the result the model was copying, so only
-                            | the parameters the tool declares are kept.
-                            */
-
-                            const cleaned =
-                                keepDeclaredArguments(
-                                    name,
-                                    parsedArguments
-                                );
-
-                            parsedArguments = cleaned.arguments;
-
-                            events.emit("response:repaired", {
-                                tool: name,
-
-                                dropped:
-                                    cleaned.dropped,
-
-                                ignored:
-                                    (read.ignored || "").slice(0, 200)
-                            });
-
-                            logLine(
-                                null,
-                                `Repaired the arguments of "${name}"${
-                                    cleaned.dropped.length > 0
-                                        ? `, ignoring ${cleaned.dropped.join(", ")}`
-                                        : ""
-                                }`
-                            );
-                        }
-
-                    } else if (
-                        rawArguments &&
-                        typeof rawArguments === "object"
-                    ) {
-
-                        parsedArguments = rawArguments;
-                    }
-
-                    const pathRepair =
-                        repairMarkdownPathArguments(
-                            name,
-                            parsedArguments
-                        );
-
-                    if (pathRepair.repaired_fields.length > 0) {
-
-                        parsedArguments = pathRepair.arguments;
-
-                        events.emit("response:repaired", {
-                            repair: "markdown_path",
-                            tool: name,
-                            repaired_fields: pathRepair.repaired_fields
-                        });
-
-                        logLine(
-                            null,
-                            `Repaired Markdown links in ${name}.${
-                                pathRepair.repaired_fields.join(`, ${name}.`)
-                            }.`
-                        );
-                    }
-
-                    return {
-                        id:
-                            call.id ||
-                            `call_${index + 1}`,
-
-                        name,
-
-                        arguments:
-                            parsedArguments,
-
-                        depends_on: []
-                    };
-                }
-            ),
-
-        delegations: null,
-
-        response: null,
-
-        data: null,
-
-        error: null,
-
-        performed: null
-    };
+    return actionKit.adaptNativeToolCalls(message);
 }
 
 
@@ -6084,12 +3061,7 @@ function adaptNativeToolCalls(message) {
 
 function stripCodeFence(text) {
 
-    const match =
-        /^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i.exec(text);
-
-    return match
-        ? match[1]
-        : text;
+    return actionKit.stripCodeFence(text);
 }
 
 
@@ -6097,81 +3069,7 @@ function parseStructuredResponse(
     data
 ) {
 
-    const message =
-        data?.choices?.[0]?.message;
-
-    if (!message) {
-
-        throw new Error(
-            "AI response does not contain a message."
-        );
-    }
-
-    if (
-        typeof message.content === "object" &&
-        message.content !== null
-    ) {
-
-        return {
-            message,
-
-            structured:
-                message.content,
-
-            source:
-                "structured_content"
-        };
-    }
-
-    if (typeof message.content === "string") {
-
-        const candidate =
-            stripCodeFence(message.content).trim();
-
-        if (candidate !== "") {
-
-            try {
-
-                return {
-                    message,
-
-                    structured:
-                        JSON.parse(candidate),
-
-                    source:
-                        "structured_content"
-                };
-
-            } catch {
-
-                /* fall through to the native protocol adapter */
-            }
-        }
-    }
-
-    const adapted =
-        adaptNativeToolCalls(message);
-
-    if (adapted) {
-
-        return {
-            message,
-
-            structured:
-                adapted,
-
-            source:
-                "native_tool_calls"
-        };
-    }
-
-    throw new Error(
-        `AI returned neither structured JSON nor a native tool call. Content: ${
-            typeof message.content === "string"
-                ? message.content.slice(0, 200)
-                : typeof message.content
-        }`
-    );
+    return actionKit.parseStructuredResponse(data);
 }
 
 
@@ -6183,113 +3081,36 @@ function parseStructuredResponse(
 
 function validateActionGraph(items, noun) {
 
-    const ids =
-        new Set();
-
-    for (const item of items) {
-
-        if (
-            typeof item.id !== "string" ||
-            item.id.trim() === ""
-        ) {
-
-            throw new Error(
-                `${noun}.id is required and must be non-empty.`
-            );
-        }
-
-        if (ids.has(item.id)) {
-
-            throw new Error(
-                `Duplicate ${noun} id: ${item.id}`
-            );
-        }
-
-        ids.add(item.id);
-
-        if (!Array.isArray(item.depends_on)) {
-
-            throw new Error(
-                `${noun}.depends_on must be an array; use [] when there is no dependency.`
-            );
-        }
-    }
-
-    for (const item of items) {
-
-        for (const dependency of item.depends_on) {
-
-            if (
-                typeof dependency !== "string" ||
-                dependency.trim() === ""
-            ) {
-
-                throw new Error(
-                    `${noun}.depends_on entries must be non-empty ids.`
-                );
-            }
-
-            if (!ids.has(dependency)) {
-
-                throw new Error(
-                    `${noun} "${item.id}" depends on unknown id "${dependency}".`
-                );
-            }
-
-            if (dependency === item.id) {
-
-                throw new Error(
-                    `${noun} "${item.id}" cannot depend on itself.`
-                );
-            }
-        }
-    }
-
-    const visiting = new Set();
-    const visited = new Set();
-    const byId =
-        new Map(items.map(item => [item.id, item]));
-
-    const visit = id => {
-
-        if (visiting.has(id)) {
-
-            throw new Error(
-                `${noun} dependency graph contains a cycle at "${id}".`
-            );
-        }
-
-        if (visited.has(id)) {
-            return;
-        }
-
-        visiting.add(id);
-
-        for (const dependency of byId.get(id).depends_on) {
-            visit(dependency);
-        }
-
-        visiting.delete(id);
-        visited.add(id);
-    };
-
-    for (const id of ids) {
-        visit(id);
-    }
+    return actionKit.validateActionGraph(items, noun);
 }
 
 
 function requireNullFields(action, fields) {
 
-    for (const field of fields) {
+    return actionKit.requireNullFields(action, fields);
+}
 
-        if (action[field] !== null) {
 
-            throw new Error(
-                `${field} must be null when action is "${action.action}".`
-            );
-        }
-    }
+/* Phase 12: a delegation may name a project. Missing / null means
+   inherit the active project. Both camelCase (implementation plan)
+   and snake_case are accepted; conflicting values are rejected. */
+function requestedDelegationProjectId(delegation) {
+
+    return actionKit.requestedDelegationProjectId(delegation);
+}
+
+
+function delegationProjectSwitchEnabled() {
+
+    return true;
+
+}
+
+
+function findingsFromReport(...args) {
+
+    return runtimeEngine.findingsFromReport(...args);
+
 }
 
 
@@ -6297,525 +3118,7 @@ function validateAction(
     action
 ) {
 
-    if (
-        !action ||
-        typeof action !== "object" ||
-        Array.isArray(action)
-    ) {
-
-        throw new Error(
-            "Empty agent action."
-        );
-    }
-
-    const requiredFields = [
-        "version",
-        "action",
-        "tool_calls",
-        "delegations",
-        "response",
-        "data",
-        "error"
-    ];
-
-    for (const field of requiredFields) {
-
-        if (!Object.prototype.hasOwnProperty.call(action, field)) {
-
-            throw new Error(
-                `Agent action is missing required top-level field "${field}".`
-            );
-        }
-    }
-
-    const allowedFields =
-        new Set([
-            ...requiredFields,
-            "performed"
-        ]);
-
-    const extraFields =
-        Object.keys(action).filter(
-            field => !allowedFields.has(field)
-        );
-
-    if (extraFields.length > 0) {
-
-        throw new Error(
-            `Agent action contains unknown top-level field(s): ${extraFields.join(", ")}.`
-        );
-    }
-
-    if (action.version !== "1.0") {
-
-        throw new Error(
-            'version must be the literal string "1.0".'
-        );
-    }
-
-    if (
-        ![
-            "tool_call",
-            "delegate",
-            "final"
-        ].includes(
-            action.action
-        )
-    ) {
-
-        throw new Error(
-            `Invalid action: ${action.action}`
-        );
-    }
-
-    if (
-        action.action ===
-        "tool_call"
-    ) {
-
-        if (
-            !Array.isArray(
-                action.tool_calls
-            ) ||
-            action.tool_calls.length === 0
-        ) {
-
-            throw new Error(
-                "tool_calls must contain at least one call."
-            );
-        }
-
-        requireNullFields(
-            action,
-            [
-                "delegations",
-                "response",
-                "data",
-                "error"
-            ]
-        );
-
-        if (
-            action.performed !== undefined &&
-            action.performed !== null
-        ) {
-
-            throw new Error(
-                'performed must be null when action is "tool_call".'
-            );
-        }
-
-        for (
-            const call
-            of action.tool_calls
-        ) {
-
-            if (
-                !call ||
-                typeof call !== "object" ||
-                Array.isArray(call)
-            ) {
-
-                throw new Error(
-                    "Each tool call must be an object."
-                );
-            }
-
-            const callFields =
-                ["id", "name", "arguments", "depends_on"];
-
-            const missing =
-                callFields.filter(
-                    field =>
-                        !Object.prototype.hasOwnProperty.call(call, field)
-                );
-
-            if (missing.length > 0) {
-
-                throw new Error(
-                    `Tool call is missing required field(s): ${missing.join(", ")}.`
-                );
-            }
-
-            const extras =
-                Object.keys(call).filter(
-                    field => !callFields.includes(field)
-                );
-
-            if (extras.length > 0) {
-
-                throw new Error(
-                    `Tool call contains unknown field(s): ${extras.join(", ")}.`
-                );
-            }
-
-            if (
-                typeof call.name !== "string" ||
-                call.name.trim() === ""
-            ) {
-
-                throw new Error(
-                    "tool_call.name is required."
-                );
-            }
-
-            try {
-
-                parseArguments(
-                    call.arguments,
-                    call.name
-                );
-
-            } catch (error) {
-
-                throw new Error(
-                    error.message
-                );
-            }
-
-            if (
-                !call.arguments ||
-                (
-                    typeof call.arguments !== "object" &&
-                    typeof call.arguments !== "string"
-                ) ||
-                Array.isArray(call.arguments)
-            ) {
-
-                throw new Error(
-                    `tool_call.arguments is required for "${call.name}" and must be one JSON object${
-                        settings.get("AGENT_SCHEMA") === "strict"
-                            ? " encoded as a string"
-                            : ""
-                    }.`
-                );
-            }
-        }
-
-        validateActionGraph(
-            action.tool_calls,
-            "tool_call"
-        );
-    }
-
-    if (
-        action.action ===
-        "delegate"
-    ) {
-
-        if (
-            !Array.isArray(
-                action.delegations
-            ) ||
-            action.delegations.length === 0
-        ) {
-
-            throw new Error(
-                "delegations must contain at least one delegation."
-            );
-        }
-
-        requireNullFields(
-            action,
-            [
-                "tool_calls",
-                "response",
-                "data",
-                "error"
-            ]
-        );
-
-        if (
-            action.performed !== undefined &&
-            action.performed !== null
-        ) {
-
-            throw new Error(
-                'performed must be null when action is "delegate".'
-            );
-        }
-
-        for (
-            const delegation
-            of action.delegations
-        ) {
-
-            if (
-                !delegation ||
-                typeof delegation !== "object" ||
-                Array.isArray(delegation)
-            ) {
-
-                throw new Error(
-                    "Each delegation must be an object."
-                );
-            }
-
-            const delegationFields = [
-                "id",
-                "agent",
-                "persona",
-                "skills",
-                "tools",
-                "task",
-                "depends_on"
-            ];
-
-            const missing =
-                delegationFields.filter(
-                    field =>
-                        !Object.prototype.hasOwnProperty.call(
-                            delegation,
-                            field
-                        )
-                );
-
-            if (missing.length > 0) {
-
-                throw new Error(
-                    `Delegation is missing required field(s): ${missing.join(", ")}.`
-                );
-            }
-
-            const extras =
-                Object.keys(delegation).filter(
-                    field => !delegationFields.includes(field)
-                );
-
-            if (extras.length > 0) {
-
-                throw new Error(
-                    `Delegation contains unknown field(s): ${extras.join(", ")}.`
-                );
-            }
-
-            const hasAgent =
-                typeof delegation.agent === "string" &&
-                delegation.agent.trim() !== "";
-
-            const hasPersona =
-                typeof delegation.persona === "string" &&
-                delegation.persona.trim() !== "";
-
-            if (!hasAgent && !hasPersona) {
-
-                throw new Error(
-                    "A delegation requires either agent or persona."
-                );
-            }
-
-            if (hasAgent && hasPersona) {
-
-                throw new Error(
-                    "A delegation must use either a registered agent or an ad-hoc persona, not both."
-                );
-            }
-
-            if (
-                hasAgent &&
-                (
-                    delegation.skills !== null ||
-                    delegation.tools !== null
-                )
-            ) {
-
-                throw new Error(
-                    "A registered-agent delegation must set persona, skills and tools to null."
-                );
-            }
-
-            if (
-                hasAgent &&
-                delegation.persona !== null
-            ) {
-
-                throw new Error(
-                    "A registered-agent delegation must set persona, skills and tools to null."
-                );
-            }
-
-            if (
-                !hasAgent &&
-                (
-                    !Array.isArray(delegation.skills) ||
-                    !Array.isArray(delegation.tools)
-                )
-            ) {
-
-                throw new Error(
-                    "An ad-hoc delegation must provide skills and tools arrays."
-                );
-            }
-
-            if (
-                typeof delegation.task !== "string" ||
-                delegation.task.trim() === ""
-            ) {
-
-                throw new Error(
-                    `delegation.task is required for agent "${
-                        delegation.agent ||
-                        delegation.persona
-                    }".`
-                );
-            }
-        }
-
-        validateActionGraph(
-            action.delegations,
-            "delegation"
-        );
-    }
-
-    if (
-        action.action ===
-        "final"
-    ) {
-
-        requireNullFields(
-            action,
-            [
-                "tool_calls",
-                "delegations"
-            ]
-        );
-
-        if (
-            !action.response ||
-            typeof action.response !==
-            "object" ||
-            Array.isArray(action.response)
-        ) {
-
-            throw new Error(
-                "Final response is missing."
-            );
-        }
-
-        const responseFields =
-            ["type", "content"];
-
-        const missing =
-            responseFields.filter(
-                field =>
-                    !Object.prototype.hasOwnProperty.call(
-                        action.response,
-                        field
-                    )
-            );
-
-        if (missing.length > 0) {
-
-            throw new Error(
-                `Final response is missing required field(s): ${missing.join(", ")}.`
-            );
-        }
-
-        const extras =
-            Object.keys(action.response).filter(
-                field => !responseFields.includes(field)
-            );
-
-        if (extras.length > 0) {
-
-            throw new Error(
-                `Final response contains unknown field(s): ${extras.join(", ")}.`
-            );
-        }
-
-        if (
-            !["text", "code", "json", "markdown"].includes(
-                action.response.type
-            )
-        ) {
-
-            throw new Error(
-                "Final response type must be text, code, json, or markdown."
-            );
-        }
-
-        if (
-            typeof action.response.content !==
-            "string" ||
-            action.response.content.trim() === ""
-        ) {
-
-            throw new Error(
-                "Final response content must be a non-empty string."
-            );
-        }
-
-        if (
-            action.error !== null &&
-            (
-                typeof action.error !== "object" ||
-                Array.isArray(action.error) ||
-                Object.keys(action.error).some(
-                    field =>
-                        !["code", "message", "retryable"].includes(field)
-                ) ||
-                typeof action.error.code !== "string" ||
-                action.error.code.trim() === "" ||
-                typeof action.error.message !== "string" ||
-                action.error.message.trim() === "" ||
-                typeof action.error.retryable !== "boolean"
-            )
-        ) {
-
-            throw new Error(
-                "Final error must be null or exactly {code, message, retryable}."
-            );
-        }
-
-        if (
-            action.performed !== undefined &&
-            action.performed !== null
-        ) {
-
-            if (
-                typeof action.performed !== "object" ||
-                Array.isArray(action.performed)
-            ) {
-
-                throw new Error(
-                    "performed must be null or an object on a final action."
-                );
-            }
-
-            const allowedClaimFields =
-                ["tools", "agents", "files_changed"];
-
-            const unknownClaimFields =
-                Object.keys(action.performed).filter(
-                    field => !allowedClaimFields.includes(field)
-                );
-
-            if (unknownClaimFields.length > 0) {
-
-                throw new Error(
-                    `performed contains unknown field(s): ${unknownClaimFields.join(", ")}.`
-                );
-            }
-
-            for (const field of allowedClaimFields) {
-
-                if (
-                    action.performed[field] !== undefined &&
-                    (
-                        !Array.isArray(action.performed[field]) ||
-                        action.performed[field].some(
-                            value => typeof value !== "string"
-                        )
-                    )
-                ) {
-
-                    throw new Error(
-                        `performed.${field} must be an array of strings.`
-                    );
-                }
-            }
-        }
-    }
+    return actionKit.validateAction(action);
 }
 
 /*
@@ -6824,104 +3127,10 @@ function validateAction(
 |--------------------------------------------------------------------------
 */
 
-function appendToolConversation(
-    messages,
-    message,
-    toolCalls,
-    results,
-    scope
-) {
+function appendToolConversation(...args) {
 
-    messages.push({
+    return runtimeEngine.appendToolConversation(...args);
 
-        role: "assistant",
-
-        content:
-            message.content ??
-            null,
-
-        tool_calls:
-            toolCalls.map(
-                call => ({
-                    id:
-                        call.id,
-
-                    type:
-                        "function",
-
-                    function: {
-                        name:
-                            call.name,
-
-                        arguments:
-                            JSON.stringify(
-                                call.arguments
-                            )
-                    }
-                })
-            )
-    });
-
-    for (
-        const result
-        of results
-    ) {
-
-        messages.push({
-
-            role: "tool",
-
-            tool_call_id:
-                result.id,
-
-            content:
-                JSON.stringify(
-                    result
-                )
-        });
-    }
-
-    /*
-    | Archived before compaction touches it, because a compressed result
-    | is exactly the thing the archive exists to replace.
-    */
-
-    const appended =
-        findExchanges(messages);
-
-    archiveExchanges(
-        messages,
-        appended.slice(appended.length - 1),
-        scope
-    );
-
-    const compaction =
-        compactConversation(messages, {
-
-            onDrop: (current, exchange) =>
-                archiveExchanges(current, [exchange], scope)
-        });
-
-    if (compaction.compacted) {
-
-        events.emit("context:compacted", {
-            agent: scope || "main_agent",
-            ...compaction
-        });
-
-        logLine(
-            scope,
-            `Context compacted: ${
-                Math.round(compaction.before / 1000)
-            }k -> ${
-                Math.round(compaction.after / 1000)
-            }k chars (${
-                compaction.elided_results
-            } results elided, ${
-                compaction.dropped_exchanges
-            } exchanges dropped)`
-        );
-    }
 }
 
 
@@ -6939,66 +3148,10 @@ function appendToolConversation(
    are now model-response errors so the loop returns them to the model with
    the same retry budget as any other invalid action. */
 
-function validateDelegationPolicy(
-    agentDefinition,
-    depthBudget,
-    delegations
-) {
+function validateDelegationPolicy(...args) {
 
-    const policy =
-        agentDefinition.delegation || {
-            enabled: false,
-            max_depth: 0,
-            max_children: 0
-        };
+    return runtimeEngine.validateDelegationPolicy(...args);
 
-    if (!policy.enabled) {
-
-        throw modelResponseError(
-            `Agent "${agentDefinition.name}" is not allowed to delegate.`,
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "delegation_disabled",
-                max_children: 0
-            }
-        );
-    }
-
-    /*
-    | max_depth is relative: it is how many levels an agent may create
-    | beneath itself, further limited by what its parent had left.
-    */
-
-    if (depthBudget < 1) {
-
-        throw modelResponseError(
-            `Agent "${agentDefinition.name}" exceeded delegation depth.`,
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "delegation_depth",
-                depth_budget: depthBudget
-            }
-        );
-    }
-
-    if (
-        delegations.length >
-        policy.max_children
-    ) {
-
-        throw modelResponseError(
-            `Agent "${agentDefinition.name}" exceeded max_children (${policy.max_children}).`,
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "max_children",
-                max_children: policy.max_children,
-                delegations: delegations.length
-            }
-        );
-    }
 }
 
 
@@ -7012,28 +3165,10 @@ function validateDelegationPolicy(
 |--------------------------------------------------------------------------
 */
 
-function resolveDepthBudget(
-    agentDefinition,
-    inheritedBudget
-) {
+function resolveDepthBudget(...args) {
 
-    const policy =
-        agentDefinition.delegation || {
-            enabled: false,
-            max_depth: 0
-        };
+    return runtimeEngine.resolveDepthBudget(...args);
 
-    if (!policy.enabled) {
-        return 0;
-    }
-
-    return Math.max(
-        0,
-        Math.min(
-            inheritedBudget,
-            Number(policy.max_depth) || 0
-        )
-    );
 }
 
 
@@ -7043,83 +3178,24 @@ function resolveDepthBudget(
 |--------------------------------------------------------------------------
 */
 
-function isUnfinishedFinal(action, progress) {
+function isUnfinishedFinal(...args) {
 
-    if (action.action !== "final") {
-        return false;
-    }
+    return runtimeEngine.isUnfinishedFinal(...args);
 
-    /*
-    | A declared block is a legitimate stop, and so is a run that
-    | actually did something.
-    */
-
-    if (action.error) {
-        return false;
-    }
-
-    return (
-        progress.tools === 0 &&
-        progress.delegations === 0
-    );
 }
 
 
-function failureSignature(results) {
+function failureSignature(...args) {
 
-    const failures =
-        results.filter(
-            result => !result.success
-        );
+    return runtimeEngine.failureSignature(...args);
 
-    if (
-        failures.length === 0 ||
-        failures.length !== results.length
-    ) {
-
-        /*
-        | Partial progress is not a loop.
-        */
-
-        return null;
-    }
-
-    return failures
-        .map(
-            result =>
-                `${result.name}:${
-                    (result.error && result.error.message) || ""
-                }`
-        )
-        .sort()
-        .join("|");
 }
 
 
-function trackRepeatedFailure(progress, results) {
+function trackRepeatedFailure(...args) {
 
-    const signature =
-        failureSignature(results);
+    return runtimeEngine.trackRepeatedFailure(...args);
 
-    if (!signature) {
-
-        progress.lastFailure = null;
-        progress.repeats = 0;
-
-        return 0;
-    }
-
-    if (signature === progress.lastFailure) {
-
-        progress.repeats = (progress.repeats || 0) + 1;
-
-    } else {
-
-        progress.lastFailure = signature;
-        progress.repeats = 1;
-    }
-
-    return progress.repeats;
 }
 
 
@@ -7130,145 +3206,31 @@ function trackRepeatedFailure(progress, results) {
 | cancelled run into a partial result and a named next step.
 */
 
-function wrapUpMessage(remainingMs, planSummary) {
+function wrapUpMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.wrapUpMessage(...args);
 
-        content:
-            JSON.stringify({
-                type: "runtime_notice",
-
-                notice: "budget_almost_spent",
-
-                remaining_ms: remainingMs,
-
-                max_run_ms:
-                    settings.get("MAX_RUN_MS"),
-
-                plan:
-                    planSummary && planSummary.exists
-                        ? {
-                            done: planSummary.done,
-                            open:
-                                planSummary.pending +
-                                planSummary.in_progress,
-                            next_step: planSummary.next_step
-                        }
-                        : null,
-
-                instruction:
-                    "The run is nearly out of time. Do not start new work and do not call another tool unless it takes seconds. Return action final now: report what was actually done and verified, what remains, and the next concrete step. Record any finished step in the plan first if that costs one quick call."
-            })
-    };
 }
 
 
-function loopNoticeMessage(signature, repeats) {
+function loopNoticeMessage(...args) {
 
-    const pathGuessLoop =
-        /does not exist/i.test(signature || "");
+    return runtimeEngine.loopNoticeMessage(...args);
 
-    const detail =
-        "The same call failed the same way several times, so repeating it will not help. Read the error text literally and change something concrete: fix the argument it complains about, use a different tool, or split the work. If the error mentions a dependency reference, note that ${...} inside file content is treated as literal text only when it does not name a call in the same action, so rename the call id or escape the sequence as $${...}."
-
-        + (pathGuessLoop
-            ? " The repeated error is \"does not exist\": you are guessing a path. Do not keep probing guessed paths. Discover the real layout once with fs_list, fs_tree or search_start, and read only a path a tool result actually confirmed."
-            : "");
-
-    return {
-        role: "user",
-
-        content:
-            JSON.stringify({
-                type:
-                    "runtime_notice",
-
-                notice:
-                    "repeated_failure",
-
-                repeats,
-
-                failure:
-                    signature,
-
-                detail
-            })
-    };
 }
 
 
-function planContinuationMessage(summary, remainingMs) {
+function planContinuationMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.planContinuationMessage(...args);
 
-        content:
-            JSON.stringify({
-                type:
-                    "runtime_notice",
-
-                notice:
-                    "plan_incomplete",
-
-                progress: {
-                    done:
-                        summary.done,
-
-                    open:
-                        summary.pending + summary.in_progress,
-
-                    blocked:
-                        summary.blocked,
-
-                    total:
-                        summary.steps
-                },
-
-                next_step:
-                    summary.next_step,
-
-                run_remaining_ms:
-                    Math.max(0, remainingMs),
-
-                detail:
-                    "The plan still has open steps and this run still has budget, so the work is not finished. Continue with the next step: do it, verify it, record it with plan_update, and only then move on. Stop early only if you are blocked by something a tool cannot reach, in which case mark the step blocked and return final with error.code NEEDS_INPUT."
-            })
-    };
 }
 
 
-function nudgeMessage({
-    iteration,
-    maxIterations,
-    remainingMs
-}) {
+function nudgeMessage(...args) {
 
-    return {
-        role: "user",
+    return runtimeEngine.nudgeMessage(...args);
 
-        content:
-            JSON.stringify({
-                type:
-                    "runtime_notice",
-
-                notice:
-                    "unfinished_run",
-
-                detail:
-                    "You returned a final answer without executing a single tool or delegation, so nothing in the workspace was inspected or changed. If the objective needs work, start it now: choose the next unfinished piece yourself, use the tools, verify the result, and report what you actually did. If you are genuinely blocked by a decision only the user can make, return final again with error.code set to NEEDS_INPUT and the specific question.",
-
-                budget: {
-                    iteration,
-
-                    iterations_remaining:
-                        maxIterations - iteration,
-
-                    run_remaining_ms:
-                        Math.max(0, remainingMs)
-                }
-            })
-    };
 }
 
 
@@ -7283,94 +3245,12 @@ function createSubAgentMessages(
     task,
     context
 ) {
-
-    const systemPrompt =
-        buildAgentSystemPrompt(
-            agentDefinition
-        );
-
-    const capabilities =
-        resolveAgentCapabilities(
-            agentDefinition
-        );
-
-    return [
-
-        {
-            role: "system",
-
-            content:
-                systemPrompt
-        },
-
-        {
-            role: "system",
-
-            content:
-                JSON.stringify({
-                    type:
-                        "runtime_context",
-
-                    context:
-                        createRuntimeContext()
-                })
-        },
-
-        /*
-        | The profile used to travel whole: its persona, its skills, its
-        | output contract and its tool list, every one of which is
-        | already in the system prompt above or in the request's tools.
-        | What is left is what the agent cannot see anywhere else.
-        */
-
-        {
-            role: "system",
-
-            content:
-                JSON.stringify({
-                    type:
-                        "agent_profile",
-
-                    name:
-                        agentDefinition.name,
-
-                    description:
-                        agentDefinition.description,
-
-                    may_delegate:
-                        mayDelegate(agentDefinition)
-                })
-        },
-
-        {
-            role: "system",
-
-            content:
-                JSON.stringify({
-                    type:
-                        "available_tools",
-
-                    note:
-                        "Full parameter schemas travel in the request's tools field.",
-
-                    tools:
-                        capabilities.tools.map(
-                            tool => tool.function.name
-                        )
-                })
-        },
-
-        {
-            role: "user",
-
-            content:
-                JSON.stringify({
-                    task,
-                    context:
-                        context ?? null
-                })
-        }
-    ];
+    return promptFacade().subAgentMessages(
+        agentDefinition,
+        task,
+        context,
+        { project: effectiveProject(currentRun().project) }
+    );
 }
 
 
@@ -7387,580 +3267,17 @@ function createSubAgentMessages(
 | answer. Whatever happens, the node now closes.
 */
 
-async function runSubAgent(options) {
+async function runSubAgent(...args) {
 
-    try {
+    return await runtimeEngine.runSubAgent(...args);
 
-        return await runSubAgentLoop(options);
-
-    } catch (error) {
-
-        events.emit("agent:end", {
-            agent:
-                options.agentProfile?.name || "sub_agent",
-
-            scope:
-                `${
-                    options.agentProfile?.name || "sub_agent"
-                }#${options.depth}`,
-
-            depth:
-                options.depth,
-
-            hook:
-                options.context?.hook || null,
-
-            success: false,
-
-            error: error.message
-        });
-
-        throw error;
-    }
 }
 
 
-async function runSubAgentLoop({
-    agentProfile,
-    task,
-    depth,
-    depthBudget,
-    context
-}) {
+async function runSubAgentLoop(...args) {
 
-    if (
-        depth >
-        settings.get("MAX_AGENT_DEPTH")
-    ) {
+    return await runtimeEngine.runSubAgentLoop(...args);
 
-        throw new Error(
-            `Maximum agent depth exceeded: ${settings.get("MAX_AGENT_DEPTH")}`
-        );
-    }
-
-    const agentDefinition =
-        agentProfile;
-
-    const agentName =
-        agentDefinition.name;
-
-    consumeAgentBudget(
-        agentName
-    );
-
-    const ownDepthBudget =
-        resolveDepthBudget(
-            agentDefinition,
-            Number.isFinite(depthBudget)
-                ? depthBudget
-                : settings.get("MAX_AGENT_DEPTH")
-        );
-
-    const capabilities =
-        resolveAgentCapabilities(
-            agentDefinition
-        );
-
-    const allowedTools =
-        new Set(
-            capabilities.tools.map(
-                tool =>
-                    tool.function.name
-            )
-        );
-
-    const messages =
-        createSubAgentMessages(
-            agentDefinition,
-            task,
-            context
-        );
-
-    const scope =
-        `${agentName}#${depth}`;
-
-    const progress = {
-        tools: 0,
-        delegations: 0,
-        nudges: 0
-    };
-
-    events.emit("agent:start", {
-        agent: agentName,
-        scope,
-        depth,
-        task,
-
-        /*
-        | Who asked for this agent. Without it a console can only guess
-        | the shape of the tree from the depth number.
-        */
-
-        parent:
-            context?.parent || null,
-
-        parent_scope:
-            context?.parent_scope || null,
-
-        delegation_id:
-            context?.delegation_id || null,
-
-        hook:
-            context?.hook || null,
-
-        persona:
-            agentDefinition.persona || null,
-
-        tools:
-            [...allowedTools]
-    });
-
-    logLine(
-        scope,
-        `Sub-agent started: ${task}`
-    );
-
-    for (
-        let iteration = 1;
-        iteration <= settings.get("MAX_ITERATIONS");
-        iteration++
-    ) {
-
-        assertRunActive(
-            `sub-agent ${agentName}`
-        );
-
-        await maintainContext(messages, scope);
-
-        refreshRuntimeContext(messages);
-
-        events.setContext({ scope, iteration });
-
-        events.emit("agent:iteration", {
-            agent: agentName,
-            scope,
-            depth,
-            iteration
-        });
-
-        logLine(
-            scope,
-            `Iteration ${iteration}`
-        );
-
-        const data =
-            await callAI({
-                messages,
-
-                agentDefinition,
-
-                tools:
-                    capabilities.tools,
-
-                role:
-                    roleForDepth(depth),
-
-                scope
-            });
-
-        /* Keep the provider response visible even when the structured action
-           below turns out to be malformed. */
-        reportModelResponse(data, scope, agentName, depth, iteration);
-
-        let parsed;
-
-        try {
-
-            parsed = readModelAction(data);
-
-        } catch (error) {
-
-            if (!isModelResponseError(error)) {
-                throw error;
-            }
-
-            if (progress.malformedCode !== error.code) {
-                progress.malformed = 0;
-                progress.malformedCode = error.code;
-            }
-
-            progress.malformed = (progress.malformed || 0) + 1;
-
-            const limit =
-                settings.get("MAX_MALFORMED_RESPONSES");
-
-            const maximumAttempts =
-                limit + 1;
-
-            logLine(
-                scope,
-                `Unreadable answer (${error.message}) [${
-                    progress.malformed
-                }/${maximumAttempts}]`
-            );
-
-            events.emit("run:malformed", {
-                agent: agentName,
-                scope,
-                depth,
-                iteration,
-                code: error.code,
-                reason: error.message,
-                finish_reason:
-                    error.details?.finish_reason || null,
-                completion_tokens:
-                    error.details?.completion_tokens ?? null,
-                output_chars:
-                    error.details?.output_chars ?? null,
-                attempt: progress.malformed,
-                limit,
-                max_attempts: maximumAttempts,
-                retries_left:
-                    Math.max(0, maximumAttempts - progress.malformed),
-                outcome:
-                    progress.malformed > limit
-                        ? "stopped"
-                        : "retry"
-            });
-
-            if (progress.malformed > limit) {
-                throw error;
-            }
-
-            messages.push(
-                malformedNoticeMessage(
-                    error,
-                    progress.malformed,
-                    limit
-                )
-            );
-
-            continue;
-        }
-
-        /* The correction succeeded. A malformed-answer allowance is a retry
-           budget for one bad-response streak, not a lifetime quota that can
-           stop an otherwise productive long run hours later. */
-        progress.malformed = 0;
-        progress.malformedCode = null;
-
-        const message =
-            parsed.message;
-
-        const action =
-            parsed.structured;
-
-        events.emit("agent:action", {
-            agent: agentName,
-            scope,
-            depth,
-            iteration,
-            action: action.action
-        });
-
-        logLine(
-            scope,
-            `Action: ${action.action}`
-        );
-
-
-        if (
-            action.action === "final" &&
-            !progress.wrapup &&
-            isUnfinishedFinal(action, progress) &&
-            progress.nudges < settings.get("MAX_EMPTY_FINAL_NUDGES")
-        ) {
-
-            progress.nudges++;
-
-            logLine(
-                scope,
-                "Sub-agent finished without doing anything; handing the task back once."
-            );
-
-            events.emit("run:nudge", {
-                agent: agentName,
-                scope,
-                iteration,
-                attempt: progress.nudges
-            });
-
-            messages.push({
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(action)
-            });
-
-            messages.push(
-                nudgeMessage({
-                    iteration,
-                    maxIterations: settings.get("MAX_ITERATIONS"),
-                    remainingMs: runRemainingMs()
-                })
-            );
-
-            continue;
-        }
-
-
-        if (
-            action.action ===
-            "final"
-        ) {
-
-            logObject(
-                scope,
-                "Final response",
-                action.response
-            );
-
-            events.emit("agent:end", {
-                agent: agentName,
-                scope,
-                depth,
-                hook: context?.hook || null,
-                success: true,
-                response: action.response
-            });
-
-            return {
-                agent:
-                    agentName,
-
-                success:
-                    true,
-
-                response:
-                    action.response,
-
-                data:
-                    action.data ?? null,
-
-                error:
-                    action.error ?? null,
-
-                performed: {
-                    tools: progress.tools,
-                    delegations: progress.delegations
-                }
-            };
-        }
-
-
-        if (
-            action.action ===
-            "tool_call"
-        ) {
-
-            const toolCalls =
-                normalizeToolCalls(
-                    action.tool_calls
-                );
-
-            const results =
-                await executeToolGraph(
-                    toolCalls,
-                    allowedTools,
-                    scope,
-                    { iteration }
-                );
-
-            progress.tools += results.length;
-
-            appendToolConversation(
-                messages,
-                message,
-                toolCalls,
-                results,
-                scope
-            );
-
-            const repeats =
-                trackRepeatedFailure(progress, results);
-
-            if (repeats >= settings.get("MAX_REPEATED_FAILURES")) {
-
-                logLine(
-                    scope,
-                    `The same failure repeated ${repeats} times.`
-                );
-
-                /*
-                | A loop is the failure mode a console most needs to see,
-                | so it is an event rather than only a log line.
-                */
-
-                events.emit("run:loop", {
-                    agent: agentName,
-                    scope,
-                    depth,
-                    iteration,
-                    repeats,
-                    limit:
-                        settings.get("MAX_REPEATED_FAILURES"),
-                    signature:
-                        progress.lastFailure,
-                    outcome:
-                        repeats > settings.get("MAX_REPEATED_FAILURES")
-                            ? "stopped"
-                            : "notice"
-                });
-
-                if (repeats > settings.get("MAX_REPEATED_FAILURES")) {
-
-                    throw new Error(
-                        `Sub-agent "${agentName}" repeated the same failing call ${repeats} times: ${progress.lastFailure}`
-                    );
-                }
-
-                messages.push(
-                    loopNoticeMessage(
-                        progress.lastFailure,
-                        repeats
-                    )
-                );
-            }
-
-            continue;
-        }
-
-
-        if (
-            action.action ===
-            "delegate"
-        ) {
-
-            try {
-
-                validateDelegationPolicy(
-                    agentDefinition,
-                    ownDepthBudget,
-                    action.delegations
-                );
-
-            } catch (error) {
-
-                if (!isModelResponseError(error)) {
-                    throw error;
-                }
-
-                if (progress.malformedCode !== error.code) {
-                    progress.malformed = 0;
-                    progress.malformedCode = error.code;
-                }
-
-                progress.malformed = (progress.malformed || 0) + 1;
-
-                const limit =
-                    settings.get("MAX_MALFORMED_RESPONSES");
-
-                const maximumAttempts =
-                    limit + 1;
-
-                logLine(
-                    scope,
-                    `Invalid delegation (${error.message}) [${
-                        progress.malformed
-                    }/${maximumAttempts}]`
-                );
-
-                events.emit("run:malformed", {
-                    agent: agentName,
-                    scope,
-                    depth,
-                    iteration,
-                    code: error.code,
-                    reason: error.message,
-                    attempt: progress.malformed,
-                    limit,
-                    max_attempts: maximumAttempts,
-                    retries_left:
-                        Math.max(0, maximumAttempts - progress.malformed),
-                    outcome:
-                        progress.malformed > limit
-                            ? "stopped"
-                            : "retry"
-                });
-
-                if (progress.malformed > limit) {
-                    throw error;
-                }
-
-                messages.push(
-                    malformedNoticeMessage(
-                        error,
-                        progress.malformed,
-                        limit
-                    )
-                );
-
-                continue;
-            }
-
-            events.emit("delegation:start", {
-                parent: agentName,
-                parent_scope: scope,
-                depth,
-                delegations:
-                    action.delegations.map(item => ({
-                        id: item.id,
-                        agent: item.agent || `adhoc:${item.persona}`,
-                        task: item.task,
-                        depends_on: item.depends_on
-                    }))
-            });
-
-            logLine(
-                scope,
-                `Delegating to ${
-                    action.delegations
-                        .map(item => item.agent)
-                        .join(", ")
-                }`
-            );
-
-            const results =
-                await executeDelegations(
-                    action.delegations,
-                    depth + 1,
-                    agentDefinition,
-                    ownDepthBudget - 1,
-                    scope
-                );
-
-            progress.delegations += action.delegations.length;
-
-            messages.push({
-
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(
-                        action
-                    )
-            });
-
-            messages.push({
-
-                role: "user",
-
-                content:
-                    JSON.stringify({
-                        type:
-                            "sub_agent_results",
-
-                        results
-                    })
-            });
-        }
-    }
-
-    throw new Error(
-        `Sub-agent exceeded maximum iterations: ${agentName}`
-    );
 }
 
 
@@ -7970,264 +3287,10 @@ async function runSubAgentLoop({
 |--------------------------------------------------------------------------
 */
 
-async function executeDelegations(
-    delegations,
-    depth,
-    parentAgent,
-    depthBudget,
-    parentScope
-) {
+async function executeDelegations(...args) {
 
-    const policy =
-        parentAgent?.delegation || {
-            max_children:
-                settings.get("MAX_PARALLEL_AGENTS")
-        };
+    return await runtimeEngine.executeDelegations(...args);
 
-    if (
-        delegations.length >
-        policy.max_children
-    ) {
-
-        /* A policy violation here is a model decision, so it is a
-           model-response error like validateDelegationPolicy, never a run
-           killer. */
-        throw modelResponseError(
-            "Delegation count exceeds parent agent policy.",
-            "INVALID_DELEGATION",
-            {
-                detected_action: "delegate",
-                reason: "max_children",
-                max_children: policy.max_children,
-                delegations: delegations.length
-            }
-        );
-    }
-
-    /*
-    | An ad-hoc child may only be granted tools the parent already has.
-    */
-
-    const parentAllowedTools =
-        new Set(
-            resolveTools(
-                parentAgent?.tools
-            ).map(
-                tool =>
-                    tool.function.name
-            )
-        );
-
-    const tasks =
-        delegations.map(
-            (item, index) => ({
-                id:
-                    item.id ||
-                    `delegation_${index + 1}`,
-
-                agent:
-                    item.agent ||
-                    (
-                        item.persona
-                            ? `adhoc:${item.persona}`
-                            : "unresolved_agent"
-                    ),
-
-                delegation:
-                    item,
-
-                task:
-                    item.task,
-
-                depends_on:
-                    Array.isArray(
-                        item.depends_on
-                    )
-                        ? item.depends_on
-                        : []
-            })
-        );
-
-    const maxParallel =
-        settings.get("MAX_PARALLEL_AGENTS");
-
-    /*
-    | Delegation runs on the same scheduler as tools, so it has the same
-    | shape, and the console is told about it the same way.
-    */
-
-    const graph =
-        describeGraph(tasks, maxParallel);
-
-    events.emit("delegation:graph", {
-        parent:
-            parentAgent?.name || "main_agent",
-
-        parent_scope:
-            parentScope || parentAgent?.name || "main_agent",
-
-        depth,
-
-        shape:
-            graph.shape,
-
-        waves:
-            graph.waves,
-
-        max_parallel:
-            maxParallel,
-
-        delegations:
-            tasks.map(task => ({
-                id: task.id,
-                agent: task.agent,
-                depends_on: task.depends_on
-            }))
-    });
-
-    return executeDependencyGraph({
-
-        items:
-            tasks,
-
-        maxParallel,
-
-        executor:
-            async (
-                task,
-                results
-            ) => {
-
-                const startedAt = Date.now();
-
-                /*
-                | A delegation that fails before its agent starts used to
-                | leave no trace at all: no agent:start, no agent:end,
-                | nothing but a gap in the log. Every delegation now
-                | reports how it ended, whoever failed it.
-                */
-
-                try {
-
-                    const agentProfile =
-                        resolveDelegationProfile(
-                            task.delegation,
-                            parentAllowedTools
-                        );
-
-                    const dependencyContext =
-                        task.depends_on.map(
-                            id => ({
-                                id,
-
-                                result:
-                                    results.get(
-                                        id
-                                    )
-                            })
-                        );
-
-                    const report =
-                        await runSubAgent({
-                            agentProfile,
-
-                            task:
-                                task.task,
-
-                            depth,
-
-                            depthBudget,
-
-                            context: {
-                                parent:
-                                    parentAgent?.name || null,
-
-                                parent_scope:
-                                    parentScope || null,
-
-                                delegation_id:
-                                    task.id,
-
-                                hook:
-                                    task.delegation.hook || null,
-
-                                dependencies:
-                                    dependencyContext
-                            }
-                        });
-
-                    events.emit("delegation:end", {
-                        parent:
-                            parentAgent?.name || "main_agent",
-
-                        parent_scope:
-                            parentScope || parentAgent?.name || "main_agent",
-
-                        id: task.id,
-
-                        agent: task.agent,
-
-                        depth,
-
-                        success: true,
-
-                        duration_ms:
-                            Date.now() - startedAt
-                    });
-
-                    return report;
-
-                } catch (error) {
-
-                    events.emit("delegation:end", {
-                        parent:
-                            parentAgent?.name || "main_agent",
-
-                        parent_scope:
-                            parentScope || parentAgent?.name || "main_agent",
-
-                        id: task.id,
-
-                        agent: task.agent,
-
-                        depth,
-
-                        success: false,
-
-                        error: error.message,
-
-                        duration_ms:
-                            Date.now() - startedAt
-                    });
-
-                    logLine(
-                        parentScope || "main_agent",
-                        `Delegation "${task.id}" to ${
-                            task.agent
-                        } failed: ${error.message}`
-                    );
-
-                    throw error;
-                }
-            }
-    })
-        .then(
-            results =>
-
-                /*
-                | Each result carries the agent name so a failed
-                | delegation is attributable without id correlation.
-                */
-
-                results.map(
-                    (result, index) => ({
-                        ...result,
-
-                        agent:
-                            tasks[index].agent
-                    })
-                )
-        );
 }
 
 
@@ -8237,589 +3300,56 @@ async function executeDelegations(
 |--------------------------------------------------------------------------
 */
 
-function hookExecutionContext(extra = {}) {
-
-    const plan = currentPlanSummary();
-
-    return {
-        task: RUN.task,
-        objective: plan.objective || RUN.task,
-        repository: detectRepository(),
-        files_changed: toolRuntime.telemetry.changedFiles(),
-        file_tracking_complete:
-            toolRuntime.telemetry.changeTrackingComplete(),
-        plan,
-        hooks: RUN.hook_results,
-        ...extra
-    };
-}
+let HOOK_RUNNER = null;
 
 
-function hookResultSummary(value) {
+function hookRunner() {
 
-    if (value === null || value === undefined) {
-        return "completed";
-    }
+    if (!HOOK_RUNNER) {
 
-    if (typeof value === "string") {
-        return value.slice(0, 600);
-    }
-
-    if (typeof value?.response?.content === "string") {
-        return value.response.content.slice(0, 600);
-    }
-
-    if (typeof value?.stdout === "string" && value.stdout.trim() !== "") {
-        return value.stdout.trim().slice(0, 600);
-    }
-
-    const text = JSON.stringify(value);
-
-    return text.length > 600
-        ? `${text.slice(0, 600)}…`
-        : text;
-}
-
-
-function dirtyPathsFromStatus(stdout) {
-
-    return String(stdout || "")
-        .split(/\r?\n/)
-        .filter(line => line && !line.startsWith("## "))
-        .flatMap(line => {
-
-            const path = line.slice(3).trim();
-
-            if (!path.includes(" -> ")) {
-                return [path];
-            }
-
-            return path.split(" -> ").map(item => item.trim());
-        })
-        .filter(
-            item =>
-                item &&
-                item !== ".agent" &&
-                !item.startsWith(".agent/")
-        );
-}
-
-
-async function executeHookTool(hook, context) {
-
-    const args =
-        hookRegistry.render(hook.arguments || {}, context);
-
-    const results =
-        await executeToolGraph(
-            [
-                {
-                    id: `hook_${hook.id}`,
-                    name: hook.tool,
-                    arguments: args,
-                    depends_on: []
-                }
-            ],
-            new Set(TOOL_REGISTRY_OF().keys()),
-            "main_agent",
-            { hook: hook.id }
-        );
-
-    const result = results[0];
-    const exitCode = result?.result?.exit_code;
-
-    if (!result?.success || (Number.isInteger(exitCode) && exitCode !== 0)) {
-
-        throw new Error(
-            result?.error?.message ||
-            `Hook tool "${hook.tool}" exited with code ${exitCode}.`
-        );
-    }
-
-    return result.result;
-}
-
-
-async function executeGitCommitHook(hook, context) {
-
-    if (
-        hook.phase === "after_task" &&
-        context.file_tracking_complete !== true
-    ) {
-
-        throw new Error(
-            "The runtime cannot prove the complete set of files changed by this run, so it refused to commit. A shell or background process may have modified an already-dirty path."
-        );
-    }
-
-    let paths =
-        hook.paths === undefined
-            ? context.files_changed
-            : hookRegistry.render(hook.paths, context);
-
-    if (typeof paths === "string") {
-        paths = paths.split(",").map(item => item.trim()).filter(Boolean);
-    }
-
-    if (!Array.isArray(paths)) {
-        paths = [];
-    }
-
-    /* A before_task safety commit explicitly snapshots the dirty tree. */
-    if (hook.phase === "before_task" && paths.length === 0) {
-
-        const status =
-            await executeHookTool(
-                {
-                    id: `${hook.id}_status`,
-                    type: "tool",
-                    tool: "git_status",
-                    arguments: { cwd: "." }
-                },
-                context
-            );
-
-        paths = toolRuntime.telemetry.dirtyFiles();
-
-        if (paths.length === 0) {
-            paths = dirtyPathsFromStatus(status.stdout);
-        }
-    }
-
-    paths = [...new Set(paths.filter(item => typeof item === "string" && item !== ""))];
-
-    if (paths.length === 0) {
-        throw new Error("No safely attributable paths are available for this commit hook.");
-    }
-
-    const message =
-        hookRegistry.render(hook.message, context);
-
-    const results =
-        await executeToolGraph(
-            [
-                {
-                    id: `hook_${hook.id}_add`,
-                    name: "git_add",
-                    arguments: { cwd: ".", paths },
-                    depends_on: []
-                },
-                {
-                    id: `hook_${hook.id}_commit`,
-                    name: "git_commit",
-                    arguments: { cwd: ".", message, paths },
-                    depends_on: [`hook_${hook.id}_add`]
-                }
-            ],
-            new Set(TOOL_REGISTRY_OF().keys()),
-            "main_agent",
-            { hook: hook.id }
-        );
-
-    const failed = results.find(result => !result.success);
-
-    if (failed) {
-        throw new Error(failed.error?.message || "Git commit hook failed.");
-    }
-
-    return {
-        paths,
-        commit: results[1].result
-    };
-}
-
-
-async function executeAgentHook(hook, context, mainAgentDefinition) {
-
-    const task =
-        hookRegistry.render(hook.task, context);
-
-    const results =
-        await executeDelegations(
-            [
-                {
-                    id: `hook_${hook.id}`,
-                    agent: hook.agent,
-                    persona: null,
-                    skills: null,
-                    tools: null,
-                    task,
-                    hook: hook.id,
-                    depends_on: []
-                }
-            ],
-            1,
-            mainAgentDefinition,
-            Math.max(0, resolveDepthBudget(
-                mainAgentDefinition,
-                settings.get("MAX_AGENT_DEPTH")
-            ) - 1),
-            "main_agent"
-        );
-
-    const delegated = results[0];
-    const report = delegated?.result;
-
-    if (!delegated?.success || !report?.success || report?.error) {
-
-        throw new Error(
-            delegated?.error?.message ||
-            report?.error?.message ||
-            `Agent hook "${hook.id}" failed.`
-        );
-    }
-
-    if (
-        (report.performed?.tools || 0) +
-        (report.performed?.delegations || 0) === 0
-    ) {
-
-        throw new Error(
-            `Agent hook "${hook.id}" returned without executing a tool or delegation, so its report is not runtime evidence.`
-        );
-    }
-
-    return report;
-}
-
-
-async function executeOneHook(hook, baseContext, mainAgentDefinition) {
-
-    const startedAt = Date.now();
-    const context = {
-        ...baseContext,
-        hooks: RUN.hook_results
-    };
-
-    events.emit("hook:start", {
-        id: hook.id,
-        phase: hook.phase,
-        hook_type: hook.type,
-        depends_on: hook.depends_on,
-        on_failure: hook.on_failure
-    });
-
-    if (!hookRegistry.evaluateWhen(hook.when, context)) {
-
-        const skipped = {
-            id: hook.id,
-            type: hook.type,
-            phase: hook.phase,
-            ok: false,
-            skipped: true,
-            status: "skipped",
-            summary: `condition was false: ${hook.when}`,
-            on_failure: hook.on_failure,
-            duration_ms: Date.now() - startedAt
-        };
-
-        RUN.hook_results[hook.id] = skipped;
-        events.emit("hook:end", {
-            id: skipped.id,
-            phase: skipped.phase,
-            hook_type: skipped.type,
-            ok: skipped.ok,
-            skipped: skipped.skipped,
-            status: skipped.status,
-            summary: skipped.summary,
-            error: skipped.error,
-            on_failure: skipped.on_failure,
-            duration_ms: skipped.duration_ms
+        HOOK_RUNNER = new HookRunner({
+            settings,
+            registry: hookRegistry,
+            events,
+            currentRun,
+            assertRunActive,
+            cancelRun,
+            currentPlanSummary,
+            detectRepository,
+            toolRuntime,
+            executeToolGraph,
+            executeDependencyGraph,
+            executeDelegations,
+            resolveDepthBudget,
+            toolRegistryOf: () => TOOL_REGISTRY_OF(),
+            mainAgentProfile
         });
-
-        return skipped;
     }
 
-    try {
-
-        assertRunActive(`hook ${hook.id}`);
-
-        const result =
-            hook.type === "tool"
-                ? await executeHookTool(hook, context)
-                : hook.type === "agent"
-                    ? await executeAgentHook(hook, context, mainAgentDefinition)
-                    : await executeGitCommitHook(hook, context);
-
-        assertRunActive(`hook ${hook.id} completion`);
-
-        const completed = {
-            id: hook.id,
-            type: hook.type,
-            phase: hook.phase,
-            ok: true,
-            skipped: false,
-            status: "done",
-            summary: hookResultSummary(result),
-            result,
-            on_failure: hook.on_failure,
-            duration_ms: Date.now() - startedAt
-        };
-
-        RUN.hook_results[hook.id] = completed;
-        events.emit("hook:end", {
-            id: completed.id,
-            phase: completed.phase,
-            hook_type: completed.type,
-            ok: completed.ok,
-            skipped: completed.skipped,
-            status: completed.status,
-            summary: completed.summary,
-            error: completed.error,
-            on_failure: completed.on_failure,
-            duration_ms: completed.duration_ms
-        });
-
-        return completed;
-
-    } catch (error) {
-
-        const failed = {
-            id: hook.id,
-            type: hook.type,
-            phase: hook.phase,
-            ok: false,
-            skipped: false,
-            status: "failed",
-            summary: error.message,
-            error: error.message,
-            on_failure: hook.on_failure,
-            duration_ms: Date.now() - startedAt
-        };
-
-        RUN.hook_results[hook.id] = failed;
-        events.emit("hook:end", {
-            id: failed.id,
-            phase: failed.phase,
-            hook_type: failed.type,
-            ok: failed.ok,
-            skipped: failed.skipped,
-            status: failed.status,
-            summary: failed.summary,
-            error: failed.error,
-            on_failure: failed.on_failure,
-            duration_ms: failed.duration_ms
-        });
-
-        return failed;
-    }
+    return HOOK_RUNNER;
 }
 
 
-async function withHookBudget(phase, callback) {
-
-    if (RUN.inHook) {
-        return {
-            phase,
-            skipped: true,
-            stopped: false,
-            results: [],
-            reason: "nested hooks are disabled"
-        };
-    }
-
-    const previous = {
-        controller: RUN.controller,
-        cancelled_reason: RUN.cancelled_reason
-    };
-
-    RUN.inHook = true;
-    RUN.hook_phase = phase;
-    RUN.hook_started_at = Date.now();
-    RUN.hook_deadline_at = RUN.hook_started_at + settings.get("HOOK_TIMEOUT_MS");
-    RUN.controller = new AbortController();
-    RUN.cancelled_reason = null;
-
-    const timeout =
-        setTimeout(
-            () => cancelRun("hook deadline"),
-            settings.get("HOOK_TIMEOUT_MS")
-        );
-
-    try {
-        return await callback();
-    } finally {
-        clearTimeout(timeout);
-
-        const hookCancellation =
-            RUN.cancelled_reason;
-
-        RUN.inHook = false;
-        RUN.hook_phase = null;
-        RUN.hook_started_at = 0;
-        RUN.hook_deadline_at = null;
-        RUN.controller = previous.controller;
-        RUN.cancelled_reason = previous.cancelled_reason;
-
-        if (
-            hookCancellation &&
-            hookCancellation !== "hook deadline" &&
-            RUN.controller &&
-            !RUN.controller.signal.aborted
-        ) {
-            RUN.cancelled_reason = hookCancellation;
-            RUN.controller.abort();
-        }
-    }
+/* Compatibility wrappers: the runtime host and public agent facade retain
+   their historical hook function names while the implementation lives in
+   agent/hooks/HookRunner.js. */
+function hookExecutionContext(...args) {
+    return hookRunner().executionContext(...args);
 }
 
 
-async function runHooks(phase, context, mainAgentDefinition) {
-
-    const declarations = hookRegistry.enabledHooks(phase);
-
-    if (declarations.length === 0 || RUN.inHook) {
-
-        return {
-            phase,
-            skipped: true,
-            stopped: false,
-            results: []
-        };
-    }
-
-    return withHookBudget(
-        phase,
-        async () => {
-
-            events.emit("hook:phase:start", {
-                phase,
-                hooks: declarations.map(item => item.id)
-            });
-
-            const scheduled =
-                await executeDependencyGraph({
-                    items: declarations,
-                    maxParallel: settings.get("MAX_PARALLEL_TOOLS"),
-                    executor:
-                        hook => executeOneHook(
-                            hook,
-                            context,
-                            mainAgentDefinition
-                        )
-                });
-
-            const results = scheduled.map(item => item.result);
-            const stopped =
-                results.some(
-                    item =>
-                        item &&
-                        item.status === "failed" &&
-                        item.on_failure === "stop"
-                );
-
-            const report = {
-                phase,
-                skipped: false,
-                stopped,
-                results
-            };
-
-            events.emit("hook:phase:end", {
-                phase,
-                stopped,
-                ok: results.every(item => item.ok || item.skipped),
-                results: results.map(item => ({
-                    id: item.id,
-                    status: item.status,
-                    ok: item.ok,
-                    summary: item.summary
-                }))
-            });
-
-            return report;
-        }
-    );
+async function runHooks(...args) {
+    return hookRunner().runHooks(...args);
 }
 
 
-function hookReportText(report) {
-
-    if (!report || report.results.length === 0) {
-        return "";
-    }
-
-    return report.results
-        .filter(item => !item.skipped)
-        .map(
-            item =>
-                `- ${item.id}: ${item.ok ? "ok" : "failed"} — ${item.summary}`
-        )
-        .join("\n");
+function hookReportText(...args) {
+    return hookRunner().hookReportText(...args);
 }
 
 
-async function applyAfterTaskHooks(action, runError) {
-
-    if (RUN.after_hooks_ran) {
-        return { action, report: null };
-    }
-
-    const context =
-        hookExecutionContext({
-            action: action || null,
-            run_error:
-                runError
-                    ? { message: runError.message }
-                    : action?.error || null
-        });
-
-    /* Freeze provenance before test/review hooks run their own commands. */
-    context.files_changed = [...context.files_changed];
-    context.file_tracking_complete = context.file_tracking_complete === true;
-
-    const report =
-        await runHooks(
-            "after_task",
-            context,
-            RUN.main_agent_definition || mainAgentProfile()
-        );
-
-    RUN.after_hooks_ran = true;
-
-    const combinedReport = {
-        ...report,
-        results:
-            Object.values(RUN.hook_results)
-    };
-
-    if (!action) {
-        return { action: null, report: combinedReport };
-    }
-
-    const text = hookReportText(combinedReport);
-    const next = {
-        ...action,
-        response: action.response
-            ? { ...action.response }
-            : {
-                type: "text",
-                content: runError?.message || "The run did not complete."
-            }
-    };
-
-    if (text) {
-
-        next.response.content =
-            `${next.response.content}\n\nAutomated routine:\n${text}`;
-    }
-
-    if (report.stopped && !next.error) {
-
-        const failed =
-            report.results.find(
-                item => item.status === "failed" && item.on_failure === "stop"
-            );
-
-        next.error = {
-            code: "HOOK_FAILED",
-            message:
-                `Required after_task hook "${failed.id}" failed: ${failed.summary}`,
-            retryable: true
-        };
-    }
-
-    return { action: next, report: combinedReport };
+async function applyAfterTaskHooks(...args) {
+    return hookRunner().applyAfterTaskHooks(...args);
 }
 
 
@@ -8827,12 +3357,12 @@ async function autoroutePlanStep(mainAgentDefinition) {
 
     if (
         settings.get("PLAN_AUTOROUTE") !== true ||
-        RUN.inHook
+        currentRun().inHook
     ) {
         return null;
     }
 
-    const planTools = require("./tools/plan");
+    const planTools = require("./tools/planning");
     const summary = currentPlanSummary();
     const step = summary.next_step;
 
@@ -8929,921 +3459,109 @@ async function autoroutePlanStep(mainAgentDefinition) {
 |--------------------------------------------------------------------------
 */
 
-async function runAgentCore(options = {}) {
+/*
+| Resolve the ProjectContext for one run (EXECUTION_PLAN, Phase 2).
+|
+| legacy mode (default): returns null and the run behaves exactly as
+| before — project options are ignored, nothing looks at RUN.project.
+|
+| modular mode: the explicit option wins ({project, projectId}), else the
+| default project; while the tool layer still reads the process-wide
+| WORKSPACE_ROOT, a project rooted elsewhere fails loudly here instead of
+| silently mis-scoping tool calls (the cross-root execution lands with
+| the project-aware tool runtime in Phase 4).
+*/
+function resolveRunProjectContext(options) {
 
-    /*
-    | Pick up any edit made to a registry or the policy since the last
-    | run, then validate what was actually loaded.
-    */
-
-    loadRegistries(false);
-
-    validateRegistries();
-
-    const carried =
-        RUN.carried || { background_processes: [] };
-
-    if (carried.background_processes.length > 0) {
-
-        logLine(
-            "main_agent",
-            `${carried.background_processes.length} background process(es) from an earlier run are still alive: ${
-                carried.background_processes
-                    .map(item => item.process_id)
-                    .join(", ")
-            }`
-        );
-    }
-
-    startRun();
-
-    resetAgentBudget();
-
-    /*
-    | The tools an MCP server offers have to be known before the first
-    | request is built, or the model is told about a capability one
-    | iteration after it needed it. Discovery is bounded, and a server
-    | that does not answer is left out rather than allowed to hold up
-    | the run.
-    */
-
-    await discoverMcpTools();
-
-    RUN.task =
-        options.task ||
-        readTask();
-
-    /* Every user task in this run starts a new turn; all events and
-       conversation steps it produces share the same turn_id, so the UI can
-       render the execution for a user message as one stage-by-stage block.
-       A caller (such as the web server) may pass its own turn_id so the
-       conversation message and the runtime events line up. */
-    const turn_id =
-        options.turn_id ||
-        `${RUN.id}_t${(RUN.turnCounter = (RUN.turnCounter || 0) + 1)}`;
-
-    events.setContext({ turn_id });
-
-    /*
-    | A caller that keeps a history array across calls gets a
-    | multi-turn session: the array is filled on the first run and
-    | extended with the new task on every following run.
-    */
-
-    events.emit("run:start", {
-        run_id:
-            RUN.id,
-
-        turn_id,
-
-        task:
-            RUN.task,
-
-        continued:
-            Array.isArray(options.history) &&
-            options.history.length > 0
+    return projects.resolveProjectForRun(options, {
+        registry: projects.registry(),
+        workspaceRoot: WORKSPACE_ROOT
     });
 
-    const messages =
-        Array.isArray(options.history)
-            ? options.history
-            : [];
+}
 
-    if (messages.length === 0) {
+async function runAgentCore(...args) {
 
-        messages.push(
-            ...createMainAgentMessages(options.task)
-        );
+    return await runtimeEngine.runAgentCore(...args);
 
-    } else {
+}
 
-        messages.push({
-            role: "user",
 
-            turn_id,
+/*
+| Canonical run variant (EXECUTION_PLAN Phase 3):
+| the run gets its own AgentRunContext before anything starts, the whole
+| core executes inside the run's async scopes, and two such calls may
+| interleave without sharing messages, budgets or cancellation.
+|
+| The error path runs after-task hooks only when a run actually started;
+| failures during context resolution or registry validation do not inherit
+| them.
+*/
+async function runAgentModular(options = {}) {
 
-            content:
-                options.task && options.task.trim() !== ""
-                    ? options.task
-                    : readTask()
-        });
-    }
+    /* Resolved before the context is created so a bad project reference
+       still fails fast and no half-built run is ever tracked. */
+    const projectContext =
+        resolveRunProjectContext(options);
 
-    const mainAgentDefinition =
-        (() => {
-
-            const configured =
-                AGENT_REGISTRY_OF().get(
-                    "main_agent"
-                );
-
-            /*
-            | Delegation is a capability declared by the profile,
-            | not an intrinsic property of being the root agent.
-            */
-
-            const base =
-                configured || {
-                    name: "main_agent",
-                    tools: "*",
-                    delegation: {
-                        enabled: true,
-                        max_depth:
-                            settings.get("MAX_AGENT_DEPTH"),
-                        max_children:
-                            settings.get("MAX_PARALLEL_AGENTS")
-                    }
-                };
-
-            return {
-                ...base,
-
-                model:
-                    base.model || settings.get("AGENT_MODEL"),
-
-                temperature:
-                    base.temperature ??
-                    settings.get("AGENT_TEMPERATURE")
-            };
-        })();
-
-    RUN.main_agent_definition =
-        mainAgentDefinition;
-
-    const mainDepthBudget =
-        resolveDepthBudget(
-            mainAgentDefinition,
-            settings.get("MAX_AGENT_DEPTH")
-        );
-
-    const mainAgentTools =
-        resolveTools(
-            mainAgentDefinition.tools
-        );
-
-    const allowedTools =
-        new Set(
-            mainAgentTools.map(
-                tool =>
-                    tool.function.name
-            )
-        );
-
-    const progress = {
-        tools: 0,
-        delegations: 0,
-        nudges: 0,
-        continuations: 0
-    };
-
-    const beforeHooks =
-        await runHooks(
-            "before_task",
-            hookExecutionContext(),
-            mainAgentDefinition
-        );
-
-    if (beforeHooks.stopped) {
-
-        const failed =
-            beforeHooks.results.find(
-                item => item.status === "failed" && item.on_failure === "stop"
-            );
-
-        throw new Error(
-            `Required before_task hook "${failed.id}" failed: ${failed.summary}`
-        );
-    }
-
-    if (beforeHooks.results.length > 0) {
-
-        messages.push({
-            role: "user",
-            content:
-                JSON.stringify({
-                    type: "runtime_notice",
-                    notice: "before_task_hooks_complete",
-                    results:
-                        beforeHooks.results.map(item => ({
-                            id: item.id,
-                            status: item.status,
-                            ok: item.ok,
-                            summary: item.summary
-                        })),
-                    instruction:
-                        "These deterministic routine steps already ran. Use their evidence and do not repeat them in the plan or with tools."
-                })
-        });
-    }
-
-    const routed =
-        await autoroutePlanStep(mainAgentDefinition);
-
-    if (routed) {
-
-        progress.delegations++;
-
-        messages.push({
-            role: "user",
-            content:
-                JSON.stringify({
-                    type: "runtime_notice",
-                    notice: "plan_step_autorouted",
-                    result: routed,
-                    instruction:
-                        "The runtime already delegated this assigned plan step and recorded its evidence. Do not repeat it. Continue from the updated plan and report the verified result."
-                })
-        });
-    }
-
-    for (
-        let iteration = 1;
-        iteration <= settings.get("MAX_ITERATIONS");
-        iteration++
-    ) {
-
-        assertRunActive("main agent");
-
-        await maintainContext(messages, "main_agent");
-
-        refreshRuntimeContext(messages);
-
-        events.setContext({ scope: "main_agent", iteration });
-
-        events.emit("agent:iteration", {
-            agent: "main_agent",
-            scope: "main_agent",
-            depth: 0,
-            iteration
+    const context =
+        runManager.createRun({
+            task: options.task || "",
+            parentRunId: options.parent_run_id || null,
+            project: projectContext
         });
 
-        /*
-        | The reserved slice is capped by a share of the budget, so a
-        | two minute run is not told to wrap up on its first iteration
-        | just because the default slice is a minute.
-        */
+    const projectId =
+        projectContext && projectContext.projectId
+            ? projectContext.projectId
+            : null;
 
-        /*
-        | The reminder fires at the top of an iteration, before the
-        | request is built, so the notice travels with it.
-        */
-
-        if (
-            shouldHintDelegation(
-                progress,
-                currentPlanSummary(),
-                mainAgentDefinition
-            )
-        ) {
-
-            progress.delegationHints =
-                (progress.delegationHints || 0) + 1;
-
-            const planSummary = currentPlanSummary();
-
-            logLine(
-                "main_agent",
-                `Working alone for ${
-                    progress.tools
-                } calls with ${
-                    remainingAgentBudget()
-                } agents unused and ${
-                    planSummary.pending + planSummary.in_progress
-                } open steps; suggesting delegation.`
-            );
-
-            events.emit("run:delegation_hint", {
-                agent: "main_agent",
-                iteration,
-                attempt: progress.delegationHints,
-                agents_remaining: remainingAgentBudget(),
-                open_steps:
-                    planSummary.pending + planSummary.in_progress
-            });
-
-            messages.push(
-                delegationHintMessage(
-                    planSummary,
-                    remainingAgentBudget()
-                )
-            );
-        }
-
-        const wrapUpAt =
-            Math.min(
-                settings.get("RUN_WRAPUP_MS"),
-                settings.get("MAX_RUN_MS") *
-                settings.get("RUN_WRAPUP_FRACTION")
-            );
-
-        if (
-            wrapUpAt > 0 &&
-            !progress.wrapup &&
-            runRemainingMs() <= wrapUpAt
-        ) {
-
-            progress.wrapup = true;
-
-            const planSummary =
-                currentPlanSummary();
-
-            logLine(
-                "main_agent",
-                `Run budget nearly spent (${
-                    Math.max(0, runRemainingMs())
-                } ms left); asking for a final answer.`
-            );
-
-            events.emit("run:wrapup", {
-                agent: "main_agent",
-                iteration,
-                remaining_ms: runRemainingMs(),
-                max_run_ms: settings.get("MAX_RUN_MS")
-            });
-
-            messages.push(
-                wrapUpMessage(
-                    runRemainingMs(),
-                    planSummary
-                )
-            );
-        }
-
-        if (settings.get("AGENT_VERBOSE")) {
-
-            LOG_STREAM(
-                `\n=== Agent Iteration ${iteration} ===`
-            );
-        }
-
-        const data =
-            await callAI({
-                messages,
-
-                agentDefinition:
-                    mainAgentDefinition,
-
-                tools:
-                    mainAgentTools,
-
-                role: "MAIN",
-
-                scope:
-                    "main_agent"
-            });
-
-        /* Keep the provider response visible even when the structured action
-           below turns out to be malformed. */
-        reportModelResponse(data, "main_agent", "main_agent", 0, iteration);
-
-        let parsed;
+    return await runScheduler.schedule(projectId, () =>
+        runManager.execute(context, async () => {
 
         try {
-
-            parsed = readModelAction(data);
-
+            return await runAgentCore(options);
         } catch (error) {
 
-            if (!isModelResponseError(error)) {
-                throw error;
-            }
-
-            if (progress.malformedCode !== error.code) {
-                progress.malformed = 0;
-                progress.malformedCode = error.code;
-            }
-
-            progress.malformed = (progress.malformed || 0) + 1;
-
-            const limit =
-                settings.get("MAX_MALFORMED_RESPONSES");
-
-            const maximumAttempts =
-                limit + 1;
-
-            logLine(
-                "main_agent",
-                `Unreadable answer (${error.message}) [${
-                    progress.malformed
-                }/${maximumAttempts}]`
-            );
-
-            events.emit("run:malformed", {
-                agent: "main_agent",
-                scope: "main_agent",
-                depth: 0,
-                iteration,
-                code: error.code,
-                reason: error.message,
-                finish_reason:
-                    error.details?.finish_reason || null,
-                completion_tokens:
-                    error.details?.completion_tokens ?? null,
-                output_chars:
-                    error.details?.output_chars ?? null,
-                attempt: progress.malformed,
-                limit,
-                max_attempts: maximumAttempts,
-                retries_left:
-                    Math.max(0, maximumAttempts - progress.malformed),
-                outcome:
-                    progress.malformed > limit
-                        ? "stopped"
-                        : "retry"
-            });
-
-            if (progress.malformed > limit) {
-                throw error;
-            }
-
-            messages.push(
-                malformedNoticeMessage(
-                    error,
-                    progress.malformed,
-                    limit
-                )
-            );
-
-            continue;
-        }
-
-        /* A valid replacement closes this malformed-answer streak. Later
-           independent mistakes get their own corrective retry allowance. */
-        progress.malformed = 0;
-        progress.malformedCode = null;
-
-        const message =
-            parsed.message;
-
-        const action =
-            parsed.structured;
-
-        events.emit("agent:action", {
-            agent: "main_agent",
-            scope: "main_agent",
-            depth: 0,
-            iteration,
-            action: action.action
-        });
-
-        logLine(
-            "main_agent",
-            `Action: ${action.action}`
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | FINAL
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            action.action === "final" &&
-            !action.error
-        ) {
-
-            const planSummary =
-                currentPlanSummary();
-
-            const openSteps =
-                planSummary.exists
-                    ? planSummary.pending + planSummary.in_progress
-                    : 0;
-
-            /*
-            | Continue only while there is enough time for another
-            | step, without demanding a whole request budget.
-            */
-
-            const continuationFloor =
-                Math.min(
-                    settings.get("MAX_REQUEST_MS"),
-                    Math.max(5000, settings.get("MAX_RUN_MS") * 0.1)
-                );
-
             if (
-                openSteps > 0 &&
-                !progress.wrapup &&
-                progress.continuations < settings.get("MAX_PLAN_CONTINUATIONS") &&
-                runRemainingMs() > continuationFloor
+                context.started_at &&
+                !context.after_hooks_ran
             ) {
 
-                progress.continuations++;
+                try {
 
-                logLine(
-                    "main_agent",
-                    `Plan still has ${openSteps} open step(s); continuing with "${
-                        planSummary.next_step
-                            ? planSummary.next_step.title
-                            : "the next step"
-                    }".`
-                );
+                    const finalized =
+                        await applyAfterTaskHooks(null, error);
 
-                events.emit("run:continue", {
-                    agent: "main_agent",
-                    open_steps: openSteps,
-                    next_step: planSummary.next_step,
-                    attempt: progress.continuations
-                });
+                    const report =
+                        hookReportText(finalized.report);
 
-                messages.push({
-                    role: "assistant",
+                    if (report) {
+                        error.message = `${error.message}\n\nAutomated routine:\n${report}`;
+                    }
 
-                    content:
-                        message.content ??
-                        JSON.stringify(action)
-                });
+                } catch (hookError) {
 
-                messages.push(
-                    planContinuationMessage(
-                        planSummary,
-                        runRemainingMs()
-                    )
-                );
-
-                continue;
-            }
-        }
-
-
-        if (
-            action.action === "final" &&
-            isUnfinishedFinal(action, progress) &&
-            progress.nudges < settings.get("MAX_EMPTY_FINAL_NUDGES")
-        ) {
-
-            progress.nudges++;
-
-            logLine(
-                "main_agent",
-                "Final answer arrived with no work performed; handing the objective back once."
-            );
-
-            events.emit("run:nudge", {
-                agent: "main_agent",
-                iteration,
-                attempt: progress.nudges
-            });
-
-            messages.push({
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(action)
-            });
-
-            messages.push(
-                nudgeMessage({
-                    iteration,
-                    maxIterations: settings.get("MAX_ITERATIONS"),
-                    remainingMs: runRemainingMs()
-                })
-            );
-
-            continue;
-        }
-
-
-        if (
-            action.action ===
-            "final"
-        ) {
-
-            /*
-            | The answer is kept in the transcript so a following task
-            | in the same session can refer back to it.
-            */
-
-            messages.push({
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(action)
-            });
-
-            const finalized =
-                await applyAfterTaskHooks(action, null);
-
-            const finalAction =
-                finalized.action;
-
-            /* The session history must carry the hook evidence and any
-               HOOK_FAILED status, not the pre-hook draft from the model. */
-            messages[messages.length - 1].content =
-                JSON.stringify(finalAction);
-
-            /*
-            | Before the answer leaves, what it claims is compared with
-            | what the runtime executed, including deterministic hooks.
-            */
-
-            const mismatch =
-                checkPerformedClaim(finalAction, progress, "main_agent");
-
-            events.emit("run:end", {
-                action: finalAction,
-
-                hooks:
-                    finalized.report || undefined,
-
-                claim_mismatch:
-                    mismatch || undefined,
-
-                ok:
-                    !finalAction.error
-            });
-
-            if (PRINT_FINAL) {
-
-                LOG_STREAM(
-                    "\n=== FINAL RESPONSE ===\n"
-                );
-
-                LOG_STREAM(
-                    JSON.stringify(
-                        finalAction,
-                        null,
-                        2
-                    )
-                );
+                    error.message =
+                        `${error.message}\n\nafter_task hooks could not finish: ${hookError.message}`;
+                }
             }
 
-            return finalAction;
+            throw error;
+
         }
 
-
-        /*
-        |--------------------------------------------------------------------------
-        | TOOL CALL
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            action.action ===
-            "tool_call"
-        ) {
-
-            const toolCalls =
-                normalizeToolCalls(
-                    action.tool_calls
-                );
-
-            const results =
-                await executeToolGraph(
-                    toolCalls,
-                    allowedTools,
-                    "main_agent",
-                    { iteration }
-                );
-
-            progress.tools += results.length;
-
-            appendToolConversation(
-                messages,
-                message,
-                toolCalls,
-                results,
-                "main_agent"
-            );
-
-            const repeats =
-                trackRepeatedFailure(progress, results);
-
-            if (repeats >= settings.get("MAX_REPEATED_FAILURES")) {
-
-                logLine(
-                    "main_agent",
-                    `The same failure repeated ${repeats} times.`
-                );
-
-                events.emit("run:loop", {
-                    agent: "main_agent",
-                    scope: "main_agent",
-                    depth: 0,
-                    iteration,
-                    repeats,
-                    limit:
-                        settings.get("MAX_REPEATED_FAILURES"),
-                    signature:
-                        progress.lastFailure,
-                    outcome:
-                        repeats > settings.get("MAX_REPEATED_FAILURES")
-                            ? "stopped"
-                            : "notice"
-                });
-
-                if (repeats > settings.get("MAX_REPEATED_FAILURES")) {
-
-                    throw new Error(
-                        `The agent repeated the same failing call ${repeats} times: ${progress.lastFailure}`
-                    );
-                }
-
-                messages.push(
-                    loopNoticeMessage(
-                        progress.lastFailure,
-                        repeats
-                    )
-                );
-            }
-
-            continue;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | DELEGATE
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            action.action ===
-            "delegate"
-        ) {
-
-            try {
-
-                validateDelegationPolicy(
-                    mainAgentDefinition,
-                    mainDepthBudget,
-                    action.delegations
-                );
-
-            } catch (error) {
-
-                if (!isModelResponseError(error)) {
-                    throw error;
-                }
-
-                if (progress.malformedCode !== error.code) {
-                    progress.malformed = 0;
-                    progress.malformedCode = error.code;
-                }
-
-                progress.malformed = (progress.malformed || 0) + 1;
-
-                const limit =
-                    settings.get("MAX_MALFORMED_RESPONSES");
-
-                const maximumAttempts =
-                    limit + 1;
-
-                logLine(
-                    "main_agent",
-                    `Invalid delegation (${error.message}) [${
-                        progress.malformed
-                    }/${maximumAttempts}]`
-                );
-
-                events.emit("run:malformed", {
-                    agent: "main_agent",
-                    scope: "main_agent",
-                    depth: 0,
-                    iteration,
-                    code: error.code,
-                    reason: error.message,
-                    attempt: progress.malformed,
-                    limit,
-                    max_attempts: maximumAttempts,
-                    retries_left:
-                        Math.max(0, maximumAttempts - progress.malformed),
-                    outcome:
-                        progress.malformed > limit
-                            ? "stopped"
-                            : "retry"
-                });
-
-                if (progress.malformed > limit) {
-                    throw error;
-                }
-
-                messages.push(
-                    malformedNoticeMessage(
-                        error,
-                        progress.malformed,
-                        limit
-                    )
-                );
-
-                continue;
-            }
-
-            events.emit("delegation:start", {
-                parent: "main_agent",
-                parent_scope: "main_agent",
-                depth: 0,
-                delegations:
-                    action.delegations.map(item => ({
-                        id: item.id,
-                        agent: item.agent || `adhoc:${item.persona}`,
-                        task: item.task,
-                        depends_on: item.depends_on
-                    }))
-            });
-
-            logLine(
-                "main_agent",
-                `Delegating to ${
-                    action.delegations
-                        .map(item => item.agent)
-                        .join(", ")
-                }`
-            );
-
-            const results =
-                await executeDelegations(
-                    action.delegations,
-                    1,
-                    mainAgentDefinition,
-                    mainDepthBudget - 1,
-                    "main_agent"
-                );
-
-            progress.delegations += action.delegations.length;
-
-            messages.push({
-
-                role: "assistant",
-
-                content:
-                    message.content ??
-                    JSON.stringify(
-                        action
-                    )
-            });
-
-            messages.push({
-
-                role: "user",
-
-                content:
-                    JSON.stringify({
-                        type:
-                            "sub_agent_results",
-
-                        results
-                    })
-            });
-        }
-    }
-
-    throw new Error(
-        `Agent exceeded maximum iterations: ${settings.get("MAX_ITERATIONS")}`
-    );
+        /* Leaving the async scopes restores the correlation context:
+           run-local state is restored by RunManager's async scope. */
+    }));
 }
 
 
 async function runAgent(options = {}) {
 
-    const previousRunId = RUN.id;
+    return await runAgentModular(options);
 
-    try {
-        return await runAgentCore(options);
-    } catch (error) {
-
-        if (
-            RUN.id !== previousRunId &&
-            !RUN.after_hooks_ran
-        ) {
-
-            try {
-
-                const finalized =
-                    await applyAfterTaskHooks(null, error);
-
-                const report =
-                    hookReportText(finalized.report);
-
-                if (report) {
-                    error.message = `${error.message}\n\nAutomated routine:\n${report}`;
-                }
-
-            } catch (hookError) {
-
-                error.message =
-                    `${error.message}\n\nafter_task hooks could not finish: ${hookError.message}`;
-            }
-        }
-
-        throw error;
-
-    } finally {
-
-        /* Clear the correlation context so events emitted after the run
-           (from hooks or the next run) are not mis-attributed. */
-        events.setContext({
-            run_id: null,
-            turn_id: null,
-            scope: null,
-            iteration: null
-        });
-    }
 }
-
 
 /*
 |--------------------------------------------------------------------------
@@ -9891,6 +3609,12 @@ async function main() {
 
         toolRuntime.shutdown();
 
+        try {
+            await eventstore.flush();
+        } catch {
+            /* a store flush must never hide the run result */
+        }
+
         /*
         | A final action that carries an error is a failed run,
         | even though the agent loop itself completed.
@@ -9906,6 +3630,12 @@ async function main() {
 
         toolRuntime.shutdown();
 
+        try {
+            await eventstore.flush();
+        } catch {
+            /* a store flush must never hide the run result */
+        }
+
         console.error(
             "\nAgent failed:\n"
         );
@@ -9919,13 +3649,105 @@ async function main() {
 }
 
 
+application.bind({
+    runAgent,
+    main,
+    tools: toolRuntime,
+    eventstore,
+    cancelRun
+});
+
+
+actionKit.bind({
+    toolsOf: () => TOOLS_OF(),
+    events,
+    logLine
+});
+
+contextKit.bind({
+    events,
+    logLine,
+    currentRun,
+    assertRunActive,
+    summariseTranscript
+});
+
+runtimeEngine.bind({
+    settings,
+    events,
+    logLine,
+    logObject,
+    LOG_STREAM,
+    PRINT_FINAL,
+    currentRun,
+    AgentRunContext,
+    currentAgentBudget,
+    toolRuntime,
+    POLICY_ENGINE,
+    FILE_MUTATING_TOOLS,
+    assertRunActive,
+    runRemainingMs,
+    keepDeclaredArguments,
+    parseArguments,
+    repairMarkdownPathArguments,
+    enforceCrossProjectWrite,
+    effectiveProject,
+    effectiveProjectId,
+    projectIdOf,
+    runWithProject,
+    noteDelegationProject,
+    isMultiProjectTask,
+    consumeAgentBudget,
+    remainingAgentBudget,
+    mayDelegate,
+    resolveTools,
+    resolveAgentCapabilities,
+    resolveDelegationProfile,
+    createSubAgentMessages,
+    sendAgentRequest,
+    readModelAction,
+    isModelResponseError,
+    malformedNoticeMessage,
+    reportModelResponse,
+    maintainContext,
+    refreshRuntimeContext,
+    roleForDepth,
+    requestedDelegationProjectId,
+    delegationProjectSwitchEnabled,
+    projects,
+    modelResponseError,
+    compactConversation,
+    findExchanges,
+    archiveExchanges,
+    startRun,
+    resetAgentBudget,
+    discoverMcpTools,
+    loadRegistries,
+    validateRegistries,
+    createMainAgentMessages,
+    readTask,
+    runHooks,
+    hookExecutionContext,
+    applyAfterTaskHooks,
+    hookReportText,
+    autoroutePlanStep,
+    AGENT_REGISTRY_OF,
+    TOOL_REGISTRY_OF,
+    mainAgentProfile,
+    currentPlanSummary,
+    resolveRunProjectContext
+});
+
+
 /*
 |--------------------------------------------------------------------------
 | Entry Point
 |--------------------------------------------------------------------------
 |
 | The runtime only starts when executed directly, so the internals can
-| be imported and tested.
+| be imported and tested. Bindings above must run first: the extracted
+| engine (Phase 16) and context kit (Phase 17) read live closures
+| through host() from the first line of runAgentCore / maintainContext.
 |--------------------------------------------------------------------------
 */
 
@@ -9935,8 +3757,8 @@ if (require.main === module) {
 
 
 module.exports = {
-    runAgent,
-    main,
+    runAgent: application.runAgent,
+    main: application.main,
 
     /*
     | A plain model call through the role-based endpoint resolution,
@@ -9968,7 +3790,7 @@ module.exports = {
     resolveAgentProfile,
     resolveTools,
 
-    mcp: require("./mcp/manager").manager,
+    mcp: require("./mcp/McpManager").manager,
     mcpToolDeclarations,
     discoverMcpTools,
 
@@ -9988,11 +3810,18 @@ module.exports = {
     foldIntoMemory,
     refreshMemoryMessage,
     memoryStore,
-    project: require("./lib/project"),
-    sessions: require("./lib/sessions"),
-    eventstore: require("./lib/eventstore"),
-    openProject: () => require("./lib/project").openProject(),
-    persistProject: () => require("./lib/project").persist(),
+    project: require("./projects/WorkspaceProfile"),
+
+    /*
+    | Multi-project surface (Phase 2). Named `projects` to stay distinct
+    | from the legacy workspace-profile module above; the boundary is
+    | documented in EXECUTION_PLAN Phase 2 step 3.
+    */
+    projects,
+    sessions: require("./persistence/SessionRepository"),
+    eventstore: require("./persistence/EventStoreRepository"),
+    openProject: () => require("./projects/WorkspaceProfile").openProject(),
+    persistProject: () => require("./projects/WorkspaceProfile").persist(),
     summariseTranscript,
     activeTemperature,
     runDeadlineAt,
@@ -10004,6 +3833,11 @@ module.exports = {
     canModifyWorkspace,
     describeCapability,
     buildAgentSystemPrompt,
+
+    /*
+    | The canonical request body builder from agent/prompt/RequestBuilder.
+    */
+    buildAgentRequest,
     executionRules,
     filterExecutionRules,
     systemPrompt,
@@ -10014,6 +3848,7 @@ module.exports = {
     setApprovalMode,
     setApprovalHandler,
     policyEngine: POLICY_ENGINE,
+    approvalManager: POLICY_ENGINE.approvalManager,
     /*
     | A live view: reading a property reloads the file if it changed.
     */
@@ -10043,7 +3878,33 @@ module.exports = {
     runRemainingMs,
     assertRunActive,
 
+    /*
+    | Per-run context surface (Phase 3). Each caller can address one
+    | specific run out of several concurrent executions.
+    */
+    AgentRunContext,
+    runManager,
+    runScheduler,
+    observability,
+    cancelRunById,
+    effectiveProject,
+    effectiveProjectId,
+    runWithProject,
+    isMultiProjectTask,
+
     settings,
+
+    /*
+    | Application / config / registry surface (Phase 14). Additive;
+    | existing export names keep their signatures.
+    */
+    application,
+    registryLoader,
+    registryValidator,
+    actions: actionKit,
+    runtimeEngine,
+    context: contextKit,
+    hooks: hookRegistry,
 
     /*
     | Read through the store so a caller never caches a stale limit.

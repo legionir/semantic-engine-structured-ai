@@ -2,10 +2,10 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const settings = require("../lib/storage");
-const { WORKSPACE_ROOT } = require("../lib/workspace");
+const settings = require("../config");
+const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
 
-const { manager } = require("./manager");
+const { manager } = require("./McpManager");
 
 
 /*
@@ -238,9 +238,9 @@ function ensureRegistered() {
         return existing;
     }
 
-    const { McpClient } = require("./client");
+    const { McpClient } = require("./McpConnection");
 
-    const config = require("./config");
+    const config = require("./McpConfig");
 
     const normalized =
         config.normalizeOne(

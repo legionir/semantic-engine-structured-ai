@@ -1,12 +1,21 @@
 # Structured AI — Handoff
 
-**تاریخ:** ۲۰۲۶-۰۸-۲۲  
-**Branch:** `arena/01a02456-structured-ai`  
-**Pull Request:** https://github.com/legionir/structured-ai/pull/9  
-**دامنه:** Structured AI root runtime و `semantic-engine`  
+**تاریخ:** ۲۰۲۶-۰۸-۲۲
+**Branch:** `arena/01a03ddf-semantic-engine-structured-ai`
+**Pull Request:** https://github.com/legionir/semantic-engine-structured-ai/pull/6
+**دامنه:** Structured AI root runtime و `semantic-engine`
 **خارج از دامنه:** پروژه‌های تستی repository
 
 این سند وضعیت فعلی، نحوه‌ی اجرا، مرزهای امنیتی، تست‌ها، تغییرات انجام‌شده و مواردی را که تیم بعدی باید بداند ثبت می‌کند.
+
+> **وضعیت نهایی:** Phases 1–30 در branch فعلی تکمیل شده‌اند. Phase 30 همهٔ
+> facadeهای legacy و rollout flagهای موقت را حذف کرده و `web/public/app/`
+> و `web/public/visualizer/` را به entrypointهای canonical تبدیل کرده است.
+> verification نهایی `npm test` برابر **694/694** در 49 entrypoint است.
+> گزارش ترتیب اجرا و تصمیم‌ها در [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md)،
+> قراردادها در [`test/fixtures/CONTRACTS.md`](test/fixtures/CONTRACTS.md) و
+> شمارش verification در [`test/fixtures/baseline.md`](test/fixtures/baseline.md)
+> نگه‌داری می‌شوند.
 
 ---
 
@@ -45,14 +54,14 @@ Semantic Engine یک package مستقل TypeScript برای indexing کد، symb
 | `bin/interactive.js` | REPL و approval prompt |
 | `bin/backfill-eventstore.js` | migration/backfill رویدادهای قدیمی |
 | `agent/agent.js` | orchestration loop، LLM request، action parsing، graph execution و delegation |
-| `agent/lib/policy.js` | policy evaluation و approval enforcement |
-| `agent/lib/workspace.js` | workspace path resolution، confinement و result capping |
-| `agent/lib/storage.js` | runtime settings با precedence override → environment → default |
-| `agent/lib/events.js` | event bus و correlation context |
-| `agent/lib/eventstore.js` | append-only event persistence |
-| `agent/lib/journal.js` | per-agent JSONL journal |
-| `agent/lib/sessions.js` | persisted conversations |
-| `agent/mcp/manager.js` | MCP registry، discovery و namespaced tools |
+| `agent/policy/PolicyEngine.js` | policy evaluation و approval enforcement |
+| `agent/context/WorkspaceBoundary.js` | workspace path resolution، confinement و result capping |
+| `agent/config/SettingsStore.js` | runtime settings با precedence override → environment → default |
+| `agent/events/index.js` | event bus و correlation context |
+| `agent/persistence/EventStoreRepository.js` | append-only event persistence |
+| `agent/persistence/JournalRepository.js` | per-agent JSONL journal |
+| `agent/persistence/SessionRepository.js` | persisted conversations |
+| `agent/mcp/McpManager.js` | MCP registry، discovery و namespaced tools |
 | `agent/mcp/transports/` | stdio، HTTP، SSE و WebSocket transportها |
 | `agent/tools/index.js` | mapping نام tool به implementation |
 | `web/server.js` | web console، REST control API و SSE |
@@ -118,7 +127,7 @@ node bin/semantic-engine.js doctor
 
 ### Root runtime
 
-تنظیمات در `agent/lib/storage.js` تعریف می‌شوند. Environmentهای مهم:
+تنظیمات در `agent/config/SettingsSchema.js` و `agent/config/SettingsStore.js` تعریف می‌شوند. Environmentهای مهم:
 
 | متغیر | مقدار پیش‌فرض/رفتار | توضیح |
 |---|---|---|
@@ -280,6 +289,14 @@ Default container environment:
 ---
 
 ## 7. تست و validation
+
+```bash
+cd structured-ai
+npm run check
+npm test
+npm run test:contracts
+```
+
 
 ### Root
 
@@ -454,7 +471,7 @@ Dependency graph را بررسی کنید و تا remediation، feature native/o
 2. `README.md`
 3. `PRODUCTION-READINESS-FINDINGS-PRIORITIZED-2026-08.md`
 4. `agent/agent.js`
-5. `agent/lib/policy.js` و `agent/lib/workspace.js`
+5. `agent/policy/PolicyEngine.js` و `agent/context/WorkspaceBoundary.js`
 6. `web/server.js`
 7. `semantic-engine/src/server/HttpServer.ts`
 8. `semantic-engine/src/server/SecurityPipeline.ts`
@@ -473,4 +490,4 @@ cd semantic-engine && npm run build && npm run lint && npm run test:gate && npm 
 
 روی branch ثابت این session کار کنید:
 
-`arena/01a02456-structured-ai`
+`arena/01a03ddf-semantic-engine-structured-ai`

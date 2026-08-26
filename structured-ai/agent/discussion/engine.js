@@ -1,7 +1,7 @@
 "use strict";
 
 const { PERSONAS, OBSERVER } = require("./personas");
-const { TranscriptStore } = require("./transcript");
+const { TranscriptStore, transcriptRepository } = require("./transcript");
 const { PersonaRunner } = require("./personaRunner");
 const { ObserverRunner } = require("./observerRunner");
 const { LoopDetector } = require("./loopDetector");
@@ -57,6 +57,8 @@ class DiscussionEngine {
     this.maxParallel = opts.maxParallel || 4;
     this.llmCaller = opts.llmCaller;
     this.workspaceContext = opts.workspaceContext || "";
+    this.projectId = opts.projectId || null;
+    this.projectContext = opts.projectContext || null;
     this.onRound = opts.onRound || null; // callback(round, observerDecision)
     this.onMessage = opts.onMessage || null; // callback(message)
     this.onObserver = opts.onObserver || null; // callback(decision, round)
@@ -68,7 +70,23 @@ class DiscussionEngine {
       return found;
     });
 
-    this.transcript = new TranscriptStore();
+    const repository =
+      opts.transcriptRepository ||
+      (opts.persistTranscript ? transcriptRepository : null);
+
+    this.transcript = opts.transcript || new TranscriptStore({
+      repository,
+      root: opts.dataRoot || this.projectContext?.dataRoot,
+      id: opts.discussionId,
+      projectId: this.projectId,
+      task: this.task,
+      personas: this.personaIds,
+      maxRounds: this.maxRounds,
+      persist: opts.persistTranscript === true
+    });
+
+    this.transcript.save();
+
     this.personaRunner = new PersonaRunner({ llmCaller: this.llmCaller });
     this.observerRunner = new ObserverRunner({ llmCaller: this.llmCaller });
     this.loopDetector = new LoopDetector();
@@ -119,7 +137,13 @@ class DiscussionEngine {
     return round;
   }
 
-  async run() {
+  recordObserverDecision(decision) {
+    this.observerDecisions.push(decision);
+    this.transcript.setObserverDecisions(this.observerDecisions);
+    return decision;
+  }
+
+  async runInternal() {
     // Round 1
     const round1 = await this.runRound(1, {}, true);
     if (this.onRound) this.onRound(round1, null);
@@ -132,7 +156,7 @@ class DiscussionEngine {
       maxRounds: this.maxRounds,
       previousDecisions: this.observerDecisions
     });
-    this.observerDecisions.push(observerDecision);
+    this.recordObserverDecision(observerDecision);
     if (this.onObserver) this.onObserver(observerDecision, 1);
 
     if (observerDecision.decision === "FINISH") {
@@ -155,7 +179,7 @@ class DiscussionEngine {
           previousDecisions: this.observerDecisions,
           maxRounds: this.maxRounds
         });
-        this.observerDecisions.push(forced);
+        this.recordObserverDecision(forced);
         if (this.onObserver) this.onObserver(forced, r - 1);
         return {
           rounds: this.transcript.rounds,
@@ -178,7 +202,7 @@ class DiscussionEngine {
         maxRounds: this.maxRounds,
         previousDecisions: this.observerDecisions
       });
-      this.observerDecisions.push(observerDecision);
+      this.recordObserverDecision(observerDecision);
       if (this.onObserver) this.onObserver(observerDecision, r);
 
       if (observerDecision.decision === "FINISH") {
@@ -201,7 +225,7 @@ class DiscussionEngine {
         previousDecisions: this.observerDecisions,
         maxRounds: this.maxRounds
       });
-      this.observerDecisions.push(forced);
+      this.recordObserverDecision(forced);
       if (this.onObserver) this.onObserver(forced, this.maxRounds);
       return {
         rounds: this.transcript.rounds,
@@ -219,6 +243,28 @@ class DiscussionEngine {
       total_rounds: this.maxRounds,
       hit_max_rounds: true
     };
+  }
+
+  async run() {
+    try {
+      const result = await this.runInternal();
+      this.transcript.setState({
+        status: "done",
+        finished_at: new Date().toISOString(),
+        final_report: result.final_report,
+        total_rounds: result.total_rounds,
+        hit_max_rounds: result.hit_max_rounds,
+        stopped_reason: result.stopped_reason || null
+      });
+      return result;
+    } catch (error) {
+      this.transcript.setState({
+        status: "failed",
+        finished_at: new Date().toISOString(),
+        error: error.message
+      });
+      throw error;
+    }
   }
 }
 
