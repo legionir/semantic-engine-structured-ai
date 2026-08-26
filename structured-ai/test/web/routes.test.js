@@ -322,6 +322,18 @@ async function main() {
             const page = await fetch(`${base}/projects/any-project`);
             assert.equal(page.status, 200);
             assert.match(await page.text(), /structured-ai|<!doctype html/i);
+
+            const visualizer = await fetch(`${base}/visualizer.html`);
+            assert.equal(visualizer.status, 200);
+            assert.match(await visualizer.text(), /visualizer\/main\.js/);
+
+            const visualizerModule = await fetch(`${base}/visualizer/main.js`);
+            assert.equal(visualizerModule.status, 200);
+            assert.match(visualizerModule.headers.get("content-type"), /javascript/);
+
+            const worker = await fetch(`${base}/workers/layout.worker.js`);
+            assert.equal(worker.status, 200);
+            assert.match(await worker.text(), /requestId/);
         } finally {
             await app.close();
             runtime.settings.reset("WEB_SERVER_MODE");

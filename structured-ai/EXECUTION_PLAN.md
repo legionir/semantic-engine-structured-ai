@@ -830,17 +830,23 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 ---
 
-## [🔴] فاز ۲۵: Visualizer
+## [🟢] فاز ۲۵: Visualizer
 
 **هدف و scope:** استقلال Visualizer از chat console و state عمومی UI.
 
-### [🔴] گام ۱: تفکیک ماژول‌ها
+**تکمیل 2026-08-26:** گام ۱ — ۹ تست مستقل در `test/ui/visualizer.test.js` سبز؛ suite کامل 643/643 و `npm run check` سبز. graph store، model، renderer، selection، node inspector، API client، worker/fallback و event binding در `web/public/visualizer/` تفکیک شدند؛ `visualizer.js` compatibility renderer باقی ماند و native ESM bootstrap به `visualizer.html` اضافه شد. تصمیم ۴۴ در پیوست ب.
+
+### [🟢] گام ۱: تفکیک ماژول‌ها
+
+**انجام شد (2026-08-26):** `web/public/visualizer/{main,api-client,graph-store,graph-model,graph-renderer,layout-client,selection-state,node-details,visualizer-events}.js` و `workers/layout.worker.js` ساخته شدند. `graph-model` عملیات pure برای focus/provenance/search/bounds/fallback دارد؛ `LayoutClient` worker و fallback deterministic را پشتیبانی می‌کند؛ `SelectionState` و inspector، project-scoped API و graph renderer state را از console جدا نگه می‌دارند. `visualizer.html` `/visualizer/main.js` را به‌صورت ESM بارگذاری می‌کند و `visualizer.js` برای direct embed/rollback حفظ شده است.
 
 `web/public/visualizer/` را با `main.js`، `api-client.js`، `graph-store.js`، `graph-model.js`، `graph-renderer.js`، `layout-client.js`، `selection-state.js`، `node-details.js`، `visualizer-events.js` بازسازی کن (از `visualizer.js` فعلی + workers). graphهای architecture/module/file/neighborhood، layout worker و fallback، انتخاب node و نمایش detail حفظ شود؛ API callهای semantic با همان URL/payload (به‌علاوهٔ `projectId` در حالت چندپروژه‌ای).
 
 **معیار پذیرش:**
 
 - رفتار graph/layout/selection برابر؛ نشتی state بین sessionها/پروژه‌ها نیست؛ تست‌های UI مرتبط سبز؛ suite سبز.
+
+**وضعیت معیارها (2026-08-26):** هر بند اثبات شد — `test/ui/visualizer.test.js` (9/9)، `graph-store` project identity/selection reset، graph model focus/provenance، deterministic layout و worker error fallback، inspector safe text، API project encoding، و `visualizer.html` ESM bootstrap تأیید شدند؛ suite کامل 643/643 و `npm run check` سبز.
 
 ---
 
@@ -1035,5 +1041,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 43. **قالب frontend فاز ۲۴:** native browser ESM بدون build step انتخاب شد؛ `index.html` فقط `modal.js` کلاسیک و `/app/main.js` ماژولار را بارگذاری می‌کند. `app/main.js` ماژول‌های domain/store/API/SSE/view را در یک graph صریح expose می‌کند و `app.js` compatibility renderer را برای حفظ behavior و embedهای موجود import می‌کند. APIها relative هستند؛ projectId encode می‌شود؛ selector/id، markdown امن و RTL/LTR تغییر نمی‌کنند.
 
 
+44. **Visualizer فاز ۲۵ یک graph مستقل از console دارد:** `visualizer/main.js` native ESM، `graph-store`/`graph-model`/`selection-state` state را از chat console جدا می‌کنند؛ API client همهٔ projectIdها را encode و worker layout با fallback deterministic کار می‌کند. `visualizer.js` compatibility renderer برای direct embed/rollback باقی می‌ماند و هیچ API/status یا graph interaction حذف نمی‌شود.
+
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
-10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).
+- مورد باز ثبت‌شده‌ای باقی نمانده است؛ Assumption قالب ESM در تصمیم ۴۳ حل شد.

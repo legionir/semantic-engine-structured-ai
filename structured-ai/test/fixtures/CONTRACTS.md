@@ -300,3 +300,12 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **Compatibility:** `app.js` به‌عنوان renderer سازگار باقی مانده و از `app/main.js` import می‌شود؛ `/app.js` همچنان به‌عنوان asset موجود است تا embedها و تست‌های فعلی نشکنند. selector/idهای `index.html` و Modal lifecycle تغییر نکرده‌اند.
 - **State/security:** store با domainهای جدا و reducerهای additive کار می‌کند؛ EventStream URL نسبی و `projectId` encode‌شده می‌سازد؛ API client هیچ endpoint absolute یا localhost ندارد؛ markdown با `textContent` و direction با تشخیص RTL امن می‌ماند.
 - **Flag:** فاز ۲۴ flag جدیدی اعلان نمی‌کند (تصمیم ۴۳). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۰. تغییرات additive فاز ۲۵ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **Visualizer:** native ESM در `web/public/visualizer/main.js` فعال شد و `visualizer.js` compatibility renderer برای direct embed حفظ شد.
+- **Graph domain:** `api-client`، `graph-store`، `graph-model`، `graph-renderer`، `layout-client`، `selection-state`، `node-details` و `visualizer-events` state و مسئولیت‌ها را از chat console جدا می‌کنند.
+- **Project scope:** graph، neighborhood و impact URLها relative هستند و `projectId`، `seedId` و `symbol` را encode می‌کنند؛ state هر visualizer project-local است.
+- **Layout/selection:** worker layout deterministic است و در نبود Worker یا خطای worker به layout grid deterministic fallback می‌کند؛ focus depth، resolved-only، node selection، drill-down و inspector metadata حفظ می‌شوند.
+- **Security:** متن label/signature/connection با `textContent`/DOM API رندر می‌شود و خروجی inspector مسیر HTML خام ندارد؛ graph interactions و endpointهای موجود حذف یا rename نشده‌اند.
+- **Flag:** فاز ۲۵ flag جدیدی اعلان نمی‌کند (تصمیم ۴۴). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).

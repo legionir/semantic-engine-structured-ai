@@ -2,8 +2,11 @@
 
 /*
 |--------------------------------------------------------------------------
-| Project Intelligence Visualizer Client
+| Project Intelligence Visualizer Client (compatibility renderer)
 |--------------------------------------------------------------------------
+| The native ESM bootstrap at visualizer/main.js imports this asset while the
+| extracted graph modules own the domain seams and remain independently
+| testable. Keeping this renderer also preserves existing direct embeds.
 |
 | Handles Level of Detail (LoD) graph rendering, progressive drill-down,
 | focus mode, search-to-graph highlights, and the 360° Symbol Inspector.
@@ -137,7 +140,7 @@ async function loadView(viewType) {
   updateBreadcrumb(viewType);
 
   try {
-    const res = await fetch(`/api/graph/${viewType}?projectId=${state.projectId}`);
+    const res = await fetch(`/api/graph/${encodeURIComponent(viewType)}?projectId=${encodeURIComponent(state.projectId)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     setGraphData(data.nodes || [], data.edges || []);
