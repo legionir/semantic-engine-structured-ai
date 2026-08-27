@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۶ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۷ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۷ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۸ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -448,27 +448,27 @@ root وجود داشته باشد و directory باشد؛ canonical شود؛ پ�
 
 ---
 
-## [🔴] فاز ۷: دستور `worker`، endpointهای داخلی و `indexGeneration`
+## [🟢] فاز ۷: دستور `worker`، endpointهای داخلی و `indexGeneration`
 
 **هدف:** worker به‌عنوان یک پروسهٔ مستقل با کنترل lifecycle، و پر کردن شکاف واقعی `indexGeneration`/`projectId` در نتایج MCP (Baseline #8 و #9). معادل گام ۵ و ۶ پلن مرجع.
 
-### [🔴] گام ۱: `semantic-engine worker`
+### [🟢] گام ۱: `semantic-engine worker`
 
 `src/cli/commands/worker-command.ts` + ثبت در `COMMANDS` (`src/cli/main.ts`): `--project-id --root --data-dir --socket | --port --ui-port --mcp-port --token --gateway-managed` + همهٔ flagهای فاز ۵. worker باید بتواند **بدون Gateway** هم standalone اجرا شود.
 
-### [🔴] گام ۲: endpointهای داخلی
+### [🟢] گام ۲: endpointهای داخلی
 
 `GET /internal/health`, `GET /internal/ready`, `GET /internal/metrics`, `GET /internal/status`, `POST /internal/reindex`, `POST /internal/reload`, `POST /internal/shutdown` با شکل پاسخ §گام ۶ پلن مرجع (`projectId, pid, state, indexState, watcher, files, symbols, dependencies, vectorChunks, sqlite, blueprint, memoryMb, queueSize, lastIndexedAt`). readiness تا load شدن index باید `503` بدهد. نگاشت این‌ها با `/health`, `/ready`, `/metrics` موجود (`src/server/routes/systemRoutes.ts:52,67,83`) در ADR ثبت شود: internal = سطح worker با توکن داخلی، عمومی = سازگاری قبلی بدون تغییر.
 
-### [🔴] گام ۳: `indexGeneration` واقعی (D8)
+### [🟢] گام ۳: `indexGeneration` واقعی (D8)
 
 افزودن شمارندهٔ monotonic به `<artifactRoot>/manifest.json` که با هر write موفق در `OutputWriter` افزایش یابد، و انتشار additive آن در `src/ai/mcp/SemanticEngineMcpServer.ts` به‌صورت `structuredContent: { projectId, indexGeneration }` — بدون تغییر `content` و بدون حذف فیلد (قانون ۶). `AiToolRegistry` (`src/ai/AiToolRegistry.ts:30-31,80-82`) از همان مقدار برای invalidation کش استفاده کند.
 
-### [🔴] گام ۴: تست قرارداد با مصرف‌کنندهٔ واقعی
+### [🟢] گام ۴: تست قرارداد با مصرف‌کنندهٔ واقعی
 
 یک تست که خروجی واقعی `SemanticEngineMcpServer` را به `trackGeneration` در `structured-ai/agent/mcp/SemanticClient.js:251-280` بدهد و اثبات کند تغییر generation → پاک شدن `resultCache` و بی‌اثر شدن `toolsLoadedAt`. این تست پل میان دو بسته است و باید در CI هر دو طرف اجرا شود.
 
-### [🔴] گام ۵: shutdown و پایداری
+### [🟢] گام ۵: shutdown و پایداری
 
 `POST /internal/shutdown` باید watcher و LSP را ببندد، اتصال‌های باز را تمام کند و با کد ۰ خارج شود؛ worker در برابر index خراب crash نکند و `state: degraded` گزارش دهد.
 
@@ -477,6 +477,25 @@ root وجود داشته باشد و directory باشد؛ canonical شود؛ پ�
 - `tools/call` خروجی‌ای برگرداند که `structuredContent.projectId` و `structuredContent.indexGeneration` داشته باشد و تست گام ۴ سبز شود.
 - `POST /internal/shutdown` پروسه را graceful ببندد (تست: exit code 0 و بسته شدن watcher).
 - `npm run build && npm test` سبز.
+
+### وضعیت اجرای فاز ۷ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/cli/commands/worker-command.ts`، `src/core/config/indexGeneration.ts` + تست‌های `cli/commands/workerCommand.test.ts` (۳، با پروسهٔ واقعی) و `ai/mcp/mcpIndexGeneration.test.ts` (۴).
+**فایل‌های تغییرکرده:** `cli/main.ts` (ثبت دستور `worker` + بخش help)، `pipeline/OutputWriter.ts` (`indexGeneration` در manifest)، `ai/mcp/SemanticEngineMcpServer.ts` (`projectId`/`indexPath` در options، `callTool` به‌عنوان متد تست‌پذیر، `structuredContent` افزوده، `reload` generation را دوباره می‌خواند)، `cli/commands/serve-command.ts` (export شدن `spawnService`/`stopChild` برای استفادهٔ worker).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 190 passed / 190 total`، `Tests: 2639 passed / 2639 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۷: ۱۸۸ suite و ۲۶۳۲ تست → +۲ suite و +۷ تست).
+- **worker با پروسهٔ واقعی روی Unix socket واقعی:** `--root/--data-dir/--project-id/--socket/--token/--no-watch` → `GET /internal/ready` = ۲۰۰ و `ready:true`؛ `/internal/health` = ۲۰۰ با `state:ready`، `indexState:fresh` و `pid` برابر pid پروسه؛ `/internal/metrics` کلیدهای `worker_*` را دارد؛ `/internal/reload` = ۲۰۰؛ **بدون توکن = ۴۰۱**؛ `POST /internal/shutdown` = ۲۰۰ و سپس **exit code ۰** و پاک شدن فایل socket؛ `SIGTERM` هم exit ۰ می‌دهد.
+- **`--skip-initial-index` روی پروژهٔ بدون ایندکس:** `/internal/ready` = **۵۰۳** با `indexState:missing` و `state:starting` (یعنی readiness دروغ نمی‌گوید).
+- **`indexGeneration` سرتاسری:** `OutputWriter` شمارنده را ۱→۲→۳ بالا می‌برد؛ `callTool` همان `content` قبلی را به‌علاوهٔ `structuredContent.projectId` و `structuredContent.indexGeneration` برمی‌گرداند؛ و تست قرارداد، خروجی واقعی سرور را از `unpackToolResult` **و** `trackGeneration` واقعیِ `structured-ai/agent/mcp/SemanticClient.js` عبور می‌دهد → با تغییر generation، `resultCache` خالی و `toolsLoadedAt` نال می‌شود.
+- `semantic-engine --help` دستور `worker` و همهٔ flagهایش را نشان می‌دهد.
+
+**سه نکتهٔ اجرایی (ثبت‌شده در ADR بخش ۸):**
+
+1. `/internal/*` **کنار** `/health`، `/ready` و `/metrics` قبلی نشست و معنای آن‌ها عوض نشد؛ `/internal/*` نمای «worker تحت supervision» است.
+2. `reload()` حالا generation را دوباره می‌خواند؛ وگرنه پس از reindex، عدد منتشرشده عقب می‌ماند و کش مصرف‌کننده بی‌خبر می‌ماند.
+3. payload ابزارها به متد `callTool` منتقل شد تا قرارداد MCP قابل تست باشد؛ handler فقط آن را صدا می‌زند.
 
 ---
 

@@ -17,6 +17,7 @@ import { BlueprintExporter } from '../export/BlueprintExporter';
 import { validateAgainstSchema } from '../export/schemaValidation';
 import { FileSystemPort, NodeFileSystem } from '../host/FileSystem';
 import { ILogger, silentLogger } from '../host/Logger';
+import { nextIndexGeneration, parseIndexGeneration } from '../core/config/indexGeneration';
 
 export interface OutputWriterOptions {
   readonly outputDir: string;
@@ -150,9 +151,24 @@ export class OutputWriter {
       this.logger.debug('wrote sqlite', { path: sqlitePath });
     }
 
+    /*
+    | `indexGeneration` یک شمارندهٔ monotonic است که با هر نوشتن موفق یکی
+    | زیاد می‌شود (فاز ۷). مصرف‌کننده‌ای که پاسخ ابزارها را کش می‌کند — مثل
+    | `structured-ai/agent/mcp/SemanticClient.js` — با تغییر همین عدد کل کش
+    | خود را دور می‌ریزد. `generation` تصادفیِ قبلی سر جایش می‌ماند.
+    */
+    const manifestPath = path.join(this.options.outputDir, MANIFEST_FILE_NAME);
+    let previousGeneration = 0;
+    try {
+      previousGeneration = parseIndexGeneration(JSON.parse(await this.fs.readFile(manifestPath)));
+    } catch {
+      /* اولین نوشتن، یا manifest ناقص: از صفر شروع می‌شود. */
+    }
+
     const manifest = {
       version: 1,
       generation: crypto.randomUUID(),
+      indexGeneration: nextIndexGeneration(previousGeneration),
       committedAt: new Date().toISOString(),
       artifacts: {
         index: await this.artifactDigest(this.indexPath),
@@ -160,11 +176,7 @@ export class OutputWriter {
         sqlite: sqlitePath ? { path: SQLITE_FILE_NAME } : null,
       },
     };
-    await this.fs.writeJsonAtomic(
-      path.join(this.options.outputDir, MANIFEST_FILE_NAME),
-      manifest,
-      { pretty }
-    );
+    await this.fs.writeJsonAtomic(manifestPath, manifest, { pretty });
 
     return { indexPath: this.indexPath, blueprintPath, sqlitePath };
   }

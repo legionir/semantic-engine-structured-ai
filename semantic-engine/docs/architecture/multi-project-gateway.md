@@ -406,7 +406,49 @@ An API key is read from the environment variable *named* by
 line, in `--json` output, or in a log. Asking for a provider implies
 `--vectors`.
 
-## 8. Verified baseline (2026-08-26)
+## 8. The worker process and `indexGeneration` (فاز ۷)
+
+`semantic-engine worker` serves exactly one project until it is told to stop.
+It is the unit the Gateway supervises, and it also runs standalone.
+
+```text
+semantic-engine worker --root <repo> [--project-id <id>] [--data-dir <dir>]
+                       [--socket <path> | --port <n>] [--token <secret>]
+                       [--gateway-managed] [--no-watch] [--skip-initial-index]
+```
+
+Internal surface (every route needs the token, in both profiles):
+
+| route | behaviour |
+|---|---|
+| `GET /internal/health`, `GET /internal/status` | 200 when the index is loaded, otherwise 503, with `projectId, pid, state, indexState, watcher, files, symbols, dependencies, vectorChunks, sqlite, blueprint, memoryMb, queueSize, lastIndexedAt` |
+| `GET /internal/ready` | 200 only once an index is loaded — this is what the Gateway waits for instead of guessing |
+| `GET /internal/metrics` | `worker_*` counters |
+| `POST /internal/reindex` | 202, one run at a time (409 while busy) |
+| `POST /internal/reload` | re-read the artifacts from disk |
+| `POST /internal/shutdown` | answers 200 first, then stops the watcher, closes the server, removes the socket file and exits 0 |
+
+`SIGINT`/`SIGTERM` take the same graceful path.
+
+These sit *beside* the pre-existing `/health`, `/ready` and `/metrics`, which
+keep their old meaning for standalone use; `/internal/*` is the
+worker-as-supervised-process view.
+
+**`indexGeneration`** (D8) is a monotonic counter in
+`project-artifacts.manifest.json`, bumped by `OutputWriter` on every successful
+write and republished whenever the MCP server reloads. `tools/call` answers
+with `content` exactly as before plus
+
+```json
+{ "structuredContent": { "…tool output…": null, "projectId": "prj-…", "indexGeneration": 3 } }
+```
+
+The consumer needs no change: `structured-ai`'s `unpackToolResult` prefers
+`structuredContent`, and its `trackGeneration` already drops the whole result
+cache when that number moves. An index written before this phase has no counter
+and reports `0`, which keeps the consumer in its old cache-off behaviour.
+
+## 9. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

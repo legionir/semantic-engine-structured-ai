@@ -452,14 +452,14 @@ function validatePort(value: string | undefined, flag: string): CommandResult | 
   return null;
 }
 
-interface StartedChild {
+export interface StartedChild {
   readonly child: ChildProcess;
   readonly ready: Promise<void>;
   readonly output: () => string;
 }
 
 /** Start one child and mirror its stderr so both services remain observable. */
-function spawnService(
+export function spawnService(
   args: readonly string[],
   marker: RegExp,
   root: string
@@ -507,7 +507,7 @@ function spawnService(
   return { child, ready, output: () => output };
 }
 
-async function stopChild(child: ChildProcess): Promise<void> {
+export async function stopChild(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
 
   await new Promise<void>(resolve => {

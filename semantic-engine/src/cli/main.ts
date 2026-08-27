@@ -16,6 +16,7 @@ import { runQuery } from './commands/query-command';
 import { runDoctor } from './commands/doctor-command';
 import { runServe, runUi, runStart } from './commands/serve-command';
 import { runWatch } from './commands/watch-command';
+import { runWorker } from './commands/worker-command';
 import { createLoggerFromEnv } from '../host/Logger';
 
 const COMMANDS: Record<
@@ -27,6 +28,7 @@ const COMMANDS: Record<
   doctor: runDoctor,
   serve: runServe,
   watch: runWatch,
+  worker: runWorker,
   ui: runUi,
   start: runStart,
 };
@@ -42,6 +44,7 @@ commands:
   start                 index if needed, launch UI/MCP, and keep artifacts updated
   serve                 expose index over MCP or standalone HTTP server
   watch                 index, then keep it up to date until Ctrl+C
+  worker                serve one project (REST + /internal/*) until shutdown
   query [tool] [params] run an AI tool against an existing index
   doctor                check this environment
 
@@ -111,6 +114,23 @@ artifact location:
   workspace. SEMANTIC_ENGINE_DATA_DIR overrides the location; an index left in
   <root>/.semantic-engine, <root>/.agent/semantic or <root>/semantic is copied
   (not moved) on first use.
+
+worker options:
+  --project-id <id>     stable project id          (default: derived from the root path)
+  --root <dir>          the one project this worker serves
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --socket <path>       listen on a Unix socket instead of TCP
+  --port <n>            loopback port              (default: an ephemeral port)
+  --host <addr>         bind address               (default: 127.0.0.1)
+  --token <secret>      internal token             (default: $SEMANTIC_ENGINE_TOKEN or generated)
+  --gateway-managed     worker is only reachable through the Gateway
+  --no-watch            do not start the watch child
+  --skip-initial-index  serve an existing index without indexing first
+
+  internal endpoints (all require the token):
+    GET  /internal/health    GET /internal/ready   GET /internal/metrics
+    GET  /internal/status    POST /internal/reindex
+    POST /internal/reload    POST /internal/shutdown
 
 global options:
   --json                machine-readable output on stdout
