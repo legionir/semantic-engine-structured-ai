@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟢 فاز ۱ تا ۱۴ کامل (۲۰۲۶-۰۸-۲۶) — تنها معیار باقی‌مانده در چک‌لیست پذیرش، تست اختصاصی LSP است (بند ۸)
+**وضعیت:** 🟢 فاز ۱ تا ۱۵ کامل (۲۰۲۶-۰۸-۲۷) — تمام ۱۵ معیار در چک‌لیست پذیرش، از جمله تست اختصاصی LSP (بند ۸)، ۱۰۰٪ کامل و سبز هستند
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -873,16 +873,45 @@ REST، MCP `tools/list` و `tools/call`، SSE، WebSocket (فاز ۱۱)، cancel
 | ۵ | root پروژه به‌خاطر artifactها dirty نشود | 🟢 | `readdirSync(root) === ['src']` در تست e2e و `cacheCommand.test.ts` |
 | ۶ | projectIdها collision نداشته باشند | 🟢 | دو `app` با id متفاوت؛ `ProjectRegistry.test.ts` و `ProjectIdentity.test.ts` |
 | ۷ | index/symbols/dependencies/blueprint/SQLite/vectors مستقل | 🟢 | `find_symbol` روی A فقط دادهٔ A؛ `multiProject.e2e.test.ts` گام ۵ و ۹ |
-| ۸ | watcher و LSP با هم تداخل نکنند | 🟡 | watcher: اندازه‌گیری‌شده (تغییر A فقط A را تکان داد). LSP: جداسازی ساختاری است (هر worker پروسهٔ خودش) ولی **تست اختصاصی ندارد** — تنها معیار باقی‌مانده |
+| ۸ | watcher و LSP با هم تداخل نکنند | 🟢 | watcher: تغییر A فقط A را تکان داد (`multiProject.e2e.test.ts`). LSP: تست اختصاصی ۹ سناریویی با stub ساختگی (`lspIsolation.test.ts`) اثبات کرد PIDها، اسناد، نمادها، خطاها، کرش، reap و lifecycle کاملاً مستقل‌اند |
 | ۹ | REST، MCP، SSE، WebSocket پروژه‌محور | 🟢 | `protocolMatrix.e2e.test.ts` |
 | ۱۰ | health و metrics همهٔ Workerها در Gateway UI | 🟢 | جدول workerها + پنل health؛ `gatewayUi.test.ts` و `metrics.test.ts` |
 | ۱۱ | کلیک روی هر Worker داشبورد همان پروژه | 🟢 | `GET /projects/:id` → ۳۰۲ به `/visualizer?project=:id` |
 | ۱۲ | تمام CLI optionهای Worker از UI قابل تنظیم | 🟢 | ۳۵ فیلد در ۷ بخش با نگاشت دوطرفه به schema (تست شده) |
 | ۱۳ | crash یک Worker روی بقیه اثر نگذارد | 🟢 | `WorkerSupervisor.test.ts` و `WorkerHealthMonitor` |
 | ۱۴ | migration بدون حذف داده | 🟢 | `migration.e2e.test.ts` (هر سه مسیر + corrupt) |
-| ۱۵ | تست‌های isolation/routing/protocol/UI/load سبز | 🟢 | ۲۰۳ suite و ۲۷۴۷ تست سبز در موتور + همهٔ suiteها در structured-ai |
+| ۱۵ | تست‌های isolation/routing/protocol/UI/load سبز | 🟢 | ۲۰۴ suite و ۲۷۵۶ تست سبز در موتور + همهٔ suiteها در structured-ai |
 
-**تنها معیار 🟡:** بند ۸ برای LSP — جداسازی به‌واسطهٔ مرز پروسه‌ها تضمین می‌شود ولی تست اختصاصیِ «دو worker با LSP هم‌زمان» نوشته نشده، چون راه‌اندازی LSP واقعی در CI به سرورهای زبانی نصب‌شده نیاز دارد. اگر بخواهید، به‌عنوان یک فاز جداگانه با stub اضافه می‌شود.
+**وضعیت پذیرش:** 🟢 **هر ۱۵ معیار به طور کامل محقق و تأیید شده‌اند.** بند ۸ با پیاده‌سازی فاز ۱۵ و آزمون اختصاصی `lspIsolation.test.ts` با استفاده از stub سرور زبان (`fakeLspServer.js`) بدون وابستگی به محیط خارجی در CI پوشش داده شد.
+
+---
+
+## [🟢] فاز ۱۵: تست اختصاصی جداسازی LSP میان Workerها و پروژه‌ها (بند ۸)
+
+**هدف:** تست اختصاصی و اثبات تجربی عدم تداخل و جداسازی کامل پروسه‌های سرور زبان (LSP) میان چند Worker/پروژهٔ هم‌زمان با استفاده از stub سرور ساختگی (`fakeLspServer.js`) در CI بدون نیاز به نصب کامپایلرهای خارجی.
+
+### گام‌های پیاده‌سازی و سنجش
+
+۱. **جداسازی پروسه‌ها و نمونه‌ها (Process & Instance Isolation):** دو Worker مستقل (با دو root مجزا) هم‌زمان سرور زبان را بالا می‌آورند؛ بررسی می‌شود که دو پروسهٔ فرزند Node مستقل با دو PID متمایز (`pidA !== pidB`) اجرا شده و وضعیت `running` دارند.
+۲. **جداسازی دامنهٔ اسناد و URIها (Document & URI Scope Isolation):** اسناد بازشده (`didOpen`) و رویدادهای تغییر نسخه (`didChange`) در Worker A تنها توسط سرور A ثبت شده و از طریق متد اختصاصی `test/state` اثبات می‌شود سرور B هرگز فایل‌ها یا URIهای پروژهٔ A را دریافت نمی‌کند و بالعکس.
+۳. **جداسازی استخراج نماد، خطاها و عملیات تعاملی (Symbols, Diagnostics & Interactive Ops):**
+   - استخراج نماد (`LspSymbolExtractor`) روی ریشهٔ هر پروژه فقط نمادهای همان پروژه را با `source: 'lsp'` بازمی‌گرداند.
+   - ارائه‌دهندهٔ خطا (`DiagnosticsProvider`) خطاهای نحوی هر پروژه را در همان دامنه گزارش می‌دهد.
+   - عملیات تعاملی (`InteractiveOps` نظیر rename و hover) در یک پروژه به هیچ وجه فایل‌های پروژهٔ دیگر را تغییر نمی‌دهد.
+۴. **جداسازی خطا و کرش (Fault & Crash Isolation):** تحریک کرش در سرور Worker A (`test/crash`) یا رسیدن به سقف خطا و تنزل به `degraded`، هیچ اثری روی سرور زبان Worker B ندارد؛ سرور B با همان PID بدون وقفه به استخراج نماد و درخواست‌ها پاسخ می‌دهد.
+۵. **جداسازی مدیریت منابع و Reap بیکاری (Resource Management & Reap Isolation):** خاموشی بیکاری (`reapIdle`) سرور Worker A بدون لمس سرور زبان فعال Worker B انجام می‌شود و بازخوانی بعدی در Worker A سرور تازه ایجاد می‌کند.
+۶. **جداسازی چرخهٔ عمر و توقف تمیز (Lifecycle & Teardown Isolation):** بستن Worker A (`disposeAll`) تنها پروسهٔ سرور A را خاتمه می‌دهد؛ سرور B تا زمان بستن Worker B زنده و پاسخگو می‌ماند و هیچ پروسهٔ یتیمی (orphan) در سیستم باقی نمی‌ماند.
+۷. **هم‌زمانی خط‌لولهٔ ایندکس با LSP (Concurrent IndexPipeline Isolation):** اجرای موازی خط‌لولهٔ کامل `IndexPipeline` برای دو پروژه با استخراج‌گر LSP نمادهای مجزا برای هر پروژه تولید کرده و بدون تداخل پایان می‌یابد.
+
+### وضعیت اجرای فاز ۱۵ — 🟢 (۲۰۲۶-۰۸-۲۷)
+
+**فایل‌های ساخته‌شده:** `src/gateway/lspIsolation.test.ts` (۹ تست در ۷ گروه).
+**verification اجراشده:**
+- `npx jest src/gateway/lspIsolation.test.ts` → **۹ passed / ۹ total (exit 0)**
+- `npm run test:gate` → **۲۰۴ suite passed / ۲۰۴ total، ۲۷۵۶ tests passed / ۲۷۵۶ total («all suites ran» و «artifact location gate: ok»)**
+- `npm run lint` → **exit 0 (بدون خطا یا warning)**
+- `npm run build` → **exit 0**
+- `cd structured-ai && npm run check && npm test` → **exit 0 (همهٔ تست‌ها سبز)**
 
 ---
 
