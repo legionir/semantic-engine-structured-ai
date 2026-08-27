@@ -760,17 +760,38 @@ pendingها همان‌طور که فاز ۹ تعریف کرد per-project بم�
 
 ---
 
-## [🔴] فاز ۲۲: Hooks
+## [🟢] فاز ۲۲: Hooks
 
 **هدف و scope:** تفکیک registry، شرط‌سنجی، rendering و اجرای hookها. خروجی: `agent/hooks/`.
 
-### [🔴] گام ۱: استخراج ماژول‌ها
+**تکمیل 2026-08-27:** گام ۱ — ۱۵ تست جدید در `test/hooks/layer.test.js` سبز؛ `test/hooks.test.js` ۵/۵ **بدون هیچ ویرایشی** سبز ماند (معیار اصلی فاز)؛ suite کامل 640/640 و `npm run check` سبز. استخراج یک move است نه fork؛ فلگ MODE تازه‌ای اعلان نشد (تصمیم ۴۱). `agent/lib/hooks.js` wrapper سازگار ماند (قانون ۷).
+
+### [🟢] گام ۱: استخراج ماژول‌ها
 
 `HookRegistry.js`، `HookLoader.js`، `HookCondition.js`، `HookRenderer.js`، `HookRunner.js`، `HookResult.js` از `agent/lib/hooks.js` (‎~۱۷KB). رفتار: ترتیب before/after، `on_failure`، متغیرهای template، eventهای hook، hookهای نامعتبر/غیرفعال، hook commit و hook agent دقیقاً حفظ.
+
+**انجام شد (2026-08-27):** شش ماژول خواسته‌شده در `agent/hooks/` + `index.js`:
+`HookCondition` (زبان شرطِ بسته: termهای `&&` با `!`، هیچ eval در کار نیست، و `conditionTerms` بین اعتبارسنجی و اجرا مشترک است تا این دو هرگز دربارهٔ معنای یک شرط جدا نیفتند)،
+`HookRenderer` (الگوی `${path}`؛ یک الگوی تمام‌قد **مقدار** را برمی‌گرداند نه رشتهٔ آن — `git_add` به آرایه نیاز دارد — و ارجاع بی‌نتیجه throw می‌کند، هرگز رشتهٔ خالی نمی‌شود؛ نیمۀ سخت‌گیر همان الگو را در زمان load اعمال می‌کند)،
+`HookLoader` (خواندن `registry/hooks.json` + overlay پروژه، stamp فایل‌ها برای hot reload، عادی‌سازی، و دو بررسی که schema نمی‌تواند بیان کند: وجود tool/agent در رجیستری‌ها و acyclic بودن گراف وابستگی hookها درون یک فاز)،
+`HookRegistry` (فصل‌خواندن: `enabledHooks`/`routine` + بازتصدیر `render`/`evaluateWhen`/`load`/`validateConfig` و درزهای `_`-دار تست)،
+`HookResult` (`hookResultSummary` با سقف ۶۰۰ کاراکتر و `endEvent` که payload رویداد `hook:end` را از یک جا می‌سازد)،
+و `HookRunner` (اجرای tool/agent/git_commit، نگهبان تودرتویی، `withHookBudget` با ددلاین `HOOK_TIMEOUT_MS` و بازگردانی controller/cancel پس از فاز) که host زنده را از `bind()` می‌گیرد.
+
+**فیزکی بودن move اثبات شد، نه ادعا:** هر ۳۰ اعلامِ `agent/lib/hooks.js` در فایل‌های تازه **بایت‌به‌بایت** موجودند (مقایسۀ برچسب‌خورده با `git show HEAD`) و هر ۸ تابع region پیچش در `agent.js` یا عین‌اند یا فقط همان بازنویسی‌های اعلام‌شده را دارند (`X(` → `host().X(`، `hookRegistry.render(` → `render(`، و سه بلوک تکراری `events.emit("hook:end", {…})` → `endEvent(record)`). متن پیام‌های خطا — که UI و تست‌ها به آن‌ها تکیه‌اند — دست‌نخورده است.
+
+**یک‌نواختی که این فاز رفع کرد:** payload رویداد `hook:end` سه بار در `executeOneHook` نوشته شده بود (skipped/completed/failed). حالا `endEvent(record)` تنها سازندۀ آن است؛ یک فیلد که به دو از سه نسخه افزوده شود، باگی بود که هیچ تستی نمی‌گرفت. `test/hooks/layer.test.js` کلیدهای این payload را قفل می‌کند و تست نیز ثابت می‌کند `result` (که فقط برای context مرحله‌های بعد لازم است) در payload رویداد نمی‌رود.
+
+**دو چیز که در جریان کار روشن شد و تغییر رفتاری نیست:**
+(الف) `withHookBudget` نگهبان تودرتویی خودش را دارد با فیلد `reason`، اما `runHooks` پیش‌تر برمی‌گردد، پس آن شاخه از مسیر عادی قابل‌رسیدن نیست؛ کد حفظ شد (move، نه پاکسازی) و تست هر دو شکل را قفل می‌کند تا اگر فراخوان دومی پیدا شد، مشخص باشد.
+(ب) `hookRegistry.render(...)` در `agent.js` (چهار نقطه: آرگومان hook، paths، message، task) همان `render` جدید است — نه یک پیاده‌سازی دوم — چون registry آن را از `HookRenderer` بازتصدیر می‌کند؛ تست هویت تابع‌ها (`legacy.load === hooks.load`) همین را می‌بندد که دو cache از `hooks.json` وجود ندارد.
 
 **معیار پذیرش:**
 
 - `hooks.test.js` بدون تغییر سبز؛ `hooks.json` و `runHooks`/`hookRegistry` wrapper سازگار؛ suite سبز.
+- `agent/hooks/` شش ماژول خواسته‌شده را دارد و ترتیب before/after، `on_failure`، templateها، eventها، hook نامعتبر/غیرفعال و hook commit/agent دقیقاً حفظ شده‌اند.
+
+**وضعیت معیارها (2026-08-27):** بند اول: `test/hooks.test.js` بدون ویرایش ۵/۵ سبز؛ `agent/lib/hooks.js` به `module.exports = require("../hooks/HookRegistry")` تقلیل یافت و `agent.js` هنوز `hookRegistry` و `runHooks` را با همان نام export می‌کند (خط ۵۲۱۲ و AgentRun). `registry/hooks.json` و ساختار overlay دست‌نخورده‌اند (loader همان مسیر و همان schema را می‌خواند؛ تست overlay هم بدون تغییر سبز است). بند دوم: رفتار با مقایسۀ متن (بالا) و با ۱۵ تست جدید اثبات شد — از جمله skip توسط `when`، `on_failure: stop` که فاز را متوقف می‌کند بی‌آنکه hookهای بعدی اجرا نشوند، دو ردِ محافظت‌کنندۀ commit hook، ردِ agent hook بدون مدرک اجرایی، آزادشدن ددلاین/کنسل‌پذیری post-run، و اینکه `import agent/hooks` هرگز `agent/agent.js` را بار نمی‌کند (چرخه‌ای که پیش از این هر تستی از runner را به boot کردن runtime مجبور می‌کرد).
 
 ---
 
@@ -1013,6 +1034,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 39. **استخراج MCP فاز ۲۰ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `WEB_SERVER_MODE` فاز ۲۳). پیاده‌سازی واحد در `McpManager`/`McpConfigLoader`/`McpConfigValidator`/`McpConnection`/`McpCatalogue`/`McpTrustPolicy` و `protocol/` + `transports/*Transport.js` است؛ فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگارند تا فاز ۳۰.
 40. **استخراج policy فاز ۲۱ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۱ `*_MODE` جدیدی اعلان نمی‌کند. پیاده‌سازی واحد در `agent/policy/` است و `agent/lib/policy.js` با `module.exports = require("../policy")` wrapper سازگار می‌ماند تا فاز ۳۰ — یک export، پس یک نسخه از حالتِ متغیر (mode، handler تزریق‌شده، کش gateway) و نه دو نسخه که واگرا شوند. دو تغییر رفتاری که معیارها ایجاب کردند و در همین فاز ثبت‌اند: افزودن `agent/policy/` به قاعدۀ خودمحافظت `runtime_configuration` (بی‌آن، انتقال کد enforcement خودِ محافظت را بی‌اثر می‌کرد) و اعلان `policy:decision` برای escalationهای ردشده (شاخۀ rejected در `agent.js` هرگز اجرا نمی‌شد). `policy.json` از نظر معنایی برای مصرف‌کننده تغییر نکرده است: هیچ قاعدۀ موجود ویرایش نشد و فقط یک الگوی path افزوده شد.
 
+41. **استخراج hooks فاز ۲۲ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۲ `*_MODE` جدیدی اعلان نمی‌کند. پیاده‌سازی واحد در `agent/hooks/` است و `agent/lib/hooks.js` با بازتصدیر `HookRegistry` wrapper سازگار می‌ماند تا فاز ۳۰. `runHooks` از `agent.js` به `HookRunner` رفت و `agent.js` همان نام را import و export می‌کند؛ runtime زنده (executors، currentRun، cancelRun، TOOL_REGISTRY_OF، resolveDepthBudget) از `bind()` می‌آید — همان الگوی `engineContext` فاز ۱۶ — تا import کردن `agent/hooks` هیچ‌وقت `agent.js` را نکشد. تنها بازنویسی‌های مجاز متن: `X(` → `host().X(`، `hookRegistry.render(`/`evaluateWhen(`/`enabledHooks(` → فراخوان مستقیم، و سه بلوک تکراری `events.emit("hook:end", {…})` → `endEvent(record)`؛ برابری متن با `git show HEAD` سنجیده شد (۳۰ از ۳۰ اعلام lib/hooks عیناً، ۸ از ۸ تابع region agent.js عیناً یا با همین بازنویسی‌ها).
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. قالب ماژول فرانت‌اند → فاز ۲۴ گام ۱ (Assumption: ESM نیتیو بدون build step؛ در صورت اثبات محدودیت، bundler سبک).

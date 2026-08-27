@@ -66,6 +66,13 @@ structured-ai/
 │   │   ├── config.js            # خواندن .mcp.json و لایه‌های پیکربندی
 │   │   ├── semantic.js          # Semantic Engine به‌عنوان یک سرور MCP داخلی
 │   │   └── transports/          # stdio · http · sse · websocket
+│   ├── hooks/                   # hookهای اعلامی ران‌تایم: بارگذاری، شرط، قالب، اجرا
+│   │   ├── HookRegistry.js      # نمای خواندنی: enabledHooks و routine
+│   │   ├── HookLoader.js        # hooks.json + overlay، اعتبارسنجی و گراف وابستگی
+│   │   ├── HookCondition.js     # زبان شرطِ بسته (بدون eval)
+│   │   ├── HookRenderer.js      # قالب ${path.to.context}
+│   │   ├── HookRunner.js        # اجرای tool/agent/git_commit با ددلاین فاز
+│   │   └── HookResult.js        # خلاصه و payload رویداد hook:end
 │   ├── policy/                  # مرز امنیتی: قاعده‌ها، تأییدیه‌ها و audit
 │   │   ├── PolicyEngine.js      # تنها نقطۀ enforce برای هر فراخوانی ابزار
 │   │   ├── PolicyRegistry.js    # سند registry/policy.json و نگاشت ابزار←گروه
