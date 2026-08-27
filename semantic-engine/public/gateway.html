@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semantic Gateway</title>
+<link rel="stylesheet" href="/gateway.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <span class="dot" id="status-dot"></span>
+    <strong>Semantic Gateway</strong>
+    <span class="muted" id="status">connecting</span>
+  </div>
+  <div class="meta">
+    <button id="new-worker" class="primary">New worker</button>
+    <button id="refresh">Refresh</button>
+  </div>
+</header>
+
+<main>
+  <section id="cards" class="cards" aria-label="Totals"></section>
+
+  <section class="panel">
+    <h2>Workers</h2>
+    <table class="workers">
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Project id</th>
+          <th>Root path</th>
+          <th>PID</th>
+          <th>State</th>
+          <th>Index</th>
+          <th>Restarts</th>
+          <th>Degraded</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="worker-rows"></tbody>
+    </table>
+  </section>
+
+  <section class="panel" id="worker-form" hidden>
+    <h2 id="form-title">Worker</h2>
+    <div id="form-fields"></div>
+    <pre id="command-preview"></pre>
+    <p class="error" id="form-errors"></p>
+    <div class="form-actions">
+      <button id="save-start" class="primary">Save &amp; Start</button>
+      <button id="save-only">Save without starting</button>
+    </div>
+  </section>
+</main>
+
+<script src="/gateway.js"></script>
+</body>
+</html>

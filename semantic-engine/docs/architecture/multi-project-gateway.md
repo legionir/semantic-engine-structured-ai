@@ -605,7 +605,42 @@ Gateway's data root. The supervisor now sets `SEMANTIC_ENGINE_DATA_DIR` in the
 child environment, and a regression test asserts the index lands under
 `<dataRoot>/projects/<id>/`.
 
-## 13. Verified baseline (2026-08-26)
+## 13. The Gateway console (فاز ۱۲)
+
+```text
+/gateway            console page (public/gateway.html)
+/gateway.js|css     its logic and style
+/projects/:id       302 → /visualizer?project=:id   (deep link)
+/visualizer…        the existing project dashboard, unchanged
+```
+
+Assets are served without a token — the page contains no project data, and
+every value it renders comes from the token-protected `/api/v1/gateway/*`
+routes. Serving is alias-based (a fixed map of names to files under `public/`)
+plus a `realpath` prefix check, so no request can read outside the asset
+directory.
+
+The deep link is a redirect rather than a page of its own: the project stays in
+the URL, so a refresh keeps the same context and the existing visualizer (which
+already reads `?project=`) needs no change.
+
+**One rule shaped `gateway.js`:** the form is data, not scattered assignments.
+`WORKER_FORM_FIELDS` maps every field to exactly one dotted
+`ProjectWorkerConfig` key, and a test asserts both directions — no field maps
+to a key that is not in the schema, and no schema key is unreachable from the
+form. Validation in the browser mirrors `validateWorkerConfig`, so an operator
+sees the same errors before the Gateway does.
+
+The command preview is built from the same argv rules `workerArgv` uses and is
+display-only; it never contains a secret value, only the environment variable
+name. Live updates come from `GET /api/v1/gateway/events` (SSE) with a 30s poll
+as the fallback, so a busy Gateway is not re-read every few seconds.
+
+The pure half of `gateway.js` never touches the DOM at load time, which is what
+lets Node require it and test the mapping, validation, rendering and URL
+building directly.
+
+## 14. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

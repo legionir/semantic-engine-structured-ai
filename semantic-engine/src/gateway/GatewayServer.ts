@@ -19,6 +19,7 @@
  *     they are.
  */
 
+import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
 import * as path from 'path';
@@ -37,6 +38,8 @@ export const DEFAULT_GATEWAY_PORT = 4000;
 
 export interface GatewayServerOptions {
   readonly dataRoot: string;
+  /** پوشهٔ assetهای UI؛ پیش‌فرض `public/` کنار dist. */
+  readonly staticDir?: string;
   readonly port?: number;
   readonly host?: string;
   /** توکن bootstrap با دسترسی کامل؛ در نبودش ساخته می‌شود. */
@@ -200,6 +203,15 @@ export class GatewayServer {
       this.send(res, 200, this.metricsPayload());
       return;
     }
+
+    /*
+    | ── کنسول Gateway (فاز ۱۲) ───────────────────────────────────────────
+    |
+    | assetها و خودِ صفحه هیچ دادهٔ پروژه‌ای ندارند، پس بدون توکن سرو
+    | می‌شوند (دقیقاً مثل سرور پلتفرم)؛ همهٔ داده‌ها از همان APIهای
+    | توکن‌دار می‌آیند.
+    */
+    if (method === 'GET' && this.serveUi(pathname, res)) return;
 
     const auth = this.auth.verify(req, url.searchParams.get('token') ?? undefined);
     if (!auth.authenticated || !auth.record) {
@@ -366,6 +378,73 @@ export class GatewayServer {
     upstream.on('close', () => {
       if (!socket.destroyed) socket.destroy();
     });
+  }
+
+  private get uiDir(): string {
+    return this.options.staticDir ?? path.resolve(__dirname, '..', '..', 'public');
+  }
+
+  /**
+   * سرو کردن کنسول Gateway و deep link پروژه‌ها.
+   *
+   * `/projects/:id` یک redirect به `/visualizer?project=:id` است: context در
+   * خودِ URL می‌ماند، پس refresh هم همان پروژه را باز می‌کند.
+   */
+  private serveUi(pathname: string, res: http.ServerResponse): boolean {
+    const deepLink = /^\/projects\/([^/]+)$/.exec(pathname);
+    if (deepLink) {
+      res.writeHead(302, {
+        Location: `/visualizer?project=${encodeURIComponent(deepLink[1]!)}`,
+      });
+      res.end();
+      return true;
+    }
+
+    const aliases: Record<string, string> = {
+      '/': 'gateway.html',
+      '/gateway': 'gateway.html',
+      '/gateway.html': 'gateway.html',
+      '/gateway.js': 'gateway.js',
+      '/gateway.css': 'gateway.css',
+      '/visualizer': 'visualizer.html',
+      '/visualizer.html': 'visualizer.html',
+      '/visualizer.js': 'visualizer.js',
+      '/visualizer.css': 'visualizer.css',
+      '/app.css': 'app.css',
+    };
+
+    const asset = aliases[pathname];
+    if (!asset) return false;
+
+    const root = this.uiDir;
+    const target = path.resolve(root, asset);
+    /* هیچ مسیری بیرون از پوشهٔ assetها خوانده نمی‌شود. */
+    if (!target.startsWith(path.resolve(root) + path.sep)) {
+      this.send(res, 403, { error: 'forbidden' });
+      return true;
+    }
+
+    let body: Buffer;
+    try {
+      body = fs.readFileSync(target);
+    } catch {
+      this.send(res, 404, { error: `asset not found: ${asset}` });
+      return true;
+    }
+
+    const type = asset.endsWith('.html')
+      ? 'text/html; charset=utf-8'
+      : asset.endsWith('.js')
+        ? 'application/javascript; charset=utf-8'
+        : 'text/css; charset=utf-8';
+
+    res.writeHead(200, {
+      'Content-Type': type,
+      'Content-Length': body.length,
+      'Cache-Control': 'no-cache',
+    });
+    res.end(body);
+    return true;
   }
 
   private openSse(req: http.IncomingMessage, res: http.ServerResponse): void {

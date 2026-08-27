@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۱ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۲ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۲ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۳ و ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -702,31 +702,31 @@ resolve کردن `projectId` **پیش از** upgrade، ثابت ماندن conte
 
 ---
 
-## [🔴] فاز ۱۲: Gateway UI — داشبورد Workerها، فرم پیکربندی و deep link پروژه
+## [🟢] فاز ۱۲: Gateway UI — داشبورد Workerها، فرم پیکربندی و deep link پروژه
 
 **هدف:** UI کامل مدیریت چندپروژه‌ای — **دامنهٔ تأییدشدهٔ کارفرما (۲۰۲۶-۰۸-۲۶): داشبورد + فرم پیکربندی Worker + deep link پروژه، هر سه در همین فاز.** معادل گام ۱۱، ۱۲ و ۱۳ پلن مرجع. توجه: صفحهٔ ورود فعلی `/open.html` است (Baseline #14) و `public/index.html` صفحهٔ کنسول structured-ai است؛ پس shell جدید باید صریح اضافه شود، نه با جایگزینی فرضی `index.html`.
 
-### [🔴] گام ۱: shell و routing
+### [🟢] گام ۱: shell و routing
 
 `semantic-engine/public/gateway.html`, `gateway.js`, `gateway.css` + روت `/gateway` در `serveStatic` (`src/server/HttpServer.ts:478-490`) بدون شکستن نگاشت فعلی `/ → /open.html`.
 
-### [🔴] گام ۲: داشبورد
+### [🟢] گام ۲: داشبورد
 
 کارت‌های تجمیعی (پروژه‌ها، ready/indexing/degraded/crashed، files/symbols/dependencies/vector chunks، RAM/CPU، job فعال، queue) + جدول workerها با ستون‌های §گام ۱۱ پلن مرجع + عملیات (Open dashboard، Start، Stop، Restart، Reindex، Edit configuration، View logs، View events، Open MCP endpoint، Remove project).
 
-### [🔴] گام ۳: live update
+### [🟢] گام ۳: live update
 
 اتصال به `GET /api/v1/gateway/events` (SSE) و polling فقط به‌عنوان fallback؛ به‌روزرسانی بدون refresh کامل صفحه.
 
-### [🔴] گام ۴: فرم پیکربندی Worker
+### [🟢] گام ۴: فرم پیکربندی Worker
 
 بخش‌های Project / Indexing / Watch / Embedding / Worker service / Security / Advanced؛ هر فیلد **مستقیماً** به یک کلید از `WorkerConfigSchema` (فاز ۵) نگاشت شود؛ command preview از `workerArgv`؛ validation inline؛ `Save & Start`، `Save without starting`، `Reindex now`؛ API key فقط secret/env reference.
 
-### [🔴] گام ۵: deep link پروژه
+### [🟢] گام ۵: deep link پروژه
 
 `/projects/:projectId` و سازگاری با `/visualizer?project=:projectId` (مطابق `public/visualizer.js:25`)؛ context پس از refresh حفظ شود؛ همهٔ درخواست‌ها project-scoped باشند.
 
-### [🔴] گام ۶: تست UI
+### [🟢] گام ۶: تست UI
 
 تست ماژولار توابع `gateway.js` (render، نگاشت فرم→config) + یک تست e2e که با fetch واقعی پروژه بسازد، start کند و health بگیرد.
 
@@ -736,6 +736,23 @@ resolve کردن `projectId` **پیش از** upgrade، ثابت ماندن conte
 - تنظیمات پس از restart Gateway حفظ شوند؛ edit config فقط worker همان پروژه را restart کند.
 - کلیک روی worker، dashboard همان پروژه را باز کند و refresh context را نگه دارد.
 - `npm run build && npm test` سبز.
+
+### وضعیت اجرای فاز ۱۲ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `public/gateway.html`، `public/gateway.js`، `public/gateway.css` + تست‌های `gateway/gatewayUi.test.ts` (۲۴) و `gateway/gatewayConsole.test.ts` (۵، روی Gateway واقعی).
+**فایل‌های تغییرکرده:** `gateway/GatewayServer.ts` (+`staticDir`، سرو کردن alias-based کنسول و assetها، redirect برای `/projects/:id`).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 198 passed / 198 total`، `Tests: 2710 passed / 2710 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۱۲: ۱۹۶ suite و ۲۶۸۱ تست → +۲ suite و +۲۹ تست). پس از suite هیچ worker زنده نماند و چیزی در data root واقعی نوشته نشد.
+- **نگاشت دوطرفهٔ فرم ↔ schema سبز:** هر فیلد فرم به یک کلید واقعی از `WORKER_CONFIG_JSON_SCHEMA` نگاشت شد **و** هیچ کلید schema بدون فیلد فرم نماند (۳۵ فیلد در ۷ بخش: project ۵، watch ۴، indexing ۶، service ۹، security ۳، embedding ۷، advanced ۱).
+- **validation آینهٔ سرور:** projectId نامعتبر، name خالی، rootPath خالی، debounce خارج از `[25, 60000]`، port خارج از `[0, 65535]`، transport=socket بدون socketPath، managed+allowRemote، managed بدون tokenEnvVar، embedding بدون baseUrl/model، و secret در مقادیر فرم → همه با پیام مشخص رد شدند.
+- **command preview:** همان پرچم‌های `workerArgv` (`--project-id`، `--root`، `--data-dir`، `--vectors`/`--no-sqlite`، `--debounce`، `--blueprint-mode`، `--gateway-managed`، `--embedding-provider`، `--embedding-normalize`)، بدون shell metachar در پرچم‌ها، و **بدون مقدار secret** (فقط نام متغیر محیطی).
+- **رندر ۱۰ worker بدون تداخل:** هر ۱۰ projectId در خروجی حاضرند، کلاس‌های `state-ready`/`state-indexing`/`state-degraded` درست نشستند، و هر ۱۰ عملیات (`data-action=…`) برای هر ردیف رندر شد؛ ورودی مخرب escape شد (`<script>` → `&lt;script&gt;`).
+- **serving واقعی:** `GET /gateway` → ۲۰۰ `text/html` با «Semantic Gateway» · `/gateway.js` → ۲۰۰ `application/javascript` · `/gateway.css` → ۲۰۰ `text/css` · `/visualizer` و `/visualizer.js` → ۲۰۰ · `GET /projects/prj-app-12345678` → **۳۰۲** به `/visualizer?project=prj-app-12345678` (پس refresh همان context را نگه می‌دارد).
+- **خارج از assetها سرو نمی‌شود:** `/package.json`، `/../package.json`، `/..%2fpackage.json` و `/gateway.js/../../package.json` هیچ‌کدام ۲۰۰ نشدند؛ و endpointهای داده بدون توکن ۴۰۱ و با توکن ۲۰۰ ماندند.
+
+**یک تصمیم اجرایی (ثبت‌شده در ADR بخش ۱۳):** deep link پروژه به‌جای صفحهٔ مستقل، redirect به `/visualizer?project=:id` است — چون visualizer فعلی همین پارامتر را می‌خواند و context در خود URL می‌ماند؛ و assetها بدون توکن سرو می‌شوند چون هیچ دادهٔ پروژه‌ای ندارند (داده از همان APIهای توکن‌دار می‌آید).
 
 ---
 
