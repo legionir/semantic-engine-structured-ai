@@ -1,5 +1,5 @@
 {
-  "description": "Web Console API path literals extracted from web/server.js (EXECUTION_PLAN, Phase 1). Method-level detail is documented in CONTRACTS.md only where evidenced by tests; full route inventory with methods is Phase 23 scope.",
+  "description": "Web Console API path literals extracted from web/server.js (EXECUTION_PLAN, Phase 1). Since Phase 23 the routes live in web/server/ (Router.js plus controllers/); this file stays the baseline statement of what the console answers and test/web/layer.test.js asserts every literal below is still mentioned by the layer. The full method-level inventory is test/web/routes.js (77 probes) with its recorded contract in test/web/routes.snapshot.json.",
   "paths": [
     "/api/",
     "/api/approval-mode",

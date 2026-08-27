@@ -52,9 +52,22 @@ const PROBE_ORDER = [
     /* -------------------------------------------------------- sessions */
 
     { name: "sessions list", method: "GET", path: "/api/sessions" },
-    { name: "new session", method: "POST", path: "/api/sessions", body: {} },
+    {
+        name: "new session",
+        method: "POST",
+        path: "/api/sessions",
+        body: {},
+        /* the id is saved so the four single-session routes are probed on a
+           conversation that actually exists — a 404 proves nothing about a
+           handler's body */
+        save: "created",
+        savePath: "session.id"
+    },
     { name: "unknown session", method: "GET", path: "/api/sessions/does-not-exist" },
     { name: "delete unknown session", method: "DELETE", path: "/api/sessions/does-not-exist" },
+    { name: "read the open conversation", method: "GET", path: "/api/sessions/${created}" },
+    { name: "reopen a stored conversation", method: "POST", path: "/api/sessions/${created}", body: {} },
+    { name: "delete the open conversation", method: "DELETE", path: "/api/sessions/${created}" },
 
     /* ----------------------------------------------------------- calls */
 
@@ -64,6 +77,10 @@ const PROBE_ORDER = [
     /* ----------------------------------------------------------- graph */
 
     { name: "graph view without the engine", method: "GET", path: "/api/graph/lod" },
+    { name: "architecture view", method: "GET", path: "/api/graph/architecture" },
+    { name: "module view", method: "GET", path: "/api/graph/module" },
+    { name: "graph for the current project", method: "GET", path: "/api/graph/lod?projectId=current" },
+    { name: "graph for an unregistered project", method: "GET", path: "/api/graph/lod?projectId=prj-nope" },
 
     /* ------------------------------------------------------- approvals */
 
@@ -119,11 +136,35 @@ const PROBE_ORDER = [
     */
     { name: "mcp remove unknown", method: "DELETE", path: "/api/mcp/no-such-server", approval: "deny", timeoutMs: 12000 },
     { name: "mcp toggle unknown", method: "POST", path: "/api/mcp/no-such-server/enabled", body: { enabled: false }, approval: "deny", timeoutMs: 12000 },
+    /*
+    | The management switch is the one setting three routes consult *before*
+    | they look at a payload, so it gets probed on all three. It comes after the
+    | prompts above on purpose: with the switch off no approval is raised, and a
+    | probe waiting for one that never arrives hangs the suite.
+    */
+
+    {
+        name: "settings write a real key",
+        method: "POST",
+        path: "/api/settings",
+        body: { key: "MCP_ALLOW_RUNTIME_ADD", value: false }
+    },
+    { name: "mcp add while management is off", method: "POST", path: "/api/mcp", body: { name: "blocked", command: "true" } },
+    { name: "mcp remove while management is off", method: "DELETE", path: "/api/mcp/blocked" },
+    { name: "mcp toggle while management is off", method: "POST", path: "/api/mcp/blocked/enabled", body: { enabled: true } },
+    {
+        name: "settings reset restores the default",
+        method: "POST",
+        path: "/api/settings",
+        body: { key: "MCP_ALLOW_RUNTIME_ADD", reset: true }
+    },
 
     /* ------------------------------------------------------ discussion */
 
     { name: "discussion personas", method: "GET", path: "/api/discussion/personas" },
     { name: "discussion without personas", method: "POST", path: "/api/discussion", body: { task: "x" } },
+    { name: "discussion with an unknown persona", method: "POST", path: "/api/discussion", body: { task: "x", personas: ["nope"] } },
+    { name: "discussion with too many rounds", method: "POST", path: "/api/discussion", body: { task: "x", personas: ["advocate"], max_rounds: 99 } },
 
     /* -------------------------------------------------------- projects */
 
@@ -147,11 +188,25 @@ const PROBE_ORDER = [
     { name: "project cancel when idle", method: "POST", path: "/api/projects/${project}/cancel", body: {} },
     { name: "project task without a prompt", method: "POST", path: "/api/projects/${project}/tasks", body: {} },
     { name: "project chat without a prompt", method: "POST", path: "/api/projects/${project}/chat", body: {} },
+    /*
+    | A prompt *with* a body reaches the mode gate, which is the branch a
+    | 400-for-empty-task probe never enters. The harness does not set the
+    | context modes, so this answers 409/PROJECT_MODE_REQUIRED and starts no run.
+    */
+
+    { name: "project task while modes are legacy", method: "POST", path: "/api/projects/${project}/tasks", body: { task: "ping" } },
+    { name: "project chat while modes are legacy", method: "POST", path: "/api/projects/${project}/chat", body: { message: "ping" } },
+    { name: "unknown project sub-route", method: "GET", path: "/api/projects/${project}/nope" },
+    { name: "project route with an empty id", method: "GET", path: "/api/projects/" },
+    { name: "state of an unregistered project", method: "GET", path: "/api/projects/prj-nope/state" },
+    { name: "patch an unregistered project", method: "PATCH", path: "/api/projects/prj-nope", body: { name: "x" } },
+    { name: "delete an unregistered project", method: "DELETE", path: "/api/projects/prj-nope" },
     { name: "unknown project", method: "GET", path: "/api/projects/prj-not-registered" },
     { name: "project unregister", method: "DELETE", path: "/api/projects/${project}" },
 
     /* --------------------------------------------------------- 404 API */
 
+    { name: "method not allowed on an api route", method: "PUT", path: "/api/state", body: {} },
     { name: "unknown api route", method: "GET", path: "/api/no-such-endpoint" }
 ];
 

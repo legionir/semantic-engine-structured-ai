@@ -84,7 +84,22 @@ structured-ai/
 │   ├── schema/                  # اسکیمای سخت‌گیرانه (Strict JSON Schema) اکشن مدل
 │   └── tools/                   # پیاده‌سازی ابزارهای سیستمی و هوش کد
 ├── web/
-│   ├── server.js                # وب‌سرور کنسول و مدیریت نشست‌ها
+│   ├── server.js                # پوستهٔ سازگاری؛ به web/server/ می‌رسد
+│   ├── server/                  # لایهٔ کنسول وب (فاز ۲۳)
+│   │   ├── WebServer.js         # state، سیم‌کشی نگرانی‌ها، سوکت و lifecycle
+│   │   ├── Router.js            # هر URL به کدام handler — به همان ترتیب قبلی
+│   │   ├── Middleware.js        # توکن، rate limit، گیت Origin و تعویض کوکی
+│   │   ├── SseHub.js            # چه کسی گوش می‌دهد و هرکس چه می‌بیند
+│   │   ├── RequestBody.js       # خواندن body و سقف ۱MB
+│   │   ├── Response.js          # JSON و fallback استاتیک
+│   │   ├── ServerMode.js        # خوانندهٔ تک WEB_SERVER_MODE
+│   │   ├── controllers/         # یک فایل برای هر گروه مسیر (Task، Session، State،
+│   │   │                        #   Settings، Approval، Mcp، Discussion، Graph،
+│   │   │                        #   EventStream، Project)
+│   │   ├── services/            # Task، Session، Settings، EventStream،
+│   │   │                        #   Approval، GitReport، Discussion
+│   │   └── serializers/         # State (snapshot)، Session (سطرهای pending/call)،
+│   │                            #   Error (خطا←status)
 │   └── public/                  # دارایی‌های فرانت‌اند کنسول و Visualizer
 ├── test/                        # سوئیت کامل آزمون‌های یکپارچگی و ران‌تایم
 └── semantic-engine/             # موتور مستقل تحلیل کد و گراف معنایی
@@ -217,6 +232,14 @@ node bin/agent.js -w /path/to/project --discussion --personas security,frontend 
 ## ۶. مستندات کامل اندپوینت‌های سرور وب کنسول (Web Server & REST / SSE API)
 
 هنگامی که کنسول وب با `--serve <port>` اجرا می‌شود، اندپوینت‌های زیر در دسترس کلاینت‌ها قرار دارند:
+
+> **ساختار سرور (فاز ۲۳):** `web/server.js` فقط پوستهٔ سازگاری است؛ مسیرها در
+> `web/server/Router.js` به `controllers/` می‌رسند و منطق نشست/تسک/استریم در
+> `services/` است. قرارداد پاسخ هر مسیر (status، content-type و شکل JSON) در
+> `test/web/routes.snapshot.json` ضبط شده و با `npm run test:web:routes` سنجیده
+> می‌شود؛ `test/web/layer.test.js` مرزهای خود لایه را می‌سنجد. فلگ
+> `WEB_SERVER_MODE=legacy|modular` (پیش‌فرض `legacy`) فقط یک خواننده دارد و هر دو
+> مقدارش همان ماژول‌ها را می‌سازند — در فاز ۳۰ حذف می‌شود.
 
 ---
 
@@ -496,7 +519,10 @@ npm run test:tools        # آزمون کلیه ابزارهای سیستمی
 npm run test:runtime      # آزمون موتور پالیسی، ران‌تایم و کانتکست
 npm run test:semantic     # آزمون موتور معنایی و ابزارهای code_*
 npm run test:mcp          # آزمون چهار ترنسپورت، کاتالوگ و پالیسی MCP
-npm run test:web          # آزمون سرور وب کنسول و روت‌های API
+npm run test:web:all      # سرور وب: رفتار، قرارداد ۷۷ مسیر، و مرزهای لایه
+npm run test:web:routes   # فقط قرارداد مسیرها (record: npm run test:web:routes:record)
+npm run test:web:layer    # فقط ساختار/سیم‌کشی web/server/ (بدون سوکت، تقریباً)
+npm run test:web          # آزمون رفتار سرور وب کنسول از راه HTTP
 npm run test:cli          # آزمون‌های خط فرمان و پارامترها
 ```
 

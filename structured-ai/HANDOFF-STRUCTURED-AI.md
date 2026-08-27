@@ -55,7 +55,8 @@ Semantic Engine یک package مستقل TypeScript برای indexing کد، symb
 | `agent/mcp/manager.js` | MCP registry، discovery و namespaced tools |
 | `agent/mcp/transports/` | stdio، HTTP، SSE و WebSocket transportها |
 | `agent/tools/index.js` | mapping نام tool به implementation |
-| `web/server.js` | web console، REST control API و SSE |
+| `web/server.js` | پوستهٔ سازگاری کنسول؛ به `web/server/` می‌رسد (فاز ۲۳) |
+| `web/server/` | router، middleware، SSE hub، controllerها، serviceها و serializerهای کنسول وب |
 | `web/public/` | frontend console و visualizer |
 
 **اجرای CLI:**
@@ -172,7 +173,7 @@ export PROCESS_SANDBOX_MODE=bwrap
 
 ### Web console
 
-`web/server.js`:
+`web/server/` (فاز ۲۳؛ `web/server.js` پوستهٔ سازگاری است):
 
 - API و SSE را token-protected می‌کند.
 - token را با مقایسه‌ی timing-safe بررسی می‌کند.
@@ -181,6 +182,10 @@ export PROCESS_SANDBOX_MODE=bwrap
 - API rate limit دارد.
 - body size را محدود و stream بزرگ را destroy می‌کند.
 - افزودن/حذف/فعال‌سازی MCP را از policy عبور می‌دهد.
+
+هر ۷۷ مسیر کنسول یک قرارداد ضبط‌شده دارد (`test/web/routes.snapshot.json`) و
+ساختار لایه در `test/web/layer.test.js` سنجیده می‌شود. `WEB_SERVER_MODE` هر دو
+مقدارش را به یک پیاده‌سازی می‌رساند (تصمیم ۴۲) — این یک move بود، نه fork.
 
 ### Workspace و network
 
@@ -454,7 +459,7 @@ Dependency graph را بررسی کنید و تا remediation، feature native/o
 3. `PRODUCTION-READINESS-FINDINGS-PRIORITIZED-2026-08.md`
 4. `agent/agent.js`
 5. `agent/lib/policy.js` و `agent/lib/workspace.js`
-6. `web/server.js`
+6. `web/server/Router.js` و `web/server/WebServer.js`
 7. `semantic-engine/src/server/HttpServer.ts`
 8. `semantic-engine/src/server/SecurityPipeline.ts`
 9. `semantic-engine/src/server/routes/jobRoutes.ts`

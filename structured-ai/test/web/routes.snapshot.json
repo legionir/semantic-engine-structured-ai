@@ -1,6 +1,6 @@
 {
-  "recordedAt": "2026-08-27T20:57:01.400Z",
-  "count": 55,
+  "recordedAt": "2026-08-27T21:55:47.925Z",
+  "count": 77,
   "routes": [
     {
       "name": "console page",
@@ -935,6 +935,87 @@
       }
     },
     {
+      "name": "read the open conversation",
+      "method": "GET",
+      "path": "/api/sessions/${created}",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "current": "string",
+          "session": {
+            "object": {
+              "calls": {
+                "array": "empty"
+              },
+              "created_at": "string",
+              "events": {
+                "array": "empty"
+              },
+              "id": "string",
+              "messages": {
+                "array": "empty"
+              },
+              "status": "string",
+              "title": "null",
+              "turns": "number",
+              "updated_at": "string",
+              "version": "string",
+              "workspace": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "reopen a stored conversation",
+      "method": "POST",
+      "path": "/api/sessions/${created}",
+      "request": {},
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "session": {
+            "object": {
+              "calls": {
+                "array": "empty"
+              },
+              "created_at": "string",
+              "events": {
+                "array": "empty"
+              },
+              "history": {
+                "array": "empty"
+              },
+              "id": "string",
+              "messages": {
+                "array": "empty"
+              },
+              "status": "string",
+              "title": "string",
+              "turns": "number",
+              "updated_at": "string",
+              "version": "string",
+              "workspace": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "delete the open conversation",
+      "method": "DELETE",
+      "path": "/api/sessions/${created}",
+      "status": 409,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
       "name": "calls list",
       "method": "GET",
       "path": "/api/calls",
@@ -976,6 +1057,75 @@
           },
           "projectName": "string",
           "view": "string"
+        }
+      }
+    },
+    {
+      "name": "architecture view",
+      "method": "GET",
+      "path": "/api/graph/architecture",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "edges": {
+            "array": "empty"
+          },
+          "nodes": {
+            "array": "empty"
+          },
+          "projectName": "string",
+          "view": "string"
+        }
+      }
+    },
+    {
+      "name": "module view",
+      "method": "GET",
+      "path": "/api/graph/module",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "edges": {
+            "array": "empty"
+          },
+          "nodes": {
+            "array": "empty"
+          },
+          "projectName": "string",
+          "view": "string"
+        }
+      }
+    },
+    {
+      "name": "graph for the current project",
+      "method": "GET",
+      "path": "/api/graph/lod?projectId=current",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "edges": {
+            "array": "empty"
+          },
+          "nodes": {
+            "array": "empty"
+          },
+          "projectName": "string",
+          "view": "string"
+        }
+      }
+    },
+    {
+      "name": "graph for an unregistered project",
+      "method": "GET",
+      "path": "/api/graph/lod?projectId=prj-nope",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
         }
       }
     },
@@ -1042,11 +1192,11 @@
       "method": "POST",
       "path": "/api/cancel",
       "request": {},
-      "status": 500,
+      "status": 200,
       "contentType": "application/json",
       "body": {
         "object": {
-          "error": "string"
+          "cancelled": "boolean"
         }
       }
     },
@@ -1230,6 +1380,107 @@
       }
     },
     {
+      "name": "settings write a real key",
+      "method": "POST",
+      "path": "/api/settings",
+      "request": {
+        "key": "MCP_ALLOW_RUNTIME_ADD",
+        "value": false
+      },
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "applied_to_running_agent": "boolean",
+          "setting": {
+            "object": {
+              "default": "boolean",
+              "description": "string",
+              "fixed": "boolean",
+              "group": "string",
+              "key": "string",
+              "secret": "boolean",
+              "source": "string",
+              "type": "string",
+              "value": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "mcp add while management is off",
+      "method": "POST",
+      "path": "/api/mcp",
+      "request": {
+        "name": "blocked",
+        "command": "true"
+      },
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp remove while management is off",
+      "method": "DELETE",
+      "path": "/api/mcp/blocked",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp toggle while management is off",
+      "method": "POST",
+      "path": "/api/mcp/blocked/enabled",
+      "request": {
+        "enabled": true
+      },
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "settings reset restores the default",
+      "method": "POST",
+      "path": "/api/settings",
+      "request": {
+        "key": "MCP_ALLOW_RUNTIME_ADD",
+        "reset": true
+      },
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "applied_to_running_agent": "boolean",
+          "setting": {
+            "object": {
+              "default": "boolean",
+              "description": "string",
+              "fixed": "boolean",
+              "group": "string",
+              "key": "string",
+              "secret": "boolean",
+              "source": "string",
+              "type": "string",
+              "value": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "discussion personas",
       "method": "GET",
       "path": "/api/discussion/personas",
@@ -1256,6 +1507,43 @@
       "path": "/api/discussion",
       "request": {
         "task": "x"
+      },
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "discussion with an unknown persona",
+      "method": "POST",
+      "path": "/api/discussion",
+      "request": {
+        "task": "x",
+        "personas": [
+          "nope"
+        ]
+      },
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "discussion with too many rounds",
+      "method": "POST",
+      "path": "/api/discussion",
+      "request": {
+        "task": "x",
+        "personas": [
+          "advocate"
+        ],
+        "max_rounds": 99
       },
       "status": 400,
       "contentType": "application/json",
@@ -1297,7 +1585,7 @@
       "method": "POST",
       "path": "/api/projects",
       "request": {
-        "rootPath": "/tmp/agent-routes-fr5u9o"
+        "rootPath": "/tmp/agent-routes-ITLuZS"
       },
       "status": 201,
       "contentType": "application/json",
@@ -1602,6 +1890,103 @@
       }
     },
     {
+      "name": "project task while modes are legacy",
+      "method": "POST",
+      "path": "/api/projects/${project}/tasks",
+      "request": {
+        "task": "ping"
+      },
+      "status": 409,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "code": "string",
+          "error": "string",
+          "project_id": "string"
+        }
+      }
+    },
+    {
+      "name": "project chat while modes are legacy",
+      "method": "POST",
+      "path": "/api/projects/${project}/chat",
+      "request": {
+        "message": "ping"
+      },
+      "status": 409,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "code": "string",
+          "error": "string",
+          "project_id": "string"
+        }
+      }
+    },
+    {
+      "name": "unknown project sub-route",
+      "method": "GET",
+      "path": "/api/projects/${project}/nope",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "project route with an empty id",
+      "method": "GET",
+      "path": "/api/projects/",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "state of an unregistered project",
+      "method": "GET",
+      "path": "/api/projects/prj-nope/state",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "patch an unregistered project",
+      "method": "PATCH",
+      "path": "/api/projects/prj-nope",
+      "request": {
+        "name": "x"
+      },
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "delete an unregistered project",
+      "method": "DELETE",
+      "path": "/api/projects/prj-nope",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
       "name": "unknown project",
       "method": "GET",
       "path": "/api/projects/prj-not-registered",
@@ -1622,6 +2007,19 @@
       "body": {
         "object": {
           "deleted": "string"
+        }
+      }
+    },
+    {
+      "name": "method not allowed on an api route",
+      "method": "PUT",
+      "path": "/api/state",
+      "request": {},
+      "status": 405,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
         }
       }
     },

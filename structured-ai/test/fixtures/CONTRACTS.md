@@ -99,7 +99,9 @@ envelope پاسخ مدل (کلیدهای سطح-یک): `version`(`"1.0"`), `tool
 
 ## ۵. قرارداد API وب
 
-مسیرهای فعلی (literal) در `api-surface.json` ثبت‌اند؛ تست قرارداد، وجود همهٔ آن‌ها و عدم ظهور مسیر مستندنشدهٔ جدید را در `web/server.js` اعمال می‌کند. رفتار اثبات‌شده توسط تست‌های موجود: `POST /api/tasks`, `GET /api/events` (SSE), `GET /api/discussion/personas`, `POST /api/discussion`. ماتریس کامل method × route در فاز ۲۳ (Web Backend refactor) مستند می‌شود؛ در این فاز تغییر پاسخ/کد وضعیت endpointها ممنوع است.
+مسیرهای فعلی (literal) در `api-surface.json` ثبت‌اند؛ وجود همهٔ آن‌ها در لایهٔ وب الزامی است و `test/web/layer.test.js` همان را می‌سنجد (از فاز ۲۳ فایل `web/server.js` پوستهٔ سازگاری است و literalها در `web/server/Router.js` و `controllers/` زندگی می‌کنند). رفتار اثبات‌شده توسط تست‌های موجود: `POST /api/tasks`, `GET /api/events` (SSE), `GET /api/discussion/personas`, `POST /api/discussion`.
+
+**ماتریس کامل method × route — ثبت‌شده در فاز ۲۳:** inventory در `test/web/routes.js` (۷۷ probe، همهٔ مسیرهای مستندنشده هم در آن‌اند) و قرارداد ضبط‌شدهٔ status + content-type + شکل JSON (و فریم اول SSE) در `test/web/routes.snapshot.json`، با `npm run test:web:routes`. تغییر پاسخ/کد وضعیت هر endpoint ممنوع است؛ اگر تغییری عمدی بود، باید با دلیل در `EXECUTION_PLAN.md` ثبت و snapshot بازضبط شود (یک بار این کار انجام شد: رفع باگ `/api/cancel` در فاز ۲۳ گام ۲ — 500 → 200).
 
 ---
 
@@ -122,7 +124,7 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - `PROMPT_BUILDER_MODE` (پیش‌فرض `legacy`) — از فاز ۵.
 - `SEMANTIC_POOL_MODE` (پیش‌فرض `legacy`) — از فاز ۶.
 - `RUNTIME_ENGINE_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۱۶؛ هر دو مقدار همان engine استخراج‌شده را اجرا می‌کنند (تصمیم ۳۵). مقدار غلط رفتار legacy دارد.
-- `WEB_SERVER_MODE` هنگام ورود به فاز ۲۳ اعلان می‌شود.
+- `WEB_SERVER_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — اعلان‌شده در فاز ۲۳ گام ۲ با یک خواننده (`web/server/ServerMode.js`)؛ هر دو مقدار همان ماژول‌های `web/server/` را می‌سازند (تصمیم ۴۲، مثل تصمیم ۳۵). مقدار غلط رفتار legacy دارد. حذف فلگ: فاز ۳۰.
 
 ## ۸. تغییرات additive فاز ۳ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
 
@@ -158,8 +160,8 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 ## ۱۲. تغییرات additive فاز ۷ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
 
 - **CLI:** فلگ `--project <id>` به `bin/agent.js` افزوده شد (نه delete/rename؛ گزینه‌های فعلی دست‌نخورده). رفتار اجرایی: root از registry خوانده می‌شود (با `-w` ناسازگار → usage error با پیام «does not match ... registry»؛ بدون `-w` → root ثبت‌شده = WORKSPACE_ROOT)؛ id ناشناخته → `Unknown project: <id>`؛ بدون فلگ هیچ تغییری در env/رفتار نیست. `--project` فلگهای `PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE` را modular می‌کند (بقیهٔ فلگها — از جمله `SEMANTIC_POOL_MODE` — دست‌نخورده).
-- **Web API:** مسیر `POST /api/projects/:projectId/tasks` به `web/server.js` اضافه شد: 202 `{accepted:true, project_id}` (فیلد جدید فقط در همین مسیر)؛ 404 `Unknown project`؛ 409 `PROJECT_MODE_REQUIRED` هنگام نبود فلگهای modular؛ 400/409-running عین مسیر قدیمی. قرارداد `POST /api/tasks` بدون هیچ تغییری (202 `{accepted:true}` دقیقاً همان بدنه است — تست deep-equal).
-- **امضای داخلی:** `startTask(task, runOptions)` در web/server.js پارامتر اختیاری دوم گرفت (پیش‌فرض `{}`؛ رفتار legacy یکسان)؛ runAgent همان گزینهٔ `{projectId}` فاز ۲ را می‌گیرد.
+- **Web API:** مسیر `POST /api/projects/:projectId/tasks` به کنسول وب اضافه شد (فاز ۲۳: `web/server/controllers/ProjectController.js`): 202 `{accepted:true, project_id}` (فیلد جدید فقط در همین مسیر)؛ 404 `Unknown project`؛ 409 `PROJECT_MODE_REQUIRED` هنگام نبود فلگهای modular؛ 400/409-running عین مسیر قدیمی. قرارداد `POST /api/tasks` بدون هیچ تغییری (202 `{accepted:true}` دقیقاً همان بدنه است — تست deep-equal).
+- **امضای داخلی:** `startTask(task, runOptions)` (فاز ۲۳: در `web/server/services/TaskService.js`) پارامتر اختیاری دوم گرفت (پیش‌فرض `{}`؛ رفتار legacy یکسان)؛ runAgent همان گزینهٔ `{projectId}` فاز ۲ را می‌گیرد.
 - **رویدادها:** در اجرای scoped (modular) رویدادهای run فیلدهای envelope موجود `run_id` + `project_id` (additive فاز ۲/۳) را دارند و در `/api/state` (فیلد `events`) بدون تغییر قرارداد دیده می‌شوند.
 
 ## ۱۳. تغییرات additive فاز ۸ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)

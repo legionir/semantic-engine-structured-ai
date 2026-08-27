@@ -1419,6 +1419,13 @@ const DEFINITIONS = [
         type: STRING,
         default: "legacy",
         description: "Runtime loop mode: 'legacy' and 'modular' both run the extracted agent/runtime engine (Phase 16). The flag is declared so Phase 30 can drop it after equality is proven; a misspelled value behaves as legacy."
+    },
+    {
+        key: "WEB_SERVER_MODE",
+        group: "runtime",
+        type: STRING,
+        default: "legacy",
+        description: "Web console mode: 'legacy' and 'modular' both compose the extracted web/server modules (Phase 23). The flag is declared so Phase 30 can drop it after equality is proven; a misspelled value behaves as legacy."
     }
 ];
 

@@ -638,6 +638,34 @@ async function main() {
 
     /* ------------------------------------------------------- enforcement */
 
+    /*
+    | Phase 23 split web/server.js into web/server/*. The claims below are about
+    | the console layer, not about one file, so the layer is read as one text.
+    | Narrowing the scan back to a single file would let a moved handler drop its
+    | enforcement without this test noticing — which is the opposite of what it
+    | is for.
+    */
+
+    const consoleSource = () => {
+
+        const files = [path.join(REPO, "web", "server.js")];
+
+        const walk = directory => {
+
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+
+                const full = path.join(directory, entry.name);
+
+                if (entry.isDirectory()) walk(full);
+                else if (entry.name.endsWith(".js")) files.push(full);
+            }
+        };
+
+        walk(path.join(REPO, "web", "server"));
+
+        return files.map(file => fs.readFileSync(file, "utf8")).join("\n");
+    };
+
     await test("the tool graph enforces policy at one point, and the console reuses it", async () => {
 
         const executor =
@@ -665,7 +693,7 @@ async function main() {
             "only one execution point may exist in the tool graph"
         );
 
-        const server = fs.readFileSync(path.join(REPO, "web", "server.js"), "utf8");
+        const server = consoleSource();
 
         /* Every MCP mutation the console can trigger goes through the same
            engine rather than a console-specific shortcut. */
@@ -681,7 +709,7 @@ async function main() {
 
     await test("the console renders pending approvals from the engine's own store", async () => {
 
-        const server = fs.readFileSync(path.join(REPO, "web", "server.js"), "utf8");
+        const server = consoleSource();
 
         assert.match(server, /approvals:\s*runtime\.policyStore/);
         assert.match(server, /state\.approvals\.begin\(/);
