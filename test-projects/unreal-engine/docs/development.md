@@ -181,6 +181,14 @@ PORT=3000 npm run dev -w @webengine/server   # terminal 1
 npm run dev:web                              # terminal 2
 ```
 
+Reaching that dev server from another device — a tunnel, a LAN address, which is
+how a WebGL canvas usually gets looked at — needs the host to be allowed, since
+Vite rejects `Host` headers it does not know:
+
+```bash
+WEB_ENGINE_ALLOWED_HOSTS=.example.test npm run dev:web
+```
+
 Without a server the page still boots: the client falls back to the locally
 stored scene and then to the built-in demo scene, and says which it used in the
 HUD.
