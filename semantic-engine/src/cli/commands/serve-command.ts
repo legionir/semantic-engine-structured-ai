@@ -231,7 +231,7 @@ async function runStdio(
   args: ParsedArgs
 ): Promise<CommandResult> {
   /*
-    | بارگذاری تنبل — همان دلیل SQLite و transformers: کسی که فقط
+    | بارگذاری تنبل — همان دلیل transformers: کسی که فقط
     | `index` می‌زند نباید SDK مربوط به MCP را بار کند.
   */
 
@@ -540,12 +540,10 @@ export async function runStart(
   let indexPath = startIndexPath(args, root);
   const explicitIndex = stringOption(args.options, 'index');
   const wantsVectors = boolOption(args.options, 'vectors', false);
-  const wantsSqlite = boolOption(args.options, 'sqlite', false);
   const existingIndex = loadIndex(indexPath);
   const needsRequestedArtifacts =
     !('error' in existingIndex) &&
-    ((wantsVectors && !(existingIndex as ProjectIndex).vectorChunks) ||
-      (wantsSqlite && !fs.existsSync(path.join(path.dirname(indexPath), 'project-index.sqlite'))));
+    wantsVectors && !(existingIndex as ProjectIndex).vectorChunks;
 
   const indexUnreadable = 'error' in existingIndex;
   if (!fs.existsSync(indexPath) || (indexUnreadable && !explicitIndex) || (needsRequestedArtifacts && !explicitIndex)) {
@@ -624,7 +622,6 @@ export async function runStart(
     '--skip-initial-index',
   ];
   if (wantsVectors) watchArgs.push('--vectors');
-  if (wantsSqlite) watchArgs.push('--sqlite');
   if (!boolOption(args.options, 'blueprint', true)) watchArgs.push('--no-blueprint');
   const requestedBlueprintMode = stringOption(args.options, 'blueprintMode');
   if (requestedBlueprintMode) watchArgs.push('--blueprint-mode', requestedBlueprintMode);

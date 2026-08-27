@@ -2,7 +2,8 @@
  * نوشتن خروجی‌ها — MIG-22 و SE-EXP-02.
  *
  * مسیر قبلی هر خروجی را دو بار می‌نوشت: یک‌بار `project-index.json`
- * بدون `vectorChunks` و بعد دوباره با آن، و همین‌طور SQLite. هر
+ * بدون `vectorChunks` و بعد دوباره با آن (و یک کپی SQLite که دیگر وجود
+ * ندارد — `project-index.json` تنها منبع حقیقت است). هر
  * خواننده‌ای که بین این دو نوشتن سر می‌رسید — سرور MCP،
  * `AiToolCommandHandler`، یا فقط یک `cat` — ایندکسی بدون بردار
  * می‌دید و فرض می‌کرد پروژه بردار ندارد.
@@ -23,12 +24,6 @@ export interface OutputWriterOptions {
   readonly fileSystem?: FileSystemPort;
   readonly logger?: ILogger;
   readonly pretty?: boolean;
-  /**
-   * SQLite پیش‌فرض خاموش است: به ماژول native نیاز دارد که ممکن است
-   * نصب نباشد. روشن کردنش یک تصمیم صریح است و اگر ماژول نباشد، بلند
-   * شکست می‌خورد — نه اینکه بی‌صدا از قلم بیفتد.
-   */
-  readonly sqlite?: boolean;
   readonly blueprint?: boolean;
   /**
    * سنجیدن ایندکس با `contracts/project-index.schema.json` پیش از
@@ -46,12 +41,10 @@ export interface OutputWriterOptions {
 export interface WrittenArtifacts {
   readonly indexPath: string;
   readonly blueprintPath: string | null;
-  readonly sqlitePath: string | null;
 }
 
 export const INDEX_FILE_NAME = 'project-index.json';
 export const BLUEPRINT_FILE_NAME = 'blueprint.json';
-export const SQLITE_FILE_NAME = 'project-index.sqlite';
 export const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
 
 export class OutputWriter {
@@ -69,10 +62,6 @@ export class OutputWriter {
 
   get blueprintPath(): string {
     return path.join(this.options.outputDir, BLUEPRINT_FILE_NAME);
-  }
-
-  get sqlitePath(): string {
-    return path.join(this.options.outputDir, SQLITE_FILE_NAME);
   }
 
   async write(index: ProjectIndex): Promise<WrittenArtifacts> {
@@ -138,18 +127,6 @@ export class OutputWriter {
       files: indexToWrite.files.length,
     });
 
-    let sqlitePath: string | null = null;
-    if (this.options.sqlite === true) {
-      /*
-      | require تنبل: بارگذاری ایستا کل ماژول را — و با آن ده ابزار
-      | AI را — به یک build بومی گره می‌زد (SE-BUILD-09).
-      */
-      const { SQLiteExporter } = require('../export/SQLiteExporter');
-      await new SQLiteExporter().export(index, { outputPath: this.sqlitePath });
-      sqlitePath = this.sqlitePath;
-      this.logger.debug('wrote sqlite', { path: sqlitePath });
-    }
-
     const manifest = {
       version: 1,
       generation: crypto.randomUUID(),
@@ -157,7 +134,6 @@ export class OutputWriter {
       artifacts: {
         index: await this.artifactDigest(this.indexPath),
         blueprint: blueprintPath ? await this.artifactDigest(this.blueprintPath) : null,
-        sqlite: sqlitePath ? { path: SQLITE_FILE_NAME } : null,
       },
     };
     await this.fs.writeJsonAtomic(
@@ -166,7 +142,7 @@ export class OutputWriter {
       { pretty }
     );
 
-    return { indexPath: this.indexPath, blueprintPath, sqlitePath };
+    return { indexPath: this.indexPath, blueprintPath };
   }
 
   private async artifactDigest(filePath: string): Promise<{ path: string; sha256: string; bytes: number }> {

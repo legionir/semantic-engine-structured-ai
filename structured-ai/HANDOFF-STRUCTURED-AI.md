@@ -30,7 +30,7 @@ Runtime مسئول موارد زیر است:
 - web console و SSE
 - اتصال اختیاری به Semantic Engine برای code intelligence
 
-Semantic Engine یک package مستقل TypeScript برای indexing کد، symbol/dependency/call graph، LSP enrichment، vector search، SQLite export و HTTP/MCP API است.
+Semantic Engine یک package مستقل TypeScript برای indexing کد، symbol/dependency/call graph، LSP enrichment، vector search و HTTP/MCP API است.
 
 ---
 
@@ -98,7 +98,7 @@ node bin/agent.js --serve --workspace /path/to/project
 | `semantic-engine/src/server/` | HTTP server، routes، SSE، WebSocket و security pipeline |
 | `semantic-engine/src/security/` | API keys، RBAC و audit logger |
 | `semantic-engine/src/vector/` | hashing/remote embeddings و vector store |
-| `semantic-engine/src/export/` | JSON، blueprint و SQLite export |
+| `semantic-engine/src/export/` | JSON و blueprint export |
 
 **CLI commandها:**
 
@@ -225,9 +225,8 @@ Eventstore و journal خطای persistence را نباید باعث crash run ک
 
 خروجی اصلی indexing:
 
-- `project-index.json`
+- `project-index.json` — تنها منبع حقیقت (کپی `project-index.sqlite` حذف شده است)
 - `blueprint.json`
-- `project-index.sqlite` در صورت فعال‌سازی
 - `project-artifacts.manifest.json`
 
 manifest شامل generation و hash artifactهاست. هنگام load، index/blueprint با manifest مقایسه می‌شوند تا artifact ناقص یا نسل‌های ناسازگار پذیرفته نشوند.
@@ -381,8 +380,8 @@ npm audit --omit=dev
 4. **Audit durability:** eventstore/journal خطای write را swallow می‌کنند تا run متوقف نشود؛ disk monitoring و backup لازم است.
 5. **External LLM:** timeout و URL egress guard وجود دارد، ولی انتخاب provider، data retention و policy ارسال source باید در deployment مشخص شود.
 6. **Root web token:** token تولیدی در launch output و URL اولیه وجود دارد؛ log aggregation و shell history نباید آن را ذخیره کنند.
-7. **SQLite/usearch:** optional native dependencies باید در image/CI هدف با architecture همان محیط تست شوند.
-8. **No database migration:** Structured AI root از JSONL/local state استفاده می‌کند؛ Semantic SQLite یک export/cache است، نه source of truth مرکزی.
+7. **usearch:** optional native dependency باید در image/CI هدف با architecture همان محیط تست شود.
+8. **No database migration:** Structured AI root از JSONL/local state استفاده می‌کند و Semantic Engine هم دیتابیس ندارد — `project-index.json` منبع حقیقت است.
 
 ---
 

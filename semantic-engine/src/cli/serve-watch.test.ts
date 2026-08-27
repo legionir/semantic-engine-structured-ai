@@ -206,7 +206,7 @@ describeIfBuilt('MIG-54 / SE-SEC-03 — پذیرش serve --http', () => {
 
   beforeAll(async () => {
     outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'se-serve-'));
-    runOnce(['index', '--root', FIXTURE, '--out', outputDir, '--no-sqlite', '--no-git']);
+    runOnce(['index', '--root', FIXTURE, '--out', outputDir, '--no-git']);
 
     const started = await spawnUntil(
       [

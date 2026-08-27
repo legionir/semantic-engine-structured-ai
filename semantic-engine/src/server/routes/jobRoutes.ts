@@ -3,7 +3,7 @@
  *
  * SE-UI-06: بدنهٔ درخواستِ `POST …/index` حالا گزینه‌های اسکن و
  * embedding را از UI می‌پذیرد: حالت اسکن (tree-sitter/heuristic)،
- * رعایت .gitignore، عمق، خروجی‌ها (blueprint/sqlite) و پیکربندی
+ * رعایت .gitignore، عمق، خروجی‌ها (blueprint) و پیکربندی
  * بردار (provider + مدل embedding یا مدل پیش‌فرض).
  */
 
@@ -33,7 +33,6 @@ interface IndexRequestBody {
   };
   output?: {
     blueprint?: boolean;
-    sqlite?: boolean;
   };
   embedding?: {
     enabled?: boolean;
@@ -111,7 +110,6 @@ function createIndexRunner(
       ? { skipHiddenDirectories: scan.skipHiddenDirectories }
       : {}),
   };
-  const wantSqlite = output.sqlite !== false;
   const wantBlueprint = output.blueprint !== false;
 
   return async (token, updateProgress) => {
@@ -132,7 +130,7 @@ function createIndexRunner(
     updateProgress('symbols', 40);
     const { projectIndex, stats } = await pipeline.run();
     updateProgress('graphs', 70);
-    const writer = new OutputWriter({ outputDir, blueprint: wantBlueprint, sqlite: wantSqlite });
+    const writer = new OutputWriter({ outputDir, blueprint: wantBlueprint });
     updateProgress('finalizing', 90);
     await writer.write(projectIndex);
     reloadProject(project.id);
@@ -195,7 +193,6 @@ export function createJobRoutes(
         }
 
         const treeSitter = scan.treeSitter !== false;
-        const wantSqlite = output.sqlite !== false;
         const wantBlueprint = output.blueprint !== false;
 
         const jobData: IndexJobData = { scan, output, embedding };
@@ -227,7 +224,6 @@ export function createJobRoutes(
               treeSitter,
               useGitignore: scan.useGitignore !== false,
               blueprint: wantBlueprint,
-              sqlite: wantSqlite,
               embedding: embedding.enabled
                 ? {
                     provider: embedding.provider ?? 'local',

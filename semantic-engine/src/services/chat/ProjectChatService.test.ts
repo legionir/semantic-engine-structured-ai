@@ -11,7 +11,7 @@ function fakeRegistry(): AiToolRegistry {
     list: () => [
       { name: 'semantic_search', description: 'Search by natural language', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
       { name: 'explain_symbol', description: 'Explain one symbol', inputSchema: { type: 'object', properties: { id: { type: 'string' } } } },
-      { name: 'query_index', description: 'Raw SQL', inputSchema: { type: 'object', properties: { sql: { type: 'string' } } } },
+      { name: 'get_config_usage', description: 'Env/config usages', inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] } },
     ],
     execute: async (name: string) => ({
       success: true,
@@ -40,7 +40,7 @@ describe('ProjectChatService', () => {
   const realFetch = globalThis.fetch;
   afterEach(() => { (globalThis as any).fetch = realFetch; });
 
-  it('exposes the safe query_index tool to the model (SE-CHAT-03)', async () => {
+  it('exposes every registered tool to the model — no name-based denylist (SE-CHAT-03)', async () => {
     const { calls } = mockFetchSequence([
       { choices: [{ message: { content: 'done', tool_calls: [] } }] },
     ]);
@@ -50,7 +50,7 @@ describe('ProjectChatService', () => {
     const toolsSent = calls[0].body.tools.map((t: any) => t.function.name);
     expect(toolsSent).toContain('semantic_search');
     expect(toolsSent).toContain('explain_symbol');
-    expect(toolsSent).toContain('query_index');
+    expect(toolsSent).toContain('get_config_usage');
   });
 
   it('passes each tool input schema and an output-shape hint to the model', async () => {
@@ -94,20 +94,20 @@ describe('ProjectChatService', () => {
     expect(secondCallMessages.some((m: any) => m.role === 'tool' && m.tool_call_id === 'c1')).toBe(true);
   });
 
-  it('executes the safe query_index tool when the model requests it', async () => {
+  it('executes whichever tool the model requests and reports its success', async () => {
     let executed = '';
     const reg = {
-      list: () => [{ name: 'query_index', description: 'Safe read-only SQL', inputSchema: { type: 'object' } }],
-      execute: async (name: string) => { executed = name; return { success: true, items: [{ total: 1 }] }; },
+      list: () => [{ name: 'get_config_usage', description: 'Env/config usages', inputSchema: { type: 'object' } }],
+      execute: async (name: string) => { executed = name; return { success: true, items: [{ key: 'JWT_SECRET' }] }; },
     } as unknown as AiToolRegistry;
 
     mockFetchSequence([
-      { choices: [{ message: { content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'query_index', arguments: '{"sql":"SELECT COUNT(*) AS total FROM symbols"}' } }] } }] },
-      { choices: [{ message: { content: 'There is one result.', tool_calls: [] } }] },
+      { choices: [{ message: { content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'get_config_usage', arguments: '{"key":"JWT_SECRET"}' } }] } }] },
+      { choices: [{ message: { content: 'JWT_SECRET is read in app.config.ts.', tool_calls: [] } }] },
     ]);
 
-    const result = await new ProjectChatService().chat(reg, LLM, [{ role: 'user', content: 'run query_index' }]);
-    expect(executed).toBe('query_index');
+    const result = await new ProjectChatService().chat(reg, LLM, [{ role: 'user', content: 'where is the secret read?' }]);
+    expect(executed).toBe('get_config_usage');
     expect(result.toolTrace[0].ok).toBe(true);
   });
 });

@@ -6,7 +6,6 @@ import { ProjectIndexReader } from './ProjectIndexReader';
 import { AiTool, AiToolInput, AiToolOutput } from './tools/types';
 import { FindSymbolTool } from './tools/FindSymbolTool';
 import { GetDependenciesTool } from './tools/GetDependenciesTool';
-import { QueryIndexTool } from './tools/QueryIndexTool';
 import { GetFileSummaryTool } from './tools/GetFileSummaryTool';
 import { SemanticSearchTool } from './tools/SemanticSearchTool';
 import { AssembleContextTool } from './tools/AssembleContextTool';
@@ -22,8 +21,6 @@ import { DetectArchitectureViolationsTool } from './tools/DetectArchitectureViol
 import { GetGitHotspotsTool } from './tools/GetGitHotspotsTool';
 import { ToolResultCache } from './tools/ToolResultCache';
 import { ToolInputValidator } from './tools/ToolInputValidator';
-import * as path from 'path';
-import { resolveProjectIndexPath } from '../core/config/ProjectPaths';
 
 export interface AiToolRegistryOptions {
   readonly reader: ProjectIndexReader;
@@ -86,13 +83,6 @@ export class AiToolRegistry {
   private registerBuiltInTools(): void {
     this.register(new FindSymbolTool(this.options.reader));
     this.register(new GetDependenciesTool(this.options.reader));
-    this.register(new QueryIndexTool({
-      /* MCP/CLI callers may send `project-index.sqlite`; keep it inside
-         the same artifact directory as the selected project index. */
-      allowedRoot: this.options.workspaceRoot
-        ? path.dirname(resolveProjectIndexPath(this.options.workspaceRoot))
-        : undefined,
-    }));
     this.register(new GetFileSummaryTool(this.options.reader));
     this.register(new SemanticSearchTool(this.options.reader, undefined, this.options.vectorStoreOptions));
     this.register(new AssembleContextTool(this.options.reader, undefined, {

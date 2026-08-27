@@ -132,11 +132,6 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     'vectors',
     Boolean(existingIndex?.vectorChunks)
   );
-  const wantsSqlite = boolOption(
-    args.options,
-    'sqlite',
-    fs.existsSync(path.join(outputDir, 'project-index.sqlite'))
-  );
   const vectorIndexer = wantsVectors
     ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
     : null;
@@ -177,7 +172,6 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
         logger: context.logger,
         pretty,
         blueprint: wantsBlueprint,
-        sqlite: wantsSqlite,
         ...(projectIndex.git?.commit ? { gitCommit: projectIndex.git.commit } : {}),
       }).write(projectIndex);
     }
@@ -199,7 +193,6 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
       pretty,
       blueprint: wantsBlueprint,
       blueprintMode: mode,
-      sqlite: wantsSqlite,
       ...(stringOption(args.options, 'debounce')
         ? { debounceMs: Number(stringOption(args.options, 'debounce')) }
         : {}),

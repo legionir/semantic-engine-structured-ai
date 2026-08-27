@@ -227,7 +227,6 @@ function collectIndexOptions() {
     },
     output: {
       blueprint: $("wantBlueprint").checked,
-      sqlite: $("wantSqlite").checked,
     },
     embedding: { enabled: false },
   };

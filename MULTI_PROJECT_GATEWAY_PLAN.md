@@ -2,6 +2,11 @@
 
 **وضعیت:** برنامهٔ اجرایی، هنوز پیاده‌سازی نشده است  
 **تاریخ:** 2026-08-24  
+**اصلاح 2026-08-27:** خروجی SQLite از موتور حذف شد (`project-index.json` تنها
+منبع حقیقت است). هر بند این برنامه که `project-index.sqlite`، `sqlitePath`،
+پرچم `--sqlite`، چک‌باکس «Enable SQLite» یا `indexing.sqlite` را فرض می‌گیرد،
+باید بی‌مصرف خوانده شود — و `QueryIndexTool` دیگر وجود ندارد، پس بند «فقط
+SQLite همان artifactRoot را باز کند» منتفی است.  
 **مخزن:** `legionir/semantic-engine-structured-ai`
 
 ---

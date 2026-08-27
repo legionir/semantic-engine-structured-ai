@@ -22,7 +22,6 @@ export interface ManagedProject {
   readonly rootPath: string;
   readonly indexPath: string;
   readonly blueprintPath?: string;
-  readonly sqlitePath?: string;
   readonly status: 'ready' | 'indexing' | 'stale' | 'missing';
   readonly index?: ProjectIndex;
   readonly blueprint?: BlueprintIndex;
@@ -143,9 +142,6 @@ export class ProjectService {
       }
     }
 
-    const sqliteCandidate = path.join(path.dirname(actualIndexPath), 'project-index.sqlite');
-    const sqlitePath = fs.existsSync(sqliteCandidate) ? sqliteCandidate : undefined;
-
     const managed: ManagedProject = {
       id,
       name,
@@ -155,7 +151,6 @@ export class ProjectService {
          canonical directory instead of refreshing `.agent/semantic`. */
       indexPath: canonicalPath,
       blueprintPath: blueprint ? path.join(path.dirname(actualIndexPath), 'blueprint.json') : undefined,
-      sqlitePath,
       status,
       index,
       blueprint,
@@ -192,8 +187,7 @@ export class ProjectService {
         if (!changed ||
             changed === path.basename(project.indexPath) ||
             changed === 'blueprint.json' ||
-            changed === 'project-artifacts.manifest.json' ||
-            changed === 'project-index.sqlite') {
+            changed === 'project-artifacts.manifest.json') {
           this.scheduleReload(project.id);
         }
       });

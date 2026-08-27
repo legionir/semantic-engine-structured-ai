@@ -6,7 +6,7 @@
  *
  * ── تصمیم: «اختیاری» یک حالت درجهٔ اول است ────────────────────────
  *
- * `sqlite3` و `usearch` باینری‌شان را در نصب دانلود می‌کنند و در
+ * `usearch` باینری‌اش را در نصب دانلود می‌کند و در
  * محیط بدون شبکه یا با گواهی TLS شرکتی نصب نمی‌شوند (SE-BUILD-10).
  * اگر نبودشان `doctor` را قرمز کند، این دستور دقیقاً در محیطی که
  * بیشترین کاربرد را دارد همیشه شکست می‌خورد و کسی جدی‌اش نمی‌گیرد.
@@ -137,8 +137,8 @@ function checkTempAccess(): DoctorCheck {
  *
  * «نبود سرور» خرابی نیست — موتور با tree-sitter کار می‌کند. اگر
  * `doctor` را قرمز کند، در محیطی که هیچ سروری نصب نیست همیشه شکست
- * می‌خورد و کسی جدی‌اش نمی‌گیرد؛ همان استدلالی که برای `sqlite3`
- * در بالای این فایل نوشته شده.
+ * می‌خورد و کسی جدی‌اش نمی‌گیرد؛ همان استدلالی که برای وابستگی‌های
+ * native در بالای این فایل نوشته شده.
  */
 function checkLanguageServers(cwd: string): DoctorCheck[] {
   const registry = new LspServerRegistry();
@@ -236,7 +236,6 @@ export async function runDoctor(
     checkGit(),
     checkGrammars(context.cwd),
     checkOptionalModule('chokidar'),
-    checkOptionalModule('sqlite3'),
     checkOptionalModule('usearch'),
     checkWriteAccess(context.cwd),
     checkTempAccess(),

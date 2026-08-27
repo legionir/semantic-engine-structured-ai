@@ -105,7 +105,7 @@
     },
     "symbols": {
       "type": "array",
-      "description": "تمام symbol های پروژه، FLAT (نه تودرتو). ارتباط parent/child با parentId مشخص می‌شود، نه nesting — تا هم serialize سبک بماند هم مستقیماً روی SQLite قابل map باشد.",
+      "description": "تمام symbol های پروژه، FLAT (نه تودرتو). ارتباط parent/child با parentId مشخص می‌شود، نه nesting — تا serialize سبک بماند.",
       "items": {
         "$ref": "#/$defs/symbolEntry"
       }

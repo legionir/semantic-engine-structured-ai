@@ -27,13 +27,6 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 
-/*
-| Phase 24 removed the SQLiteExporter exclusion. That suite used to need
-| a native sqlite3 build, which does not exist in every environment, so
-| it was skipped - and with it the only coverage the SQLite output had.
-| It now runs on the same driver the exporter uses, which prefers the
-| SQLite built into Node.
-*/
 const result = spawnSync(
     "npx",
     ["jest", "--ci"],

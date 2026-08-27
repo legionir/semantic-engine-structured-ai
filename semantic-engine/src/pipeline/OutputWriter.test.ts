@@ -112,7 +112,6 @@ describe('OutputWriter', () => {
 
     expect(fs.existsSync(path.join(dir, INDEX_FILE_NAME))).toBe(true);
     expect(fs.existsSync(path.join(dir, BLUEPRINT_FILE_NAME))).toBe(true);
-    expect(result.sqlitePath).toBeNull();
   });
 
   it('creates the output directory when it is missing', async () => {
@@ -188,11 +187,19 @@ describe('OutputWriter', () => {
     expect(fs.existsSync(path.join(dir, BLUEPRINT_FILE_NAME))).toBe(false);
   });
 
-  it('leaves sqlite alone unless it is asked for', async () => {
-    const result = await new OutputWriter({ outputDir: dir }).write(makeIndex());
+  it('writes no SQLite artifact, and the manifest carries no sqlite key', async () => {
+    /*
+    | SQLite حذف شده است؛ `project-index.json` تنها منبع حقیقت است. این تست
+    | بازگشت خاموشش را می‌بندد: نه فایلی نوشته می‌شود، نه کلیدی در manifest.
+    */
+    await new OutputWriter({ outputDir: dir }).write(makeIndex());
 
-    expect(result.sqlitePath).toBeNull();
     expect(fs.readdirSync(dir).some(name => name.endsWith('.sqlite'))).toBe(false);
+
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(dir, 'project-artifacts.manifest.json'), 'utf8')
+    ) as { artifacts: Record<string, unknown> };
+    expect(Object.keys(manifest.artifacts).sort()).toEqual(['blueprint', 'index']);
   });
 
   it('writes readable json', async () => {

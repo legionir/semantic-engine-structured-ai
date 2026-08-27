@@ -23,7 +23,7 @@ Semantic Engine یک code-intelligence engine مستقل است که از یک w
 - blueprint و architecture mapping
 - keyword/vector/hybrid search
 - context assembly برای AI
-- SQLite export اختیاری
+- کپی SQLite حذف شده؛ `project-index.json` تنها منبع حقیقت است
 - REST/HTTP platform server
 - MCP server روی stdio یا HTTP
 - watch/incremental indexing
@@ -90,8 +90,7 @@ node bin/semantic-engine.js start \
 node bin/semantic-engine.js watch \
   --root /path/to/project \
   --out /path/to/project/.semantic-engine \
-  --vectors \
-  --sqlite
+  --vectors
 
 # start — UI + MCP + watcher زیر نظر یک parent
 node bin/semantic-engine.js start \
@@ -99,7 +98,6 @@ node bin/semantic-engine.js start \
   --ui-port 4000 \
   --mcp-port 3000 \
   --vectors \
-  --sqlite \
   --token "$SEMANTIC_ENGINE_TOKEN"
 
 # بررسی محیط
@@ -179,7 +177,6 @@ FileProcessor
                 │
                 ├── project-index.json
                 ├── blueprint.json
-                ├── project-index.sqlite (optional)
                 └── project-artifacts.manifest.json
 ```
 
@@ -192,9 +189,8 @@ index جاری بازسازی و reverse dependency را دوباره مشتق �
 `VectorIndexer` فعال باشد، chunkهای فایل‌های affected دوباره ساخته و
 embeddingهای هم‌محتوا از batch قبلی reuse می‌شوند.
 
-در CLI، `watch` با `--vectors` و `--sqlite` این artifactها را نیز تازه نگه
-می‌دارد؛ اگر artifact از قبل وجود داشته باشد، mode مربوطه به‌طور پیش‌فرض حفظ
-می‌شود. حالت blueprint در CLI پیش‌فرض `always` است و با
+در CLI، `watch` با `--vectors` این artifactها را نیز تازه نگه می‌دارد؛ اگر
+ایندکس قبلی vector داشته باشد، آن حالت به‌طور پیش‌فرض حفظ می‌شود. حالت blueprint در CLI پیش‌فرض `always` است و با
 `--blueprint-mode threshold` قابل تغییر است. `start` watcher را زیر نظر
 خودش اجرا می‌کند؛ `--no-watch` آن را خاموش می‌کند.
 
@@ -269,7 +265,6 @@ MCP stdio و هر دو HTTP entry point هنگام تغییر `project-index.jso
 - `committedAt`
 - SHA-256 و اندازه‌ی index
 - SHA-256 و اندازه‌ی blueprint
-- وضعیت SQLite
 
 `ProjectService` در زمان load hashها را validate می‌کند. اگر manifest و artifact هماهنگ نباشند، project به‌عنوان معتبر load نمی‌شود.
 
@@ -486,7 +481,7 @@ Root runtime نیز با `npm test` پاس می‌شود؛ Semantic Engine فق�
 | Pipeline | `src/pipeline/**/*.test.ts` |
 | Incremental | `src/incremental/**/*.test.ts` |
 | Vector | `src/vector/**/*.test.ts` |
-| Export/SQLite | `src/export/**/*.test.ts` |
+| Export | `src/export/**/*.test.ts` |
 | HTTP/security | `src/server/**/*.test.ts`, `src/security/**/*.test.ts` |
 | Chat | `src/services/chat/ProjectChatService.test.ts` |
 | Source security | `src/services/source/SourceSyncService.test.ts` |
@@ -503,7 +498,7 @@ Testهای project-index و golden را فقط بعد از review تغییر د�
 2. **Resume semantics:** recovery در یک instance با recovery runner کار می‌کند؛ برای چند replica distributed queue لازم است.
 3. **Legacy transformer:** `LocalEmbeddingGenerator` bundled نیست؛ برای production از hashing یا remote generator استفاده شود.
 4. **Performance SLO:** benchmark فعلی روی corpus موجود اجرا شده، نه corpus همه‌ی مشتریان.
-5. **SQLite optional native module:** معماری Node/OS image باید با dependency native همان environment تست شود.
+5. **Optional native modules:** `usearch` و `@xenova/transformers` باینری دانلودی دارند؛ معماری Node/OS image باید با dependency native همان environment تست شود (قاعدهٔ SE-BUILD-10: هیچ‌کدام نباید به `dependencies` اجباری منتقل شوند).
 6. **Audit persistence:** persistence failure در برخی مسیرهای audit عمدی swallow می‌شود تا indexing متوقف نشود؛ disk monitoring لازم است.
 7. **Project path trust:** route ثبت project باید پشت authn/authz و policy صحیح بماند؛ token به‌تنهایی tenant isolation نیست.
 8. **Raw config secrets:** API keys فقط از secret manager/environment inject شوند و در config file commit نشوند.
