@@ -65,6 +65,8 @@ function inventory(text) {
         classNames: all(/className\s*=\s*"([^"]+)"/g)
             .concat(all(/classList\.(?:add|remove|toggle)\(\s*"([^"]+)"/g))
             .concat(all(/node\(\s*"[a-z0-9]+"\s*,\s*"([^"]+)"/g))
+            .concat(all(/setAttribute\(\s*"class",\s*"([^"]+)"/g))
+            .concat(all(/setAttribute\(\s*"class",\s*`([^`]+)`/g))
             .filter((value, index, list) => list.indexOf(value) === index)
             .sort(),
 
@@ -73,8 +75,14 @@ function inventory(text) {
         domApis: all(/\.(addEventListener|removeEventListener|querySelector|querySelectorAll|createElement|appendChild|removeChild|remove|insertBefore|setAttribute|getAttribute|preventDefault|stopPropagation|requestSubmit|scrollTo|focus|blur|replaceChildren|closest)\(/g)
             .sort(),
 
-        topLevelNames: all(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)/gm)
-            .concat(all(/^(?:const|let|var)\s+([A-Za-z0-9_$]+)/gm))
+        /*
+        | An optional `export ` is accepted: in a module graph these names are
+        | exported, and a contract that could only see them in a single classic file
+        | would report 46 lost names for a move that lost nothing.
+        */
+
+        topLevelNames: all(/^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_$]+)/gm)
+            .concat(all(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)/gm))
             .filter((value, index, list) => list.indexOf(value) === index)
             .sort(),
 
@@ -84,7 +92,7 @@ function inventory(text) {
         stateShape: (() => {
 
             const lines = text.split("\n");
-            const start = lines.findIndex(line => /^const state = \{/.test(line));
+            const start = lines.findIndex(line => /^(?:export\s+)?const state = \{/.test(line));
 
             if (start === -1) return [];
 

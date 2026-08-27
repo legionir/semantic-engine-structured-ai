@@ -120,6 +120,20 @@ structured-ai/
 │       │   ├── approvals-view.js/history-view.js/modal-manager.js
 │       │   └── project-state.js/project-switcher.js/project-dashboard.js
 │       ├── modal.js             # سرویس modal (کلاسیک؛ globalThis.Modal را هم ست می‌کند)
+│       ├── visualizer.js        # پوستهٔ سازگاری ویزوالایزر (کلاسیک + require برای تست)
+│       ├── visualizer/          # ویزوالایزر به‌شکل ماژول‌های ES نیتیو (فاز ۲۵)
+│       │   ├── main.js          # boot: bindEvents سپس loadView("architecture")
+│       │   ├── graph-store.js   # تنها state قابل‌تغییر صفحه + setGraphData (تنها writer)
+│       │   ├── page.js          # idهای DOM و projectId از URL
+│       │   ├── api-client.js    # loadView / loadNeighborhood / loadImpact با projectId
+│       │   ├── graph-model.js   # دادهٔ نمونهٔ fallback، breadcrumb، drill-down
+│       │   ├── graph-renderer.js# گره‌ها/یال‌ها در SVG (کپ ۲۰/۵۰/۴۰)
+│       │   ├── layout-client.js # چیدمان گرید؛ worker اعلام‌شده ولی بی‌مشتری (باز ۱۳)
+│       │   ├── viewport.js      # pan/zoom/fit و transform مشترکشان
+│       │   ├── selection-state.js# انتخاب، focus mode تا عمق focusDepth، reset
+│       │   ├── node-details.js  # inspector یک ستونه
+│       │   ├── search.js        # search-to-graph روی همان گراف بارگذاری‌شده
+│       │   └── visualizer-events.js # گوش‌سپاری‌های صفحه، بدون منطق
 │       └── index.html           # <script type="module" src="/app/main.js">
 ├── test/                        # سوئیت کامل آزمون‌های یکپارچگی و ران‌تایم
 └── semantic-engine/             # موتور مستقل تحلیل کد و گراف معنایی
@@ -541,6 +555,8 @@ npm run test:semantic     # آزمون موتور معنایی و ابزارها
 npm run test:mcp          # آزمون چهار ترنسپورت، کاتالوگ و پالیسی MCP
 npm run test:web:all      # سرور وب + فرانت‌اند: رفتار، قرارداد مسیرها، مرزهای لایه
 npm run test:web:frontend # گراف ماژول‌های کنسول: importها، idها، sliceهای state، سرو MIME
+npm run test:web:visualizer # قرارداد ویزوالایزر: trace رفتار + استقلال از کنسول
+npm run test:web:graph    # /api/graph/* روی ایندکس واقعی semantic-engine (شاخهٔ پارس)
 npm run test:web:routes   # فقط قرارداد مسیرها (record: npm run test:web:routes:record)
 npm run test:web:layer    # فقط ساختار/سیم‌کشی web/server/ (بدون سوکت، تقریباً)
 npm run test:web          # آزمون رفتار سرور وب کنسول از راه HTTP

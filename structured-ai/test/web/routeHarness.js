@@ -27,6 +27,20 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const WORKSPACE =
     fs.mkdtempSync(path.join(os.tmpdir(), "agent-routes-"));
 
+/*
+| The inventory registers and unregisters a project, because the per-project routes
+| need an id the registry accepts. Without its own data home those writes land in
+| `~/.local/share/structured-ai/registry.json` — a machine-level file — so a run
+| that died mid-suite would leave `GET /api/projects` non-empty and every later
+| contract check on that route would fail for a reason that has nothing to do with
+| the code. Isolation, not cleanup, is the fix: two probes cannot share a registry.
+*/
+
+const DATA_HOME =
+    fs.mkdtempSync(path.join(os.tmpdir(), "agent-routes-data-"));
+
+process.env.STRUCTURED_AI_DATA_HOME = DATA_HOME;
+
 fs.writeFileSync(path.join(WORKSPACE, "app.js"), "const value = 1;\n");
 
 /*
@@ -336,6 +350,7 @@ async function shutdown(context) {
     }
 
     fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true });
 }
 
 

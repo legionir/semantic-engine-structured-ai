@@ -58,6 +58,7 @@ Semantic Engine یک package مستقل TypeScript برای indexing کد، symb
 | `web/server.js` | پوستهٔ سازگاری کنسول؛ به `web/server/` می‌رسد (فاز ۲۳) |
 | `web/server/` | router، middleware، SSE hub، controllerها، serviceها و serializerهای کنسول وب |
 | `web/public/` | frontend console و visualizer |
+| `web/public/visualizer/` | ویزوالایزر: ماژول‌های ES نیتیو با `graph-store.js` به‌عنوان تنها state صفحه (فاز ۲۵) |
 | `web/public/app/` | کنسول فرانت‌اند: ماژول‌های ES نیتیو (بدون build step) با `store.js` که state را به ۱۱ دامنه تقسیم می‌کند (فاز ۲۴) |
 
 **اجرای CLI:**
@@ -171,6 +172,14 @@ export PROCESS_SANDBOX_MODE=bwrap
 - process namespace/IPC/UTS را جدا می‌کند.
 
 **هشدار:** `PROCESS_SANDBOX_MODE=test` فقط برای تست‌های repository است و نباید در production استفاده شود.
+
+### Visualizer
+
+`web/public/visualizer/` (فاز ۲۵؛ `web/public/visualizer.js` پوستهٔ سازگاری است):
+
+- قرارداد رفتارش یک **trace ضبط‌شده** است (`test/web/visualizer.snapshot.json`) — متن هر المان، کلاس هر گره/یال، transform بعد از هر ژست، و URLهای درخواستی — در سه وضعیت: گراف سرو‌شده، fetch ناموفق (دادهٔ نمونه)، و ایندکس خالی.
+-استقلال از کنسول چک می‌شود: گراف importها بسته است، هیچ مسیری به `web/public/app/` یا `modal.js` نمی‌رود، و هیچ ماژولی جز `graph-store.js` state قابل‌تغییر ندارد.
+- دو نقص ثبت‌شده و دست‌نخورده: worker چیدمان مشتری ندارد (`new Worker` هیچ‌جا نیست) و دو sink با `innerHTML` + interpolation روی برچسب نمادها. متن کامل در EXECUTION_PLAN (موارد باز ۱۳ و ۱۴).
 
 ### Web console
 
