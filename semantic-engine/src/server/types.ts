@@ -84,6 +84,16 @@ export interface PlatformConfig {
   readonly trustedGateway?: boolean;
   /** مسیر Unix socket؛ وقتی ست باشد سرور روی socket گوش می‌دهد نه TCP. */
   readonly socketPath?: string;
+  /**
+   * هندلر رویداد `upgrade` برای WebSocket (فاز ۱۱). بدون آن هر upgrade رد
+   * می‌شود، چون handshake نیمه‌انجام‌شده از نبودِ WebSocket بدتر است:
+   * کلاینت منتظر `101` می‌ماند.
+   */
+  readonly upgradeHandler?: (
+    req: http.IncomingMessage,
+    socket: import('stream').Duplex,
+    head: Buffer
+  ) => void;
 }
 
 // ── Graph View Model Types ───────────────────────────────────────────────

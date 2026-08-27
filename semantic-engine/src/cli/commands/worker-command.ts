@@ -29,6 +29,7 @@ import type { HttpServer } from '../../server/HttpServer';
 import { SemanticEngineMcpServer } from '../../ai/mcp/SemanticEngineMcpServer';
 import { loadBlueprintBeside } from '../../ai/discovery/loadBlueprint';
 import type { RouteDefinition } from '../../server/types';
+import { ProjectWebSocketChannel } from '../../server/wsProjectChannel';
 
 interface WorkerStatus {
   readonly ok: boolean;
@@ -89,6 +90,43 @@ export async function runWorker(
     if (indexed.code !== EXIT.ok) return indexed;
   }
 
+  /*
+  | ── WebSocket روی مسیر `/ws` (فاز ۱۱) ─────────────────────────────────
+  |
+  | worker تک‌پروژه است، پس binding ساختاری است: یک کانال، یک projectId، و
+  | هر فریم همان id را با خود می‌برد. توکن از هدر `Authorization` یا
+  | `?token=` می‌آید — مرورگر روی WebSocket نمی‌تواند هدر ست کند.
+  */
+  const wsChannel = new ProjectWebSocketChannel({
+    projectId: paths.projectId,
+    onEvent: event => context.logger.debug('worker ws', event),
+  });
+
+  const upgradeHandler = (
+    req: import('http').IncomingMessage,
+    socket: import('stream').Duplex,
+    head: Buffer
+  ): void => {
+    const url = new URL(req.url ?? '/', 'http://worker.local');
+    if (url.pathname !== '/ws') {
+      socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const header = req.headers['authorization'];
+    const fromHeader =
+      typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    const candidate = fromHeader !== '' ? fromHeader : url.searchParams.get('token') ?? '';
+    if (candidate !== token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    wsChannel.handleUpgrade(req, socket, head);
+  };
+
   const { HttpServer: PlatformServer } = require('../../server/HttpServer') as typeof import('../../server/HttpServer');
   const server: HttpServer = new PlatformServer({
     port,
@@ -97,6 +135,7 @@ export async function runWorker(
     projectsRoot: paths.workspaceRoot,
     dataRoot: paths.dataRoot,
     artifactLocation: artifactLocationFromArgs(args, process.env),
+    upgradeHandler,
     ...(socketPath !== undefined ? { socketPath } : {}),
     ...(gatewayManaged ? { gatewayManaged: true } : {}),
   });
@@ -339,6 +378,7 @@ export async function runWorker(
   process.removeListener('SIGTERM', onSignal);
 
   if (watcher) await stopChild(watcher.child);
+  wsChannel.close();
   await server.stop();
   if (socketPath) {
     try {

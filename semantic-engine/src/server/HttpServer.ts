@@ -193,6 +193,21 @@ export class HttpServer {
       this.server.once('error', reject);
 
       /*
+      | ── WebSocket (فاز ۱۱) ─────────────────────────────────────────────
+      |
+      | اگر هندلری داده نشده باشد upgrade رد می‌شود؛ handshake نیمه‌کاره
+      | کلاینت را منتظر ۱۰۱ نگه می‌دارد.
+      */
+      this.server.on('upgrade', (req, socket, head) => {
+        if (this.config.upgradeHandler) {
+          this.config.upgradeHandler(req, socket, head as Buffer);
+          return;
+        }
+        socket.write('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+      });
+
+      /*
       | ── transport داخلی (فاز ۶) ──────────────────────────────────────
       |
       | Gateway می‌تواند worker را روی یک Unix domain socket بالا بیاورد تا

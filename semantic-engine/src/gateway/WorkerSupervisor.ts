@@ -229,13 +229,26 @@ export class WorkerSupervisor {
     }
 
     const token = generateToken();
+    /*
+    | data root از راه محیط به worker می‌رسد. پیش از این worker هیچ
+    | `--data-dir` نمی‌گرفت و `projectPathsFromArgs` او را به data root
+    | پیش‌فرض پلتفرم می‌فرستاد — یعنی artifactهای پروژه‌ای که Gateway
+    | مدیریت می‌کرد جای دیگری نوشته می‌شد، نه کنار socket و lock و لاگش.
+    | اندازه‌گیری‌شده: manifest پروژه‌ها در `~/.local/share/…` ظاهر می‌شد
+    | در حالی که socket زیر `<dataRoot>/gateway/sockets/` بود.
+    */
+    const childEnv: NodeJS.ProcessEnv = {
+      ...(this.options.env ?? process.env),
+      SEMANTIC_ENGINE_DATA_DIR: this.options.dataRoot,
+    };
+
     const processOptions: WorkerProcessOptions = {
       config,
       socketPath,
       token,
       logFile: this.logFileFor(projectId),
       binary: this.options.binary ?? defaultBinaryPath(),
-      ...(this.options.env ? { env: this.options.env } : {}),
+      env: childEnv,
       ...(this.options.workerStartupTimeoutMs
         ? { startupTimeoutMs: this.options.workerStartupTimeoutMs }
         : {}),

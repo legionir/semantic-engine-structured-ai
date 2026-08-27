@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۰ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۱ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۱ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۲ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -661,19 +661,19 @@ body و response stream شوند؛ timeout معمولی روی stream اعمال
 
 ---
 
-## [🔴] فاز ۱۱: WebSocket واقعی و proxy آن
+## [🟢] فاز ۱۱: WebSocket واقعی و proxy آن
 
 **هدف:** پوشش نیازمندی WebSocket در §گام ۹ و §۶ پلن مرجع. **تصمیم تأییدشدهٔ کارفرما (۲۰۲۶-۰۸-۲۶):** این قابلیت پیاده‌سازی می‌شود و از دامنه حذف نمی‌گردد. **Assumption:** امروز هیچ WS واقعی و هیچ مصرف‌کننده‌ای وجود ندارد (Baseline #7)، پس این فاز هم سرور سمت worker و هم proxy سمت Gateway را از صفر می‌سازد.
 
-### [🔴] گام ۱: سرور WS حداقلی در worker
+### [🟢] گام ۱: سرور WS حداقلی در worker
 
 پیاده‌سازی بدون وابستگی جدید (handshake RFC6455 با `Sec-WebSocket-Accept`، فریم text/ping/pong/close) روی `/ws/projects/:projectId`؛ جایگزینی `WebSocketManager` فعلی (که SSE روی `http.ServerResponse` است) یا نگه‌داشتن آن به‌عنوان fallback مستندشده.
 
-### [🔴] گام ۲: proxy upgrade در Gateway
+### [🟢] گام ۲: proxy upgrade در Gateway
 
 resolve کردن `projectId` **پیش از** upgrade، ثابت ماندن context پس از upgrade، propagate شدن close، و ثبت metrics.
 
-### [🔴] گام ۳: تست
+### [🟢] گام ۳: تست
 
 دو کلاینت روی دو پروژه پیام یکدیگر را نبینند؛ بستن یکی دیگری را نبندد؛ reconnect با context درست.
 
@@ -681,6 +681,24 @@ resolve کردن `projectId` **پیش از** upgrade، ثابت ماندن conte
 - تست isolation پیام‌ها سبز باشد.
 - proxy upgrade، `projectId` را پیش از upgrade حل کند و پس از upgrade تغییر ندهد (تست).
 - `npm run build && npm test` سبز.
+
+### وضعیت اجرای فاز ۱۱ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/gateway/wsProtocol.ts` (handshake + کدک فریم RFC6455، بدون وابستگی جدید)، `src/server/wsProjectChannel.ts` (کانال تک‌پروژه سمت worker) + تست‌های `gateway/wsProtocol.test.ts` (۱۳) و `gateway/webSocketProxy.test.ts` (۳، end-to-end از پشت Gateway).
+**فایل‌های تغییرکرده:** `server/types.ts` (+`upgradeHandler`)، `server/HttpServer.ts` (ثبت رویداد `upgrade`؛ بدون هندلر → `426`، چون handshake نیمه‌کاره از نبود WebSocket بدتر است)، `cli/commands/worker-command.ts` (کانال `/ws` با احراز هویت، و بستن کانال هنگام خاموشی)، `gateway/GatewayServer.ts` (proxy upgrade)، `gateway/WorkerSupervisor.ts` (انتقال data root به worker).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 196 passed / 196 total`، `Tests: 2681 passed / 2681 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۱۱: ۱۹۴ suite و ۲۶۶۴ تست → +۲ suite و +۱۷ تست). پس از اجرای کامل suite هیچ پروسهٔ worker زنده نماند (`ps` → ۰) و چیزی در data root واقعی نوشته نشد.
+- **کدک:** کلید پذیرش با مثال normative RFC 6455 سنجیده شد (`dGhlIHNhbXBsZSBub25jZQ==` → `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`)؛ round-trip برای payload کوتاه، ۱۶ بیتی و ۶۴ بیتی؛ فریم mask‌دار؛ فریم تقسیم‌شده بین دو chunk؛ دو فریم در یک chunk؛ و فریم بزرگ‌تر از سقف → خطا.
+- **handshake واقعی از پشت Gateway:** `101 Switching Protocols` + هدر `X-Semantic-Project-Id`، و پیام `hello` با `projectId` درست.
+- **isolation:** پیام کلاینت A1 فقط به A2 رسید (`"projectId":"<A>"`) و کلاینت B در مدت ۱٫۵ ثانیه **هیچ** پیامی نگرفت؛ بستن A1 نه A2 را بست نه B را.
+- **پیش از upgrade:** پروژهٔ ناشناخته → ۴۰۴، بدون توکن → ۴۰۱، توکنِ پروژهٔ دیگر → ۴۰۳، و همان توکن روی پروژهٔ خودش → ۱۰۱.
+
+**دو باگ که فقط با اندازه‌گیری پیدا شد (در ADR بخش ۱۱ ثبت شد):**
+
+1. proxy هدر `Connection` را به‌عنوان hop-by-hop حذف می‌کرد، پس Node در worker رویداد `upgrade` را نمی‌دید و درخواست به جدول روت‌ها می‌افتاد: worker مستقیم `101` می‌داد و از پشت Gateway `404`. حالا `Upgrade: websocket` و `Connection: Upgrade` صریحاً نوشته می‌شوند.
+2. supervisor به worker نمی‌گفت از کدام data root استفاده کند، پس artifactهای پروژهٔ مدیریت‌شده در data root پیش‌فرض پلتفرم نوشته می‌شد (در عمل `~/.local/share/…`) در حالی که socket و lock و لاگ زیر data root خود Gateway بود. حالا `SEMANTIC_ENGINE_DATA_DIR` در محیط پروسهٔ فرزند ست می‌شود و یک تست رگرسیون بررسی می‌کند ایندکس زیر `<dataRoot>/projects/<id>/` بنشیند.
 
 ---
 

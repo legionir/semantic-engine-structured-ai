@@ -190,6 +190,20 @@ describeIfBuilt('WorkerSupervisor', () => {
     }
   }, 300_000);
 
+  it('writes the worker artifacts under the supervisor data root', async () => {
+    const sup = create();
+    const config = configFor(makeProject(base, 'app-a'), 'prj-app-a-00000008');
+    await sup.start(config);
+
+    /*
+    | رگرسیون: worker بدون `--data-dir` بالا می‌رفت و artifact را در data root
+    | پیش‌فرض پلتفرم می‌نوشت، نه کنار socket و lock و لاگ خودش.
+    */
+    const indexPath = path.join(dataRoot, 'projects', config.projectId, 'project-index.json');
+    expect(fs.existsSync(indexPath)).toBe(true);
+    expect(fs.existsSync(path.join(dataRoot, 'gateway', 'logs', `${config.projectId}.log`))).toBe(true);
+  }, 180_000);
+
   it('writes each worker log under the data root', async () => {
     const sup = create();
     const config = configFor(makeProject(base, 'app-a'), 'prj-app-a-00000007');

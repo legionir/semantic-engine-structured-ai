@@ -561,7 +561,51 @@ and that reindexing A moves **only** A's generation. The stub
 (`test/helpers/stubSemanticGateway.js`) stays for the fast unit tests; this
 file is the integration half and skips itself when the engine is not built.
 
-## 12. Verified baseline (2026-08-26)
+## 12. WebSocket (فاز ۱۱)
+
+Until this phase "WebSocket" was a name without a protocol: `WebSocketManager`
+writes SSE frames into an `http.ServerResponse`, nothing performs a handshake,
+and there is no `ws` dependency. That manager is still there (the visualizer
+uses it over SSE); the real channel is new and dependency-free.
+
+```text
+client  ──GET /ws/projects/:id──▶  Gateway
+                                    │ projectId, token and project access are
+                                    │ checked BEFORE the upgrade
+                                    ▼
+                                 worker /ws   (one channel, one project)
+```
+
+`gateway/wsProtocol.ts` holds the RFC 6455 pieces — accept key, frame
+encoding, and an incremental decoder that reassembles a frame split across TCP
+segments. Text, ping, pong and close are supported; binary and continuation
+frames are rejected with `1003`, and a frame claiming more than 4 MiB is
+refused rather than allocated.
+
+Two rules worth recording:
+
+- `projectId` is resolved **before** the upgrade, so an unknown project (404),
+  a missing token (401) or a token without the project (403) never reaches a
+  worker; after the upgrade the socket is bound to that project's socket and
+  cannot drift.
+- every frame carries the channel's `projectId`, taken from the channel and
+  not from the message, so a client cannot address another project by writing
+  `projectId` into its payload.
+
+**Measured bug, fixed:** the proxy dropped `Connection` as a hop-by-hop
+header. Node then never fired the `upgrade` event on the worker and the
+request fell through to the route table — the worker answered `101` when
+contacted directly and `404` through the Gateway. `Upgrade: websocket` and
+`Connection: Upgrade` are now written explicitly.
+
+**Second measured bug, fixed:** the supervisor did not tell the worker which
+data root to use, so a Gateway-managed worker wrote its artifacts to the
+platform default data directory while its socket, lock and log lived under the
+Gateway's data root. The supervisor now sets `SEMANTIC_ENGINE_DATA_DIR` in the
+child environment, and a regression test asserts the index lands under
+`<dataRoot>/projects/<id>/`.
+
+## 13. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,
