@@ -8,6 +8,7 @@
 import * as path from 'path';
 import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { applyQueryPolicy, validateDatabasePath } from './queryPolicy';
+import { openSqlite } from '../../export/sqlite/SqliteDriver';
 
 export interface QueryIndexColumn {
   readonly name: string;
@@ -216,21 +217,10 @@ export class QueryIndexTool implements AiTool<QueryIndexInput> {
       return { success: false, error: queryCheck.error, items: [] };
     }
 
-    const sqlite = loadSqlite();
-    if (!sqlite) {
-      return {
-        success: false,
-        error:
-          'The sqlite3 native module is not available. ' +
-          'Reinstall dependencies, or use the JSON index instead.',
-        items: [],
-      };
-    }
-
     try {
-      const db = await this.openDatabase(sqlite, databasePath);
+      const db = await openSqlite(databasePath);
       try {
-        const rows = await this.query(db, queryCheck.sql, input.params ?? []);
+        const rows = await db.all(queryCheck.sql, input.params ?? []);
         const items = rows.map((row, index) => ({
           id: `row-${index}`,
           name: Object.values(row ?? {}).slice(0, 2).join(' | ') || `row-${index}`,
@@ -244,7 +234,7 @@ export class QueryIndexTool implements AiTool<QueryIndexInput> {
           metadata: { returned: items.length, capped: policy.maxRows },
         };
       } finally {
-        await this.closeDatabase(db);
+        await db.close();
       }
     } catch (error) {
       return {
@@ -253,39 +243,5 @@ export class QueryIndexTool implements AiTool<QueryIndexInput> {
         items: [],
       };
     }
-  }
-
-  private openDatabase(
-    sqlite: SqliteModule,
-    path: string
-  ): Promise<SqliteDatabase> {
-    return new Promise((resolve, reject) => {
-      const db = new sqlite.Database(path, sqlite.OPEN_READONLY, (err: Error | null) => {
-        if (err) reject(err);
-        else resolve(db);
-      });
-    });
-  }
-
-  private closeDatabase(db: SqliteDatabase): Promise<void> {
-    return new Promise((resolve, reject) => {
-      db.close((err: Error | null) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-  }
-
-  private query(db: SqliteDatabase, sql: string, params: readonly unknown[]): Promise<unknown[]> {
-    return new Promise((resolve, reject) => {
-      db.all(
-        sql,
-        [...params],
-        (err: Error | null, rows: unknown[]) => {
-          if (err) reject(err);
-          else resolve(rows ?? []);
-        }
-      );
-    });
   }
 }
