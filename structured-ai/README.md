@@ -209,6 +209,22 @@ node bin/agent.js -w /path/to/project --discussion --personas security,frontend 
 اکنون implementation canonical را اجرا می‌کنند و setting ناشناخته خطای واضح
 می‌دهد. برای فهرست کامل ۱۶۳ setting به `SettingsSchema.js` مراجعه کنید.
 
+### موتور معنایی چندپروژه‌ای (Semantic Gateway)
+
+سمت Semantic Engine حالا یک Gateway دارد: یک پورت عمومی که چند worker
+تک‌پروژه‌ای را مدیریت می‌کند. نقطهٔ اتصال این پلتفرم به آن، یک URL به ازای
+هر پروژه است:
+
+```text
+POST  http://127.0.0.1:4000/mcp/<projectId>
+```
+
+که در registry به‌عنوان `semanticEndpoint` همان پروژه ثبت می‌شود و
+`agent/mcp/SemanticClientPool.js` به ازای هر پروژه یک اتصال مستقل نگه
+می‌دارد. قوانین مسیر و شناسه (`prj-<slug>-<sha256(root)[0:8]>`) در
+`semantic-engine/README.md` §۵.۱ آمده و تست یکپارچگی دوطرفه در
+`test/mcp/gateway.integration.test.js` اجرا می‌شود.
+
 ## ۶. مستندات کامل اندپوینت‌های سرور وب کنسول (Web Server & REST / SSE API)
 
 سرور canonical با `node bin/agent.js --serve <port> -w <path>` اجرا می‌شود.

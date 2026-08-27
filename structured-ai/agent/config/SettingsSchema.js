@@ -1129,6 +1129,13 @@ const DEFINITIONS = [
         description: "Path to semantic-engine binary or script. Empty autodetects."
     },
     {
+        key: "SEMANTIC_ENGINE_DATA_DIR",
+        group: "tools",
+        type: STRING,
+        default: "",
+        description: "Data directory the semantic engine writes its index to. Empty means the platform default: $XDG_DATA_HOME/semantic-engine on Linux, ~/Library/Application Support/SemanticEngine on macOS, %LOCALAPPDATA%/SemanticEngine on Windows."
+    },
+    {
         key: "SEMANTIC_ENGINE_URL",
         group: "tools",
         type: STRING,

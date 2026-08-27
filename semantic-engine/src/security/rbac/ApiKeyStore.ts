@@ -41,6 +41,7 @@ export class ApiKeyStore {
     role: PlatformRole;
     permissions?: readonly PermissionScope[];
     resourceScope?: string;
+    allowedProjects?: readonly string[];
     expiresInMs?: number;
   }): { rawToken: string; key: ApiKeyRecord } {
     const id = `key_${crypto.randomBytes(8).toString('hex')}`;
@@ -58,6 +59,7 @@ export class ApiKeyStore {
       role: params.role,
       permissions,
       resourceScope: params.resourceScope || '*',
+      ...(params.allowedProjects ? { allowedProjects: params.allowedProjects } : {}),
       createdAt: Date.now(),
       expiresAt: params.expiresInMs ? Date.now() + params.expiresInMs : undefined,
     };

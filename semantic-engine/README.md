@@ -146,12 +146,38 @@ node bin/semantic-engine.js doctor
 
 ### مسیر یکنواخت پروژه و ایندکس
 
-ریشهٔ پروژه همیشه همان مسیر `--root` است و خروجی پیش‌فرض در
-`<root>/.semantic-engine/` ساخته می‌شود. دستورهای `serve`، `query`، `watch`،
-UI و MCP همین قرارداد را استفاده می‌کنند. اگر یک ایندکس قدیمی در
-`<root>/.agent/semantic/` یا `<root>/semantic/` وجود داشته باشد، فقط برای سازگاری خوانده می‌شود و
-خروجی‌های جدید هرگز در آن مسیر نوشته نمی‌شوند. دادن خودِ `.agent` یا
-`.semantic-engine` به‌عنوان `--root` نیز به ریشهٔ واقعی پروژه نرمال می‌شود.
+ریشهٔ پروژه همیشه همان مسیر `--root` است و فقط **خوانده** می‌شود؛ خروجی از
+نسخهٔ چندپروژه‌ای به بعد در data directory کاربر نوشته می‌شود تا هیچ checkout
+به‌خاطر ایندکس dirty نشود:
+
+```text
+Linux     $XDG_DATA_HOME/semantic-engine        (وگرنه ~/.local/share/semantic-engine)
+macOS     ~/Library/Application Support/SemanticEngine
+Windows   %LOCALAPPDATA%\SemanticEngine
+
+<dataRoot>/projects/<projectId>/project-index.json
+                             /blueprint.json
+                             /project-index.sqlite
+                             /project-artifacts.manifest.json
+```
+
+`<projectId>` برابر `prj-<slug(نام)>-<sha256(مسیر canonical)[0:8]>` است، پس دو
+پروژهٔ هم‌نام در دو مسیر مختلف هرگز به هم نمی‌خورند؛ با `--project-id` هم
+قابل تعیین است. مسیر data root با `SEMANTIC_ENGINE_DATA_DIR` یا `--data-dir`
+عوض می‌شود.
+
+دو راه فرار برای سازگاری با گذشته وجود دارد: `--out <dir>` مثل قبل بر همه‌چیز
+مقدم است، و `--artifact-location in-root` (یا
+`SEMANTIC_ENGINE_ARTIFACT_LOCATION=in-root`) همان رفتار قدیمی
+`<root>/.semantic-engine/` را برمی‌گرداند.
+
+اگر ایندکس قدیمی در `<root>/.semantic-engine/`، `<root>/.agent/semantic/` یا
+`<root>/semantic/` وجود داشته باشد، در اولین اجرا به data directory **کپی**
+می‌شود (نه جابه‌جا) و `<artifactRoot>/migration.json` ثبت می‌کند که از کجا آمده؛
+فایل‌های قدیمی هرگز پاک نمی‌شوند. دستورهای `serve`، `query`، `watch`، UI و MCP
+همین قرارداد را استفاده می‌کنند و `semantic-engine doctor` مسیر data root و
+وضعیت migration را گزارش می‌دهد. دادن خودِ `.agent` یا `.semantic-engine`
+به‌عنوان `--root` نیز به ریشهٔ واقعی پروژه نرمال می‌شود.
 
 ### به‌روزرسانی خودکار artifactها
 
@@ -217,6 +243,97 @@ semantic-engine query find_symbol --name "AuthService" --json
 > **توکن:** UI به توکنِ `--token` نیاز دارد؛ آن را در بالای صفحه وارد و ذخیره کن (در `localStorage` می‌ماند) یا با پارامتر `?token=…` در URL بده. صفحهٔ Visualizer با `/visualizer` و پارامتر `?project=<id>` در دسترس است.
 
 ---
+
+## ۵.۱ معماری چندپروژه‌ای: Gateway و Workerها
+
+یک Gateway روی یک پورت عمومی می‌نشیند و چند Worker تک‌پروژه‌ای را مدیریت می‌کند. هر Worker یک پروسهٔ مستقل است با یک workspace، یک ایندکس، یک watcher و یک کانال MCP؛ Gateway فقط ثبت، مسیریابی، نظارت و بازیابی انجام می‌دهد و هیچ تحلیلی روی کد نمی‌کند.
+
+```text
+Browser / AI Client
+        │
+        ▼
+Semantic Gateway :4000        ← تنها پورت عمومی
+        ├── Worker prj-a      (Unix socket یا loopback)
+        ├── Worker prj-b
+        └── Worker prj-c
+```
+
+```bash
+# بالا آوردن Gateway (پروژه‌ها از کنسول یا API ثبت می‌شوند)
+semantic-engine gateway --port 4000 --token <secret>
+
+# یک Worker مستقل، بدون Gateway
+semantic-engine worker --project-id prj-app-12345678 --root /path/to/app
+
+# کنسول Gateway
+#   http://127.0.0.1:4000/gateway
+```
+
+### داده‌های تولیدشده کجا می‌نشینند
+
+از این نسخه، خروجی‌ها **بیرون از checkout** نوشته می‌شوند تا مخزن به‌خاطر ایندکس dirty نشود:
+
+```text
+Linux     $XDG_DATA_HOME/semantic-engine      (وگرنه ~/.local/share/semantic-engine)
+macOS     ~/Library/Application Support/SemanticEngine
+Windows   %LOCALAPPDATA%\SemanticEngine
+
+<dataRoot>/projects/<projectId>/project-index.json
+                             /blueprint.json
+                             /project-index.sqlite
+                             /project-artifacts.manifest.json
+                             /migration.json
+<dataRoot>/gateway/sockets/<projectId>.sock
+<dataRoot>/gateway/logs/<projectId>.log
+<dataRoot>/registry.json
+```
+
+`<projectId>` برابر `prj-<slug(نام)>-<sha256(مسیر canonical)[0:8]>` است، پس دو checkout با نام یکسان هرگز به هم نمی‌خورند.
+
+| متغیر/پرچم | کار |
+|---|---|
+| `SEMANTIC_ENGINE_DATA_DIR` / `--data-dir` | جای data root |
+| `SEMANTIC_ENGINE_ARTIFACT_LOCATION` / `--artifact-location` | `external` (پیش‌فرض) یا `in-root` (رفتار قدیمی) |
+| `--out <dir>` | نوشتن در مسیر دلخواه؛ بر هر دو مقدم است |
+| `SEMANTIC_ENGINE_GATEWAY_TOKEN` | توکن Gateway |
+
+### migration از خروجی‌های قدیمی
+
+ایندکس‌های قدیمی داخل checkout (`.semantic-engine/`، `.agent/semantic/`، `semantic/`) در اولین اجرا به data directory **کپی** می‌شوند — نه جابه‌جا. فایل اصلی هرگز پاک نمی‌شود و `migration.json` ثبت می‌کند از کجا آمده:
+
+```json
+{ "migratedFrom": "/repo/app/.agent/semantic", "migrationMode": "copy-readonly-legacy" }
+```
+
+### نگهداری از کش
+
+```bash
+semantic-engine cache list                          # چه چیزی کش شده و چقدر جا گرفته
+semantic-engine cache clean --project prj-a-…       # فقط همان پروژه (هرگز source tree)
+semantic-engine cache clean --older-than 30d        # پیش‌فرض dry-run
+semantic-engine cache clean --older-than 30d --force
+semantic-engine cache export --project prj-a-… --to /backup
+semantic-engine cache import --project prj-a-… --from /backup/prj-a-…
+```
+
+`cache` فقط دادهٔ تولیدشده را پاک می‌کند و دو گارد دارد: مقصد باید داخل `<dataRoot>/projects/` باشد و با هیچ workspace ثبت‌شده‌ای هم‌پوشانی نداشته باشد.
+
+### اندپوینت‌های چندپروژه‌ای
+
+```text
+GET    /health  /ready  /metrics                    سلامت خود Gateway
+GET    /api/v1/gateway/projects                     فهرست پروژه‌ها
+POST   /api/v1/gateway/projects                     ثبت پروژه (+ autoStart)
+GET    /api/v1/gateway/projects/:id/health          جزئیات سلامت یک پروژه
+POST   /api/v1/gateway/projects/:id/start|stop|restart|reindex
+GET    /api/v1/gateway/events                       رویدادها (SSE)
+ANY    /api/v1/projects/:id/...                     proxy به worker همان پروژه
+POST   /mcp/:id                                     MCP همان پروژه
+GET    /ws/projects/:id                             WebSocket همان پروژه
+GET    /projects/:id                                deep link به داشبورد پروژه
+```
+
+هر پاسخ proxy‌شده هدر `X-Semantic-Project-Id` دارد تا مشخص باشد پاسخ مال کدام پروژه است.
 
 ## ۶. تنظیمات و پیکربندی (Configuration)
 
@@ -682,7 +799,8 @@ semantic-engine query find_symbol --name "AuthService" --json
       "command": "node",
       "args": [
         "/path/to/semantic-engine/dist/ai/mcp/cli.js",
-        "/path/to/project/.semantic-engine/project-index.json"
+        "--root",
+        "/path/to/project"
       ]
     }
   }

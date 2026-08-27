@@ -15,11 +15,16 @@ import { WatchPipeline } from '../../pipeline/WatchPipeline';
 import { IncrementalEngine } from '../../incremental/IncrementalEngine';
 import { VectorIndexer } from '../../vector/VectorIndexer';
 import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { IEmbeddingGenerator } from '../../vector/EmbeddingGenerator';
+import {
+  createEmbeddingGeneratorFromArgs,
+  embeddingRequested,
+} from '../embeddingFromArgs';
+import { projectPathsFromArgs } from '../projectPathsFromArgs';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { GitInfoCollector } from '../../core/git';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
-import { DEFAULT_OUTPUT_DIR } from './index-command';
 import { normalizeWorkspaceRoot } from '../../core/config/ProjectPaths';
 import { waitForShutdown } from './serve-command';
 
@@ -99,7 +104,8 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     return { code: EXIT.usage, error: error instanceof Error ? error.message : String(error) };
   }
 
-  const outputDir = path.resolve(root, stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR);
+  /* همان resolver دستور `index`؛ watch و write هرگز واگرا نمی‌شوند. */
+  const outputDir = projectPathsFromArgs(args, root).artifactRoot;
   const pidPath = path.join(outputDir, PID_FILE_NAME);
 
   const claim = claimPidFile(pidPath);
@@ -127,19 +133,19 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     boolOption(args.options, 'skipInitialIndex', false) ||
     args.options['initialIndex'] === false;
   const wantsBlueprint = boolOption(args.options, 'blueprint', true);
-  const wantsVectors = boolOption(
-    args.options,
-    'vectors',
-    Boolean(existingIndex?.vectorChunks)
-  );
+  /* مثل `index`: یک provider صریح یعنی vectorها روشن هستند. */
+  const wantsVectors =
+    boolOption(args.options, 'vectors', Boolean(existingIndex?.vectorChunks)) ||
+    (embeddingRequested(args) && boolOption(args.options, 'vectors', true));
   const wantsSqlite = boolOption(
     args.options,
     'sqlite',
     fs.existsSync(path.join(outputDir, 'project-index.sqlite'))
   );
-  const vectorIndexer = wantsVectors
-    ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
-    : null;
+  const embeddingGenerator: IEmbeddingGenerator | undefined = wantsVectors
+    ? createEmbeddingGeneratorFromArgs(args) ?? new HashingEmbeddingGenerator()
+    : undefined;
+  const vectorIndexer = wantsVectors ? new VectorIndexer({ embeddingGenerator }) : null;
 
   try {
     let projectIndex: ProjectIndex;

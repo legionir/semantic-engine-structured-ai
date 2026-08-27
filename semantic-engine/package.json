@@ -40,7 +40,7 @@
     "lint": "eslint src",
     "pretest": "node scripts/gen-fixture.js",
     "test": "jest",
-    "test:gate": "npm run fixture && node scripts/check-tests.js",
+    "test:gate": "npm run fixture && node scripts/check-tests.js && node scripts/check-artifact-location.js",
     "fixture": "node scripts/gen-fixture.js",
     "validate": "node scripts/validate-project-index.js",
     "snapshot": "node scripts/snapshot.js",

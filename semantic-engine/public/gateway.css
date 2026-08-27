@@ -1,0 +1,127 @@
+/* Semantic Gateway console — فاز ۱۲ */
+
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --line: #262b36;
+  --text: #e6e9ef;
+  --muted: #98a2b3;
+  --ready: #2ecc71;
+  --indexing: #f1c40f;
+  --degraded: #e67e22;
+  --crashed: #e74c3c;
+  --accent: #4c8dff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.muted { color: var(--muted); font-size: 12px; }
+
+.dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--muted); display: inline-block;
+}
+
+main { padding: 20px; display: grid; gap: 20px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-value { font-size: 22px; font-weight: 600; }
+.card-label { color: var(--muted); font-size: 12px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.panel h2 { margin: 0 0 12px; font-size: 15px; }
+
+table.workers { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.workers th, table.workers td {
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+}
+table.workers th { color: var(--muted); font-weight: 500; }
+
+tr.state-ready td:first-child { border-left: 3px solid var(--ready); }
+tr.state-indexing td:first-child { border-left: 3px solid var(--indexing); }
+tr.state-degraded td:first-child { border-left: 3px solid var(--degraded); }
+tr.state-crashed td:first-child { border-left: 3px solid var(--crashed); }
+tr.state-stopped td:first-child { border-left: 3px solid var(--line); }
+
+td.actions { white-space: normal; }
+
+button {
+  background: #20242d;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.action { margin: 2px 4px 2px 0; }
+
+fieldset.section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+fieldset.section legend { color: var(--muted); font-size: 12px; padding: 0 6px; text-transform: capitalize; }
+
+label.field { display: grid; grid-template-columns: 220px 1fr; gap: 10px; align-items: center; margin: 6px 0; }
+label.field > span:first-child { color: var(--muted); }
+label.field input[type="text"], label.field input[type="number"], label.field select {
+  background: #10131a; color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; width: 100%;
+}
+label.field .error { grid-column: 2; color: var(--crashed); font-size: 12px; min-height: 0; }
+
+#command-preview {
+  background: #10131a; border: 1px solid var(--line); border-radius: 6px;
+  padding: 10px; overflow-x: auto; font-size: 12px; color: var(--muted);
+}
+
+.error { color: var(--crashed); font-size: 12px; margin: 8px 0 0; }
+.form-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.health-item { border: 1px solid var(--line); border-radius: 6px; padding: 8px; display: flex; justify-content: space-between; font-size: 12px; }
+.health-ok strong { color: var(--ready); }
+.health-warn strong { color: var(--indexing); }
+.health-off strong { color: var(--muted); }
+.health-unknown strong { color: var(--muted); }
+.panel h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); }
+.panel ul { margin: 0; padding-left: 18px; font-size: 12px; }

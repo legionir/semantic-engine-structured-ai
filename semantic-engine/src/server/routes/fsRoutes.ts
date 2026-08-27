@@ -58,7 +58,19 @@ async function detectHint(dir: string): Promise<DirEntry['hint']> {
   return undefined;
 }
 
-export function createFsRoutes(defaultRoot: string): RouteDefinition[] {
+export interface FsRoutesOptions {
+  /**
+   * مرور فقط داخل subtree همان ریشه. در حالت gateway-managed روشن است؛ در
+   * حالت standalone خاموش، چون انتخابگر «باز کردن پروژه» در UI عمداً
+   * بیرون از ریشه هم مرور می‌کند.
+   */
+  readonly confineToRoot?: boolean;
+}
+
+export function createFsRoutes(
+  defaultRoot: string,
+  options: FsRoutesOptions = {}
+): RouteDefinition[] {
   return [
     {
       method: 'GET',
@@ -76,6 +88,28 @@ export function createFsRoutes(defaultRoot: string): RouteDefinition[] {
             status: 404,
             json: { error: `path not found: ${target}`, cwd: defaultRoot, home: os.homedir() },
           };
+        }
+
+        /*
+        | فاز ۶: در حالت managed، worker به یک پروژه bound است. مسیر پس از
+        | `realpath` سنجیده می‌شود تا یک symlink نتواند از subtree بیرون بزند.
+        */
+        if (options.confineToRoot) {
+          let realTarget = target;
+          let realRoot = defaultRoot;
+          try {
+            realTarget = fs.realpathSync(target);
+            realRoot = fs.realpathSync(defaultRoot);
+          } catch {
+            return { status: 403, json: { error: `path is not accessible: ${target}` } };
+          }
+
+          if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
+            return {
+              status: 403,
+              json: { error: 'path is outside this worker\'s workspace root' },
+            };
+          }
         }
 
         let entries: DirEntry[] = [];

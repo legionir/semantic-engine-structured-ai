@@ -11,7 +11,16 @@ import { AiToolRegistry } from '../ai/AiToolRegistry';
 import { loadBlueprintBeside } from '../ai/discovery/loadBlueprint';
 import { BlueprintIndex } from '../ai/discovery/BlueprintIndex';
 import { AnalysisGraph } from './analysis/AnalysisGraph';
-import { canonicalIndexPath, normalizeWorkspaceRoot, resolveProjectIndexPath } from '../core/config/ProjectPaths';
+import {
+  canonicalIndexPath,
+  normalizeWorkspaceRoot,
+  resolveProjectIndexPath,
+  resolveProjectPaths,
+} from '../core/config/ProjectPaths';
+import { ArtifactLocation, DEFAULT_ARTIFACT_LOCATION } from '../core/config/DataRootResolver';
+import { migrateLegacyArtifacts } from '../core/config/migrateLegacyArtifacts';
+import type { ProjectRecord, ProjectRegistry } from '../core/config/ProjectRegistry';
+import { canonicalizeRoot, isPathSafeProjectId, isSafeProjectId, projectIdFor } from '../core/config/ProjectIdentity';
 
 const MAX_INDEX_BYTES = 256 * 1024 * 1024;
 const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
@@ -20,6 +29,12 @@ export interface ManagedProject {
   readonly id: string;
   readonly name: string;
   readonly rootPath: string;
+  /**
+   * شناسه‌های دیگری که همین پروژه با آن‌ها ثبت شده (`current`، `<basename>`،
+   * `prj-<basename>`). همه در `getProject` resolve می‌شوند ولی پروژه در
+   * `listProjects` فقط یک بار ظاهر می‌شود.
+   */
+  readonly aliases: readonly string[];
   readonly indexPath: string;
   readonly blueprintPath?: string;
   readonly sqlitePath?: string;
@@ -37,25 +52,84 @@ export interface ManagedProject {
 }
 
 export class ProjectService {
+  /*
+  | کلید این map ریشهٔ نرمال‌شده است، نه شناسه. دلیلش یک باگ واقعی بود:
+  | شناسه از `basename` ساخته می‌شد، پس `/tmp/client-a/app` و
+  | `/tmp/client-b/app` هر دو `prj-app` می‌شدند و `projects.set(id, …)`
+  | دومی را جای اولی می‌گذاشت — یعنی یک پروژه بی‌صدا ناپدید می‌شد.
+  | `byId` همهٔ شناسه‌ها و aliasها را به همان رکورد نگاشت می‌کند.
+  */
   private readonly projects = new Map<string, ManagedProject>();
+  private readonly byId = new Map<string, ManagedProject>();
   private readonly artifactWatchers = new Map<string, fs.FSWatcher>();
   private readonly reloadTimers = new Map<string, NodeJS.Timeout>();
 
-  constructor(private readonly defaultRoot: string = process.cwd()) {}
+  constructor(
+    private readonly defaultRoot: string = process.cwd(),
+    private readonly options: ProjectServiceOptions = {}
+  ) {}
 
   /**
    * ثبت یا باز کردن یک پروژه بر اساس مسیر.
    */
   registerProject(projectPath: string, customId?: string, customName?: string): ManagedProject {
     const rootPath = normalizeWorkspaceRoot(projectPath);
-    const id = customId || `prj-${path.basename(rootPath).toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`;
+    const requestedId = (customId ?? '').trim();
     const name = customName || path.basename(rootPath);
 
-    /* `.semantic-engine` is canonical. `resolveProjectIndexPath` keeps the
-       old Structured AI sidecar location readable during migration without
-       ever making it the destination for a new index. */
-    const canonicalPath = canonicalIndexPath(rootPath);
-    const actualIndexPath = resolveProjectIndexPath(rootPath);
+    /*
+    | شناسهٔ پایدار: اول رکورد registry (اگر registry داشته باشیم)، وگرنه
+    | شناسهٔ ثبت‌شدهٔ قبلیِ همین ریشه، و در نهایت یک شناسهٔ تولیدشده از
+    | `projectIdFor(name, canonicalRoot)` — که برخلاف `basename` برای دو
+    | پروژهٔ هم‌نام یکی نمی‌شود.
+    */
+    const previous = this.projects.get(rootPath);
+    const record = this.registerInRegistry(rootPath, name, requestedId);
+    const id = record?.id ?? previous?.id ?? this.deriveId(rootPath, name, requestedId);
+    const aliases = this.mergeAliases(previous, record, id, requestedId);
+
+    /*
+    | مقصد نوشتن و مسیر خواندن جدا از هم تصمیم گرفته می‌شوند:
+    |
+    |   - `canonicalPath` جایی است که ایندکس بعدی نوشته می‌شود (در حالت
+    |     `external` زیر data root)؛
+    |   - `actualIndexPath` اولین ایندکس موجود است، شامل fallbackهای legacy،
+    |     تا ایندکس قدیمی خواندنی بماند بدون آنکه مقصد شود.
+    |
+    | شناسهٔ artifact از ریشه ساخته می‌شود، نه از id نمایشی سرویس (که می‌تواند
+    | alias باشد) — پس دو alias از یک پروژه به یک پوشه می‌رسند.
+    */
+    const location: ArtifactLocation =
+      this.options.artifactLocation ?? DEFAULT_ARTIFACT_LOCATION;
+    const artifactProjectId =
+      record && isPathSafeProjectId(record.id)
+        ? record.id
+        : projectIdFor(name, canonicalizeRoot(rootPath));
+    const lookup = {
+      location,
+      projectId: artifactProjectId,
+      ...(this.options.dataRoot !== undefined ? { dataRoot: this.options.dataRoot } : {}),
+    };
+
+    if (location === 'external') {
+      migrateLegacyArtifacts({
+        workspaceRoot: rootPath,
+        projectId: artifactProjectId,
+        location,
+        ...(this.options.dataRoot !== undefined ? { dataRoot: this.options.dataRoot } : {}),
+      });
+    }
+
+    const canonicalPath =
+      location === 'external'
+        ? resolveProjectPaths({
+            projectId: artifactProjectId,
+            workspaceRoot: rootPath,
+            location: 'external',
+            ...(this.options.dataRoot !== undefined ? { dataRoot: this.options.dataRoot } : {}),
+          }).indexPath
+        : canonicalIndexPath(rootPath);
+    const actualIndexPath = resolveProjectIndexPath(rootPath, undefined, lookup);
 
     /*
     | SE-PERF-01، یک محدودیتِ شناخته‌شده و نه رفع‌شده.
@@ -128,6 +202,8 @@ export class ProjectService {
         registry = new AiToolRegistry({
           reader,
           workspaceRoot: rootPath,
+          /* SQLite کنار همین ایندکس است — در حالت external یعنی data root. */
+          artifactRoot: path.dirname(actualIndexPath),
           projectHash: index.generatedAt,
           enableCache: true,
           ...(blueprint ? { blueprint } : {}),
@@ -148,8 +224,9 @@ export class ProjectService {
 
     const managed: ManagedProject = {
       id,
-      name,
+      name: record?.name ?? name,
       rootPath,
+      aliases,
       /* Always expose the write destination. A legacy index may have been
          read above, but the next UI indexing job must migrate it to the
          canonical directory instead of refreshing `.agent/semantic`. */
@@ -169,7 +246,9 @@ export class ProjectService {
       },
     };
 
-    this.projects.set(id, managed);
+    this.projects.set(rootPath, managed);
+    this.byId.set(id, managed);
+    for (const alias of aliases) this.byId.set(alias, managed);
     this.ensureArtifactWatcher(managed);
     return managed;
   }
@@ -224,10 +303,12 @@ export class ProjectService {
     this.reloadTimers.clear();
     for (const watcher of this.artifactWatchers.values()) watcher.close();
     this.artifactWatchers.clear();
+    this.projects.clear();
+    this.byId.clear();
   }
 
   getProject(id: string): ManagedProject | undefined {
-    return this.projects.get(id);
+    return this.byId.get(id);
   }
 
   listProjects(): ManagedProject[] {
@@ -238,7 +319,7 @@ export class ProjectService {
    * بازخوانی ایندکس پروژه پس از تکمیل فرآیند ایندکس‌سازی.
    */
   reloadProject(id: string): ManagedProject | undefined {
-    const current = this.projects.get(id);
+    const current = this.byId.get(id);
     if (!current) return undefined;
     return this.registerProject(current.rootPath, current.id, current.name);
   }
@@ -248,7 +329,7 @@ export class ProjectService {
    */
   getProjectGraph(id: string): AnalysisGraph {
     const graph = new AnalysisGraph();
-    const project = this.projects.get(id);
+    const project = this.byId.get(id);
     if (!project || !project.index) return graph;
 
     // Add symbols as nodes
@@ -300,7 +381,7 @@ export class ProjectService {
     id: string,
     _options?: { incremental?: boolean }
   ): Promise<{ filesCount: number; symbolsCount: number; edgesCount: number }> {
-    const project = this.projects.get(id);
+    const project = this.byId.get(id);
     if (!project) {
       throw new Error(`Project '${id}' not found`);
     }
@@ -312,4 +393,69 @@ export class ProjectService {
       edgesCount: reloaded?.stats.dependenciesCount || 0,
     };
   }
+
+  /**
+   * ثبت در registry دائمی، اگر یکی تزریق شده باشد.
+   *
+   * ریشهٔ ناموجود خطای registry می‌دهد ولی رفتار قبلی این سرویس «پروژه با
+   * status=missing» است، پس فقط همان دو حالت نادیده گرفته می‌شوند؛ هر خطای
+   * دیگری (مثل تضاد شناسه) باید دیده شود، نه بلعیده.
+   */
+  private registerInRegistry(
+    rootPath: string,
+    name: string,
+    requestedId: string
+  ): ProjectRecord | undefined {
+    const registry = this.options.registry;
+    if (!registry) return undefined;
+
+    try {
+      return registry.register({
+        rootPath,
+        name,
+        ...(requestedId !== '' ? { id: requestedId } : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/does not exist|not a directory/.test(message)) return undefined;
+      throw error;
+    }
+  }
+
+  private deriveId(rootPath: string, name: string, requestedId: string): string {
+    /*
+    | یک شناسهٔ صریح فقط وقتی معتبر است که نویسهٔ بی‌خطر داشته باشد؛ در غیر
+    | این صورت شناسه تولید می‌شود و همان مقدار صریح به alias تبدیل می‌شود.
+    */
+    if (requestedId !== '' && isSafeProjectId(requestedId)) return requestedId;
+    return projectIdFor(name, canonicalizeRoot(rootPath));
+  }
+
+  private mergeAliases(
+    previous: ManagedProject | undefined,
+    record: ProjectRecord | undefined,
+    id: string,
+    requestedId: string
+  ): string[] {
+    const aliases = new Set<string>([id]);
+    if (previous) {
+      aliases.add(previous.id);
+      for (const alias of previous.aliases) aliases.add(alias);
+    }
+    if (record) {
+      aliases.add(record.id);
+      for (const alias of record.aliases) aliases.add(alias);
+    }
+    if (requestedId !== '' && isSafeProjectId(requestedId)) aliases.add(requestedId);
+    return [...aliases];
+  }
+}
+
+export interface ProjectServiceOptions {
+  /** registry دائمی پروژه‌ها؛ بدون آن، شناسه‌ها فقط در حافظه نگه داشته می‌شوند. */
+  readonly registry?: ProjectRegistry;
+  /** کجا نوشته شود؛ پیش‌فرض `in-root` (رفتار فعلی). */
+  readonly artifactLocation?: ArtifactLocation;
+  /** data root صریح؛ در غیر این صورت `resolveDataRoot` تصمیم می‌گیرد. */
+  readonly dataRoot?: string;
 }

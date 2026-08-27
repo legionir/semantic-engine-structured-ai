@@ -55,9 +55,11 @@ npm ci
 npm run build
 
 # ساخت index
+# خروجی به‌صورت پیش‌فرض در data directory کاربر نوشته می‌شود
+# ($XDG_DATA_HOME/semantic-engine/projects/<projectId>/)؛ برای نوشتن در root
+# قدیمی، --artifact-location in-root یا --out بدهید.
 node bin/semantic-engine.js index \
-  --root /path/to/project \
-  --out /path/to/project/.semantic-engine
+  --root /path/to/project
 
 # اجرای UI و REST platform
 node bin/semantic-engine.js ui \
@@ -89,7 +91,6 @@ node bin/semantic-engine.js start \
 # watch — reindex incremental و به‌روزرسانی artifactها
 node bin/semantic-engine.js watch \
   --root /path/to/project \
-  --out /path/to/project/.semantic-engine \
   --vectors \
   --sqlite
 
@@ -104,7 +105,40 @@ node bin/semantic-engine.js start \
 
 # بررسی محیط
 node bin/semantic-engine.js doctor
+
+# ── معماری چندپروژه‌ای ────────────────────────────────────────────
+# Gateway: یک پورت عمومی، چند worker تک‌پروژه‌ای
+#   کنسول: http://127.0.0.1:4000/gateway
+node bin/semantic-engine.js gateway --port 4000 --token "$SEMANTIC_ENGINE_GATEWAY_TOKEN"
+
+# یک worker مستقل (بدون Gateway)؛ روی Unix socket یا loopback
+node bin/semantic-engine.js worker \
+  --project-id prj-app-12345678 \
+  --root /path/to/app
+
+# نگهداری از دادهٔ تولیدشده (فقط data directory، هرگز source tree)
+node bin/semantic-engine.js cache list
+node bin/semantic-engine.js cache clean --project prj-app-12345678
+node bin/semantic-engine.js cache clean --older-than 30d          # dry-run
+node bin/semantic-engine.js cache clean --older-than 30d --force
+node bin/semantic-engine.js cache export --project prj-app-12345678 --to /backup
 ```
+
+### دادهٔ تولیدشده کجا می‌نشیند
+
+پیش‌فرض `external` است: `<dataRoot>/projects/<projectId>/` که `dataRoot` برابر
+`$XDG_DATA_HOME/semantic-engine` (لینوکس)، `~/Library/Application Support/SemanticEngine`
+(macOS) یا `%LOCALAPPDATA%\SemanticEngine` (ویندوز) است و با
+`SEMANTIC_ENGINE_DATA_DIR` عوض می‌شود. `<dataRoot>/gateway/` هم socket، لاگ و
+`registry.json` را نگه می‌دارد. برای رفتار قدیمی (نوشتن داخل checkout)
+`--artifact-location in-root` یا `--out <dir>` بدهید؛ ایندکس قدیمیِ داخل
+checkout در اولین اجرا **کپی** می‌شود و فایل اصلی پاک نمی‌شود.
+
+### سنجه‌ها
+
+کلیدهای سنجه یک قراردادند و در `src/gateway/metrics.ts` تعریف شده‌اند
+(`GATEWAY_METRIC_KEYS` و `WORKER_METRIC_KEYS`)؛ تست‌ها مجموعهٔ **دقیق** کلیدها
+را می‌سنجند، پس تغییر نام یک سنجه باید در تست بشکند نه در داشبورد.
 
 ### Exit codeها
 
