@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۷ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۸ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۸ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۹ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -499,27 +499,27 @@ root وجود داشته باشد و directory باشد؛ canonical شود؛ پ�
 
 ---
 
-## [🔴] فاز ۸: WorkerSupervisor، lifecycle، lock و quota
+## [🟢] فاز ۸: WorkerSupervisor، lifecycle، lock و quota
 
 **هدف:** مدیریت پروسه‌ها، سلامت، crash recovery و محدودسازی منابع. معادل گام ۷ و بخشی از گام ۱۶ پلن مرجع، به‌علاوهٔ پیاده‌سازی lock که امروز اصلاً وجود ندارد (Baseline #19).
 
-### [🔴] گام ۱: `WorkerProcess` و `WorkerSupervisor`
+### [🟢] گام ۱: `WorkerProcess` و `WorkerSupervisor`
 
 `src/gateway/WorkerProcess.ts` و `src/gateway/WorkerSupervisor.ts`: spawn از argv (بدون shell، `spawn` با `shell:false`)، تخصیص پورت/socket، ثبت PID، انتظار برای `/internal/ready` با `workerStartupTimeoutMs`، لاگ هر worker در `<dataRoot>/gateway/logs/<projectId>.log`.
 
-### [🔴] گام ۲: health monitor و crash recovery
+### [🟢] گام ۲: health monitor و crash recovery
 
 `src/gateway/WorkerHealthMonitor.ts`: health check دوره‌ای، تشخیص crash، restart با backoff `1s → 3s → 10s` و انتقال به `degraded` پس از ۵ crash، جلوگیری از crash loop، انتشار رویدادها برای UI فاز ۱۲.
 
-### [🔴] گام ۳: lock هم‌زمانی
+### [🟢] گام ۳: lock هم‌زمانی
 
 `src/gateway/ProjectLock.ts`: `locks/worker.lock` و `locks/index.lock` با `O_EXCL` + pid + heartbeat؛ یک index job فعال برای هر پروژه؛ پروژه‌های مختلف موازی؛ بازیابی lock رهاشده (stale) بر اساس heartbeat.
 
-### [🔴] گام ۴: quota و pool
+### [🟢] گام ۴: quota و pool
 
 `maxWorkers`, `maxConcurrentIndexJobs`, `maxWorkersPerUser`, `workerStartupTimeoutMs`, `workerHealthIntervalMs`, `workerIdleTimeoutMs`, `maxProjectArtifactBytes`, `maxGatewayMemoryMb` — با صف و رد کردن صریح (۴۲۹/۵۰۳) وقتی ظرفیت پر است. (Unknown / Requires Verification: مقادیر پیش‌فرض `maxProjectArtifactBytes` و `maxGatewayMemoryMb` باید با اندازه‌گیری روی `test-projects/` تعیین شوند، نه حدس.)
 
-### [🔴] گام ۵: shutdown کل Gateway و تست‌ها
+### [🟢] گام ۵: shutdown کل Gateway و تست‌ها
 
 SIGTERM → توقف graceful همهٔ workerها و آزادسازی lockها. تست‌ها با worker واقعیِ کوچک روی fixture: crash A不影响 B، start هم‌زمان → یک worker، lock stale بازیابی شود، quota رعایت شود.
 
@@ -529,6 +529,28 @@ SIGTERM → توقف graceful همهٔ workerها و آزادسازی lockها. 
 - پس از ۵ crash پشت‌سرهم، وضعیت `degraded` شود و gateway به restart ادامه ندهد.
 - توقف gateway همهٔ پروسه‌ها را ببندد و lock رهاشده باقی نماند (تست).
 - `npm run build && npm test` سبز.
+
+### وضعیت اجرای فاز ۸ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/gateway/ProjectLock.ts`، `src/gateway/WorkerProcess.ts`، `src/gateway/WorkerHealthMonitor.ts`، `src/gateway/WorkerSupervisor.ts` + تست‌های `ProjectLock.test.ts` (۶) و `WorkerSupervisor.test.ts` (۷، همه با پروسهٔ worker واقعی).
+**فایل‌های تغییرکرده:** `cli/commands/worker-command.ts` (پذیرش `SEMANTIC_ENGINE_WORKER_TOKEN` به‌عنوان کانال توکنِ supervisor).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 192 passed / 192 total`، `Tests: 2652 passed / 2652 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۸: ۱۹۰ suite و ۲۶۳۹ تست → +۲ suite و +۱۳ تست).
+- **crash Worker A روی B اثر نکرد (با دو پروسهٔ واقعی):** A با `SIGKILL` کشته شد → `checkAll()` → `action: 'restart'` برای A و `healthy: true` برای B؛ pid جدید برای A، **pid B بدون تغییر** و `health(B).state === 'ready'`.
+- **دو start هم‌زمان برای یک پروژه → یک worker:** `Promise.all([start, start])` هر دو همان pid را برگرداندند و `list().length === 1`.
+- **crash loop → `degraded`:** با `maxRestarts: 2`، پس از سومین crash پشت‌سرهم `action: 'degraded'` و `isDegraded() === true`؛ بررسی بعدی `action: 'none'` با دلیل «degraded» (یعنی supervisor دیگر restart نمی‌کند).
+- **lock:** دو بار acquire → دومی `reason: 'held'` با pid صاحب؛ صاحب مرده یا heartbeat قدیمی → `recovered: true`؛ فایل نیمه‌نویس → بازیابی؛ `release` فقط lock خودش را برمی‌دارد. و `sup.start()` روی پروژه‌ای که lock زنده دارد → `LockHeldError`.
+- **quota:** با `maxWorkers: 1`، start دوم → `CapacityError`.
+- **shutdown کل:** `stopAll()` هر دو worker را بست، هیچ `worker.lock` و هیچ فایل `.sock` باقی نماند، و پس از اجرای کامل suite هیچ پروسهٔ `semantic-engine.js worker` زنده نماند (`ps` → ۰).
+
+**چهار یافتهٔ اجرایی که حین اندازه‌گیری پیدا و رفع شد (در ADR بخش ۹ ثبت شد):**
+
+1. **شمارندهٔ crash باید از restart جان سالم به در ببرد.** `spawn()` آن را صفر می‌کرد، پس حدِ crash loop هرگز reachable نبود و خروجی تست `['restart','restart','restart','restart']` شد؛ حالا فقط شروعِ *تازه* صفر می‌کند و `restart` نه.
+2. **فایل socket باقی‌مانده از crash یعنی `EADDRINUSE`**؛ supervisor پیش از spawn آن را پاک می‌کند.
+3. **توکن supervisor به worker نمی‌رسید:** worker فقط `--token` و `SEMANTIC_ENGINE_TOKEN` را می‌خواند، پس readiness با ۴۰۱ رد می‌شد؛ `SEMANTIC_ENGINE_WORKER_TOKEN` به زنجیرهٔ منبع توکن اضافه شد.
+4. **لاگ با `WriteStream` به `spawn` داده نمی‌شود** (`ERR_INVALID_ARG_VALUE` و بعد ENOENT بی‌صاحب)؛ به `fs.openSync` + fd تغییر کرد.
 
 ---
 

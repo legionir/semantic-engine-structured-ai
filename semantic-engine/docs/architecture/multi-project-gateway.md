@@ -448,7 +448,49 @@ The consumer needs no change: `structured-ai`'s `unpackToolResult` prefers
 cache when that number moves. An index written before this phase has no counter
 and reports `0`, which keeps the consumer in its old cache-off behaviour.
 
-## 9. Verified baseline (2026-08-26)
+## 9. Supervision, locks and capacity (فاز ۸)
+
+```text
+WorkerSupervisor
+ ├── WorkerProcess      one child process, one socket, one log file
+ ├── WorkerHealthMonitor  crash detection + restart policy
+ └── ProjectLock        <dataRoot>/projects/<id>/locks/{worker,index}.lock
+```
+
+**Layout under the data root**
+
+```text
+<dataRoot>/gateway/sockets/<projectId>.sock
+<dataRoot>/gateway/logs/<projectId>.log
+<dataRoot>/projects/<projectId>/locks/worker.lock
+```
+
+**Spawning** uses `spawn(..., { shell: false })` with the argument vector from
+`workerArgv`; the token travels in `SEMANTIC_ENGINE_WORKER_TOKEN`, never on the
+command line. `start()` resolves only after `/internal/ready` answers 200.
+
+**Locks** are files created with `O_EXCL` (`flag: 'wx'`), so the race is decided
+by the filesystem. The file carries `{projectId, pid, kind, acquiredAt,
+heartbeatAt}`; a lock is taken over when its owner is dead (`kill(pid, 0)`) or
+its heartbeat is older than 30s. `worker.lock` allows one worker per project,
+`index.lock` one index run per project — different projects still index in
+parallel.
+
+**Restart policy** is `1s → 3s → 10s`, and after five crashes in a row the
+worker is marked `degraded` and the supervisor stops trying. Two details that
+only measurement revealed:
+
+- the crash counter must **survive a restart**. Resetting it in `spawn()` made
+  the limit unreachable: every restart zeroed the counter, so a worker could
+  crash forever (`restart, restart, restart, …` and never `degraded`).
+- a stale `*.sock` left by a SIGKILLed worker means `EADDRINUSE`, so the
+  supervisor removes the socket file before spawning.
+
+**Capacity** is refused loudly: `CapacityError` (→ 503/429 in فاز ۹) when
+`maxWorkers` or `maxConcurrentIndexJobs` is reached, and `LockHeldError` when
+another live process already serves the project.
+
+## 10. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

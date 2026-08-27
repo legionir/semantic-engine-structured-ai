@@ -69,8 +69,14 @@ export async function runWorker(
 
   const host = stringOption(args.options, 'host') ?? DEFAULT_HOST;
   const gatewayManaged = boolOption(args.options, 'gatewayManaged', false);
+  /*
+  | ترتیب منبع توکن: flag صریح، بعد متغیری که supervisor ست می‌کند
+  | (`SEMANTIC_ENGINE_WORKER_TOKEN`)، بعد متغیر عمومی، و در نهایت یک توکن
+  | تصادفی. توکن هرگز از خط فرمانِ supervisor نمی‌آید (فاز ۶).
+  */
   const token =
     stringOption(args.options, 'token') ??
+    process.env['SEMANTIC_ENGINE_WORKER_TOKEN'] ??
     process.env['SEMANTIC_ENGINE_TOKEN'] ??
     generateToken();
 
