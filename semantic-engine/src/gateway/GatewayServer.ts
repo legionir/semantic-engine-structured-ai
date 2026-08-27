@@ -208,6 +208,23 @@ export class GatewayServer {
       return;
     }
 
+    /*
+    | ── MCP (فاز ۱۰) ────────────────────────────────────────────────────
+    |
+    | `POST /mcp/:projectId` به `/mcp` روی worker همان پروژه می‌رود. session
+    | از لحظهٔ ایجاد به همان پروژه bound است، چون هر پروژه socket خودش را
+    | دارد و مسیر هرگز بازنویسی نمی‌شود.
+    */
+    const mcp = /^\/mcp\/([^/]+)$/.exec(pathname);
+    if (mcp) {
+      if (!this.auth.hasPermission(record, 'semantic:query')) {
+        this.send(res, 403, { error: 'token lacks permission semantic:query' });
+        return;
+      }
+      await this.proxyToProject(req, res, mcp[1]!, record, { targetPath: '/mcp' });
+      return;
+    }
+
     const permission = this.requiredPermission(method, pathname);
     if (!this.auth.hasPermission(record, permission)) {
       this.send(res, 403, { error: `token lacks permission ${permission}` });
@@ -379,6 +396,11 @@ export class GatewayServer {
     this.send(res, 201, this.projectEntry(registered.id));
   }
 
+  /** ساخت config معتبر یک پروژه؛ عمومی است چون `gateway` CLI هم لازم دارد. */
+  configForProject(projectId: string, rootPath: string, name: string): ProjectWorkerConfig {
+    return this.configFor(projectId, rootPath, name);
+  }
+
   private configFor(projectId: string, rootPath: string, name: string): ProjectWorkerConfig {
     const config = createWorkerConfig({
       projectId,
@@ -488,7 +510,8 @@ export class GatewayServer {
     req: http.IncomingMessage,
     res: http.ServerResponse,
     projectId: string,
-    record: NonNullable<ReturnType<GatewayAuth['verify']>['record']>
+    record: NonNullable<ReturnType<GatewayAuth['verify']>['record']>,
+    options: { targetPath?: string } = {}
   ): Promise<void> {
     if (!this.registry.get(projectId)) {
       this.send(res, 404, { error: `unknown project: ${projectId}` });
@@ -518,6 +541,7 @@ export class GatewayServer {
     try {
       await proxyRequest(target, req, res, {
         projectId,
+        ...(options.targetPath !== undefined ? { targetPath: options.targetPath } : {}),
         onUpstream: () => undefined,
         onError: () => {
           this.proxyErrorsTotal += 1;

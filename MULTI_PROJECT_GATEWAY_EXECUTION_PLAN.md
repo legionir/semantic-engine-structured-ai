@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۹ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۰ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۰ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۱ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -612,23 +612,23 @@ routing isolation (درخواست A هرگز به B نرود، با شمارش �
 
 ---
 
-## [🔴] فاز ۱۰: proxy پروتکل MCP و انطباق با کلاینت structured-ai
+## [🟢] فاز ۱۰: proxy پروتکل MCP و انطباق با کلاینت structured-ai
 
 **هدف:** `POST /mcp/:projectId` مطابق قراردادی که stub فعلی تعریف کرده (Baseline #12) و اثبات انطباق با کلاینت واقعی. معادل گام ۹ (MCP) پلن مرجع.
 
-### [🔴] گام ۱: روت MCP
+### [🟢] گام ۱: روت MCP
 
 `POST /mcp/:projectId` → `/mcp` روی worker همان پروژه (مسیر `HttpGuard` دقیقاً `/mcp` است)؛ binding جلسه به پروژه از لحظهٔ ایجاد و غیرقابل تغییر در طول session.
 
-### [🔴] گام ۲: streaming و session
+### [🟢] گام ۲: streaming و session
 
 body و response stream شوند؛ timeout معمولی روی stream اعمال نشود؛ disconnect کلاینت به worker منتقل شود؛ اگر transport stateful است (session id در `initialize`) اتصال به همان worker sticky بماند.
 
-### [🔴] گام ۳: harness انطباق واقعی
+### [🟢] گام ۳: harness انطباق واقعی
 
 `structured-ai/test/mcp/gateway.integration.test.js`: اجرای `structured-ai` (pool + `SemanticClient` + `HttpTransport`) مقابل **Gateway واقعی** با دو پروژهٔ هم‌نام. stub (`test/helpers/stubSemanticGateway.js`) برای تست‌های واحد باقی بماند و در همان فایل دلیلش ثبت شود.
 
-### [🔴] گام ۴: isolation کش و generation
+### [🟢] گام ۴: isolation کش و generation
 
 اثبات اینکه تغییر `indexGeneration` در پروژهٔ A فقط کش A را باطل می‌کند و B دست‌نخورده می‌ماند (تست با `SemanticClientPool`).
 
@@ -637,6 +637,27 @@ body و response stream شوند؛ timeout معمولی روی stream اعمال
 - `tools/list` و `tools/call` برای دو پروژهٔ هم‌نام پاسخ متفاوت و صحیح بدهند؛ آلودگی متقاطع با تست اثبات نشود.
 - قطع کلاینت → تعداد اتصال‌های فعال worker به صفر برگردد (بدون orphan).
 - `npm run build && npm test` در `semantic-engine/` سبز.
+
+### وضعیت اجرای فاز ۱۰ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/cli/commands/gateway-command.ts` (نقطهٔ ورود عمومی)، تست `src/gateway/McpProxy.test.ts` (۳) و `structured-ai/test/mcp/gateway.integration.test.js` (۴).
+**فایل‌های تغییرکرده:** `cli/commands/worker-command.ts` (روت `POST /mcp` روی همان socket، با transport جدا به ازای هر درخواست و `projectId`/`indexPath` برای `structuredContent`)، `gateway/GatewayServer.ts` (روت `POST /mcp/:projectId` + `configForProject` عمومی + `targetPath` در proxy)، `cli/main.ts` (ثبت دستور `gateway` + help)، `structured-ai/package.json` (`test:semantic` و `test`).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 194 passed / 194 total`، `Tests: 2664 passed / 2664 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۱۰: ۱۹۳ suite و ۲۶۶۱ تست → +۱ suite و +۳ تست).
+- `cd structured-ai && npm run check && npm test` → exit 0 و **صفر** `FAIL` در کل زنجیره؛ `npm run test:semantic` → ۴/۴ در harness جدید.
+- **MCP با دو پروژهٔ هم‌نام از راه Gateway واقعی:** `tools/list` شامل `find_symbol` · `tools/call find_symbol` برای A فقط `alphaOnly` و برای B فقط `betaOnly` (آلودگی متقاطع با `not.toContain` سنجیده شد) · `structuredContent.projectId` برابر id همان پروژه و `indexGeneration` عدد · پروژهٔ ناشناخته ۴۰۴ · بدون توکن ۴۰۱.
+- **انطباق با کلاینت ship‌شده (نه stub):** harness واقعی `structured-ai` با `SemanticClient` + `HttpTransport` روی `http://127.0.0.1:<port>/mcp/<id>?token=…`؛ `indexGeneration` سمت مصرف‌کننده عدد است و **reindex روی A فقط generation همان A را جابه‌جا کرد** و B بدون تغییر ماند.
+- **بدون orphan:** پس از اجرای harness و پس از probe مستقیمِ `SIGTERM` به gateway، `ps` هیچ پروسهٔ `semantic-engine.js worker` باقی‌مانده‌ای نشان نداد (۰).
+
+**سه نکتهٔ اجرایی (ثبت‌شده در ADR بخش ۱۱):**
+
+1. worker تا پیش از این فاز MCP سرو نمی‌کرد؛ روت `POST /mcp` به همان HttpServer اضافه شد تا هر پروژه یک socket داشته باشد و session به‌صورت ساختاری به پروژه bound بماند.
+2. دستور `semantic-engine gateway` پیش‌نیاز harness بود (و در §۱۷ پلن مرجع هم آمده)؛ URL و توکن روی **stderr** چاپ می‌شود تا `--json` روی stdout قابل parse بماند.
+3. یک اجرای ناموفق harness (پیش از اصلاح) gateway را بدون cleanup رها کرد و workerهایش زنده ماندند؛ حالا هر چه می‌تواند throw کند داخل `try` است و cleanup بی‌قیدوشرط اجرا می‌شود.
+
+**بازماندهٔ صریح (برای فاز ۱۴):** معیار «قطع کلاینت → شمار اتصال‌های فعال worker صفر شود» با نبود orphan *پروسه* سنجیده شد، ولی assertion مستقیم روی شمارندهٔ اتصال (`gateway_active_requests`) هنوز نوشته نشده و به فاز ۱۴ منتقل شد.
 
 ---
 

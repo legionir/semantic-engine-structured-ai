@@ -530,7 +530,38 @@ lock.
 from the supervisor per request and never returned to a client — covered by a
 test that asserts it appears in no response body.
 
-## 11. Verified baseline (2026-08-26)
+## 11. MCP through the Gateway (فاز ۱۰)
+
+The worker serves MCP on the same socket as everything else:
+
+```text
+POST /mcp            (worker; one StreamableHTTPServerTransport per request)
+POST /mcp/:projectId (gateway; proxied to /mcp, path rewritten to the worker's own)
+```
+
+One transport per request is the rule `ai/mcp/cli.ts` already followed —
+sharing one between requests is a race on a single object. The MCP server is
+constructed with `projectId` and `indexPath`, so every answer carries
+`structuredContent.projectId` and `structuredContent.indexGeneration` (فاز ۷).
+
+Session binding is structural rather than tracked: each project has its own
+socket, so a session cannot drift to another project, and the path is never
+rewritten beyond `/mcp/:id` → `/mcp`.
+
+`semantic-engine gateway --port 4000 --token …` is the public entry point; it
+prints `gateway url=… token=…` on stderr so a harness can pick it up, and it
+stops every worker on `SIGINT`/`SIGTERM`.
+
+**Cross-package proof.** `structured-ai/test/mcp/gateway.integration.test.js`
+starts the real gateway, registers two projects whose directories share a name,
+and drives them through the shipped `SemanticClient` + `HttpTransport`
+(`semanticEndpoint = http://127.0.0.1:<port>/mcp/<id>?token=<token>`). It
+asserts per-project answers, a numeric `indexGeneration` on the consumer side,
+and that reindexing A moves **only** A's generation. The stub
+(`test/helpers/stubSemanticGateway.js`) stays for the fast unit tests; this
+file is the integration half and skips itself when the engine is not built.
+
+## 12. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

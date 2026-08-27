@@ -17,6 +17,7 @@ import { runDoctor } from './commands/doctor-command';
 import { runServe, runUi, runStart } from './commands/serve-command';
 import { runWatch } from './commands/watch-command';
 import { runWorker } from './commands/worker-command';
+import { runGateway } from './commands/gateway-command';
 import { createLoggerFromEnv } from '../host/Logger';
 
 const COMMANDS: Record<
@@ -29,6 +30,7 @@ const COMMANDS: Record<
   serve: runServe,
   watch: runWatch,
   worker: runWorker,
+  gateway: runGateway,
   ui: runUi,
   start: runStart,
 };
@@ -45,6 +47,7 @@ commands:
   serve                 expose index over MCP or standalone HTTP server
   watch                 index, then keep it up to date until Ctrl+C
   worker                serve one project (REST + /internal/*) until shutdown
+  gateway               serve many projects on one port, one worker each
   query [tool] [params] run an AI tool against an existing index
   doctor                check this environment
 
@@ -131,6 +134,23 @@ worker options:
     GET  /internal/health    GET /internal/ready   GET /internal/metrics
     GET  /internal/status    POST /internal/reindex
     POST /internal/reload    POST /internal/shutdown
+
+gateway options:
+  --port <n>            public port                (default: 4000)
+  --host <addr>         bind address               (default: 127.0.0.1)
+  --token <secret>      gateway token              (default: $SEMANTIC_ENGINE_GATEWAY_TOKEN or generated)
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --project <dir>       register one project at startup (others via the API)
+  --project-id <id>     id for --project
+  --name <name>         display name for --project
+  --no-auto-start       register --project without starting its worker
+
+  routes:
+    GET|POST /api/v1/gateway/projects        registry
+    POST     /api/v1/gateway/projects/:id/start|stop|restart|reindex
+    GET      /api/v1/gateway/health|ready|metrics|events
+    ANY      /api/v1/projects/:id/...        proxied to that project's worker
+    POST     /mcp/:id                        MCP for that project
 
 global options:
   --json                machine-readable output on stdout

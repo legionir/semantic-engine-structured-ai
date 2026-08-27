@@ -26,6 +26,8 @@ import { artifactLocationFromArgs, projectPathsFromArgs } from '../projectPathsF
 import { DEFAULT_HOST, generateToken } from '../HttpGuard';
 import { spawnService, stopChild, StartedChild } from './serve-command';
 import type { HttpServer } from '../../server/HttpServer';
+import { SemanticEngineMcpServer } from '../../ai/mcp/SemanticEngineMcpServer';
+import { loadBlueprintBeside } from '../../ai/discovery/loadBlueprint';
 import type { RouteDefinition } from '../../server/types';
 
 interface WorkerStatus {
@@ -243,6 +245,47 @@ export async function runWorker(
   ];
 
   for (const route of internalRoutes) server.addRoute(route);
+
+  /*
+  | ── MCP روی همان socket (فاز ۱۰) ─────────────────────────────────────
+  |
+  | یک transport به ازای هر درخواست، همان الگویی که `ai/mcp/cli.ts` دارد:
+  | اشتراک گذاشتن یک transport بین درخواست‌ها یعنی مسابقه روی یک شیء.
+  | `projectId` و `indexPath` داده می‌شوند تا پاسخ‌ها `structuredContent`
+  | با `projectId` و `indexGeneration` داشته باشند (فاز ۷).
+  */
+  server.addRoute({
+    method: 'POST',
+    pattern: '/mcp',
+    permission: 'semantic:query',
+    handler: async ctx => {
+      const { StreamableHTTPServerTransport } = await import(
+        '@modelcontextprotocol/sdk/server/streamableHttp.js'
+      );
+
+      const projectIndex = JSON.parse(fs.readFileSync(paths.indexPath, 'utf8')) as import(
+        '../../core/types/project-index.types'
+      ).ProjectIndex;
+      const blueprint = loadBlueprintBeside(paths.indexPath).index;
+
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      const mcpServer = new SemanticEngineMcpServer({
+        projectIndex,
+        workspaceRoot: paths.workspaceRoot,
+        projectId: paths.projectId,
+        indexPath: paths.indexPath,
+        ...(blueprint ? { blueprint } : {}),
+      });
+      await mcpServer.connectTransport(transport);
+
+      try {
+        await transport.handleRequest(ctx.req, ctx.res, ctx.body);
+      } finally {
+        await transport.close?.();
+        await mcpServer.close();
+      }
+    },
+  });
 
   const info = await server.start();
   context.logger.info('worker listening', {
