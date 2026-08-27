@@ -36,11 +36,6 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
     stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR
   );
 
-  const wantsSqlite = boolOption(
-    args.options,
-    'sqlite',
-    fs.existsSync(path.join(outputDir, 'project-index.sqlite'))
-  );
   const wantsBlueprint = boolOption(args.options, 'blueprint', true);
   const wantsGit = boolOption(args.options, 'git', true);
   /*
@@ -51,7 +46,7 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
   |
   | پیش‌فرض خاموش است چون هزینهٔ زمان و اندازهٔ فایل دارد، نه چون
   | کار نمی‌کند. اگر ایندکس قبلی vector داشته باشد، آن حالت به‌طور
-  | خودکار حفظ می‌شود تا یک index/SQLite refresh معمولی vectorها را
+  | خودکار حفظ می‌شود تا یک refresh معمولیِ index vectorها را
   | ناخواسته حذف نکند؛ `--no-vectors` برای خاموش‌کردن صریح است.
   */
   const existingIndexPath = path.join(outputDir, INDEX_FILE_NAME);
@@ -69,12 +64,25 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
     Boolean(previousIndex?.vectorChunks)
   );
   const pretty = boolOption(args.options, 'pretty', true);
+  /*
+  | diagnostics زبان‌سرور (فاز ۳۴) — پیش‌فرض خاموش، چون هزینه‌اش واقعی است:
+  | روی ۱۶۴ فایل همین مخزن زبان‌سرور ~۷٫۷s می‌برد. `--diagnostics-budget <ms>`
+  | سقف کار است و فایل‌های پشتِ سقف «بررسی‌نشده» می‌مانند، نه «تمیز».
+  */
+  const wantsLspDiagnostics = boolOption(args.options, 'lspDiagnostics', false);
+  const diagnosticsBudget = stringOption(args.options, 'diagnosticsBudget');
 
   const extractors = createExtractors({
     workspaceRoot: root,
     treeSitter: boolOption(args.options, 'treeSitter', true),
     logger: context.logger,
+    lspDiagnostics: wantsLspDiagnostics,
   });
+  if (wantsLspDiagnostics && !extractors.diagnosticsSource) {
+    context.logger.warn(
+      'diagnostics requested but no language server is usable — index will carry no LSP diagnostics'
+    );
+  }
 
   try {
     const { projectIndex, stats } = await new IndexPipeline({
@@ -95,6 +103,10 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       ...(previousIndex?.vectorChunks
         ? { previousVectorChunks: previousIndex.vectorChunks }
         : {}),
+      ...(extractors.diagnosticsSource
+        ? { diagnosticsSource: extractors.diagnosticsSource }
+        : {}),
+      ...(diagnosticsBudget ? { diagnosticsBudgetMs: Number(diagnosticsBudget) } : {}),
       pretty,
     }).run();
 
@@ -103,7 +115,6 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       logger: context.logger,
       pretty,
       blueprint: wantsBlueprint,
-      sqlite: wantsSqlite,
       ...(projectIndex.git?.commit ? { gitCommit: projectIndex.git.commit } : {}),
     }).write(projectIndex);
 
@@ -117,13 +128,11 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
         durationMs: stats.durationMs,
         indexPath: written.indexPath,
         blueprintPath: written.blueprintPath,
-        sqlitePath: written.sqlitePath,
       },
       text:
         `indexed ${stats.files} files, ${stats.symbols} symbols in ${stats.durationMs}ms\n` +
         `  ${written.indexPath}` +
-        (written.blueprintPath ? `\n  ${written.blueprintPath}` : '') +
-        (written.sqlitePath ? `\n  ${written.sqlitePath}` : ''),
+        (written.blueprintPath ? `\n  ${written.blueprintPath}` : ''),
     };
   } finally {
     extractors.dispose();

@@ -80,8 +80,20 @@ describe('MIG-50 — تجزیهٔ آرگومان', () => {
   });
 
   it('`--no-x` را به `false` تبدیل می‌کند', () => {
-    const parsed = parseArgs(['index', '--no-sqlite']);
-    expect(parsed.options['sqlite']).toBe(false);
+    const parsed = parseArgs(['index', '--no-blueprint']);
+    expect(parsed.options['blueprint']).toBe(false);
+  });
+
+  it('کلیدهای مرحلهٔ diagnostics زبان‌سرور را می‌شناسد', () => {
+    const parsed = parseArgs(['index', '--lsp-diagnostics', '--diagnostics-budget', '1500']);
+    expect(parsed.options['lspDiagnostics']).toBe(true);
+    expect(parsed.options['diagnosticsBudget']).toBe('1500');
+
+    /*
+    | هر دو پیش‌فرض خاموش‌اند — زبان‌سرور روی ۱۶۴ فایل همین مخزن ~۷٫۷ ثانیه
+    | می‌برد، پس روشن‌کردنش باید تصمیم باشد، نه حالت پیش‌فرض.
+    */
+    expect(parseArgs(['index']).options['lspDiagnostics']).toBeUndefined();
   });
 
   it('آرگومان‌های موضعی را نگه می‌دارد', () => {
@@ -112,6 +124,12 @@ describeIfBuilt('MIG-50 — راهنما و کد خروج', () => {
     expect(result.stdout).toContain('index');
     expect(result.stdout).toContain('query');
     expect(result.stdout).toContain('doctor');
+    /*
+    | کلیدهای تازه‌ای که بیرون از راهنما بمانند، عملاً وجود ندارند —
+    | مخصوصاً این دو، که هزینه‌شان را کاربر باید قبل از روشن‌کردن ببیند.
+    */
+    expect(result.stdout).toContain('--lsp-diagnostics');
+    expect(result.stdout).toContain('--diagnostics-budget');
     expect(result.stderr).toBe('');
   });
 
@@ -150,7 +168,7 @@ describeIfBuilt('MIG-51 — دستور index', () => {
   });
 
   it('روی fixture همان چیزی می‌دهد که snapshot ثبت کرده', () => {
-    const result = run(['index', '--root', FIXTURE, '--out', outputDir, '--no-sqlite']);
+    const result = run(['index', '--root', FIXTURE, '--out', outputDir,]);
     expect(result.code).toBe(EXIT.ok);
 
     const written = JSON.parse(
@@ -165,12 +183,12 @@ describeIfBuilt('MIG-51 — دستور index', () => {
   }, 120_000);
 
   it('blueprint را هم می‌نویسد', () => {
-    run(['index', '--root', FIXTURE, '--out', outputDir, '--no-sqlite']);
+    run(['index', '--root', FIXTURE, '--out', outputDir,]);
     expect(fs.existsSync(path.join(outputDir, 'blueprint.json'))).toBe(true);
   }, 120_000);
 
   it('`--json` یک خط JSON ماشین‌خوان می‌دهد', () => {
-    const result = run(['index', '--root', FIXTURE, '--out', outputDir, '--no-sqlite', '--json']);
+    const result = run(['index', '--root', FIXTURE, '--out', outputDir, '--json']);
     expect(result.code).toBe(EXIT.ok);
 
     const summary = JSON.parse(result.stdout.trim()) as {
@@ -191,7 +209,7 @@ describeIfBuilt('MIG-51 — دستور index', () => {
     | یک کتابخانه بی‌ضرر است؛ برای یک CLI یعنی اولین خطِ
     | `--json` یک لاگ است و `JSON.parse` روی خروجی می‌ترکد.
     */
-    const result = run(['index', '--root', FIXTURE, '--out', outputDir, '--no-sqlite', '--json']);
+    const result = run(['index', '--root', FIXTURE, '--out', outputDir, '--json']);
 
     expect(result.code).toBe(EXIT.ok);
     expect(() => JSON.parse(result.stdout.trim())).not.toThrow();
@@ -199,7 +217,7 @@ describeIfBuilt('MIG-51 — دستور index', () => {
   }, 120_000);
 
   it('حتی بدون --json، پیشرفت روی stderr می‌رود نه stdout', () => {
-    const result = run(['index', '--root', FIXTURE, '--out', outputDir, '--no-sqlite']);
+    const result = run(['index', '--root', FIXTURE, '--out', outputDir,]);
 
     // stdout فقط خلاصهٔ دستور است
     expect(result.stdout).toMatch(/^indexed \d+ files/);
@@ -219,7 +237,7 @@ describeIfBuilt('MIG-51 — دستور index', () => {
       fs.mkdirSync(path.join(workspace, 'src'));
       fs.writeFileSync(path.join(workspace, 'src', 'a.ts'), 'export const a = 1;\n');
 
-      const result = run(['index', '--root', workspace, '--no-sqlite']);
+      const result = run(['index', '--root', workspace,]);
       expect(result.code).toBe(EXIT.ok);
       expect(
         fs.existsSync(path.join(workspace, '.semantic-engine', 'project-index.json'))
@@ -235,7 +253,7 @@ describeIfBuilt('MIG-53 — دستور query', () => {
 
   beforeAll(() => {
     outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'se-cli-query-'));
-    run(['index', '--root', FIXTURE, '--out', outputDir, '--no-sqlite']);
+    run(['index', '--root', FIXTURE, '--out', outputDir,]);
   }, 180_000);
 
   afterAll(() => {
@@ -353,8 +371,8 @@ describeIfBuilt('MIG-55 — دستور doctor', () => {
     };
 
     /*
-    | `sqlite3` و `usearch` باینری دانلودی دارند و در محیط بدون شبکه
-    | نصب نمی‌شوند (SE-BUILD-10). نبودشان یک *گزارش* است، نه خرابی —
+    | `usearch` باینری دانلودی دارد و در محیط بدون شبکه نصب نمی‌شود
+    | (SE-BUILD-10). نبودنش یک *گزارش* است، نه خرابی —
     | وگرنه `doctor` در همان محیطی که بیشترین کاربرد را دارد همیشه
     | قرمز است.
     */

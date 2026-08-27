@@ -415,6 +415,34 @@ export class GraphQueryEngine {
     let truncated = false;
     let cyclic = false;
 
+    /*
+    | `byId` برای این است که «دوباره‌دیدن» را از «حلقه» جدا کنیم.
+    |
+    | نسخهٔ قبلی هر همسایهٔ دیدهنشده را حلقه می‌شمرد، ولی در BFS یک لوزی
+    | (A→B، A→C، B→D، C→D) دقیقاً همان شرط را برآورده می‌کند: D دومین بار
+    | از مسیر دیگر دیده می‌شود. روی `apps/web/src/config.ts` همین باعث شد
+    | `impact_analysis` برای یک فایل با **صفر یال خروجی** `cyclic: true`
+    | بدهد. حلقه فقط وقتی حلقه است که گره روی مسیر جاری باشد — یا مبدأِ
+    | خودش باشد.
+    */
+    const byId = new Map<string, VisitedNode>();
+    const startsSet = new Set(starts);
+
+    const onCurrentPath = (from: VisitedNode, id: string): boolean => {
+      if (from.id === id) return true;              // خودحلقه
+      if (startsSet.has(id)) return true;            // برگشت به مبدأ
+      const walked = new Set<string>();
+      let cursor: VisitedNode | undefined = from;
+      while (cursor) {
+        if (cursor.id === id) return true;
+        if (walked.has(cursor.id)) return false;
+        walked.add(cursor.id);
+        const parent: VisitedNode | undefined = cursor.via ? byId.get(cursor.via.from) : undefined;
+        cursor = parent;
+      }
+      return false;
+    };
+
     for (let depth = 0; depth < depthLimit && queue.length > 0; depth++) {
       const next: VisitedNode[] = [];
 
@@ -422,7 +450,7 @@ export class GraphQueryEngine {
         for (const edge of this.edgesOf(current.id, direction, options.relations ?? ALL_RELATIONS, options.minConfidence)) {
           const neighbour = edge.from === current.id ? edge.to : edge.from;
           if (visited.has(neighbour)) {
-            cyclic = true;
+            if (onCurrentPath(current, neighbour)) cyclic = true;
             continue;
           }
           if (result.length >= maxNodes) {
@@ -437,6 +465,7 @@ export class GraphQueryEngine {
             pathConfidence: Math.min(current.pathConfidence, edge.confidence),
             via: edge,
           };
+          byId.set(node.id, node);
           result.push(node);
           next.push(node);
         }

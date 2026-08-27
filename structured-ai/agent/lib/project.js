@@ -30,6 +30,97 @@ const { WORKSPACE_ROOT } = require("./workspace");
 
 const PROJECT_VERSION = "1";
 
+/*
+|--------------------------------------------------------------------------|
+| Settings Overlay (EXECUTION_PLAN Phase 8, گام ۲)                          |
+|--------------------------------------------------------------------------|
+|
+| Priority chain, most specific last (each layer overrides the previous):
+|
+|   global settings  <-  project file  <-  run override
+|
+| A project ADDITIONALLY has two file layers with the same relation:
+|
+|   <workspace>/.agent/project.json        the legacy floor - always read
+|   <dataHome>/projects/<id>/project.json  the central cap - read and
+|                                          WRITTEN when the project is a
+|                                          registered one and the run is
+|                                          modular
+|
+| Reads merge floor-with-cap (cap wins per key); new writes land in the
+| central file so the workspace file stays a legacy compatibility layer,
+| exactly as Decision 21 fixes it. In legacy mode, or for projects the
+| registry does not know, every read and write is the historical one.
+|
+|--------------------------------------------------------------------------
+*/
+
+
+/* The project the boot opened, if any: writes flow to its layer. */
+let openedProjectId = null;
+
+
+function centralProjectPath(projectId) {
+
+    if (!projectId) {
+        return null;
+    }
+
+    if (settings.get("PROJECT_CONTEXT_MODE") !== "modular") {
+        return null;
+    }
+
+    try {
+
+        const {
+            registry,
+            createProjectContext
+        } = require("../projects");
+
+        const record = registry().get(projectId);
+
+        return path.join(
+            createProjectContext(record).dataRoot,
+            "project.json"
+        );
+
+    } catch {
+
+        /* an id the registry does not know has no central layer */
+        return null;
+
+    }
+}
+
+
+/* The two physical layers of the overlay for a project id. */
+function overlayFor(projectId) {
+
+    return {
+        workspaceFile: projectPath(),
+        centralFile: centralProjectPath(projectId)
+    };
+}
+
+
+function readProjectFile(file) {
+
+    if (!file || !fs.existsSync(file)) {
+        return null;
+    }
+
+    try {
+
+        return JSON.parse(fs.readFileSync(file, "utf8"));
+
+    } catch {
+
+        /* a corrupt project file must never stop a run */
+        return null;
+
+    }
+}
+
 
 function agentDirectory() {
 
@@ -57,45 +148,63 @@ function emptyProject() {
 }
 
 
-function loadProject() {
+function normaliseProject(parsed) {
 
-    const file = projectPath();
+    const project = emptyProject();
 
-    if (!fs.existsSync(file)) {
-        return emptyProject();
+    if (!parsed || typeof parsed !== "object") {
+        return project;
     }
 
-    try {
+    return {
+        ...project,
+        ...parsed,
 
-        const parsed =
-            JSON.parse(fs.readFileSync(file, "utf8"));
-
-        const project = emptyProject();
-
-        return {
-            ...project,
-            ...parsed,
-
-            settings:
-                parsed.settings && typeof parsed.settings === "object"
-                    ? parsed.settings
-                    : {}
-        };
-
-    } catch {
-
-        /* a corrupt project file must never stop a run */
-        return emptyProject();
-    }
+        settings:
+            parsed.settings && typeof parsed.settings === "object"
+                ? parsed.settings
+                : {}
+    };
 }
 
 
-function saveProject(project) {
+function loadProject() {
 
-    fs.mkdirSync(agentDirectory(), { recursive: true });
+    return normaliseProject(
+        readProjectFile(projectPath())
+    );
+}
+
+
+/* The overlay read: legacy floor with the central cap merged on top.
+   Without a central layer this is exactly loadProject(). */
+function loadOverlay(projectId) {
+
+    const { workspaceFile, centralFile } = overlayFor(projectId);
+
+    const floor = normaliseProject(readProjectFile(workspaceFile));
+    const cap = normaliseProject(readProjectFile(centralFile));
+
+    return {
+        ...floor,
+        ...cap,
+
+        settings: {
+            ...floor.settings,
+            ...cap.settings
+        }
+    };
+}
+
+
+function saveProject(project, target) {
+
+    const file = target || projectPath();
+
+    fs.mkdirSync(path.dirname(file), { recursive: true });
 
     fs.writeFileSync(
-        projectPath(),
+        file,
         `${JSON.stringify(project, null, 2)}\n`,
         "utf8"
     );
@@ -162,7 +271,10 @@ function persist() {
         return null;
     }
 
-    const project = loadProject();
+    const { workspaceFile, centralFile } =
+        overlayFor(openedProjectId);
+
+    const project = loadOverlay(openedProjectId);
 
     project.version = PROJECT_VERSION;
 
@@ -170,7 +282,9 @@ function persist() {
 
     project.updated_at = new Date().toISOString();
 
-    return saveProject(project);
+    /* گام ۲ write target: the central cap when the opened project is a
+       registered modular one, the legacy workspace file otherwise. */
+    return saveProject(project, centralFile || workspaceFile);
 }
 
 
@@ -232,9 +346,21 @@ function watch() {
 }
 
 
-function openProject() {
+function openProject(projectId) {
 
-    const project = loadProject();
+    /* The id may arrive as the CLI's --project value or as an options
+       object from a programmatic caller ({ project: "id" } /
+       { projectId: "id" }); positional-null keeps the legacy shape. */
+    if (projectId && typeof projectId === "object") {
+        projectId = projectId.projectId ?? projectId.project ?? null;
+    }
+
+    openedProjectId = projectId || null;
+
+    const { workspaceFile, centralFile } =
+        overlayFor(openedProjectId);
+
+    const project = loadOverlay(openedProjectId);
 
     const applied = [];
     const skipped = [];
@@ -267,7 +393,7 @@ function openProject() {
 
     if (settings.get("PROJECT_FILE_ENABLED") === true) {
 
-        saveProject(project);
+        saveProject(project, centralFile || workspaceFile);
     }
 
     if (settings.get("PROJECT_FILE_ENABLED") === true) {
@@ -276,7 +402,8 @@ function openProject() {
     }
 
     return {
-        path: projectPath(),
+        path: workspaceFile,
+        ...(centralFile ? { overlay_path: centralFile } : {}),
         project,
         applied,
         skipped
@@ -295,5 +422,10 @@ module.exports = {
     sessionOnly,
     persist,
     watch,
-    openProject
+    openProject,
+
+    /* Phase 8 گام ۲ overlay surface */
+    overlayFor,
+    centralProjectPath,
+    loadOverlay
 };

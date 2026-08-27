@@ -40,6 +40,14 @@ export interface ProjectIndex {
    */
   readonly languageSupport?: Readonly<Record<string, LanguageSupportEntry>>;
   readonly incremental?: IncrementalInfo;
+  /**
+   * نتیجهٔ مرحلهٔ diagnostics زبان‌سرور (فاز ۳۴).
+   *
+   * **فقط وقتی نوشته می‌شود که آن مرحله واقعاً اجرا شده باشد.** نبودش یعنی
+   * «بررسی نشده»، نه «چیزی پیدا نشد» — همان تفکیکی که برای `incremental` و
+   * `languageSupport` رعایت شده و برای diagnostics رعایت نمی‌شد.
+   */
+  readonly diagnosticsRun?: DiagnosticsRunInfo;
   readonly git?: GitInfo;
   readonly files: readonly FileEntry[];
   readonly symbols: readonly SymbolEntry[];
@@ -292,6 +300,18 @@ export interface Diagnostic {
   readonly message: string;
   readonly source: string;
   readonly fileId?: string | null;
+}
+
+// ─── Diagnostics Run ─────────────────────────────────────────────────────────
+
+export interface DiagnosticsRunInfo {
+  /** فایل‌هایی که دست‌کم یک diagnostic از زبان‌سرور گرفتند. */
+  readonly filesWithFindings: number;
+  /** فایل‌هایی که به‌خرب رفتن بودجه بررسی نشدند — «نگاه نشده». */
+  readonly filesSkippedByBudget: number;
+  readonly budgetMs: number;
+  /** ISO 8601 — پایان مرحله. */
+  readonly completedAt: string;
 }
 
 // ─── LSP Info ────────────────────────────────────────────────────────────────

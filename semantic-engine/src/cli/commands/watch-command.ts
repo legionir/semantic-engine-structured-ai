@@ -112,10 +112,14 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     };
   }
 
+  const wantsLspDiagnostics = boolOption(args.options, 'lspDiagnostics', false);
+  const diagnosticsBudget = stringOption(args.options, 'diagnosticsBudget');
+
   const extractors = createExtractors({
     workspaceRoot: root,
     treeSitter: boolOption(args.options, 'treeSitter', true),
     logger: context.logger,
+    lspDiagnostics: wantsLspDiagnostics,
   });
 
   const wantsGit = boolOption(args.options, 'git', true);
@@ -131,11 +135,6 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     args.options,
     'vectors',
     Boolean(existingIndex?.vectorChunks)
-  );
-  const wantsSqlite = boolOption(
-    args.options,
-    'sqlite',
-    fs.existsSync(path.join(outputDir, 'project-index.sqlite'))
   );
   const vectorIndexer = wantsVectors
     ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
@@ -166,6 +165,15 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
         ...(existingIndex?.vectorChunks
           ? { previousVectorChunks: existingIndex.vectorChunks }
           : {}),
+        /*
+        | diagnostics فقط در ایندکس اولیه گرفته می‌شود؛ batchهای افزایشی
+        | زبان‌سرور اجرا نمی‌کنند و diagnostics فایلِ دست‌خورده پاک می‌شود
+        | (SE-INC-11) تا هشدار کهنه گزارش نشود.
+        */
+        ...(extractors.diagnosticsSource
+          ? { diagnosticsSource: extractors.diagnosticsSource }
+          : {}),
+        ...(diagnosticsBudget ? { diagnosticsBudgetMs: Number(diagnosticsBudget) } : {}),
         pretty,
       }).run();
 
@@ -177,7 +185,6 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
         logger: context.logger,
         pretty,
         blueprint: wantsBlueprint,
-        sqlite: wantsSqlite,
         ...(projectIndex.git?.commit ? { gitCommit: projectIndex.git.commit } : {}),
       }).write(projectIndex);
     }
@@ -199,7 +206,6 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
       pretty,
       blueprint: wantsBlueprint,
       blueprintMode: mode,
-      sqlite: wantsSqlite,
       ...(stringOption(args.options, 'debounce')
         ? { debounceMs: Number(stringOption(args.options, 'debounce')) }
         : {}),

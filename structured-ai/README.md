@@ -54,7 +54,7 @@ structured-ai/
 │   ├── lib/                     # ماژول‌های هسته ران‌تایم
 │   │   ├── context.js           # بودجه‌بندی و فشرده‌سازی تدریجی کانتکست
 │   │   ├── events.js            # سیستم رویدادهای ساختاریافته
-│   │   ├── policy.js            # موتور پالیسی، تأییدیه‌ها و اعتبارسنجی فرامین
+│   │   ├── policy.js            # پوستهٔ سازگاری؛ به agent/policy/ می‌رسد
 │   │   ├── workspace.js         # گارد امنیت مرزهای دیسک
 │   │   ├── semantic.js          # پوستهٔ سازگاری؛ به agent/mcp/semantic.js می‌رسد
 │   │   ├── memory.js            # حافظه کاری و بایگانی رویدادها
@@ -66,12 +66,75 @@ structured-ai/
 │   │   ├── config.js            # خواندن .mcp.json و لایه‌های پیکربندی
 │   │   ├── semantic.js          # Semantic Engine به‌عنوان یک سرور MCP داخلی
 │   │   └── transports/          # stdio · http · sse · websocket
+│   ├── hooks/                   # hookهای اعلامی ران‌تایم: بارگذاری، شرط، قالب، اجرا
+│   │   ├── HookRegistry.js      # نمای خواندنی: enabledHooks و routine
+│   │   ├── HookLoader.js        # hooks.json + overlay، اعتبارسنجی و گراف وابستگی
+│   │   ├── HookCondition.js     # زبان شرطِ بسته (بدون eval)
+│   │   ├── HookRenderer.js      # قالب ${path.to.context}
+│   │   ├── HookRunner.js        # اجرای tool/agent/git_commit با ددلاین فاز
+│   │   └── HookResult.js        # خلاصه و payload رویداد hook:end
+│   ├── policy/                  # مرز امنیتی: قاعده‌ها، تأییدیه‌ها و audit
+│   │   ├── PolicyEngine.js      # تنها نقطۀ enforce برای هر فراخوانی ابزار
+│   │   ├── PolicyRegistry.js    # سند registry/policy.json و نگاشت ابزار←گروه
+│   │   ├── PolicyMatcher.js     # تطبیق glob/شرط روی آرگومان resolve‌شده
+│   │   ├── ApprovalManager.js   # چرخه auto/prompt/deny و تزریق handler
+│   │   ├── ApprovalStore.js     # ژورنال audit، صف pending per-project، کش gateway
+│   │   └── PolicyErrors.js      # پیام‌های رد، که قراردادند نه متن دلخواه
 │   ├── registry/                # رجیستری ابزارها، نقش‌ها، اسکیل‌ها و پالیسی‌ها
 │   ├── schema/                  # اسکیمای سخت‌گیرانه (Strict JSON Schema) اکشن مدل
 │   └── tools/                   # پیاده‌سازی ابزارهای سیستمی و هوش کد
 ├── web/
-│   ├── server.js                # وب‌سرور کنسول و مدیریت نشست‌ها
+│   ├── server.js                # پوستهٔ سازگاری؛ به web/server/ می‌رسد
+│   ├── server/                  # لایهٔ کنسول وب (فاز ۲۳)
+│   │   ├── WebServer.js         # state، سیم‌کشی نگرانی‌ها، سوکت و lifecycle
+│   │   ├── Router.js            # هر URL به کدام handler — به همان ترتیب قبلی
+│   │   ├── Middleware.js        # توکن، rate limit، گیت Origin و تعویض کوکی
+│   │   ├── SseHub.js            # چه کسی گوش می‌دهد و هرکس چه می‌بیند
+│   │   ├── RequestBody.js       # خواندن body و سقف ۱MB
+│   │   ├── Response.js          # JSON و fallback استاتیک
+│   │   ├── ServerMode.js        # خوانندهٔ تک WEB_SERVER_MODE
+│   │   ├── controllers/         # یک فایل برای هر گروه مسیر (Task، Session، State،
+│   │   │                        #   Settings، Approval، Mcp، Discussion، Graph،
+│   │   │                        #   EventStream، Project)
+│   │   ├── services/            # Task، Session، Settings، EventStream،
+│   │   │                        #   Approval، GitReport، Discussion
+│   │   └── serializers/         # State (snapshot)، Session (سطرهای pending/call)،
+│   │                            #   Error (خطا←status)
 │   └── public/                  # دارایی‌های فرانت‌اند کنسول و Visualizer
+│       ├── app.js               # پوستهٔ سازگاری (CJS)؛ صفحه /app/main.js را بار می‌کند
+│       ├── app/                 # کنسول به‌شکل ماژول‌های ES نیتیو (فاز ۲۴، بدون build step)
+│       │   ├── main.js          # wiring صفحه + سه فراخوان شروع
+│       │   ├── store.js         # state به ۱۱ دامنه: runtime/conversation/execution/
+│       │   │                    #   plan/event/approval/settings/mcp/history/
+│       │   │                    #   discussion/project (به‌جای یک شیء ۴۳ کلیدی)
+│       │   ├── dom.js           # el/node/definition و دسترسی به Modal
+│       │   ├── api.js           # همهٔ fetchها، از جمله eventsUrl
+│       │   ├── event-stream.js  # connect + reducer (apply/applySnapshot)
+│       │   ├── task-runner.js   # ثبت تسک، صف برچسب‌دار، لغو، پاک‌کردن
+│       │   ├── formatters.js    # shorten/statusIcon/eventLabel/…
+│       │   ├── markdown.js      # رندر markdown بدون تزریق HTML
+│       │   ├── direction.js     # تشخیص RTL/LTR
+│       │   ├── chat.js          # حباب‌ها و بلوک اجرای هر iteration
+│       │   ├── execution-view.js/plan-view.js/event-view.js/
+│       │   ├── settings-view.js/mcp-view.js/discussion-view.js/
+│       │   ├── approvals-view.js/history-view.js/modal-manager.js
+│       │   └── project-state.js/project-switcher.js/project-dashboard.js
+│       ├── modal.js             # سرویس modal (کلاسیک؛ globalThis.Modal را هم ست می‌کند)
+│       ├── visualizer.js        # پوستهٔ سازگاری ویزوالایزر (کلاسیک + require برای تست)
+│       ├── visualizer/          # ویزوالایزر به‌شکل ماژول‌های ES نیتیو (فاز ۲۵)
+│       │   ├── main.js          # boot: bindEvents سپس loadView("architecture")
+│       │   ├── graph-store.js   # تنها state قابل‌تغییر صفحه + setGraphData (تنها writer)
+│       │   ├── page.js          # idهای DOM و projectId از URL
+│       │   ├── api-client.js    # loadView / loadNeighborhood / loadImpact با projectId
+│       │   ├── graph-model.js   # دادهٔ نمونهٔ fallback، breadcrumb، drill-down
+│       │   ├── graph-renderer.js# گره‌ها/یال‌ها در SVG (کپ ۲۰/۵۰/۴۰)
+│       │   ├── layout-client.js # چیدمان گرید؛ worker اعلام‌شده ولی بی‌مشتری (باز ۱۳)
+│       │   ├── viewport.js      # pan/zoom/fit و transform مشترکشان
+│       │   ├── selection-state.js# انتخاب، focus mode تا عمق focusDepth، reset
+│       │   ├── node-details.js  # inspector یک ستونه
+│       │   ├── search.js        # search-to-graph روی همان گراف بارگذاری‌شده
+│       │   └── visualizer-events.js # گوش‌سپاری‌های صفحه، بدون منطق
+│       └── index.html           # <script type="module" src="/app/main.js">
 ├── test/                        # سوئیت کامل آزمون‌های یکپارچگی و ران‌تایم
 └── semantic-engine/             # موتور مستقل تحلیل کد و گراف معنایی
 ```
@@ -144,6 +207,27 @@ node bin/agent.js --serve 7777 -w /path/to/project
 
 ---
 
+### حالت ۴: بحث چندجانبه با پرسوناهای متخصص (Multi-Agent Discussion)
+به‌جای درخت واکل، تعدادی پرسونای هم‌سطح (از ۱۵ پرسونای موجود) یک تسک را در چند دور با هم بحث می‌کنند: در دور ۱ هر پرسونا بدون دیدن بقیه نظر می‌دهد؛ از دور ۲ به بعد همه پیام‌های قبلی را می‌بینند و باید صریحاً موافق/مخالف/بهبوددهنده باشند. یک **Observer** (همیشه فعال، غیرقابل انتخاب) بعد از هر دور تصمیم می‌گیرد بحث ادامه یابد یا تمام شود؛ در صورت ادامه، دستورالعمل هدفمند برای هر ایجنت جداگانه می‌دهد. توقف اجباری با سقف دورها و تشخیص تکرار انجام می‌شود.
+
+```bash
+# اجرای بحث در ترمینال
+node bin/agent.js -w /path/to/project --discussion \
+  --personas security,backend,frontend,architect,performance,qa \
+  --max-rounds 5 "طراحی ذخیره‌سازی نشست کاربر با JWT در اپلیکیشن Next.js"
+
+# خروجی JSON کامل (شامل رونوشت دورها و تصمیمات Observer)
+node bin/agent.js -w /path/to/project --discussion --personas security,frontend --json "..."
+```
+
+همچنین:
+* **ابزار `discussion_start`** — ایجنت اصلی هرگاه کاربر تحلیل چندبُعدی بخواهد، خودش بحث را از داخل اجرای عادی شروع می‌کند.
+* **کنسول وب** — دکمهٔ «Discussion» در هدر: انتخاب تسک، پرسوناها و سقف دورها، مشاهدهٔ زندهٔ دورها و پیام‌ها از طریق SSE، و در نهایت گزارش ساختاریافته (خلاصه، نقاط توافقی، اختلاف‌نظرهای باز با استدلال هر طرف، و گام‌های بعدی مرتب‌شده).
+
+پرسونای موجود: `security, backend, database, frontend, architect, performance, qa, devops, cost, accessibility, data, compliance, mobile, ml, legacy` — تعریف کامل آن‌ها در `agent/discussion/personas.js` و نقشه‌راه پیاده‌سازی در `DISCUSSION_SYSTEM_IMPLEMENTATION.md` در ریشهٔ مخزن.
+
+---
+
 ## ۵. جدول کامل پیکربندی و متغیرهای محیطی
 
 تنظیمات سیستم بدون نیاز به ری‌استارت پروسه از طریق رابط کاربری وب، فایل‌های رجیستری یا متغیرهای محیطی قابل تغییر هستند:
@@ -183,12 +267,28 @@ node bin/agent.js --serve 7777 -w /path/to/project
 
 هنگامی که کنسول وب با `--serve <port>` اجرا می‌شود، اندپوینت‌های زیر در دسترس کلاینت‌ها قرار دارند:
 
+> **ساختار سرور (فاز ۲۳):** `web/server.js` فقط پوستهٔ سازگاری است؛ مسیرها در
+> `web/server/Router.js` به `controllers/` می‌رسند و منطق نشست/تسک/استریم در
+> `services/` است. قرارداد پاسخ هر مسیر (status، content-type و شکل JSON) در
+> `test/web/routes.snapshot.json` ضبط شده و با `npm run test:web:routes` سنجیده
+> می‌شود؛ `test/web/layer.test.js` مرزهای خود لایه را می‌سنجد. فلگ
+> `WEB_SERVER_MODE=legacy|modular` (پیش‌فرض `legacy`) فقط یک خواننده دارد و هر دو
+> مقدارش همان ماژول‌ها را می‌سازند — در فاز ۳۰ حذف می‌شود.
+
 ---
 
 ### ۱. ثبت و اجرای تسک جدید
 * **مسیر:** `POST /api/tasks`
 * **ورودی:** `{ "task": "تست‌های پروژه را اجرا کن" }`
 * **خروجی:** `{ "ok": true, "session_id": "sess_182a" }`
+
+---
+
+### ۱٫۱. شروع بحث چندجانبه
+* **مسیر:** `POST /api/discussion`
+* **ورودی:** `{ "task": "طراحی ذخیره‌سازی نشست با JWT", "personas": ["security", "frontend", "backend"], "max_rounds": 3 }`
+* **خروجی:** `{ "accepted": true, "id": "discussion-..." }` — دورها به‌صورت پس‌زمینه اجرا و رویدادهای `discussion:start`، `discussion:message`، `discussion:round`، `discussion:observer`، `discussion:finish` از طریق `/api/events` استریم می‌شوند؛ وضعیت کامل همیشه در `/api/state` (فیلد `discussion`) موجود است.
+* **لیست پرسونای قابل انتخاب:** `GET /api/discussion/personas`
 
 ---
 
@@ -453,7 +553,13 @@ npm run test:tools        # آزمون کلیه ابزارهای سیستمی
 npm run test:runtime      # آزمون موتور پالیسی، ران‌تایم و کانتکست
 npm run test:semantic     # آزمون موتور معنایی و ابزارهای code_*
 npm run test:mcp          # آزمون چهار ترنسپورت، کاتالوگ و پالیسی MCP
-npm run test:web          # آزمون سرور وب کنسول و روت‌های API
+npm run test:web:all      # سرور وب + فرانت‌اند: رفتار، قرارداد مسیرها، مرزهای لایه
+npm run test:web:frontend # گراف ماژول‌های کنسول: importها، idها، sliceهای state، سرو MIME
+npm run test:web:visualizer # قرارداد ویزوالایزر: trace رفتار + استقلال از کنسول
+npm run test:web:graph    # /api/graph/* روی ایندکس واقعی semantic-engine (شاخهٔ پارس)
+npm run test:web:routes   # فقط قرارداد مسیرها (record: npm run test:web:routes:record)
+npm run test:web:layer    # فقط ساختار/سیم‌کشی web/server/ (بدون سوکت، تقریباً)
+npm run test:web          # آزمون رفتار سرور وب کنسول از راه HTTP
 npm run test:cli          # آزمون‌های خط فرمان و پارامترها
 ```
 

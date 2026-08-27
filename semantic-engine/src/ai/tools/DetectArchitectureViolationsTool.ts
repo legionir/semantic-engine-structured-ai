@@ -4,7 +4,7 @@
 
 import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
-import { AnalysisGraph } from '../../services/analysis/AnalysisGraph';
+import { buildIndexGraph, describeNode } from '../../services/analysis/buildIndexGraph';
 import { ArchitectureRuleEngine } from '../../services/analysis/ArchitectureRuleEngine';
 
 export class DetectArchitectureViolationsTool implements AiTool {
@@ -23,27 +23,12 @@ export class DetectArchitectureViolationsTool implements AiTool {
   constructor(private readonly reader: ProjectIndexReader) {}
 
   async execute(_input: AiToolInput): Promise<AiToolOutput> {
-    const graph = new AnalysisGraph();
-
-    for (const s of this.reader.getAllSymbols()) {
-      const f = this.reader.getFileById(s.fileId);
-      graph.addNode({
-        id: s.id,
-        type: s.kind || 'symbol',
-        label: s.name,
-        metadata: { path: f?.path, line: s.line },
-      });
-    }
-
-    const depEdges = this.reader.projectIndex.graphs?.dependencyGraph ?? [];
-    for (const [idx, dep] of depEdges.entries()) {
-      graph.addEdge({
-        id: `e_${idx}`,
-        source: dep.from,
-        target: dep.to,
-        relation: 'depends_on',
-      });
-    }
+    /*
+    | از سازندهٔ مشترک: چرخه‌ها روی گرافِ فایل/سمبل گزارش می‌شوند و برای
+    | خوانا بودن به node های فایل نیاز دارند — پیش از این گراف فقط سمبل داشت
+    | و `dependencyGraph` (که بین فایل‌هاست) به node های بی‌نام می‌رسید.
+    */
+    const graph = buildIndexGraph(this.reader);
 
     const engine = new ArchitectureRuleEngine();
     const report = engine.analyzeArchitectureDebt(graph);
@@ -52,13 +37,23 @@ export class DetectArchitectureViolationsTool implements AiTool {
       success: true,
       metadata: { report },
       items: [
-        ...report.circularDependencies.map(c => ({
-          id: `cycle_${c.nodes.join('_')}`,
-          name: 'Circular Dependency Cycle',
-          kind: 'architecture_cycle',
-          source: 'architecture-rules',
-          excerpt: c.nodes.join(' -> '),
-        })),
+        ...report.circularDependencies.map(c => {
+          /*
+          | سه هشِ کنار هم برای هیچ مصرف‌کننده‌ای قابل استفاده نبود؛ همان
+          | چرخه با مسیر فایل‌هایش گزارش می‌شود و شناسه‌ها در metadata می‌مانند
+          | (برای اینکه بشود روی‌شان دوباره کوئری زد).
+          */
+          const readable = c.nodes.map(node => describeNode(graph, node));
+          return {
+            id: `cycle_${c.nodes.join('_')}`,
+            name: `Circular dependency across ${c.nodes.length} files`,
+            kind: 'architecture_cycle',
+            path: readable[0],
+            source: 'architecture-rules',
+            excerpt: [...readable, readable[0]].join(' -> '),
+            metadata: { nodeIds: c.nodes, cycleLength: c.nodes.length },
+          };
+        }),
         ...report.layerViolations.map(v => ({
           id: v.ruleId,
           name: v.ruleName,

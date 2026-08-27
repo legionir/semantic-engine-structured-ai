@@ -55,7 +55,6 @@ export { LocalEmbeddingGenerator } from './vector/LocalEmbeddingGenerator';
 // Exporters
 export { JsonExporter } from './export/JsonExporter';
 export { BlueprintExporter } from './export/BlueprintExporter';
-export { SQLiteExporter } from './export/SQLiteExporter';
 
 // Graphs
 export { CallGraphBuilder, TypeGraphBuilder, DependencyGraphBuilder } from './graphs';
@@ -188,7 +187,7 @@ export type { ExtractorSet, ExtractorFactoryOptions } from './pipeline/Extractor
 | ولی در barrel نبودند، پس هر مصرف‌کننده‌ای — از جمله CLI فاز ۲۹ —
 | مجبور بود به مسیرهای داخلی دست ببرد.
 */
-export { OutputWriter, INDEX_FILE_NAME, BLUEPRINT_FILE_NAME, SQLITE_FILE_NAME } from './pipeline/OutputWriter';
+export { OutputWriter, INDEX_FILE_NAME, BLUEPRINT_FILE_NAME } from './pipeline/OutputWriter';
 export type { OutputWriterOptions, WrittenArtifacts } from './pipeline/OutputWriter';
 
 // ── WatchPipeline (فاز ۲۷) ───────────────────────────────────────────────

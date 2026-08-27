@@ -187,6 +187,12 @@ function resolveResource(skill, resourceId) {
 | available. The semantic skill is special because its MCP sidecar may be
 | local or remote; `semantic.isAvailable()` covers both definitions and
 | does not make a network call merely to build the prompt.
+|
+| Phase 6: inside a modular run that carries a project, "available" is a
+| per-project question — the skill must describe the ACTIVE project's
+| semantic worker, not whatever the process-wide engine happens to do
+| (a run on a project whose worker is down must not be told semantic
+| code tools exist). Legacy mode keeps the exact historic probe.
 */
 function semanticEngineActive() {
 
@@ -198,8 +204,32 @@ function semanticEngineActive() {
     }
 
     try {
+
+        if (
+            settings.get("SEMANTIC_POOL_MODE") === "modular" &&
+            settings.get("RUN_CONTEXT_MODE") === "modular"
+        ) {
+
+            const { runManager } = require("../runtime");
+
+            const run = runManager.current();
+
+            if (run && run.project) {
+
+                const resolver =
+                    require("../mcp/ProjectSemanticResolver");
+
+                return (
+                    resolver.isEndpointActiveFor(run.project) === true
+                );
+
+            }
+
+        }
+
         const semantic = require("../mcp/semantic");
         return semantic.isAvailable() === true;
+
     } catch {
         return false;
     }

@@ -7525,7 +7525,7 @@
       "name": "Storage",
       "parameters": [],
       "parentId": null,
-      "signature": "Storage()",
+      "signature": "interface Storage",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -7570,7 +7570,7 @@
       "name": "Repository",
       "parameters": [],
       "parentId": null,
-      "signature": "Repository()",
+      "signature": "class Repository implements Storage",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -7752,7 +7752,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "NestUsersController()",
+      "signature": "class NestUsersController",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -7852,7 +7852,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "User()",
+      "signature": "interface User",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -7883,7 +7883,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Role()",
+      "signature": "enum Role",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -7976,7 +7976,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "UserWithRole()",
+      "signature": "type UserWithRole = User & { role: Role }",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -8007,7 +8007,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Level()",
+      "signature": "type Level = 'debug' | 'info' | 'warn' | 'error'",
       "source": "tree-sitter",
       "static": false,
       "testIds": [
@@ -8041,7 +8041,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Logger()",
+      "signature": "class Logger",
       "source": "tree-sitter",
       "static": false,
       "testIds": [
@@ -8804,7 +8804,7 @@
         }
       ],
       "parentId": null,
-      "signature": "User(val id: String, val name: String)",
+      "signature": "data class User(val id: String, val name: String)",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -8830,7 +8830,7 @@
         }
       ],
       "parentId": null,
-      "signature": "Repository(id: String)",
+      "signature": "interface Repository",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -8875,7 +8875,7 @@
       "name": "InMemoryRepository",
       "parameters": [],
       "parentId": null,
-      "signature": "InMemoryRepository()",
+      "signature": "class InMemoryRepository : Repository",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -8905,7 +8905,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "UserRepository()",
+      "signature": "class UserRepository:",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9184,7 +9184,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Main()",
+      "signature": "public class Main",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9331,7 +9331,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Shape()",
+      "signature": "abstract class Shape",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9395,7 +9395,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Circle()",
+      "signature": "class Circle extends Shape",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9495,7 +9495,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Geometry()",
+      "signature": "namespace Geometry",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9590,7 +9590,7 @@
       "name": "IService",
       "parameters": [],
       "parentId": null,
-      "signature": "IService()",
+      "signature": "public interface IService",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -9635,7 +9635,7 @@
       "name": "Service",
       "parameters": [],
       "parentId": null,
-      "signature": "Service()",
+      "signature": "public class Service : IService",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -9717,7 +9717,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Route()",
+      "signature": "interface Route",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -10138,7 +10138,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "UserController()",
+      "signature": "class UserController",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -10525,7 +10525,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Cache()",
+      "signature": "class Cache",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -10686,7 +10686,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Application()",
+      "signature": "class Application",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -10925,7 +10925,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "PaymentService()",
+      "signature": "class PaymentService",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -11108,7 +11108,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Repo()",
+      "signature": "class Repo",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -11471,7 +11471,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Handler()",
+      "signature": "type Handler interface",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -11502,7 +11502,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Server()",
+      "signature": "type Server struct",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -11646,7 +11646,7 @@
       "name": "Identifiable",
       "parameters": [],
       "parentId": null,
-      "signature": "Identifiable()",
+      "signature": "protocol Identifiable",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -11665,7 +11665,7 @@
       "name": "User",
       "parameters": [],
       "parentId": null,
-      "signature": "User()",
+      "signature": "struct User: Identifiable",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -11684,7 +11684,7 @@
       "name": "Store",
       "parameters": [],
       "parentId": null,
-      "signature": "Store()",
+      "signature": "final class Store",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -11729,7 +11729,7 @@
       "name": "Parsing",
       "parameters": [],
       "parentId": null,
-      "signature": "Parsing()",
+      "signature": "module Parsing",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -11755,7 +11755,7 @@
         }
       ],
       "parentId": "2b636af0497c3b31",
-      "signature": "Parser(source)",
+      "signature": "class Parser",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -12045,7 +12045,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "AppConfig()",
+      "signature": "interface AppConfig",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12107,7 +12107,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "UserRepository()",
+      "signature": "class UserRepository",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12240,7 +12240,7 @@
       "name": "Token",
       "parameters": [],
       "parentId": null,
-      "signature": "Token()",
+      "signature": "struct Token",
       "source": "heuristic",
       "visibility": "public"
     },
@@ -12328,7 +12328,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Order()",
+      "signature": "interface Order",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12359,7 +12359,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "OrderService()",
+      "signature": "class OrderService",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12461,7 +12461,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Config()",
+      "signature": "pub struct Config",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12523,7 +12523,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Handler()",
+      "signature": "pub trait Handler",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12585,7 +12585,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "Echo()",
+      "signature": "pub struct Echo",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12802,7 +12802,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "PanelProps()",
+      "signature": "interface PanelProps",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12904,7 +12904,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "BaseService()",
+      "signature": "abstract class BaseService<T>",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -13007,7 +13007,7 @@
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "UserService()",
+      "signature": "class UserService extends BaseService<User>",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"

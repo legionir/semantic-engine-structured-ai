@@ -3,7 +3,7 @@
  *
  * SE-UI-06: بدنهٔ درخواستِ `POST …/index` حالا گزینه‌های اسکن و
  * embedding را از UI می‌پذیرد: حالت اسکن (tree-sitter/heuristic)،
- * رعایت .gitignore، عمق، خروجی‌ها (blueprint/sqlite) و پیکربندی
+ * رعایت .gitignore، عمق، خروجی‌ها (blueprint) و پیکربندی
  * بردار (provider + مدل embedding یا مدل پیش‌فرض).
  */
 
@@ -33,7 +33,14 @@ interface IndexRequestBody {
   };
   output?: {
     blueprint?: boolean;
-    sqlite?: boolean;
+  };
+  /**
+   * مرحلهٔ diagnostics زبان‌سرور (فاز ۳۴). خاموش پیش‌فرض — روی مخزن بزرگ
+   * همین‌طور که هست پرهزینه است.
+   */
+  lsp?: {
+    diagnostics?: boolean;
+    budgetMs?: number;
   };
   embedding?: {
     enabled?: boolean;
@@ -83,6 +90,7 @@ function buildEmbeddingGenerator(
 type IndexJobData = {
   readonly scan?: IndexRequestBody['scan'];
   readonly output?: IndexRequestBody['output'];
+  readonly lsp?: IndexRequestBody['lsp'];
   readonly embedding?: IndexRequestBody['embedding'];
 };
 
@@ -97,6 +105,7 @@ function createIndexRunner(
 ) => Promise<unknown> {
   const scan = data.scan ?? {};
   const output = data.output ?? {};
+  const lsp = data.lsp ?? {};
   const treeSitter = scan.treeSitter !== false;
   const scannerConfig: Partial<ScannerConfig> = {
     ...(scan.useGitignore !== undefined ? { useGitignore: scan.useGitignore } : {}),
@@ -111,12 +120,15 @@ function createIndexRunner(
       ? { skipHiddenDirectories: scan.skipHiddenDirectories }
       : {}),
   };
-  const wantSqlite = output.sqlite !== false;
   const wantBlueprint = output.blueprint !== false;
 
   return async (token, updateProgress) => {
     updateProgress('scanning', 10);
-    const extractors = createExtractors({ workspaceRoot: project.rootPath, treeSitter });
+    const extractors = createExtractors({
+      workspaceRoot: project.rootPath,
+      treeSitter,
+      lspDiagnostics: lsp.diagnostics === true,
+    });
     const outputDir = path.dirname(project.indexPath);
     const vectorIndexer = embeddingGenerator ? new VectorIndexer({ embeddingGenerator }) : null;
     const pipeline = new IndexPipeline({
@@ -127,12 +139,16 @@ function createIndexRunner(
       ...(Object.keys(scannerConfig).length > 0 ? { scannerConfig } : {}),
       ...(vectorIndexer ? { vectorIndexer } : {}),
       ...(project.index?.vectorChunks ? { previousVectorChunks: project.index.vectorChunks } : {}),
+      ...(extractors.diagnosticsSource
+        ? { diagnosticsSource: extractors.diagnosticsSource }
+        : {}),
+      ...(lsp.budgetMs ? { diagnosticsBudgetMs: lsp.budgetMs } : {}),
       token,
     });
     updateProgress('symbols', 40);
     const { projectIndex, stats } = await pipeline.run();
     updateProgress('graphs', 70);
-    const writer = new OutputWriter({ outputDir, blueprint: wantBlueprint, sqlite: wantSqlite });
+    const writer = new OutputWriter({ outputDir, blueprint: wantBlueprint });
     updateProgress('finalizing', 90);
     await writer.write(projectIndex);
     reloadProject(project.id);
@@ -183,6 +199,7 @@ export function createJobRoutes(
         const body = (ctx.body || {}) as IndexRequestBody;
         const scan = body.scan ?? {};
         const output = body.output ?? {};
+        const lsp = body.lsp ?? {};
         const embedding = body.embedding ?? {};
 
         // ساخت generator را پیش از شروع job انجام بده تا خطای پیکربندی
@@ -195,10 +212,9 @@ export function createJobRoutes(
         }
 
         const treeSitter = scan.treeSitter !== false;
-        const wantSqlite = output.sqlite !== false;
         const wantBlueprint = output.blueprint !== false;
 
-        const jobData: IndexJobData = { scan, output, embedding };
+        const jobData: IndexJobData = { scan, output, lsp, embedding };
         let job;
         try {
           job = jobManager.startJob(
@@ -227,7 +243,7 @@ export function createJobRoutes(
               treeSitter,
               useGitignore: scan.useGitignore !== false,
               blueprint: wantBlueprint,
-              sqlite: wantSqlite,
+              lspDiagnostics: lsp.diagnostics === true,
               embedding: embedding.enabled
                 ? {
                     provider: embedding.provider ?? 'local',

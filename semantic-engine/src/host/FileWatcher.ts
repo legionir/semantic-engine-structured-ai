@@ -108,7 +108,7 @@ export class FileWatcher {
     if (this.watcher) return;
 
     /*
-    | require تنبل — همان دلیل SQLite و transformers (SE-EXT-05):
+    | require تنبل — همان دلیل transformers (SE-EXT-05):
     | کسی که فقط یک بار ایندکس می‌گیرد نباید هزینهٔ بارگذاری
     | watcher را بدهد، و نبود این بسته نباید کل پکیج را بشکند.
     */

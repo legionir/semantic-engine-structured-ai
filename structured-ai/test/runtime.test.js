@@ -1089,6 +1089,12 @@ async function main() {
             "agent/config/system_prompt.txt",
             "agent/schema/response_format.json",
             "agent/lib/policy.js",
+            /*
+            | فاز ۲۱: کد واقعی enforcement به agent/policy/ رفت؛ اگر آن مسیرها
+            | پوشش داده نشوند، «خودمحافظت» فقط پوستهٔ wrapper را می‌بیند.
+            */
+            "agent/policy/PolicyEngine.js",
+            "agent/policy/ApprovalManager.js",
             "agent/agent.js"
         ]) {
 

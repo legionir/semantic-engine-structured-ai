@@ -2,7 +2,7 @@
  * راز نباید از سورس به ایندکس منتقل شود.
  *
  * ConfigUsageEntry.context خط خام سورس است و مستقیم در
- * project-index.json و SQLite نوشته می‌شود — فایل‌هایی که داخل خود
+ * project-index.json نوشته می‌شود — فایلی که داخل خود
  * workspace ساخته می‌شوند و ممکن است commit شوند.
  */
 

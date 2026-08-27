@@ -76,6 +76,18 @@
         }
       }
     },
+    "diagnosticsRun": {
+      "type": "object",
+      "description": "نتیجهٔ مرحلهٔ diagnostics زبان‌سرور. فقط وقتی نوشته می‌شود که آن مرحله اجرا شده باشد؛ نبودش یعنی «بررسی نشده»، نه «چیزی پیدا نشد»",
+      "additionalProperties": false,
+      "required": ["filesWithFindings", "filesSkippedByBudget", "budgetMs"],
+      "properties": {
+        "filesWithFindings": { "type": "integer", "minimum": 0 },
+        "filesSkippedByBudget": { "type": "integer", "minimum": 0 },
+        "budgetMs": { "type": "integer", "minimum": 0 },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "git": {
       "type": "object",
       "additionalProperties": false,
@@ -105,7 +117,7 @@
     },
     "symbols": {
       "type": "array",
-      "description": "تمام symbol های پروژه، FLAT (نه تودرتو). ارتباط parent/child با parentId مشخص می‌شود، نه nesting — تا هم serialize سبک بماند هم مستقیماً روی SQLite قابل map باشد.",
+      "description": "تمام symbol های پروژه، FLAT (نه تودرتو). ارتباط parent/child با parentId مشخص می‌شود، نه nesting — تا serialize سبک بماند.",
       "items": {
         "$ref": "#/$defs/symbolEntry"
       }
@@ -500,7 +512,8 @@
           "type": "string"
         },
         "signature": {
-          "type": "string"
+          "type": "string",
+          "description": "برای سمبل فراخوانی‌شدنی: نام + پارامترها (+ بازگشتی). برای سمبل اعلانی (class / interface / enum / struct / trait / type-alias / namespace / module) خودِ اعلانِ فشرده، مثل «class Repository implements Storage» — `Name()` برای یک کلاس بی‌معناست (SE-SYM-19)"
         },
         "visibility": {
           "enum": [

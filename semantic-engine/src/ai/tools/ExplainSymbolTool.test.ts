@@ -9,7 +9,7 @@
 
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
-import { ExplainSymbolTool, SymbolExplanation } from './ExplainSymbolTool';
+import { ExplainSymbolTool, SymbolExplanation, diagnosticsCaveat, displaySymbolName } from './ExplainSymbolTool';
 import { FindSymbolTool } from './FindSymbolTool';
 import { FindTestsTool } from './FindTestsTool';
 import { ImpactAnalysisTool } from './ImpactAnalysisTool';
@@ -325,5 +325,84 @@ describe('GAP-03 — ثبت در رجیستری', () => {
     expect(tool.name).toBe('explain_symbol');
     expect(tool.description.length).toBeGreaterThan(30);
     expect(tool.inputSchema).toBeDefined();
+  });
+});
+
+describe('diagnostics — «بررسی نشده» با «تمیز» یکی نیست', () => {
+  it('یادآوری می‌کند که ایندکس بدون مرحلهٔ زبان‌سرور ساخته شده', async () => {
+    const { explanation } = await explanationOf({ id: 's-login' });
+    const withNote = explanation as unknown as SymbolExplanation & { diagnosticsNote?: string };
+
+    expect(withNote.diagnosticsNote).toMatch(/means "not checked", not "clean"/);
+    expect(withNote.diagnosticsNote).toMatch(/--lsp-diagnostics/);
+  });
+
+  it('وقتی مرحله اجرا شده باشد، یادآوری نیست و همان فهرست معنای واقعی‌اش را دارد', async () => {
+    const withRun = {
+      ...index(),
+      diagnosticsRun: {
+        filesWithFindings: 1,
+        filesSkippedByBudget: 0,
+        budgetMs: 60_000,
+        completedAt: new Date().toISOString(),
+      },
+    } as unknown as ProjectIndex;
+
+    const result = await new ExplainSymbolTool(new ProjectIndexReader(withRun)).execute({ id: 's-login' });
+    const explanation = result.items[0]?.metadata as unknown as SymbolExplanation & { diagnosticsNote?: string };
+
+    expect(explanation.diagnosticsNote).toBeUndefined();
+    expect(explanation.diagnostics).toHaveLength(1);
+  });
+
+  it('شرح ابزار هم همین را از قبل می‌گوید (تا مدل، پاسخ «خالی» را تمیزی نخواند)', () => {
+    expect(new ExplainSymbolTool(reader()).description).toMatch(/not checked/i);
+  });
+});
+
+describe('diagnosticsCaveat — یک فهرست خالی، سه معنی', () => {
+  const run = (completedAt: string) => ({
+    filesWithFindings: 0,
+    filesSkippedByBudget: 0,
+    budgetMs: 60_000,
+    completedAt,
+  });
+
+  it('مرحله اجرا نشده → «بررسی نشده»، و ابزار نام کلید را می‌گوید', () => {
+    expect(diagnosticsCaveat({})).toMatch(/built without --lsp-diagnostics/);
+  });
+
+  it('فایل بعد از مرحله عوض شده → یافته‌های کهنه پاک شده‌اند، نه اینکه نبود باشند', () => {
+    const note = diagnosticsCaveat(
+      { diagnosticsRun: run('2026-01-01T00:00:00.000Z') },
+      '2026-01-02T00:00:00.000Z'
+    );
+    expect(note).toMatch(/changed after the last diagnostics pass/);
+    expect(note).toMatch(/--lsp-diagnostics/);
+  });
+
+  it('مرحله فایل را پوشش داده و چیزی پیدا نکرده → هیچ یادآوری‌ای نیست', () => {
+    expect(
+      diagnosticsCaveat({ diagnosticsRun: run('2026-01-03T00:00:00.000Z') }, '2026-01-02T00:00:00.000Z')
+    ).toBeNull();
+  });
+
+  it('زمان‌های بی‌اعتبار یادآوری جعلی نمی‌سازند', () => {
+    expect(diagnosticsCaveat({ diagnosticsRun: run('not-a-date') }, 'also-not-a-date')).toBeNull();
+    expect(diagnosticsCaveat({ diagnosticsRun: run('2026-01-01T00:00:00.000Z') }, null)).toBeNull();
+  });
+});
+
+describe('displaySymbolName — پیشوند فایل و پسوند dedupe در نام نمی‌آیند', () => {
+  it('`#1` حذف می‌شود؛ سطر، کارِ تمایز را می‌کند', () => {
+    expect(displaySymbolName({ name: '{ scene }', fullyQualifiedName: 'a/b.ts::{ scene }#2' })).toBe('{ scene }');
+  });
+
+  it('سمبلِ تودرتو مالکش را نگه می‌دارد', () => {
+    expect(displaySymbolName({ name: 'login', fullyQualifiedName: 'src/auth.ts::AuthService.login' })).toBe('AuthService.login');
+  });
+
+  it('بی‌نام‌کامل، همان name', () => {
+    expect(displaySymbolName({ name: 'login', fullyQualifiedName: undefined })).toBe('login');
   });
 });

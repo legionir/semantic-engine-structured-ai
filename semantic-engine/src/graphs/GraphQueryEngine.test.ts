@@ -308,3 +308,52 @@ describe('GAP-01 — اعتماد مسیر', () => {
     ]);
   });
 });
+
+describe('SE-GRAPH-14 — «دوباره‌دیدن» با «حلقه» یکی نیست', () => {
+  /*
+  | a ──▶ b ──▶ d
+  | └──▶ c ──┘            لوزی: d دو بار دیده می‌شود، حلقه نیست
+  */
+  const edge = (from: string, to: string) => ({
+    from,
+    to,
+    kind: 'import' as const,
+    provenance: { ...provenanceFor('import-resolved', 'typescript-api', { file: `${from}.ts`, line: 1 }), confidence: 90 },
+  });
+
+  const indexFor = (deps: ReturnType<typeof edge>[]): ProjectIndex =>
+    ({
+      schemaVersion: '2.0.0',
+      root: 't',
+      generatedAt: new Date().toISOString(),
+      languages: ['typescript'],
+      files: [],
+      symbols: [],
+      graphs: { dependencyGraph: deps, callGraph: [], typeGraph: [], reverseDependencyGraph: [] },
+      diagnostics: [],
+      metrics: { totalFiles: 0, totalLoc: 0, totalSymbols: 0, avgCyclomaticComplexity: 0, languageBreakdown: {} },
+    }) as unknown as ProjectIndex;
+
+  it('لوزی، cyclic دروغ نمی‌گوید', () => {
+    const engineDiamond = new GraphQueryEngine(
+      indexFor([edge('a', 'b'), edge('a', 'c'), edge('b', 'd'), edge('c', 'd')])
+    );
+
+    const result = engineDiamond.descendants('a', { depth: 5 });
+    expect(result.nodes.map(n => n.id).sort()).toEqual(['b', 'c', 'd']);
+    expect(result.cyclic).toBe(false);
+  });
+
+  it('حلقهٔ واقعی همان‌جا که هست گزارش می‌شود', () => {
+    const engineCycle = new GraphQueryEngine(
+      indexFor([edge('a', 'b'), edge('b', 'c'), edge('c', 'a')])
+    );
+
+    expect(engineCycle.descendants('a', { depth: 5 }).cyclic).toBe(true);
+  });
+
+  it('خودحلقه هم حلقه است', () => {
+    const engineSelf = new GraphQueryEngine(indexFor([edge('a', 'a')]));
+    expect(engineSelf.descendants('a', { depth: 3 }).cyclic).toBe(true);
+  });
+});

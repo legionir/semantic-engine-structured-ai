@@ -35,7 +35,8 @@ import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
 import { GraphQueryEngine, GraphEdge } from '../../graphs/GraphQueryEngine';
 import { FindTestsTool } from './FindTestsTool';
-import { SymbolEntry } from '../../core/types/project-index.types';
+import { ProjectIndex, SymbolEntry } from '../../core/types/project-index.types';
+import { DECLARATION_KINDS } from '../../symbols/heuristic/SymbolExtractionHelpers';
 import { HIGH_CONFIDENCE_THRESHOLD } from '../../graphs/EdgeProvenance';
 
 export interface ExplainSymbolInput extends AiToolInput {
@@ -80,6 +81,32 @@ export interface SymbolExplanation {
   readonly calls: readonly RelatedSymbol[];
   readonly calledBy: readonly RelatedSymbol[];
   /**
+   * اعضای یک سمبل اعلانی (کلاس/اینترفیس/…), با همان امضا و پیچیدگی هر عضو.
+   *
+   * تا پیش از این `explain_symbol` روی یک کلاس عملاً خالی برمی‌گشت:
+   * یال‌های فراخوانی به سازنده/متدها وصل‌اند نه به خودِ کلاس، پس
+   * `calls`/`calledBy` خالی می‌شد و `complexity` هم `null` — یعنی
+   * «کلاسی با چهل متد» و «کلاسی که هیچ‌کس نمی‌شناسد» یک پاسخ داشتند.
+   */
+  readonly members?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly kind: string;
+    readonly line: number;
+    readonly visibility: string;
+    readonly signature: string;
+    readonly complexity: number | null;
+    readonly exported: boolean;
+  }[];
+  /** شمارش کامل اعضا — حتی وقتی `members` به سقف `limit` خورده است. */
+  readonly memberCount?: number;
+  /** جمع پیچیدگی اعضا؛ `null` اگر هیچ عضوی عدد داشته باشد. */
+  readonly aggregateComplexity?: number | null;
+  /** چند گره مستقل به خودِ این سمبل یا اعضای آن اشاره می‌کنند. */
+  readonly referencedBy?: { readonly sources: number; readonly files: number };
+  /** وقتی calls/calledBy از اعضا جمع شده‌اند، همین‌جا گفته می‌شود. */
+  readonly aggregation?: { readonly owners: number; readonly fromMembers: number };
+  /**
    * تست‌ها، با **دلیل** پیدا شدنشان.
    *
    * `find_tests` دلیلش را از قبل حساب می‌کرد و در فیلد `source`
@@ -103,10 +130,57 @@ export interface SymbolExplanation {
   };
 }
 
+/**
+ * چرا این فایل diagnostics ندارد؟ سه جواب ممکن دارد و انتخابِ درست
+ * از خودِ ایندکس خوانده می‌شود:
+ *
+ *   1. `diagnosticsRun` نیست            → مرحلهٔ زبان‌سرور هرگز اجرا نشده
+ *   2. فایل بعد از آن مرحله عوض شده   → یافته‌های کهنه پاک شده‌اند
+ *   3. هیچ‌کدام                        → واقعاً چیزی پیدا نشد (بدون یادآوری)
+ */
+/**
+ * نام کامل سمبل برای نمایش.
+ *
+ * `SymbolIdentity` برای یکتا کردن نام‌های تکراری در یک فایل پسوند `#1`, `#2`
+ * می‌گذارد — چیزی که برای *شناسه* لازم است ولی در پاسخ ابزار فقط نویز است،
+ * مخصوصاً وقتی نام سمبل خودش یک الگوی تخریبی باشد (`{ scene }#2`). سطرِ
+ * همراهِ همان آیتم، جای بی‌معنیِ `#N` را برای تمایز می‌گیرد.
+ */
+export function displaySymbolName(symbol: Pick<SymbolEntry, 'name' | 'fullyQualifiedName'>): string {
+  const fq = symbol.fullyQualifiedName;
+  if (!fq) return symbol.name;
+  const stripped = fq.replace(/#\d+$/, '');
+  return stripped.includes('::') ? stripped.split('::').slice(1).join('::') || symbol.name : stripped;
+}
+
+export function diagnosticsCaveat(
+  index: Pick<ProjectIndex, 'diagnosticsRun'>,
+  fileModifiedAt?: string | null
+): string | null {
+  const run = index.diagnosticsRun;
+  if (!run) {
+    return (
+      'no language-server diagnostics in this index (it was built without --lsp-diagnostics); ' +
+      'an empty list here means "not checked", not "clean"'
+    );
+  }
+  if (fileModifiedAt && run.completedAt) {
+    const modified = Date.parse(fileModifiedAt);
+    const completed = Date.parse(run.completedAt);
+    if (Number.isFinite(modified) && Number.isFinite(completed) && modified > completed) {
+      return (
+        `this file changed after the last diagnostics pass (${run.completedAt}), so any findings it ` +
+        'had were cleared as stale — re-run `index --lsp-diagnostics` before reading the empty list as "clean"'
+      );
+    }
+  }
+  return null;
+}
+
 export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
   readonly name = 'explain_symbol';
   readonly description =
-    'Everything known about one symbol in a single call: signature, complexity, calls, callers, tests, git, scores, diagnostics, and how trustworthy each part is.';
+    'Everything known about one symbol in a single call: signature, complexity, calls, callers, tests, git, scores, diagnostics, and how trustworthy each part is. Diagnostics come from a language-server pass that is opt-in (--lsp-diagnostics): an empty list without a diagnosticsRun record on the index means "not checked", not "clean".';
   readonly inputSchema = {
     type: 'object',
     properties: {
@@ -215,14 +289,71 @@ export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
     const engine = (this.engine ??= new GraphQueryEngine(this.reader.projectIndex));
     const file = this.reader.getFileById(symbol.fileId);
 
-    const calls = engine
-      .callees(symbol.id, { minConfidence })
-      .slice(0, limit)
-      .map(edge => this.related(edge.to, edge));
-    const calledBy = engine
-      .callers(symbol.id, { minConfidence })
-      .slice(0, limit)
-      .map(edge => this.related(edge.from, edge));
+    /*
+    | برای یک سمبل اعلانی، خودِ گره لبه‌ای ندارد — لبه‌ها به اعضایش وصل‌اند.
+    | پس owners = خودِ سمبل + اعضا، و یال‌ها روی همان مجموعه گرفته می‌شوند.
+    */
+    /*
+    | یک سمبل اعلانی — کلاس، اینترفیس، enum، struct — خودش معمولاً هیچ لبه‌ای
+    | ندارد: فراخوانی‌ها به سازنده و متدها وصل‌اند و importها به فایل. پس
+    | یال‌ها روی «مالک‌ها» (خودِ سمبل + اعضایش) گرفته می‌شوند و روی *سمبل
+    | مقابل* یکتا؛ وگرنه explain_symbol روی یک کلاسِ پر از مصرف‌کننده،
+    | همان چیزی را برمی‌گرداند که یک کلاس بدون مصرف‌کننده برمی‌گرداند.
+    */
+    const isDeclaration = DECLARATION_KINDS.has(symbol.kind);
+    const members = isDeclaration
+      ? this.reader.getSymbolsForFile(symbol.fileId).filter(entry => entry.parentId === symbol.id)
+      : [];
+    const owners: readonly SymbolEntry[] = members.length > 0 ? [symbol, ...members] : [symbol];
+
+    const ownerIds = new Set(owners.map(owner => owner.id));
+
+    const union = (
+      pick: (id: string) => readonly GraphEdge[],
+      otherEnd: (edge: GraphEdge) => string
+    ): { edges: GraphEdge[]; fromMembers: number } => {
+      const taken = new Set<string>();
+      const edges: GraphEdge[] = [];
+      let fromMembers = 0;
+      for (const owner of owners) {
+        for (const edge of pick(owner.id)) {
+          const other = otherEnd(edge);
+          /*
+          | «خود» یعنی خودِ سمبل به‌همراه اعضایش: یک متد که متد دیگر همان
+          | کلاس را صدا می‌زند، نه مصرف‌کننده است و نه وابستگی. اگر این
+          | صافی نزند، هر کلاسِ چندمتد در `calls` خودش را نشان می‌دهد.
+          */
+          if (ownerIds.has(other) || taken.has(other)) continue;
+          taken.add(other);
+          if (owner !== symbol) fromMembers++;
+          edges.push(edge);
+        }
+      }
+      return { edges, fromMembers };
+    };
+
+    const callUnion = union(id => engine.callees(id, { minConfidence }), edge => edge.to);
+    const callerUnion = union(id => engine.callers(id, { minConfidence }), edge => edge.from);
+
+    const calls = callUnion.edges.slice(0, limit).map(edge => this.related(edge.to, edge));
+    const calledBy = callerUnion.edges.slice(0, limit).map(edge => this.related(edge.from, edge));
+
+    const referencedBy = (() => {
+      const sources = new Set<string>();
+      const files = new Set<string>();
+      for (const edge of callerUnion.edges) {
+        sources.add(edge.from);
+        const path = this.reader.getFileById(
+          this.reader.getSymbolById(edge.from)?.fileId ?? edge.from
+        )?.path;
+        if (path) files.add(path);
+      }
+      return { sources: sources.size, files: files.size };
+    })();
+
+    const memberComplexities = members
+      .map(entry => entry.complexity)
+      .filter((value): value is number => typeof value === 'number');
 
     /*
     | diagnosticهای همین symbol: آن‌هایی که خطشان داخل بدنه است.
@@ -235,7 +366,7 @@ export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
 
     return {
       id: symbol.id,
-      symbol: symbol.fullyQualifiedName || symbol.name,
+      symbol: displaySymbolName(symbol),
       kind: symbol.kind,
       file: file?.path,
       line: symbol.line,
@@ -273,7 +404,50 @@ export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
             },
           }
         : {}),
+      ...(members.length > 0
+        ? {
+            memberCount: members.length,
+            members: members.slice(0, limit).map(entry => ({
+              id: entry.id,
+              name: entry.name,
+              kind: entry.kind,
+              line: entry.line,
+              visibility: entry.visibility ?? 'public',
+              signature: entry.signature ?? entry.name,
+              complexity: entry.complexity ?? null,
+              exported: entry.exported ?? false,
+            })),
+            /*
+            | «چقدر پیچیده است» برای کلاس پرسیده می‌شود، نه برای اعلان خالیِ
+            | آن. جمع اعضا همان پاسخ است؛ null یعنی عددی در کار نبوده.
+            */
+            aggregateComplexity: memberComplexities.length > 0
+              ? memberComplexities.reduce((sum, value) => sum + value, 0)
+              : null,
+          }
+        : {}),
+      ...(symbol.kind === 'class' || members.length > 0 ? { referencedBy } : {}),
+      ...(callUnion.fromMembers + callerUnion.fromMembers > 0
+        ? {
+            aggregation: {
+              owners: owners.length,
+              fromMembers: callUnion.fromMembers + callerUnion.fromMembers,
+            },
+          }
+        : {}),
       diagnostics,
+      /*
+      | نبودِ diagnostics دو معنی دارد و مصرف‌کننده باید فرقش را بداند:
+      | یا زبان‌سرور اجرا نشده، یا اجرا شده و چیزی پیدا نکرده — و یک حالت
+      | سوم هم هست: اجرا شده، ولی فایل *بعد از* آن مرحله عوض شده و یافته‌های
+      | کهنه‌اش پاک شده (SE-INC-11). «نبود» را «تمیز» خواندن، همان خطایی است
+      | که SE-EXP-14 برای هشدارهای استخراج بست. هیچ‌کدام از این سه نیازمند
+      | فیلد تازه نیست: `diagnosticsRun` و `file.modified` در خود داده هست.
+      */
+      ...(() => {
+        const note = diagnosticsCaveat(this.reader.projectIndex, file?.modified);
+        return note ? { diagnosticsNote: note } : {};
+      })(),
       confidence: {
         symbol: symbol.confidence,
         source: symbol.source,
@@ -313,7 +487,7 @@ export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
       | فاز ۳۷) یا فقط یک نام خارجی مثل `console.log`. هر دو حالت
       | همان‌طور که هستند گزارش می‌شوند.
       */
-      name: symbol?.fullyQualifiedName || symbol?.name || file?.path || nodeId,
+      name: symbol ? displaySymbolName(symbol) : file?.path || nodeId,
       path: file?.path,
       line: symbol?.line,
       basis: edge.basis,

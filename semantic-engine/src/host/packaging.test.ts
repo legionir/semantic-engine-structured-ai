@@ -49,8 +49,8 @@ describe('MIG-60 — package.json دیگر یک افزونهٔ ویرایشگر 
     expect(pkg.engines?.['vscode']).toBeUndefined();
     expect(pkg.engines?.['node']).toBeDefined();
     /*
-    | `>=20`: `node:sqlite` و `fs.watch` بازگشتی روی لینوکس از همان
-    | نسخه‌اند، و ماتریس CI هم ۲۰ و ۲۲ است.
+    | `>=20`: `fs.watch` بازگشتی روی لینوکس از همان نسخه کار می‌کند،
+    | و ماتریس CI هم ۲۰ و ۲۲ است.
     */
     expect(pkg.engines!['node']).toMatch(/>=\s*20/);
   });
@@ -169,7 +169,6 @@ describe('SE-BUILD-10 — نصب بدون شبکه ممکن است', () => {
    * `dependencies` باشند، وگرنه نصبِ پکیج به آن‌ها گره می‌خورد.
    */
   const BINARY_DOWNLOADERS = [
-    'sqlite3',
     'usearch',
     'sharp',
     /*
@@ -186,7 +185,7 @@ describe('SE-BUILD-10 — نصب بدون شبکه ممکن است', () => {
 
   it('هرکدام که استفاده می‌شود، اختیاری اعلام شده است', () => {
     const optional = Object.keys(pkg.optionalDependencies ?? {});
-    for (const name of ['sqlite3', 'usearch']) {
+    for (const name of ['usearch']) {
       expect(optional).toContain(name);
     }
   });

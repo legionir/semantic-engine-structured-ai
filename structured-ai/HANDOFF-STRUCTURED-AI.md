@@ -30,7 +30,7 @@ Runtime مسئول موارد زیر است:
 - web console و SSE
 - اتصال اختیاری به Semantic Engine برای code intelligence
 
-Semantic Engine یک package مستقل TypeScript برای indexing کد، symbol/dependency/call graph، LSP enrichment، vector search، SQLite export و HTTP/MCP API است.
+Semantic Engine یک package مستقل TypeScript برای indexing کد، symbol/dependency/call graph، LSP enrichment، vector search و HTTP/MCP API است.
 
 ---
 
@@ -55,8 +55,11 @@ Semantic Engine یک package مستقل TypeScript برای indexing کد، symb
 | `agent/mcp/manager.js` | MCP registry، discovery و namespaced tools |
 | `agent/mcp/transports/` | stdio، HTTP، SSE و WebSocket transportها |
 | `agent/tools/index.js` | mapping نام tool به implementation |
-| `web/server.js` | web console، REST control API و SSE |
+| `web/server.js` | پوستهٔ سازگاری کنسول؛ به `web/server/` می‌رسد (فاز ۲۳) |
+| `web/server/` | router، middleware، SSE hub، controllerها، serviceها و serializerهای کنسول وب |
 | `web/public/` | frontend console و visualizer |
+| `web/public/visualizer/` | ویزوالایزر: ماژول‌های ES نیتیو با `graph-store.js` به‌عنوان تنها state صفحه (فاز ۲۵) |
+| `web/public/app/` | کنسول فرانت‌اند: ماژول‌های ES نیتیو (بدون build step) با `store.js` که state را به ۱۱ دامنه تقسیم می‌کند (فاز ۲۴) |
 
 **اجرای CLI:**
 
@@ -98,7 +101,7 @@ node bin/agent.js --serve --workspace /path/to/project
 | `semantic-engine/src/server/` | HTTP server، routes، SSE، WebSocket و security pipeline |
 | `semantic-engine/src/security/` | API keys، RBAC و audit logger |
 | `semantic-engine/src/vector/` | hashing/remote embeddings و vector store |
-| `semantic-engine/src/export/` | JSON، blueprint و SQLite export |
+| `semantic-engine/src/export/` | JSON و blueprint export |
 
 **CLI commandها:**
 
@@ -170,9 +173,17 @@ export PROCESS_SANDBOX_MODE=bwrap
 
 **هشدار:** `PROCESS_SANDBOX_MODE=test` فقط برای تست‌های repository است و نباید در production استفاده شود.
 
+### Visualizer
+
+`web/public/visualizer/` (فاز ۲۵؛ `web/public/visualizer.js` پوستهٔ سازگاری است):
+
+- قرارداد رفتارش یک **trace ضبط‌شده** است (`test/web/visualizer.snapshot.json`) — متن هر المان، کلاس هر گره/یال، transform بعد از هر ژست، و URLهای درخواستی — در سه وضعیت: گراف سرو‌شده، fetch ناموفق (دادهٔ نمونه)، و ایندکس خالی.
+-استقلال از کنسول چک می‌شود: گراف importها بسته است، هیچ مسیری به `web/public/app/` یا `modal.js` نمی‌رود، و هیچ ماژولی جز `graph-store.js` state قابل‌تغییر ندارد.
+- دو نقص ثبت‌شده و دست‌نخورده: worker چیدمان مشتری ندارد (`new Worker` هیچ‌جا نیست) و دو sink با `innerHTML` + interpolation روی برچسب نمادها. متن کامل در EXECUTION_PLAN (موارد باز ۱۳ و ۱۴).
+
 ### Web console
 
-`web/server.js`:
+`web/server/` (فاز ۲۳؛ `web/server.js` پوستهٔ سازگاری است):
 
 - API و SSE را token-protected می‌کند.
 - token را با مقایسه‌ی timing-safe بررسی می‌کند.
@@ -181,6 +192,10 @@ export PROCESS_SANDBOX_MODE=bwrap
 - API rate limit دارد.
 - body size را محدود و stream بزرگ را destroy می‌کند.
 - افزودن/حذف/فعال‌سازی MCP را از policy عبور می‌دهد.
+
+هر ۷۷ مسیر کنسول یک قرارداد ضبط‌شده دارد (`test/web/routes.snapshot.json`) و
+ساختار لایه در `test/web/layer.test.js` سنجیده می‌شود. `WEB_SERVER_MODE` هر دو
+مقدارش را به یک پیاده‌سازی می‌رساند (تصمیم ۴۲) — این یک move بود، نه fork.
 
 ### Workspace و network
 
@@ -225,9 +240,8 @@ Eventstore و journal خطای persistence را نباید باعث crash run ک
 
 خروجی اصلی indexing:
 
-- `project-index.json`
+- `project-index.json` — تنها منبع حقیقت (کپی `project-index.sqlite` حذف شده است)
 - `blueprint.json`
-- `project-index.sqlite` در صورت فعال‌سازی
 - `project-artifacts.manifest.json`
 
 manifest شامل generation و hash artifactهاست. هنگام load، index/blueprint با manifest مقایسه می‌شوند تا artifact ناقص یا نسل‌های ناسازگار پذیرفته نشوند.
@@ -381,8 +395,8 @@ npm audit --omit=dev
 4. **Audit durability:** eventstore/journal خطای write را swallow می‌کنند تا run متوقف نشود؛ disk monitoring و backup لازم است.
 5. **External LLM:** timeout و URL egress guard وجود دارد، ولی انتخاب provider، data retention و policy ارسال source باید در deployment مشخص شود.
 6. **Root web token:** token تولیدی در launch output و URL اولیه وجود دارد؛ log aggregation و shell history نباید آن را ذخیره کنند.
-7. **SQLite/usearch:** optional native dependencies باید در image/CI هدف با architecture همان محیط تست شوند.
-8. **No database migration:** Structured AI root از JSONL/local state استفاده می‌کند؛ Semantic SQLite یک export/cache است، نه source of truth مرکزی.
+7. **usearch:** optional native dependency باید در image/CI هدف با architecture همان محیط تست شود.
+8. **No database migration:** Structured AI root از JSONL/local state استفاده می‌کند و Semantic Engine هم دیتابیس ندارد — `project-index.json` منبع حقیقت است.
 
 ---
 
@@ -455,7 +469,7 @@ Dependency graph را بررسی کنید و تا remediation، feature native/o
 3. `PRODUCTION-READINESS-FINDINGS-PRIORITIZED-2026-08.md`
 4. `agent/agent.js`
 5. `agent/lib/policy.js` و `agent/lib/workspace.js`
-6. `web/server.js`
+6. `web/server/Router.js` و `web/server/WebServer.js`
 7. `semantic-engine/src/server/HttpServer.ts`
 8. `semantic-engine/src/server/SecurityPipeline.ts`
 9. `semantic-engine/src/server/routes/jobRoutes.ts`

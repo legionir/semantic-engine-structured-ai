@@ -1,0 +1,4 @@
+{
+    "type": "module",
+    "//": "Marks the visualizer's ES modules for Node only; browsers ignore this file. Same marker and reason as web/public/app/ (EXECUTION_PLAN Phase 24 decision 43)."
+}

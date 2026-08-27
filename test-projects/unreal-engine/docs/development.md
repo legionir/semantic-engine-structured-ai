@@ -8,8 +8,11 @@
 ## Setup
 
 ```bash
-# Clone and install
+# Clone and install (root workspace = engine packages + `apps/web`)
 npm install
+
+# Run the web client against the engine packages
+npm run dev:web
 
 # Verify TypeScript builds
 npm run typecheck
@@ -46,6 +49,7 @@ npm run lint
 │   ├── engine-workers/    # Web Workers
 │   └── ai-assistant/      # AI generation tools
 ├── apps/                  # Applications
+│   ├── web/               # Browser client (Vite + TypeScript)
 │   ├── server/            # Backend server
 │   ├── desktop/           # Electron wrapper
 │   ├── desktop-tauri/     # Tauri wrapper
@@ -103,7 +107,16 @@ npm run test:watch
 
 # Run specific package tests
 npx vitest run packages/engine-core
+
+# Run the web client's tests
+npm run test:web
 ```
+
+App-level tests live in `apps/web/__tests__/`. They run in the default `node`
+environment: the modules under test keep DOM access in `createHud` /
+`createToolbar` / `mountWebApp`, so the logic that decides renderer choice,
+scene restore, storage fallback and reconnect backoff is testable without a
+browser.
 
 ### Test Framework
 
@@ -133,6 +146,86 @@ describe('World', () => {
   });
 });
 ```
+
+## Web Client (`apps/web`)
+
+The browser application is a Vite + TypeScript workspace (`@webengine/web`).
+It boots `SceneRuntime` from `engine-runtime` against a canvas, keeps its own
+HUD/toolbar, and talks to `apps/server` for projects, assets, builds and
+presence. See `docs/architecture.md` §14 for the module map.
+
+### Commands
+
+```bash
+npm run dev:web          # Vite dev server on :5173, proxying /api to the backend
+npm run build:web        # tsc --noEmit, then vite build into apps/web/dist
+npm run typecheck:web    # types only
+npm run test:web         # vitest run apps/web
+npx vite preview         # from apps/web: serve dist/ on :4173
+```
+
+`npm run dev:editor` is an alias of `dev:web`. The Angular editor workspace
+that `package-lock.json` still lists as `apps/editor` (and that
+`eslint.config.mjs` keeps rules for) was never committed; `apps/web` is the web
+front end today.
+
+### Talking to the backend
+
+The dev server proxies `/api` — and the `/ws` upgrade — to
+`WEB_ENGINE_API_ORIGIN` (default `http://127.0.0.1:3000`, which is `apps/server`'s
+default `PORT`), stripping the `/api` prefix because the server mounts its routes
+at the root. So:
+
+```bash
+cd apps/server && npm install && npm run dev   # terminal 1 (Fastify on :3000)
+npm run dev:web                                 # terminal 2, from the repo root
+```
+
+Reaching that dev server from another device — a tunnel, a LAN address, which is
+how a WebGL canvas usually gets looked at — needs the host to be allowed, since
+Vite rejects `Host` headers it does not know:
+
+```bash
+WEB_ENGINE_ALLOWED_HOSTS=.example.test npm run dev:web
+```
+
+Without a server the page still boots: the client falls back to the locally
+stored scene and then to the built-in demo scene, and says which it used in the
+HUD.
+
+### Which workspaces the root install covers
+
+The root workspace is `packages/*` + `apps/web` only — about **440 packages, no
+native downloads**. `apps/desktop`, `apps/desktop-tauri`, `apps/mobile` and
+`apps/server` are deliberately outside it: none of them imports anything from
+`packages/*`, each ships its own `package-lock.json`, and Electron, Tauri and
+Capacitor fetch platform binaries during install. Joining them to the root
+workspace made every `npm install` of the web client resolve ~1070 packages and
+pull Electron (plus `@tauri-apps/cli-win32-x64-msvc` — Windows binaries, on a
+Linux box) for code that only ever wraps the built page.
+
+To work on a shell, install it from its own folder:
+
+```bash
+cd apps/desktop && npm install && npm run dev
+cd apps/server  && npm install && npm run dev
+```
+
+`npm run build --workspaces --if-present` therefore builds the engine packages
+and `apps/web`; shells are built by their own scripts when you are in them.
+
+### Configuration
+
+Runtime configuration lives in `<meta name="web-engine:*">` tags in
+`apps/web/index.html` — `api-base-url`, `project-id`, `renderer`
+(`auto`|`webgpu`|`webgl2`), `username`, `auto-start`, `service-worker` — so one
+build can be served from anywhere. A host page (for example an Electron
+`BrowserWindow` or a Tauri webview embedding `dist/`) can override the same keys
+with `window.__WEB_ENGINE__` before the module runs.
+
+`service-worker` is deliberately unset in the dev shell: `apps/server`
+generates `/sw.js`, and registering it while Vite serves unbundled modules would
+cache the wrong things.
 
 ## Building
 
@@ -220,6 +313,7 @@ registerMyRoutes(server);
 | Cache | Redis |
 | Storage | S3/MinIO |
 | Auth | JWT + OAuth |
+| Web | Vite + TypeScript |
 | Desktop | Electron + Tauri |
 | Mobile | Capacitor |
 | Collaboration | WebSocket + CRDT/OT |

@@ -21,6 +21,7 @@ import { TreeSitterSymbolExtractor } from '../symbols/tree-sitter/TreeSitterSymb
 import { TSDependencyExtractor } from '../dependencies/typescript/TSDependencyExtractor';
 import { HeuristicDependencyExtractor } from '../dependencies/heuristic/HeuristicDependencyExtractor';
 import { LspSymbolExtractor } from '../symbols/lsp/LspSymbolExtractor';
+import { DiagnosticsProvider, FileDiagnosticsSource } from '../lsp/DiagnosticsProvider';
 import { LspServerManager } from '../lsp/LspServerManager';
 import { LspServerRegistry, describeMissingServers } from '../lsp/registry';
 import { ILogger, silentLogger } from '../host/Logger';
@@ -51,6 +52,14 @@ export interface ExtractorFactoryOptions {
    * کسی است که آگاهانه هزینه‌اش را می‌پذیرد.
    */
   readonly lsp?: boolean;
+  /**
+   * فقط مرحلهٔ diagnostics — بدون استخراج symbol از زبان‌سرور.
+   *
+   * چندی از `lsp` است: هزینه‌اش بودجه‌دار است (`diagnosticsBudgetMs` در
+   * پایپ‌لاین) و نتیجه‌اش چیزی است که مصرف‌کنندهٔ انبوه معمولاً می‌خواهد
+   * («این فایل خطای کامپایلور دارد؟»), نه یک بازنویسی کاملِ نمادها.
+   */
+  readonly lspDiagnostics?: boolean;
   /** override به‌ازای شناسهٔ سرور — از `semanticEngine.lsp.servers`. */
   readonly lspServers?: Readonly<Record<string, { command?: string; args?: readonly string[]; disabled?: boolean }>>;
   readonly lspIdleTimeoutMs?: number;
@@ -62,6 +71,12 @@ export interface ExtractorFactoryOptions {
 export interface ExtractorSet {
   readonly symbols: SymbolExtractorManager;
   readonly dependencies: DependencyExtractorManager;
+  /**
+   * منبع diagnostics زبان‌سرور — فقط وقتی ساخته می‌شود که `lspDiagnostics`
+   * روشن باشد. `IndexPipeline` همین را به `diagnosticsSource` می‌دهد؛ تا
+   * پیش از این، مرحلهٔ فاز ۳۴ در هیچ مسیر production اجرا نمی‌شد.
+   */
+  readonly diagnosticsSource?: FileDiagnosticsSource | null;
   dispose(): void;
 }
 
@@ -103,8 +118,9 @@ export function createExtractors(options: ExtractorFactoryOptions): ExtractorSet
   const dependencies = new DependencyExtractorManager();
   let parserManager: TreeSitterParserManager | undefined;
   let lspManager: LspServerManager | undefined;
+  let diagnosticsSource: FileDiagnosticsSource | undefined;
 
-  if (options.lsp === true) {
+  if (options.lsp === true || options.lspDiagnostics === true) {
     /*
     | از فاز ۳۶ این کار به `LspServerManager` سپرده شده و نه یک
     | `LspClient` دستی: spawn تنبل، خاموشی سرور بیکار، restart با
@@ -132,13 +148,22 @@ export function createExtractors(options: ExtractorFactoryOptions): ExtractorSet
         requestTimeoutMs: options.lspRequestTimeoutMs,
       });
       lspManager = manager;
-      symbols.register(
-        new LspSymbolExtractor({
+      if (options.lsp === true) {
+        symbols.register(
+          new LspSymbolExtractor({
+            logger,
+            acquire: languageId => manager.acquire(languageId),
+          })
+        );
+        logger.debug('lsp extractor registered');
+      }
+      if (options.lspDiagnostics === true) {
+        diagnosticsSource = new DiagnosticsProvider({
           logger,
           acquire: languageId => manager.acquire(languageId),
-        })
-      );
-      logger.debug('lsp extractor registered');
+        });
+        logger.debug('lsp diagnostics registered');
+      }
     }
   }
 
@@ -166,9 +191,11 @@ export function createExtractors(options: ExtractorFactoryOptions): ExtractorSet
   return {
     symbols,
     dependencies,
+    diagnosticsSource: diagnosticsSource ?? null,
     dispose(): void {
       symbols.dispose();
       dependencies.dispose();
+      diagnosticsSource?.dispose?.();
       parserManager?.dispose();
       void lspManager?.disposeAll();
     },

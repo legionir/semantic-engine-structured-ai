@@ -34,7 +34,8 @@ export interface ConfigUsageMapperOptions {
 
 export class ConfigUsageMapper {
   /*
-  | context خط خام سورس است و مستقیم در project-index.json و SQLite
+  | context خط خام سورس است و مستقیم در project-index.json نوشته
+  | می‌شود —
   | نوشته می‌شود — فایل‌هایی که داخل workspace ساخته می‌شوند و ممکن است
   | commit شوند. خطی مثل
   |     const key = process.env.API_KEY || "sk-live-abc123"

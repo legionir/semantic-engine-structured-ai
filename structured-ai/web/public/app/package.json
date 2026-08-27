@@ -1,0 +1,4 @@
+{
+    "type": "module",
+    "//": "Marks the console's ES modules for Node only; browsers ignore this file. See EXECUTION_PLAN Phase 24, step 1."
+}

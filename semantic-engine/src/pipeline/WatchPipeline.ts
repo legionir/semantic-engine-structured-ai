@@ -13,7 +13,6 @@
  *   | کار | مشکل |
  *   |---|---|
  *   | `writeFile` ایندکس، بعد بردارسازی، بعد `writeFile` دوباره | SE-EXP-02 |
- *   | `SQLiteExporter.export` دو بار | SE-EXP-02 |
  *   | `VectorIndexer.index` روی کل ایندکس | SE-INC-02 |
  *   | `gitCollector.collect(همهٔ مسیرها)` | یک پروسهٔ git به ازای هر فایل |
  *   | تایمر ۳۰ ثانیه‌ای بازتولید متادیتای کل پروژه | SE-INC-04 |
@@ -58,7 +57,6 @@ export interface WatchPipelineOptions {
   readonly blueprint?: boolean;
   /** بازسازی blueprint در هر batch یا فقط پس از عبور از drift threshold. */
   readonly blueprintMode?: 'always' | 'threshold';
-  readonly sqlite?: boolean;
   readonly pretty?: boolean;
   readonly validate?: boolean;
   readonly fileSystem?: FileSystemPort;
@@ -233,7 +231,6 @@ export class WatchPipeline {
           (this.options.blueprint ?? true) &&
           ((this.options.blueprintMode ?? 'threshold') === 'always' ||
             result.shouldRebuildBlueprint),
-        sqlite: this.options.sqlite === true,
         driftScore: result.driftScore,
         ...(result.projectIndex.git?.commit
           ? { gitCommit: result.projectIndex.git.commit }

@@ -15,7 +15,7 @@ This document describes the high-level architecture of the Web Engine — a modu
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   Applications                       │
-│  apps/server  apps/desktop  apps/desktop-tauri  apps/mobile │
+│  apps/web  apps/server  apps/desktop  apps/desktop-tauri  apps/mobile │
 ├─────────────────────────────────────────────────────┤
 │                   Engine Packages                    │
 │  ┌──────────┐ ┌──────────┐ ┌──────────────────┐    │
@@ -199,10 +199,44 @@ Visual programming system:
 - **WorkerPoolManager** — Generic Web Worker pool
 - **PerformanceManager** — Coordinated performance optimization
 
+## 14. Web Client (`apps/web`)
+
+The browser application: a Vite + TypeScript client that boots the engine
+runtime against a canvas and talks to `apps/server` for projects, assets,
+builds and presence. The desktop shells wrap a build of this client rather than
+owning their own view code, so the runtime wiring lives in exactly one place.
+
+| Concern | Module | Notes |
+|---------|--------|-------|
+| Mount point | `src/main.ts` | reads `<meta>` config, finds `#viewport`, calls `mountWebApp` |
+| Composition | `src/app/create-web-app.ts` | owns renderer, HUD, toolbar, socket, storage; single `dispose()` |
+| Renderer choice | `src/app/engine/renderer-choice.ts` | WebGPU first under `auto`, degrades to WebGL2 |
+| Frame loop | `@web-engine/engine-runtime` | `SceneRuntime` drives `World.update` + `RenderSystem` |
+| Scene content | `src/app/engine/default-scene.ts` | demo scene and restore-from-snapshot path |
+| Frame metrics | `src/app/engine/frame-meter.ts` | HUD fps/frame time, implemented as an ECS `System` |
+| Local-first save | `src/app/storage/scene-storage.ts` | IndexedDB with an in-memory fallback |
+| Server access | `src/app/net/api-client.ts` | typed `fetch` wrapper for the routes in §12 |
+| Presence | `src/app/net/presence.ts` | `/ws` client with throttled cursors and bounded backoff |
+
+### Configuration
+
+The client is configured by `<meta name="web-engine:*">` tags
+(`api-base-url`, `project-id`, `renderer`, `username`, `auto-start`,
+`service-worker`), not by build-time constants, so the same `dist/` output can
+be served by the Vite dev server, by `apps/server`, or from any static host.
+`window.__WEB_ENGINE__` overrides the same keys at runtime.
+
+### Degradation
+
+Every external dependency of the page is optional: a missing server falls back
+to the locally stored scene, then to the built-in demo scene; a missing
+WebGPU falls back to WebGL2; a missing IndexedDB keeps saves in memory for the
+session. The HUD reports which of those happened instead of failing the boot.
+
 ## Data Flow
 
 ```
-User Input → InputManager → InputSystem
+Web Client (apps/web) → User Input → InputManager → InputSystem
                               ↓
 Systems (Physics, Animation, AI, Blueprint) → World.update()
                               ↓

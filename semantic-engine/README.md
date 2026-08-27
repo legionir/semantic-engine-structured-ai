@@ -23,7 +23,7 @@
 ## ۱. منشور معماری و اصول کلیدی
 
 ### ۱.۱ اصل انزوای کامل ذخیره‌سازی (Zero Direct Storage Access)
-> **هیچ مصرف‌کننده‌ای (شامل Agent، Web Dashboard، CLI، IDE یا ابزارهای خارجی) حق اتصال مستقیم به دیتابیس‌های زیرین (SQLite، Vector DB، File System یا حافظهٔ خام گراف) را ندارد.**  
+> **هیچ مصرف‌کننده‌ای (شامل Agent، Web Dashboard، CLI، IDE یا ابزارهای خارجی) حق اتصال مستقیم به ذخیره‌سازی‌های زیرین (Vector DB، File System یا حافظهٔ خام گراف) را ندارد.**  
 > تمامی وضعیت‌ها، قابلیت‌ها، نودها و یال‌ها منحصراً از طریق **API Contract** رسمی مصرف می‌شوند. حتی خود وب‌داشبورد و Agent نیز صرفاً یک «کلاینت» محسوب می‌شوند.
 
 ### ۱.۲ اصل تجرید سطوح جزئیات (Semantic Level of Detail - LoD)
@@ -79,7 +79,7 @@
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                    INTERNAL STORAGE (NO DIRECT ACCESS)                 │
-│         SQLite Index      │     Vector DB     │    Meta JSON Cache     │
+│ project-index.json        │     Vector DB     │    Meta JSON Cache     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -139,7 +139,7 @@ node bin/semantic-engine.js doctor
 | `semantic-engine ui` | **راه‌اندازی وب‌سرور یکپارچه و داشبورد بصری گراف (پیش‌فرض: پورت ۴۰۰۰). حتی بدون ایندکس قبلی هم بالا می‌آید و صفحهٔ Open/Configure را نشان می‌دهد.** |
 | `semantic-engine start` | **ساخت ایندکس در صورت نیاز، راه‌اندازی هم‌زمان UI و MCP HTTP و فعال‌کردن watcher برای به‌روزرسانی خودکار artifactها (پورت‌های پیش‌فرض ۴۰۰۰ و ۳۰۰۰).** |
 | `semantic-engine index` | اسکن کامل پروژه و ساخت `project-index.json` و `blueprint.json` |
-| `semantic-engine watch` | ایندکس اولیه و پایش بلادرنگ تغییرات فایل‌ها؛ symbol، graph، blueprint، SQLite و vectorهای فعال را به‌روز می‌کند |
+| `semantic-engine watch` | ایندکس اولیه و پایش بلادرنگ تغییرات فایل‌ها؛ symbol، graph، blueprint و vectorهای فعال را به‌روز می‌کند |
 | `semantic-engine serve` | ارائهٔ سرویس‌های ایندکس بر بستر پروتکل MCP (پیش‌فرض Stdio یا HTTP) |
 | `semantic-engine query <tool>` | اجرای مستقیم ابزارهای تحلیلی هوش مصنوعی از خط فرمان |
 | `semantic-engine doctor` | تست و ارزیابی پیش‌نیازهای محیط اجرا |
@@ -164,21 +164,75 @@ UI و MCP همین قرارداد را استفاده می‌کنند. اگر ی
 - dependency graph، type graph، call graph و reverse dependency graph
 - config usages، Git metrics و test mappings
 - vector chunk و embedding فایل‌های affected، در صورتی که vector mode فعال باشد
+- diagnostics فایل دست‌خورده **پاک** می‌شود (SE-INC-11): زبان‌سرور در batch
+  افزایشی اجرا نمی‌شود، و نگه‌داشتن هشدارِ محتوای قبلی بدتر از نداشتنش است.
+  در full index بعدی دوباره گرفته می‌شوند.
 
 `blueprint.json` در watcher با حالت `always` (پیش‌فرض CLI) بازسازی می‌شود؛
 با `--blueprint-mode threshold` می‌توان رفتار قدیمیِ مبتنی بر drift را فعال
-کرد. نوشتن SQLite با `--sqlite` فعال می‌شود و یک snapshot سازگار از index
-فعلی تولید می‌کند. اگر فایل SQLite قبلاً وجود داشته باشد، watcher آن را
-به‌طور خودکار دنبال می‌کند، مگر اینکه `--no-sqlite` داده شود.
+کرد. کپی SQLite (`project-index.sqlite`) که پیش‌تر به‌عنوان artifact دوم
+نوشته می‌شد حذف شده است: `project-index.json` تنها منبع حقیقت است و SQLite
+هرگز منبع خواندن نبود — همان داده به شکل دیگر، با یک writer دوم و باگ‌های
+هم‌زمانی خودش (SE-EXP-02). برای پرس‌وجوی ساختاریافته از ابزارهای
+`query_*`/`find_*` روی همان ایندکس استفاده می‌شود.
 
 فرمان `start` همین watcher را هم به‌صورت پیش‌فرض زیر نظر می‌گیرد. علاوه بر
 این، UI/Platform cache و MCP snapshot هنگام تغییر artifactها reload می‌شوند.
 برای اجرای فقط UI و MCP بدون watcher از `--no-watch` استفاده کن.
 
+### diagnostics از زبان‌سرور (اختیاری)
+
+دو نوع diagnostic در ایندکس وجود دارد و منشأشان فرق می‌کند:
+
+- **خودکار** — هشدارهای اسکنر و استخراج (فایل ناخوانا، symlink معلق، تجزیهٔ
+  ناموفق). این‌ها همیشه گرفته می‌شوند و در `FileEntry.diagnostics` و
+  `project-index.json.diagnostics` می‌نشینند.
+- **زبان‌سرور** — خطاهای واقعی کامپایلور. با `--lsp-diagnostics` روشن می‌شود،
+  چون هزینه دارد (۱۶۴ فایل همین مخزن ~۷٫۷s؛ روی `test-projects/unreal-engine`
+  با ۳۰۱ فایل: ۴٫۴s بدون این مرحله در برابر ۱۳٫۲s با آن) و
+  `--diagnostics-budget <ms>` سقفش است. فایل‌هایی که پشتِ سقف می‌مانند
+  «بررسی‌نشده» می‌مانند، نه «تمیز».
+
+  کیفیت این مرحله به همان چیزی وابسته است که tsserver در ویرایشگر به آن
+  وابسته است: به نصب‌بودنِ dependencies. بدون `npm install`، نیمی از
+  یافته‌ها «Cannot find module»های کاذب‌اند — روی همان پروژه، ۶۷۲ diagnostic با
+  `node_modules` حذف‌شده در برابر ۹۰ فایل دارای یافته پس از نصب.
+
+وقتی این مرحله اجرا شود، ایندکس یک رکورد هم‌وضعیت می‌نویسد:
+
+```json
+"diagnosticsRun": { "filesWithFindings": 12, "filesSkippedByBudget": 0, "budgetMs": 60000, "completedAt": "…" }
+```
+
+نبودِ این کلید معنا دارد: `explain_symbol` در آن حالت `diagnosticsNote`
+می‌فرستد و صریح می‌گوید فهرست خالی یعنی «بررسی نشده»، نه «تمیز است».
+
+### امضای سمبل و توضیح سطح کلاس (SE-SYM-19)
+
+`signature` دو قاعده دارد و kind مشخصش می‌کند: برای سمبل فراخوانی‌شدنی
+`name(params): return`، و برای سمبل اعلانی (class / interface / enum / struct /
+trait / type-alias / namespace / module) خودِ **اعلان فشرده** — مثل
+`class Repository implements Storage` یا `type Level = 'debug' | 'info'`.
+`Name()` برای یک کلاس هم بی‌معنا بود هم گمراه‌کننده: ادعای فراخوانی‌شدنی
+داشت؛ و چون خطِ سورس برتر است، شکل‌های زبان‌های دیگر هم خراب نمی‌شوند
+(`pub struct Point` در Rust، `data class User(...)` در Kotlin).
+
+`explain_symbol` روی یک سمبل اعلانی علاوه بر این‌ها را هم می‌دهد:
+
+| فیلد | معنا |
+|---|---|
+| `members` / `memberCount` | اعضا، با امضا و پیچیدگی هرکدام (فهرست تا `limit` کوتاه می‌شود، شمارش کامل می‌ماند) |
+| `aggregateComplexity` | جمع پیچیدگی اعضا — «این کلاس چقدر پیچیده است» همان‌جاست، نه روی اعلان خالی |
+| `referencedBy` | چند گره و چند فایلِ متمایز به سمبل یا اعضایش وصل‌اند |
+| `aggregation` | اینکه calls/calledBy از اعضا جمع شده‌اند (و چندتا از اعضا آمده) |
+
+یال‌های داخلی (متدی از همان کلاس که متد دیگرش را صدا می‌زند) در `calls`
+نمی‌آیند؛ جایشان `members` است.
+
 ### نمونه‌های کاربردی CLI:
 ```bash
 # ۱. اسکن و ایندکس‌سازی پروژه فعلی
-semantic-engine index --root . --vectors
+semantic-engine index --root . --vectors --lsp-diagnostics --diagnostics-budget 20000
 
 # ۲. راه‌اندازی داشبورد بصری و وب‌سرور Standalone
 #    (بدون ایندکس قبلی هم بالا می‌آید؛ ایندکس‌سازی را از داخل UI انجام بده)
@@ -188,13 +242,13 @@ semantic-engine ui --port 4000 --root . --token my-secret-token
 semantic-engine ui --port 4000 --root . --host 0.0.0.0 --allow-remote --token my-secret-token
 
 # ۳. راه‌اندازی هم‌زمان UI و MCP HTTP + watcher خودکار
-#    start به‌صورت پیش‌فرض artifactهای index/blueprint/sqlite/vector را
+#    start به‌صورت پیش‌فرض artifactهای index/blueprint/vector را
 #    پس از تغییر فایل‌ها تازه می‌کند؛ برای خاموش‌کردن watcher: --no-watch
 semantic-engine start --root . --ui-port 4000 --mcp-port 3000 \
-  --vectors --sqlite --token my-secret-token
+  --vectors --token my-secret-token
 
 # ۴. پایش زنده تغییرات کد به‌صورت مستقل
-semantic-engine watch --root . --vectors --sqlite
+semantic-engine watch --root . --vectors
 #    --blueprint-mode always (پیش‌فرض) یا threshold
 
 # ۵. اجرای کوئری تحلیلی نماد
@@ -206,7 +260,7 @@ semantic-engine query find_symbol --name "AuthService" --json
 پس از اجرای `semantic-engine ui`، مرورگر را روی آدرس ریشه (`/`) باز کن. این صفحه یک ویزارد چندمرحله‌ای است و به ایندکسِ از پیش‌ساخته‌شده نیازی ندارد:
 
 1. **انتخاب مسیر پروژه** — تایپ دستی مسیر یا مرور فایل‌سیستم (با نشانگر «پروژه»/«ایندکس‌شده»).
-2. **نحوهٔ اسکن** — موتور تجزیه (`tree-sitter` دقیق / `heuristic` سبک)، رعایت `.gitignore`، رد کردن پوشه‌های مخفی، حداکثر عمق و اندازهٔ فایل، الگوهای ignore اضافی، و خروجی‌های `blueprint.json` / `project-index.sqlite`.
+2. **نحوهٔ اسکن** — موتور تجزیه (`tree-sitter` دقیق / `heuristic` سبک)، رعایت `.gitignore`، رد کردن پوشه‌های مخفی، حداکثر عمق و اندازهٔ فایل، الگوهای ignore اضافی، و خروجی `blueprint.json`.
 3. **مدل Embedding و اتصال Provider** — انتخاب provider و **دریافت خودکار مدل‌ها**:
    * **Local (Xenova / transformers.js):** آفلاین و بدون کلید؛ مدل پیش‌فرض `Xenova/all-MiniLM-L6-v2`.
    * **Ollama:** مدل‌ها از `‎<baseUrl>/api/tags` خوانده می‌شوند (پیش‌فرض `http://localhost:11434`).
@@ -385,7 +439,7 @@ semantic-engine query find_symbol --name "AuthService" --json
     "maxFileSizeMb": 5,
     "additionalIgnorePatterns": ["**/*.snap", "vendor/**"]
   },
-  "output": { "blueprint": true, "sqlite": false },
+  "output": { "blueprint": true },
   "embedding": {
     "enabled": true,
     "provider": "local",
@@ -403,7 +457,7 @@ semantic-engine query find_symbol --name "AuthService" --json
   "status": "running",
   "phase": "init",
   "progress": 0,
-  "options": { "treeSitter": true, "useGitignore": true, "blueprint": true, "sqlite": false, "embedding": { "provider": "local", "model": "Xenova/all-MiniLM-L6-v2" } }
+  "options": { "treeSitter": true, "useGitignore": true, "blueprint": true, "embedding": { "provider": "local", "model": "Xenova/all-MiniLM-L6-v2" } }
 }
 ```
 
@@ -697,13 +751,12 @@ semantic-engine query find_symbol --name "AuthService" --json
 
 ### وابستگی‌های اختیاری (optional dependencies)
 
-پنج بسته `optional` هستند: اگر نصب نشوند نصب کل پکیج شکست نمی‌خورد، ولی قابلیت مربوطه خاموش می‌شود.
+چهار بسته `optional` هستند: اگر نصب نشوند نصب کل پکیج شکست نمی‌خورد، ولی قابلیت مربوطه خاموش می‌شود.
 
 | بسته | چه چیزی را روشن می‌کند | نبودش یعنی |
 |---|---|---|
 | `@xenova/transformers` | embedding محلی برای جست‌وجوی معنایی | جست‌وجو به حالت کلیدواژه‌ای برمی‌گردد |
 | `usearch` | ایندکس برداری سریع | جست‌وجوی برداری خطی و کندتر |
-| `sqlite3` | کش ماندگار بین اجراها | کش فقط در حافظه، هر بار از صفر |
 | `tree-sitter-typescript` | استخراج دقیق سمبل‌ها | برگشت به استخراج‌گر heuristic با دقت کمتر |
 | `tree-sitter-javascript` | همان، برای جاوااسکریپت | همان |
 

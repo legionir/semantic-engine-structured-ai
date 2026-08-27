@@ -43,16 +43,6 @@
         "limit": { "type": "integer" }
       }
     },
-    "query_index": {
-      "type": "object",
-      "required": ["sql"],
-      "properties": {
-        "sqlitePath": { "type": "string", "default": "project-index.sqlite" },
-        "sql": { "type": "string", "description": "Read-only SELECT. symbols uses file_id; join files when a path is needed." },
-        "params": { "type": "array" },
-        "limit": { "type": "integer" }
-      }
-    },
     "get_file_summary": {
       "type": "object",
       "properties": {

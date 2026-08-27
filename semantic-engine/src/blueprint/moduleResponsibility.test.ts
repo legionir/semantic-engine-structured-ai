@@ -91,7 +91,7 @@ describe('BlueprintGenerator — مسئولیت ماژول با رأی‌گیر�
         'src/tools/AssembleContextTool.ts',
         'src/tools/ExplainSymbolTool.ts',
         'src/tools/FindSymbolTool.ts',
-        'src/tools/QueryIndexTool.ts',
+        'src/tools/GetFileSummaryTool.ts',
         'src/tools/AssembleContextTool.test.ts',
       ],
       'mod-src-tools'

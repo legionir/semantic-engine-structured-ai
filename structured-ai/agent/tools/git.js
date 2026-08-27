@@ -3,11 +3,10 @@ const { execFile } = require("child_process");
 const settings = require("../lib/storage");
 
 const {
-    WORKSPACE_ROOT,
-    resolveWorkspacePath,
-    toWorkspaceRelative,
     truncateText
 } = require("../lib/workspace");
+
+const ToolContext = require("./ToolContext");
 
 
 /*
@@ -23,17 +22,17 @@ const {
 
 
 
-function gitExec(inputCwd, argv) {
+function gitExec(ctx, inputCwd, argv) {
 
     const cwd =
         inputCwd
-            ? resolveWorkspacePath(
+            ? ctx.resolvePath(
                 inputCwd,
                 {
                     mustExist: true
                 }
             )
-            : WORKSPACE_ROOT;
+            : ctx.root;
 
     return new Promise((resolve, reject) => {
 
@@ -63,7 +62,7 @@ function gitExec(inputCwd, argv) {
 
                 resolve({
                     cwd:
-                        toWorkspaceRelative(cwd),
+                        ctx.relative(cwd),
 
                     command:
                         `git ${argv.join(" ")}`,
@@ -96,9 +95,13 @@ function assertString(value, field) {
 }
 
 
-async function gitStatus(args) {
+async function gitStatus(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     return gitExec(
+        ctx,
         args.cwd,
         [
             "status",
@@ -109,7 +112,10 @@ async function gitStatus(args) {
 }
 
 
-async function gitDiff(args) {
+async function gitDiff(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const argv = ["diff"];
 
@@ -132,11 +138,14 @@ async function gitDiff(args) {
         );
     }
 
-    return gitExec(args.cwd, argv);
+    return gitExec(ctx, args.cwd, argv);
 }
 
 
-async function gitLog(args) {
+async function gitLog(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const limit =
         Number.isInteger(args.limit)
@@ -144,6 +153,7 @@ async function gitLog(args) {
             : 10;
 
     return gitExec(
+        ctx,
         args.cwd,
         [
             "log",
@@ -155,11 +165,15 @@ async function gitLog(args) {
 }
 
 
-async function gitBranch(args) {
+async function gitBranch(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     if (args.action === "list") {
 
         return gitExec(
+            ctx,
             args.cwd,
             [
                 "branch",
@@ -171,6 +185,7 @@ async function gitBranch(args) {
     if (args.action === "create") {
 
         return gitExec(
+            ctx,
             args.cwd,
             [
                 "branch",
@@ -185,9 +200,13 @@ async function gitBranch(args) {
 }
 
 
-async function gitCheckout(args) {
+async function gitCheckout(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     return gitExec(
+        ctx,
         args.cwd,
         [
             "checkout",
@@ -197,7 +216,10 @@ async function gitCheckout(args) {
 }
 
 
-async function gitAdd(args) {
+async function gitAdd(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const paths =
         Array.isArray(args.paths)
@@ -216,6 +238,7 @@ async function gitAdd(args) {
     }
 
     return gitExec(
+        ctx,
         args.cwd,
         [
             "add",
@@ -226,7 +249,10 @@ async function gitAdd(args) {
 }
 
 
-async function gitCommit(args) {
+async function gitCommit(args, context) {
+
+    const ctx = ToolContext.from(context);
+
 
     const argv = [
         "commit",
@@ -257,7 +283,7 @@ async function gitCommit(args) {
         argv.push("--only", "--", ...paths);
     }
 
-    return gitExec(args.cwd, argv);
+    return gitExec(ctx, args.cwd, argv);
 }
 
 

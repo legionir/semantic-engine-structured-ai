@@ -15,7 +15,7 @@
  * Cannot find module '../build/Release/sharp-linux-x64.node'
  * ```
  *
- * همان الگوی SE-BUILD-09 است که فاز ۰۵ برای `sqlite3` حلش کرد: یک
+ * همان الگوی SE-BUILD-09 است که فاز ۰۵ حلش کرد: یک
  * وابستگی سنگین و اختیاری، از طریق import ایستا، کل پکیج را گروگان
  * می‌گیرد. و این‌بار مستقیماً بلوک G را تهدید می‌کند — `structured-ai`
  * صفر-وابستگی و CommonJS خالص است.
@@ -66,14 +66,13 @@ describeIfBuilt('SE-EXT-05 — barrel در CommonJS بار می‌شود', () =>
 
   it('هیچ وابستگی native در زمان بارگذاری کشیده نمی‌شود', () => {
     /*
-    | `sharp` و `sqlite3` و `usearch` هر سه باینری دانلودی دارند
-    | (SE-BUILD-10). هیچ‌کدام نباید صرفاً با `require` کردن barrel
-    | بار شوند.
+    | `sharp` و `usearch` باینری دانلودی دارند (SE-BUILD-10).
+    | هیچ‌کدام نباید صرفاً با `require` کردن barrel بار شوند.
     */
     const result = requireInFreshProcess(
       `require(${JSON.stringify(DIST_BARREL)});
        const loaded = Object.keys(require.cache)
-         .filter(p => /node_modules[\\\\/](sharp|sqlite3|usearch|@xenova)[\\\\/]/.test(p));
+         .filter(p => /node_modules[\\\\/](sharp|usearch|@xenova)[\\\\/]/.test(p));
        process.stdout.write(JSON.stringify(loaded.slice(0, 5)));`
     );
 

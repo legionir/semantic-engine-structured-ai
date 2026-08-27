@@ -13,7 +13,6 @@
  */
 
 import { AiToolRegistry } from '../../ai/AiToolRegistry';
-import { QUERY_INDEX_SCHEMA_DESCRIPTION } from '../../ai/tools/QueryIndexTool';
 import { assertFetchableUrl, assertResolvedFetchableUrl } from '../providers/EmbeddingProviderService';
 
 export interface ChatLlmConfig {
@@ -82,11 +81,6 @@ Your job is to answer questions about THIS specific project accurately and hones
 - 'get_dependencies' requires a 'direction' ("forward" = what this depends on;
   "backward" = what depends on this) and 'depth' is capped at 3.
 - 'impact_analysis' needs an 'id' and an optional 'level' (file|symbol|any).
-- 'query_index' is available for safe read-only SQL over the local SQLite
-  index. Its sqlitePath is optional and defaults to project-index.sqlite.
-  The symbols table has file_id, not path; join files when a path is needed.
-  Complete allowed table/column descriptions:
-${QUERY_INDEX_SCHEMA_DESCRIPTION}
 - Every tool returns JSON shaped like:
       { "success": boolean, "items": [ ... ], "context"?: string, "error"?: string }
   Read 'items' for the results and 'context' for a prose summary. If
@@ -109,9 +103,9 @@ ${QUERY_INDEX_SCHEMA_DESCRIPTION}
 - Prefer a short direct answer followed by supporting detail, not a wall of text.`;
 
 /**
- * `query_index` اکنون از طریق همان QueryIndexTool امن در چت هم مجاز است:
- * فقط SELECT روی جدول‌های allow-list شده و فقط دیتابیس داخل artifact directory
- * پروژه. مسیر پیش‌فرض ابزار، نیاز مدل به دانستن مسیر سیستم را حذف می‌کند.
+ * هیچ ابزاری از چت پنهان نیست؛ سیاست امنیتی روی *ورودی هر ابزار* است، نه روی
+ * نامش. ابزاری که آرگومان مسیر یا SQL خام می‌گرفت (`query_index`) از رجیستری
+ * حذف شده، پس این‌جا هم چیزی برای رد کردن نیست.
  */
 const CHAT_TOOL_DENYLIST = new Set<string>();
 
@@ -188,8 +182,6 @@ export class ProjectChatService {
   /**
    * ابزارهای رجیستری را به schema ابزار OpenAI تبدیل می‌کند.
    *
-   * - `query_index` هم با همان محدودیت‌های QueryIndexTool به مدل داده
-   *   می‌شود: فقط SELECT و فقط دیتابیس داخل artifact directory پروژه.
    * - به هر توضیح یک یادآوریِ کوتاهِ شکلِ خروجی اضافه می‌شود تا مدل پیش از
    *   فراخوانی بداند چه انتظاری داشته باشد.
    */

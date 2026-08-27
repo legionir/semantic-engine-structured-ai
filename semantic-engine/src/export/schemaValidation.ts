@@ -42,7 +42,7 @@ function compile(schema: SchemaName): ValidateFunction {
   if (cached) return cached;
 
   /*
-  | require تنبل — همان دلیل SQLite: کسی که اعتبارسنجی نمی‌خواهد،
+  | require تنبل — همان دلیل بارهای native: کسی که اعتبارسنجی نمی‌خواهد،
   | نباید هزینهٔ بارگذاری ajv را بدهد.
   */
 

@@ -1,0 +1,196 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "git_status",
+      "description": "Show the current Git repository status: branch, staged, unstaged, and untracked files, in short format.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_diff",
+      "description": "Show changes in the Git working tree or the staging area.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "staged": {
+            "type": "boolean",
+            "description": "Show staged changes instead of working tree changes."
+          },
+          "path": {
+            "type": "string",
+            "description": "Limit the diff to this path."
+          },
+          "context_lines": {
+            "type": "integer",
+            "description": "Number of context lines around each change."
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_log",
+      "description": "Show recent Git commits as one line each, with decorations such as branch and tag names.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of commits. Defaults to 10."
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_branch",
+      "description": "List local Git branches, or create a new one. Listing is read-only; creating changes the repository.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "action": {
+            "type": "string",
+            "description": "Branch action.",
+            "enum": [
+              "list",
+              "create"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Branch name when creating a branch."
+          }
+        },
+        "required": [
+          "cwd",
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_checkout",
+      "description": "Switch the working tree to an existing Git branch. This changes the files on disk.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Target branch."
+          }
+        },
+        "required": [
+          "cwd",
+          "branch"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_add",
+      "description": "Stage specific paths for the next commit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths to stage."
+          }
+        },
+        "required": [
+          "cwd",
+          "paths"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_commit",
+      "description": "Create a Git commit. When paths is supplied, commit only those paths and preserve unrelated staged changes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional path allowlist. Automatic hooks always provide this so unrelated staged files cannot enter the commit."
+          }
+        },
+        "required": [
+          "cwd",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

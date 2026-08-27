@@ -25,6 +25,7 @@ packages/          # Core engine packages (monorepo workspaces)
   ai-assistant      Scene/blueprint generation, structured operations
 
 apps/              # Application shells
+  web               Browser client: canvas runtime, HUD, local-first saves, presence
   server            Node.js + Fastify backend (PostgreSQL, Auth, S3, WebSocket)
   desktop           Electron desktop wrapper
   desktop-tauri     Tauri desktop wrapper
@@ -45,7 +46,15 @@ npm test
 
 # Lint
 npm run lint
+
+# Run the web client (proxies /api to apps/server on :3000)
+npm run dev:web
 ```
+
+The root workspace is the engine packages plus `apps/web`; the Electron, Tauri,
+Capacitor and server shells are installed from their own folders
+(`cd apps/desktop && npm install`) so that developing the web client never
+downloads a native runtime. See [Development Guide](docs/development.md).
 
 ## Key Features
 
@@ -68,6 +77,7 @@ npm run lint
 | **AI Assistant** — Scene/blueprint generation, structured ops | ✅ Complete |
 | **Backend Server** — Fastify, PostgreSQL, JWT/OAuth, S3, WebSocket | ✅ Complete |
 | **Collaboration** — WebSocket, CRDT/OT, presence, multi-cursor | ✅ Complete |
+| **Web Client** — canvas runtime boot, HUD, local-first scene store, presence (`apps/web`) | ✅ Complete (runtime client; no editor UI yet) |
 | **Publishing** — PWA, Electron, Tauri, Capacitor wrappers | ✅ Complete |
 | **Performance** — Web Workers, frustum culling, LOD, instancing | ✅ Complete |
 
@@ -87,6 +97,7 @@ npm run lint
 - **Testing:** Vitest
 - **Linting:** ESLint with typescript-eslint
 - **Backend:** Fastify, PostgreSQL, Redis, MinIO/S3
+- **Web:** Vite + TypeScript (`apps/web`)
 - **Desktop:** Electron, Tauri
 - **Mobile:** Capacitor
 
@@ -111,6 +122,7 @@ packages/
   engine-workers/     # Web Worker management
   ai-assistant/       # AI generation tools
 apps/
+  web/                # Browser client (Vite + TypeScript)
   server/             # Backend server
   desktop/            # Electron wrapper
   desktop-tauri/      # Tauri wrapper

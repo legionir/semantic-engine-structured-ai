@@ -227,8 +227,8 @@ function collectIndexOptions() {
     },
     output: {
       blueprint: $("wantBlueprint").checked,
-      sqlite: $("wantSqlite").checked,
     },
+    lsp: { diagnostics: $("wantLspDiagnostics")?.checked === true },
     embedding: { enabled: false },
   };
   if (embeddingEnabled && p) {
