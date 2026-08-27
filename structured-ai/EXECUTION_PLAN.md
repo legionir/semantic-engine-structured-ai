@@ -795,13 +795,27 @@ pendingها همان‌طور که فاز ۹ تعریف کرد per-project بم�
 
 ---
 
-## [🔴] فاز ۲۳: Web Backend
+## [🟡] فاز ۲۳: Web Backend
+
+**وضعیت این نوبت (2026-08-27):** گام ۱ کامل و تأییدشده (🟢). گام ۲ **آغاز نشده** — و این تعویق عمدی است، نه فراموشی: گام ۲ یعنی جابه‌جایی تک‌تک بدنهٔ handler از یک تابع ۳٬۱۳۹ خطی، و انجام نیمی از آن (ساختار پوششی با ctx نیمه‌کاره) بدتر از انجام ندادنش است، چون دقیقاً همان مسیرهایی را که باید بی‌تغییر بمانند لمس می‌کند. ابزار لازم برای حرکت امنِ handlerبه‌handler در گام ۱ ساخته شد (۵۵ قرارداد ضبط‌شده + سوئیت سبز). فاز تا پایان گام ۲ 🟡 می‌ماند (قانون ۳).
 
 **هدف و scope:** تفکیک `web/server.js` (‎~۷۲KB — اندازهٔ به‌روز، سند refactor مقدار ~۶۰KB را ذکر کرده) به server، router، controllerها، serviceها و serializerها بدون تغییر قرارداد. **پشت flag:** `WEB_SERVER_MODE`.
 
-### [🔴] گام ۱: inventory و contract test مسیرها
+### [🟢] گام ۱: inventory و contract test مسیرها
 
 همهٔ routeهای فعلی (شامل routeهای project-scoped فاز ۹ و discussion endpointها) فهرست و برای هر یک contract test (status + شکل JSON) ساخته شود.
+
+**انجام شد (2026-08-27):** inventory در `test/web/routes.js` — **۵۶ route**: هشت مسیر ایستا (صفحه، `app.js`، `app.css`، `modal.js`، `visualizer.html`، `workers/`، و دو مسیر SPA برای `/projects`)، گیت احراز هویت، `state`/`health`/`metrics`/`stats`، دو stream رویداد (سراسری و per-project)، sessions (چهارمتد)، calls، `graph/{view}`، approvals (approve + approval-mode با مسیر رد)، tasks/cancel/clear، settings (خواندن/نوشتن/رد)، MCP (status، refresh با `?refresh=1`، add با رد operator، remove، toggle)، discussion (personas + بدنامعتبر)، و پروژه‌ها (list/register/read/PATCH/state/sessions/events/metrics/health/cancel/tasks/chat/unknown/unregister).
+
+قرارداد هر route با `test/web/routes.record.js` **ضبط** شد (`test/web/routes.snapshot.json`) و `test/web/routes.contract.test.js` همان را می‌سنجد: status، content-type، و **شکل JSON** (درخت کلیدها + نوع هر برگ؛ مقدارها نه) — و برای SSE خودِ فریم نخست (فیلدها + شکل payload). هر probe ددلاین ۶ ثانیه‌ای دارد و teardown از `close()` خود سرور می‌گذرد، چون `server.close()` خاموش بستن streamها را در بر ندارد و یک SSE باز، سوئیت را معلق می‌کند. `npm test` ۵۶/۵۶ سبز، به‌عنوان `test:web:routes` و درون `npm test` ثبت شد.
+
+**چهار چیز که همین inventory بیرون داد (گام ۲ باید آن‌ها را بشکند یا عمداً حفظ کند):**
+1. `POST /api/cancel` با ۵۰۰ پاسخ می‌دهد وقتی هیچ runی نیست، ولی `POST /api/projects/:id/cancel` همان حالت را ۲۰۰ می‌دهد — دو قرارداد برای یک عمل.
+2. `POST /api/mcp` **پیش از** اعتبارسنجی payload به اپراتور تأییدیه می‌خواهد؛ یعنی یک add بی‌نام هم prompt می‌گیرد (snapshot این را ثبت کرده تا در گام ۲ تصادفی تغییر نکند).
+3. مسیرهای `/api/graph/*` بدون در حال بودن engine پاسخ ۲۰۰ می‌دهند — شکل بدنه ثبت شده تا «سکوت موفق» فاجعه نشود.
+4. `404` برای asset ناشناخته JSON است نه html (`GET /no-such-file.map`) — یعنی fallback static با fallback API قاطی نمی‌شود؛ این هم ثبت شد.
+
+**کار تازه‌کشف‌شده، خارج از scope این فاز (قانون ۱ — به فاز MCP برمی‌گردد، نه به گام ۲ که یک move است):** `agent/mcp/transports/StdioTransport.js:316` روی stdin فرزند هیچ `error` handler ندارد؛ اگر فرزند بی‌درنگ بمیرد، `write EPIPE` به‌صورت unhandled 'error' پروسه را می‌اندازد (در جریان ضبط این snapshot با `command: "true"` رخ داد و ۱۰ تست انتهای سوئیت را بلعید). probe مربوطه (`mcp add` با approval=allow) عمداً از inventory بیرون است تا این باگ، سوئیت را نکشد — باید در یک گام سخت‌سازی MCP (add `.on("error")` + خطای کنترل‌شده به‌جای crash) بسته شود، نه در جابه‌جایی handlerها.
 
 ### [🔴] گام ۲: انتقال به controller/service
 

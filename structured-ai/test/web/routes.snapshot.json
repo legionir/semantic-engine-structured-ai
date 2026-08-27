@@ -1,0 +1,1641 @@
+{
+  "recordedAt": "2026-08-27T20:57:01.400Z",
+  "count": 55,
+  "routes": [
+    {
+      "name": "console page",
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html",
+      "body": "text"
+    },
+    {
+      "name": "console script",
+      "method": "GET",
+      "path": "/app.js",
+      "status": 200,
+      "contentType": "application/javascript",
+      "body": "text"
+    },
+    {
+      "name": "console styles",
+      "method": "GET",
+      "path": "/app.css",
+      "status": 200,
+      "contentType": "text/css",
+      "body": "text"
+    },
+    {
+      "name": "modal module",
+      "method": "GET",
+      "path": "/modal.js",
+      "status": 200,
+      "contentType": "application/javascript",
+      "body": "text"
+    },
+    {
+      "name": "visualizer page",
+      "method": "GET",
+      "path": "/visualizer.html",
+      "status": 200,
+      "contentType": "text/html",
+      "body": "text"
+    },
+    {
+      "name": "worker asset",
+      "method": "GET",
+      "path": "/workers/layout.worker.js",
+      "status": 200,
+      "contentType": "application/javascript",
+      "body": "text"
+    },
+    {
+      "name": "project dashboard root",
+      "method": "GET",
+      "path": "/projects",
+      "status": 200,
+      "contentType": "text/html",
+      "body": "text"
+    },
+    {
+      "name": "project dashboard deep link",
+      "method": "GET",
+      "path": "/projects/prj-demo",
+      "status": 200,
+      "contentType": "text/html",
+      "body": "text"
+    },
+    {
+      "name": "unknown asset is not swallowed",
+      "method": "GET",
+      "path": "/no-such-file.map",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "state without a token",
+      "method": "GET",
+      "path": "/api/state",
+      "status": 401,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "state",
+      "method": "GET",
+      "path": "/api/state",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "agents": {
+            "array": {
+              "object": {
+                "description": "string",
+                "name": "string"
+              }
+            }
+          },
+          "answer": "null",
+          "approval_mode": "string",
+          "auto_continue": "boolean",
+          "cycles": "number",
+          "discussion": "null",
+          "error": "null",
+          "events": {
+            "array": "empty"
+          },
+          "finished_at": "null",
+          "limits": {
+            "object": {
+              "agents_remaining": "number",
+              "agents_spawned": "number",
+              "iterations_per_agent": "number",
+              "max_agent_depth": "number",
+              "max_context_chars": "number",
+              "max_iterations": "number",
+              "max_parallel_agents": "number",
+              "max_parallel_tools": "number",
+              "max_request_ms": "number",
+              "max_run_ms": "number",
+              "max_total_agents": "number",
+              "run_remaining_ms": "number",
+              "workspace_root": "string"
+            }
+          },
+          "mcp": {
+            "object": {
+              "enabled": "boolean",
+              "servers": {
+                "array": "empty"
+              },
+              "tools": "number"
+            }
+          },
+          "messages": {
+            "array": "empty"
+          },
+          "model": "string",
+          "pending_approvals": {
+            "array": "empty"
+          },
+          "plan": {
+            "object": {
+              "assigned_open_steps": {
+                "array": "empty"
+              },
+              "blocked": "number",
+              "complete": "boolean",
+              "created_at": "null",
+              "done": "number",
+              "exists": "boolean",
+              "in_progress": "number",
+              "next_step": "null",
+              "objective": "null",
+              "pending": "number",
+              "phases": {
+                "array": "empty"
+              },
+              "phases_open": "number",
+              "routine": {
+                "object": {
+                  "after_task": {
+                    "array": "empty"
+                  },
+                  "before_task": {
+                    "array": "empty"
+                  },
+                  "enabled": "boolean"
+                }
+              },
+              "skipped": "number",
+              "steps": "number",
+              "updated_at": "null"
+            }
+          },
+          "project": {
+            "object": {
+              "created_at": "null",
+              "hooks": "null",
+              "last_opened_at": "null",
+              "name": "string",
+              "opened": "number",
+              "settings": {
+                "object": {}
+              },
+              "version": "string"
+            }
+          },
+          "session": {
+            "object": {
+              "calls": "number",
+              "created_at": "string",
+              "events": "number",
+              "id": "string",
+              "messages": "number",
+              "status": "string",
+              "title": "string",
+              "turns": "number",
+              "updated_at": "string"
+            }
+          },
+          "sessions": {
+            "array": "empty"
+          },
+          "settings": {
+            "array": {
+              "object": {
+                "default": "string",
+                "description": "string",
+                "fixed": "boolean",
+                "group": "string",
+                "key": "string",
+                "secret": "boolean",
+                "source": "string",
+                "type": "string",
+                "value": "string"
+              }
+            }
+          },
+          "started_at": "null",
+          "status": "string",
+          "task": "null",
+          "tool_groups": {
+            "object": {
+              "code.index": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "code.live": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "code.query": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "code.write": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "destructive": "boolean",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "discussion": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "filesystem.read": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "filesystem.write": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "destructive": "boolean",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "git": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "destructive": "boolean",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "introspection": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "knowledge": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "mcp.call": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "mcp.inspect": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "mcp.manage": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "destructive": "boolean",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "memory": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "network": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "planning": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "process": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "destructive": "boolean",
+                  "note": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              },
+              "search": {
+                "object": {
+                  "default_policy": "string",
+                  "description": "string",
+                  "sensitive": "boolean",
+                  "tools": {
+                    "array": "string"
+                  }
+                }
+              }
+            }
+          },
+          "turns": "number",
+          "workspace": "string"
+        }
+      }
+    },
+    {
+      "name": "health",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "counts": {
+            "object": {
+              "degraded": "number",
+              "down": "number",
+              "ok": "number"
+            }
+          },
+          "gateway": {
+            "object": {
+              "active_runs": "number",
+              "memory_bytes": "number",
+              "status": "string"
+            }
+          },
+          "projects": {
+            "object": {}
+          },
+          "status": "string"
+        }
+      }
+    },
+    {
+      "name": "gateway metrics",
+      "method": "GET",
+      "path": "/api/metrics",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "cpu_percent": "number",
+          "gateway": {
+            "object": {
+              "gateway_active_runs": "number",
+              "gateway_failed_runs": "number",
+              "gateway_mcp_calls_total": "number",
+              "gateway_mcp_errors_total": "number",
+              "gateway_memory_bytes": "number",
+              "gateway_projects_total": "number",
+              "gateway_tool_calls_total": "number"
+            }
+          },
+          "index_inflight": "number",
+          "projects": {
+            "object": {}
+          },
+          "uptime_ms": "number"
+        }
+      }
+    },
+    {
+      "name": "runtime stats",
+      "method": "GET",
+      "path": "/api/stats",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "file_tracking_complete": "boolean",
+          "files_changed": {
+            "array": "empty"
+          },
+          "recent_calls": {
+            "array": "empty"
+          },
+          "tools": {
+            "array": "empty"
+          },
+          "total_calls": "number",
+          "total_failures": "number",
+          "uptime_ms": "number"
+        }
+      }
+    },
+    {
+      "name": "event stream",
+      "method": "GET",
+      "path": "/api/events",
+      "status": 200,
+      "contentType": "text/event-stream",
+      "streamFrame": {
+        "fields": [
+          "data"
+        ],
+        "data": {
+          "object": {
+            "snapshot": {
+              "object": {
+                "agents": {
+                  "array": {
+                    "object": {
+                      "description": "string",
+                      "name": "string"
+                    }
+                  }
+                },
+                "answer": "null",
+                "approval_mode": "string",
+                "auto_continue": "boolean",
+                "cycles": "number",
+                "discussion": "null",
+                "error": "null",
+                "events": {
+                  "array": "empty"
+                },
+                "finished_at": "null",
+                "limits": {
+                  "object": {
+                    "agents_remaining": "number",
+                    "agents_spawned": "number",
+                    "iterations_per_agent": "number",
+                    "max_agent_depth": "number",
+                    "max_context_chars": "number",
+                    "max_iterations": "number",
+                    "max_parallel_agents": "number",
+                    "max_parallel_tools": "number",
+                    "max_request_ms": "number",
+                    "max_run_ms": "number",
+                    "max_total_agents": "number",
+                    "run_remaining_ms": "number",
+                    "workspace_root": "string"
+                  }
+                },
+                "mcp": {
+                  "object": {
+                    "enabled": "boolean",
+                    "servers": {
+                      "array": "empty"
+                    },
+                    "tools": "number"
+                  }
+                },
+                "messages": {
+                  "array": "empty"
+                },
+                "model": "string",
+                "pending_approvals": {
+                  "array": "empty"
+                },
+                "plan": {
+                  "object": {
+                    "assigned_open_steps": {
+                      "array": "empty"
+                    },
+                    "blocked": "number",
+                    "complete": "boolean",
+                    "created_at": "null",
+                    "done": "number",
+                    "exists": "boolean",
+                    "in_progress": "number",
+                    "next_step": "null",
+                    "objective": "null",
+                    "pending": "number",
+                    "phases": {
+                      "array": "empty"
+                    },
+                    "phases_open": "number",
+                    "routine": {
+                      "object": {
+                        "after_task": {
+                          "array": "empty"
+                        },
+                        "before_task": {
+                          "array": "empty"
+                        },
+                        "enabled": "boolean"
+                      }
+                    },
+                    "skipped": "number",
+                    "steps": "number",
+                    "updated_at": "null"
+                  }
+                },
+                "project": {
+                  "object": {
+                    "created_at": "null",
+                    "hooks": "null",
+                    "last_opened_at": "null",
+                    "name": "string",
+                    "opened": "number",
+                    "settings": {
+                      "object": {}
+                    },
+                    "version": "string"
+                  }
+                },
+                "session": {
+                  "object": {
+                    "calls": "number",
+                    "created_at": "string",
+                    "events": "number",
+                    "id": "string",
+                    "messages": "number",
+                    "status": "string",
+                    "title": "string",
+                    "turns": "number",
+                    "updated_at": "string"
+                  }
+                },
+                "sessions": {
+                  "array": "empty"
+                },
+                "settings": {
+                  "array": {
+                    "object": {
+                      "default": "string",
+                      "description": "string",
+                      "fixed": "boolean",
+                      "group": "string",
+                      "key": "string",
+                      "secret": "boolean",
+                      "source": "string",
+                      "type": "string",
+                      "value": "string"
+                    }
+                  }
+                },
+                "started_at": "null",
+                "status": "string",
+                "task": "null",
+                "tool_groups": {
+                  "object": {
+                    "code.index": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "code.live": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "code.query": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "code.write": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "destructive": "boolean",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "discussion": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "filesystem.read": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "filesystem.write": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "destructive": "boolean",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "git": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "destructive": "boolean",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "introspection": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "knowledge": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "mcp.call": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "mcp.inspect": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "mcp.manage": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "destructive": "boolean",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "memory": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "network": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "planning": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "process": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "destructive": "boolean",
+                        "note": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    },
+                    "search": {
+                      "object": {
+                        "default_policy": "string",
+                        "description": "string",
+                        "sensitive": "boolean",
+                        "tools": {
+                          "array": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "turns": "number",
+                "workspace": "string"
+              }
+            },
+            "type": "string"
+          }
+        }
+      },
+      "body": null
+    },
+    {
+      "name": "sessions list",
+      "method": "GET",
+      "path": "/api/sessions",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "current": "string",
+          "sessions": {
+            "array": "empty"
+          }
+        }
+      }
+    },
+    {
+      "name": "new session",
+      "method": "POST",
+      "path": "/api/sessions",
+      "request": {},
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "session": {
+            "object": {
+              "calls": "number",
+              "created_at": "string",
+              "events": "number",
+              "id": "string",
+              "messages": "number",
+              "status": "string",
+              "title": "string",
+              "turns": "number",
+              "updated_at": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown session",
+      "method": "GET",
+      "path": "/api/sessions/does-not-exist",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "delete unknown session",
+      "method": "DELETE",
+      "path": "/api/sessions/does-not-exist",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "deleted": "string"
+        }
+      }
+    },
+    {
+      "name": "calls list",
+      "method": "GET",
+      "path": "/api/calls",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "calls": {
+            "array": "empty"
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown call",
+      "method": "GET",
+      "path": "/api/calls/does-not-exist",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "graph view without the engine",
+      "method": "GET",
+      "path": "/api/graph/lod",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "edges": {
+            "array": "empty"
+          },
+          "nodes": {
+            "array": "empty"
+          },
+          "projectName": "string",
+          "view": "string"
+        }
+      }
+    },
+    {
+      "name": "approve an unknown request",
+      "method": "POST",
+      "path": "/api/approvals/nope",
+      "request": {
+        "approved": true
+      },
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "resolved": "boolean"
+        }
+      }
+    },
+    {
+      "name": "approval mode",
+      "method": "POST",
+      "path": "/api/approval-mode",
+      "request": {
+        "mode": "prompt"
+      },
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "mode": "string"
+        }
+      }
+    },
+    {
+      "name": "approval mode rejected",
+      "method": "POST",
+      "path": "/api/approval-mode",
+      "request": {
+        "mode": "yolo"
+      },
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "task without a prompt",
+      "method": "POST",
+      "path": "/api/tasks",
+      "request": {},
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "cancel with nothing running",
+      "method": "POST",
+      "path": "/api/cancel",
+      "request": {},
+      "status": 500,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "clear conversation",
+      "method": "POST",
+      "path": "/api/clear",
+      "request": {},
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "cleared": "boolean"
+        }
+      }
+    },
+    {
+      "name": "settings",
+      "method": "GET",
+      "path": "/api/settings",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "settings": {
+            "array": {
+              "object": {
+                "default": "string",
+                "description": "string",
+                "fixed": "boolean",
+                "group": "string",
+                "key": "string",
+                "secret": "boolean",
+                "source": "string",
+                "type": "string",
+                "value": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "settings write",
+      "method": "POST",
+      "path": "/api/settings",
+      "request": {
+        "settings": {
+          "AGENT_MAX_CYCLES": 4
+        }
+      },
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "settings write rejected",
+      "method": "POST",
+      "path": "/api/settings",
+      "request": {},
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp status",
+      "method": "GET",
+      "path": "/api/mcp",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "discovered_at": "null",
+          "enabled": "boolean",
+          "problems": {
+            "array": "empty"
+          },
+          "servers": {
+            "array": "empty"
+          },
+          "tool_count": "number",
+          "tools": {
+            "array": "empty"
+          },
+          "transports": {
+            "array": "string"
+          },
+          "workspace_root": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp refresh",
+      "method": "GET",
+      "path": "/api/mcp?refresh=1",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "discovered_at": "number",
+          "enabled": "boolean",
+          "problems": {
+            "array": "empty"
+          },
+          "servers": {
+            "array": "empty"
+          },
+          "tool_count": "number",
+          "tools": {
+            "array": "empty"
+          },
+          "transports": {
+            "array": "string"
+          },
+          "workspace_root": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp add without a name",
+      "method": "POST",
+      "path": "/api/mcp",
+      "request": {},
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp add refused by the operator",
+      "method": "POST",
+      "path": "/api/mcp",
+      "request": {
+        "name": "probe-server",
+        "command": "true"
+      },
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp remove unknown",
+      "method": "DELETE",
+      "path": "/api/mcp/no-such-server",
+      "status": 500,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "mcp toggle unknown",
+      "method": "POST",
+      "path": "/api/mcp/no-such-server/enabled",
+      "request": {
+        "enabled": false
+      },
+      "status": 500,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "discussion personas",
+      "method": "GET",
+      "path": "/api/discussion/personas",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "personas": {
+            "array": {
+              "object": {
+                "description": "string",
+                "id": "string",
+                "model_role": "string",
+                "name": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "discussion without personas",
+      "method": "POST",
+      "path": "/api/discussion",
+      "request": {
+        "task": "x"
+      },
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "projects list",
+      "method": "GET",
+      "path": "/api/projects",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "projects": {
+            "array": "empty"
+          }
+        }
+      }
+    },
+    {
+      "name": "projects register without a root",
+      "method": "POST",
+      "path": "/api/projects",
+      "request": {},
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "projects register",
+      "method": "POST",
+      "path": "/api/projects",
+      "request": {
+        "rootPath": "/tmp/agent-routes-fr5u9o"
+      },
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "project": {
+            "object": {
+              "autoStart": "boolean",
+              "created_at": "string",
+              "enabled": "boolean",
+              "id": "string",
+              "name": "string",
+              "permissions": {
+                "object": {
+                  "git": "boolean",
+                  "read": "boolean",
+                  "terminal": "boolean",
+                  "write": "boolean"
+                }
+              },
+              "rootPath": "string",
+              "semanticEndpoint": "null"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "project read",
+      "method": "GET",
+      "path": "/api/projects/${project}",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "project": {
+            "object": {
+              "autoStart": "boolean",
+              "created_at": "string",
+              "enabled": "boolean",
+              "id": "string",
+              "name": "string",
+              "permissions": {
+                "object": {
+                  "git": "boolean",
+                  "read": "boolean",
+                  "terminal": "boolean",
+                  "write": "boolean"
+                }
+              },
+              "rootPath": "string",
+              "semanticEndpoint": "null"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "project update",
+      "method": "PATCH",
+      "path": "/api/projects/${project}",
+      "request": {
+        "name": "renamed"
+      },
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "project": {
+            "object": {
+              "autoStart": "boolean",
+              "created_at": "string",
+              "enabled": "boolean",
+              "id": "string",
+              "name": "string",
+              "permissions": {
+                "object": {
+                  "git": "boolean",
+                  "read": "boolean",
+                  "terminal": "boolean",
+                  "write": "boolean"
+                }
+              },
+              "rootPath": "string",
+              "semanticEndpoint": "null",
+              "updated_at": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "project state",
+      "method": "GET",
+      "path": "/api/projects/${project}/state",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "active_runs": {
+            "array": "empty"
+          },
+          "answer": "null",
+          "error": "null",
+          "events": {
+            "array": {
+              "object": {
+                "aggregate": "boolean",
+                "at": "number",
+                "iteration": "null",
+                "project_id": "null",
+                "run_id": "null",
+                "scope": "null",
+                "seq": "number",
+                "turn_id": "null",
+                "type": "string"
+              }
+            }
+          },
+          "pending_approvals": {
+            "array": "empty"
+          },
+          "project": {
+            "object": {
+              "autoStart": "boolean",
+              "created_at": "string",
+              "enabled": "boolean",
+              "id": "string",
+              "name": "string",
+              "permissions": {
+                "object": {
+                  "git": "boolean",
+                  "read": "boolean",
+                  "terminal": "boolean",
+                  "write": "boolean"
+                }
+              },
+              "rootPath": "string",
+              "semanticEndpoint": "null",
+              "updated_at": "string"
+            }
+          },
+          "sessions": {
+            "array": "empty"
+          },
+          "status": "string",
+          "task": "null"
+        }
+      }
+    },
+    {
+      "name": "project sessions",
+      "method": "GET",
+      "path": "/api/projects/${project}/sessions",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "project_id": "string",
+          "sessions": {
+            "array": "empty"
+          }
+        }
+      }
+    },
+    {
+      "name": "project event stream",
+      "method": "GET",
+      "path": "/api/projects/${project}/events",
+      "status": 200,
+      "contentType": "text/event-stream",
+      "streamFrame": {
+        "fields": [
+          "data"
+        ],
+        "data": {
+          "object": {
+            "snapshot": {
+              "object": {
+                "events": {
+                  "array": {
+                    "object": {
+                      "aggregate": "boolean",
+                      "at": "number",
+                      "iteration": "null",
+                      "project_id": "null",
+                      "run_id": "null",
+                      "scope": "null",
+                      "seq": "number",
+                      "turn_id": "null",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "type": "string"
+          }
+        }
+      },
+      "body": null
+    },
+    {
+      "name": "project metrics",
+      "method": "GET",
+      "path": "/api/projects/${project}/metrics",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "metrics": {
+            "object": {
+              "crashed": "boolean",
+              "last_error": "null",
+              "project_active_runs": "number",
+              "project_failed_runs": "number",
+              "project_index_state": "string",
+              "project_last_activity": "null",
+              "project_mcp_calls_total": "number",
+              "project_mcp_errors_total": "number",
+              "project_memory_bytes": "number",
+              "project_process_count": "number",
+              "project_runs_total": "number",
+              "project_tool_calls_total": "number"
+            }
+          },
+          "project_id": "string",
+          "scheduler": {
+            "object": {
+              "active_projects": "number",
+              "enabled": "boolean",
+              "inflight": {
+                "object": {}
+              },
+              "queues": {
+                "object": {}
+              },
+              "total_inflight": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "project health",
+      "method": "GET",
+      "path": "/api/projects/${project}/health",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "active_runs": "number",
+          "index_state": "string",
+          "last_error": "null",
+          "project_id": "string",
+          "status": "string"
+        }
+      }
+    },
+    {
+      "name": "project cancel when idle",
+      "method": "POST",
+      "path": "/api/projects/${project}/cancel",
+      "request": {},
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "cancelled": "boolean",
+          "project_id": "string",
+          "queued_dropped": "number",
+          "run_ids": {
+            "array": "empty"
+          }
+        }
+      }
+    },
+    {
+      "name": "project task without a prompt",
+      "method": "POST",
+      "path": "/api/projects/${project}/tasks",
+      "request": {},
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "project chat without a prompt",
+      "method": "POST",
+      "path": "/api/projects/${project}/chat",
+      "request": {},
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "unknown project",
+      "method": "GET",
+      "path": "/api/projects/prj-not-registered",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    },
+    {
+      "name": "project unregister",
+      "method": "DELETE",
+      "path": "/api/projects/${project}",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "deleted": "string"
+        }
+      }
+    },
+    {
+      "name": "unknown api route",
+      "method": "GET",
+      "path": "/api/no-such-endpoint",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "object": {
+          "error": "string"
+        }
+      }
+    }
+  ]
+}
