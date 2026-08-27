@@ -674,6 +674,17 @@ is where artifacts land because the rootfs is read-only.
 
 ## 15. Verified baseline (2026-08-26)
 
+Final state after فاز ۱۴: `npm run build` exits 0, `npm run lint` is silent,
+and `npm run test:gate` reports **203 suites / 2747 tests passed**, "all
+suites ran", artifact gate ok, with no worker process surviving the run and
+nothing written to the real data directory. `structured-ai` reports `npm run
+check` exit 0 and `npm test` exit 0, including its own ten-step end-to-end
+scenario and MCP isolation tests.
+
+The one acceptance criterion still 🟡 is LSP isolation: it is guaranteed
+structurally (one process per worker) but has no dedicated test, because
+exercising it needs language servers installed in CI.
+
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,
 `Tests: 2483 passed / 2483 total`.

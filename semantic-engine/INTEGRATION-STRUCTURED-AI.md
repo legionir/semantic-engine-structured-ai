@@ -210,6 +210,7 @@ data directory **کپی** می‌شوند و اصل فایل دست‌نخورد
 | INT-02 | قرارداد مسیر خروجی پیش‌فرض | **v2 (۲۰۲۶-۰۸-۲۶):** canonical: `<dataRoot>/projects/<projectId>/` با fallback خواندنی برای `<workspace>/.semantic-engine/` و `.agent/semantic/` (بخش ۲.۶)؛ `--artifact-location in-root` برای رفتار قدیمی |
 | INT-03 | رفع مسدودکننده‌های امنیتی | `SE-SEC-01` و `SE-SEC-02` قبل از هر اتصالی بسته شوند |
 | INT-04 | تصمیم دربارهٔ محل نصب | پیشنهاد بخش ۸ |
+| INT-05 | اندپوینت Gateway به ازای هر پروژه | **جدید (۲۰۲۶-۰۸-۲۶):** `POST /mcp/<projectId>` روی یک Gateway مرکزی (پیش‌فرض پورت ۴۰۰۰). این URL در registry به‌عنوان `semanticEndpoint` همان پروژه ثبت می‌شود. پاسخ `tools/call` علاوه بر `content`، یک `structuredContent` با `projectId` و `indexGeneration` دارد و کلاینت با تغییر `indexGeneration` کش خود را دور می‌ریزد. |
 
 ### فاز ۱ — کلاینت صفر-وابستگی
 

@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۳ 🟢 (۲۰۲۶-۰۸-۲۶) · فاز ۱۴ 🔴
+**وضعیت:** 🟢 فاز ۱ تا ۱۴ کامل (۲۰۲۶-۰۸-۲۶) — تنها معیار باقی‌مانده در چک‌لیست پذیرش، تست اختصاصی LSP است (بند ۸)
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -803,35 +803,35 @@ Dockerfile/compose برای gateway (پورت عمومی فقط gateway؛ worker
 
 ---
 
-## [🔴] فاز ۱۴: تست‌های isolation/e2e، مستندات و پذیرش نهایی
+## [🟢] فاز ۱۴: تست‌های isolation/e2e، مستندات و پذیرش نهایی
 
 **هدف:** اثبات end-to-end کل نیازمندی و بستن §۶ پلن مرجع. معادل گام ۱۵ و ۱۷ پلن مرجع.
 
-### [🔴] گام ۱: سناریوی دو پروژهٔ هم‌نام
+### [🟢] گام ۱: سناریوی دو پروژهٔ هم‌نام
 
 `/tmp/client-a/app` و `/tmp/client-b/app` با symbolهای متفاوت: data isolation (artifact، SQLite، vector search)، worker isolation (تغییر فایل A فقط A را index کند؛ crash A به B اثر نکند)، routing isolation (`/api/v1/projects/a|b/...` و `/mcp/a|b`).
 
-### [🔴] گام ۲: ماتریس پروتکل
+### [🟢] گام ۲: ماتریس پروتکل
 
 REST، MCP `tools/list` و `tools/call`، SSE، WebSocket (فاز ۱۱)، cancellation، timeout، disconnect.
 
-### [🔴] گام ۳: جریان UI
+### [🟢] گام ۳: جریان UI
 
 ساخت worker، edit config، command preview، health/metrics refresh، click-through به dashboard، start/stop/restart، نمایش crash و degraded.
 
-### [🔴] گام ۴: migration e2e
+### [🟢] گام ۴: migration e2e
 
 خواندن artifact legacy از هر سه مسیر، انتقال به data dir، عدم حذف legacy، ادامهٔ نوشتن فقط در مسیر جدید، و رفتار `stale`/`missing` برای artifact خراب.
 
-### [🔴] گام ۵: load و موازی‌کاری
+### [🟢] گام ۵: load و موازی‌کاری
 
 چند worker هم‌زمان، صف index، رعایت quota، و سنجهٔ اینکه event loop gateway block نشود.
 
-### [🔴] گام ۶: مستندات نهایی
+### [🟢] گام ۶: مستندات نهایی
 
 `semantic-engine/README.md`, `semantic-engine/HANDOFF.md`, `semantic-engine/INTEGRATION-STRUCTURED-AI.md`, `structured-ai/README.md`: مسیر data dir در سه پلتفرم، register کردن پروژه، اجرای Gateway و Worker مستقل، APIهای project-scoped، MCP URL هر پروژه، فرم‌های UI، migration، `--no-watch/--vectors/--sqlite`، محدودیت‌های embedding provider، health و metrics.
 
-### [🔴] گام ۷: پذیرش نهایی
+### [🟢] گام ۷: پذیرش نهایی
 
 چک‌لیست §۶ پلن مرجع بند به بند مرور و وضعیت هر بند در همین سند ثبت شود؛ به‌روزرسانی `structured-ai/EXECUTION_PLAN.md` اگر contract جدیدی اضافه شد.
 
@@ -839,6 +839,50 @@ REST، MCP `tools/list` و `tools/call`، SSE، WebSocket (فاز ۱۱)، cancel
 - سناریوی ۱۰ مرحله‌ای §گام ۱۵ پلن مرجع بدون خطا اجرا شود (Gateway روی `:4000`، دو پروژه، هر دو `ready`، query متفاوت اما صحیح، تغییر فایل A، فقط A در حال index، B بدون تغییر generation و بدون restart، click-through درست).
 - `cd semantic-engine && npm run build && npm run lint && npm test` و `cd structured-ai && npm run check && npm test` سبز.
 - هر بند §۶ پلن مرجع یا 🟢 باشد یا دلیل 🟡 بودنش ثبت شده باشد.
+
+### وضعیت اجرای فاز ۱۴ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/gateway/multiProject.e2e.test.ts` (۴ تست، سناریوی ۱۰ مرحله‌ای)، `src/gateway/protocolMatrix.e2e.test.ts` (۷ تست: ماتریس پروتکل + جریان کنسول + بار موازی)، `src/core/config/migration.e2e.test.ts` (۷ تست).
+**مستندات به‌روزشده:** `semantic-engine/README.md` (بخش ۵.۱ معماری چندپروژه‌ای: Gateway/Worker، data dir در سه پلتفرم، migration، `cache`، جدول اندپوینت‌ها)، `semantic-engine/HANDOFF.md` (دستورهای `gateway`/`worker`/`cache` + سنجه‌ها)، `semantic-engine/INTEGRATION-STRUCTURED-AI.md` (+INT-05 اندپوینت Gateway)، `structured-ai/README.md` (نقطهٔ اتصال `POST /mcp/<projectId>`).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 203 passed / 203 total`، `Tests: 2747 passed / 2747 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۱۴: ۲۰۰ suite و ۲۷۲۹ تست → +۳ suite و +۱۸ تست). پس از suite هیچ worker زنده نماند و چیزی در data root واقعی نوشته نشد.
+- `cd structured-ai && npm run check` → exit 0 و `npm test` → **exit 0 و همهٔ suiteها سبز**، از جمله «ten-step end-to-end acceptance scenario» و «MCP isolation: tools/list and tools/call stay on one project».
+
+**سناریوی ۱۰ مرحله‌ای پلن مرجع (§گام ۱۵) با دو checkout هم‌نام، اندازه‌گیری‌شده:**
+
+1. Gateway روی یک پورت بالا آمد · ۲. دو پروژهٔ `client-a/app` و `client-b/app` ثبت شدند و `idA !== idB` · ۳-۴. هر دو worker `ready` شدند · ۵. `find_symbol sharedName` روی A فقط `alpha.ts` و روی B فقط `beta.ts` برگرداند و `structuredContent.projectId` هر کدام درست بود · ۶. فایل `gamma.ts` فقط در A اضافه شد · ۷-۸. reindex فقط A را تکان داد و ایندکس A `gamma.ts` را گرفت · ۹. ایندکس B بدون `gamma.ts` ماند، **pid B بدون تغییر** و `state: ready` · ۱۰. `GET /projects/:id` → ۳۰۲ به `/visualizer?project=:id`.
+
+**ماتریس پروتکل (همه از پشت Gateway):** REST (۲۰۰ + هدر `X-Semantic-Project-Id`) · MCP `tools/list` (شامل `find_symbol`) · MCP `tools/call` (فقط دادهٔ همان پروژه) · SSE (`event: gateway`) · WebSocket (۱۰۱، فریم با `projectId` خودش) · قطع کلاینت (کلاینت دیگر سالم ماند و Gateway هم ۲۰۰) · timeout کلاینت (Gateway سالم ماند).
+
+**جریان کنسول:** ثبت بدون start → `workerState: stopped` → `start` → `ready` → `health` → `metrics` (`gateway_workers_ready ≥ ۳`) → `restart` → `reindex` → `stop` → deep link همچنان ۳۰۲.
+
+**بار موازی:** سه worker هم‌زمان بالا آمدند؛ در حالی که مشغول ایندکس بودند پاسخ `/health` زیر ۲ ثانیه برگشت و در پایان هر سه `ready` بودند.
+
+**migration:** از هر سه مسیر legacy کپی شد و فایل اصلی باقی ماند؛ ایندکس خراب → `corrupt-legacy` بدون شکست؛ در حالت `in-root` هیچ کاری انجام نشد.
+
+### چک‌لیست پذیرش نهایی (§۶ پلن مرجع)
+
+| # | معیار | وضعیت | شاهد |
+|---|---|---|---|
+| ۱ | چند پروژه با rootهای مستقل هم‌زمان سرو شوند | 🟢 | `multiProject.e2e.test.ts` و `protocolMatrix.e2e.test.ts` (۶ پروژه هم‌زمان) |
+| ۲ | همهٔ Workerها از یک Gateway و یک پورت عمومی | 🟢 | همهٔ تست‌های e2e روی یک `GatewayServer` با یک پورت |
+| ۳ | هر Worker single-project و process-isolated | 🟢 | هر worker یک پروسهٔ جدا با socket خودش؛ `workerCommand.test.ts` |
+| ۴ | artifactها در user data directory | 🟢 | `multiProject.e2e.test.ts`: ایندکس زیر `<dataRoot>/projects/<id>/` |
+| ۵ | root پروژه به‌خاطر artifactها dirty نشود | 🟢 | `readdirSync(root) === ['src']` در تست e2e و `cacheCommand.test.ts` |
+| ۶ | projectIdها collision نداشته باشند | 🟢 | دو `app` با id متفاوت؛ `ProjectRegistry.test.ts` و `ProjectIdentity.test.ts` |
+| ۷ | index/symbols/dependencies/blueprint/SQLite/vectors مستقل | 🟢 | `find_symbol` روی A فقط دادهٔ A؛ `multiProject.e2e.test.ts` گام ۵ و ۹ |
+| ۸ | watcher و LSP با هم تداخل نکنند | 🟡 | watcher: اندازه‌گیری‌شده (تغییر A فقط A را تکان داد). LSP: جداسازی ساختاری است (هر worker پروسهٔ خودش) ولی **تست اختصاصی ندارد** — تنها معیار باقی‌مانده |
+| ۹ | REST، MCP، SSE، WebSocket پروژه‌محور | 🟢 | `protocolMatrix.e2e.test.ts` |
+| ۱۰ | health و metrics همهٔ Workerها در Gateway UI | 🟢 | جدول workerها + پنل health؛ `gatewayUi.test.ts` و `metrics.test.ts` |
+| ۱۱ | کلیک روی هر Worker داشبورد همان پروژه | 🟢 | `GET /projects/:id` → ۳۰۲ به `/visualizer?project=:id` |
+| ۱۲ | تمام CLI optionهای Worker از UI قابل تنظیم | 🟢 | ۳۵ فیلد در ۷ بخش با نگاشت دوطرفه به schema (تست شده) |
+| ۱۳ | crash یک Worker روی بقیه اثر نگذارد | 🟢 | `WorkerSupervisor.test.ts` و `WorkerHealthMonitor` |
+| ۱۴ | migration بدون حذف داده | 🟢 | `migration.e2e.test.ts` (هر سه مسیر + corrupt) |
+| ۱۵ | تست‌های isolation/routing/protocol/UI/load سبز | 🟢 | ۲۰۳ suite و ۲۷۴۷ تست سبز در موتور + همهٔ suiteها در structured-ai |
+
+**تنها معیار 🟡:** بند ۸ برای LSP — جداسازی به‌واسطهٔ مرز پروسه‌ها تضمین می‌شود ولی تست اختصاصیِ «دو worker با LSP هم‌زمان» نوشته نشده، چون راه‌اندازی LSP واقعی در CI به سرورهای زبانی نصب‌شده نیاز دارد. اگر بخواهید، به‌عنوان یک فاز جداگانه با stub اضافه می‌شود.
 
 ---
 
