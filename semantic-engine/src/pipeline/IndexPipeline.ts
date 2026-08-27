@@ -297,7 +297,9 @@ export class IndexPipeline {
     }
 
     // ── ۲.۵ diagnostics از زبان‌سرور (فاز ۳۴) ──────────────────────────
-    await this.collectDiagnostics(files, contents, addDiagnostic, () => fileReads++);
+    const diagnosticsRun = await this.collectDiagnostics(
+      files, contents, addDiagnostic, () => fileReads++
+    );
 
     /*
     | SE-EXT-09 — اینجا `contents.clear()` بود، با این توضیح که «از
@@ -438,9 +440,14 @@ export class IndexPipeline {
     | واقعی هم می‌رود.
     */
     const vectorChunks = await this.buildVectors(enriched, contents);
-    const finalIndex: ProjectIndex = vectorChunks
-      ? { ...enriched, vectorChunks }
-      : enriched;
+    const finalIndex: ProjectIndex = {
+      ...(vectorChunks ? { ...enriched, vectorChunks } : enriched),
+      /*
+      | مرحله اجرا شده باشد، نتیجه‌اش را در ایندکس می‌نویسیم تا مصرف‌کننده
+      | بتواند «دیباگ نبود» را از «دیباگی نیست» تشخیص بدهد.
+      */
+      ...(diagnosticsRun ? { diagnosticsRun } : {}),
+    };
 
     /*
     | SE-EXT-03 / SE-EXT-09 — اندازه‌گیری **پیش از** رهاسازی.
@@ -590,9 +597,9 @@ export class IndexPipeline {
     contents: Map<string, string>,
     addDiagnostic: (fileId: string, diagnostic: Diagnostic) => void,
     countRead: () => void
-  ): Promise<void> {
+  ): Promise<ProjectIndex['diagnosticsRun'] | null> {
     const source = this.options.diagnosticsSource;
-    if (!source) return;
+    if (!source) return null;
 
     this.report('Collecting diagnostics');
     const startedAt = Date.now();
@@ -644,6 +651,13 @@ export class IndexPipeline {
       skipped,
       ms: Date.now() - startedAt,
     });
+
+    return {
+      filesWithFindings: analysed,
+      filesSkippedByBudget: skipped,
+      budgetMs: budget,
+      completedAt: new Date().toISOString(),
+    };
   }
 
   /**

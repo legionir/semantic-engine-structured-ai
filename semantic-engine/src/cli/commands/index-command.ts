@@ -64,12 +64,25 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
     Boolean(previousIndex?.vectorChunks)
   );
   const pretty = boolOption(args.options, 'pretty', true);
+  /*
+  | diagnostics زبان‌سرور (فاز ۳۴) — پیش‌فرض خاموش، چون هزینه‌اش واقعی است:
+  | روی ۱۶۴ فایل همین مخزن زبان‌سرور ~۷٫۷s می‌برد. `--diagnostics-budget <ms>`
+  | سقف کار است و فایل‌های پشتِ سقف «بررسی‌نشده» می‌مانند، نه «تمیز».
+  */
+  const wantsLspDiagnostics = boolOption(args.options, 'lspDiagnostics', false);
+  const diagnosticsBudget = stringOption(args.options, 'diagnosticsBudget');
 
   const extractors = createExtractors({
     workspaceRoot: root,
     treeSitter: boolOption(args.options, 'treeSitter', true),
     logger: context.logger,
+    lspDiagnostics: wantsLspDiagnostics,
   });
+  if (wantsLspDiagnostics && !extractors.diagnosticsSource) {
+    context.logger.warn(
+      'diagnostics requested but no language server is usable — index will carry no LSP diagnostics'
+    );
+  }
 
   try {
     const { projectIndex, stats } = await new IndexPipeline({
@@ -90,6 +103,10 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       ...(previousIndex?.vectorChunks
         ? { previousVectorChunks: previousIndex.vectorChunks }
         : {}),
+      ...(extractors.diagnosticsSource
+        ? { diagnosticsSource: extractors.diagnosticsSource }
+        : {}),
+      ...(diagnosticsBudget ? { diagnosticsBudgetMs: Number(diagnosticsBudget) } : {}),
       pretty,
     }).run();
 

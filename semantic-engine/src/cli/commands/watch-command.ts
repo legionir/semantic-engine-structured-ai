@@ -112,10 +112,14 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     };
   }
 
+  const wantsLspDiagnostics = boolOption(args.options, 'lspDiagnostics', false);
+  const diagnosticsBudget = stringOption(args.options, 'diagnosticsBudget');
+
   const extractors = createExtractors({
     workspaceRoot: root,
     treeSitter: boolOption(args.options, 'treeSitter', true),
     logger: context.logger,
+    lspDiagnostics: wantsLspDiagnostics,
   });
 
   const wantsGit = boolOption(args.options, 'git', true);
@@ -161,6 +165,15 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
         ...(existingIndex?.vectorChunks
           ? { previousVectorChunks: existingIndex.vectorChunks }
           : {}),
+        /*
+        | diagnostics فقط در ایندکس اولیه گرفته می‌شود؛ batchهای افزایشی
+        | زبان‌سرور اجرا نمی‌کنند و diagnostics فایلِ دست‌خورده پاک می‌شود
+        | (SE-INC-11) تا هشدار کهنه گزارش نشود.
+        */
+        ...(extractors.diagnosticsSource
+          ? { diagnosticsSource: extractors.diagnosticsSource }
+          : {}),
+        ...(diagnosticsBudget ? { diagnosticsBudgetMs: Number(diagnosticsBudget) } : {}),
         pretty,
       }).run();
 

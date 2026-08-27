@@ -76,6 +76,18 @@
         }
       }
     },
+    "diagnosticsRun": {
+      "type": "object",
+      "description": "نتیجهٔ مرحلهٔ diagnostics زبان‌سرور. فقط وقتی نوشته می‌شود که آن مرحله اجرا شده باشد؛ نبودش یعنی «بررسی نشده»، نه «چیزی پیدا نشد»",
+      "additionalProperties": false,
+      "required": ["filesWithFindings", "filesSkippedByBudget", "budgetMs"],
+      "properties": {
+        "filesWithFindings": { "type": "integer", "minimum": 0 },
+        "filesSkippedByBudget": { "type": "integer", "minimum": 0 },
+        "budgetMs": { "type": "integer", "minimum": 0 },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "git": {
       "type": "object",
       "additionalProperties": false,

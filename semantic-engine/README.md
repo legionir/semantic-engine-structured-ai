@@ -164,6 +164,9 @@ UI و MCP همین قرارداد را استفاده می‌کنند. اگر ی
 - dependency graph، type graph، call graph و reverse dependency graph
 - config usages، Git metrics و test mappings
 - vector chunk و embedding فایل‌های affected، در صورتی که vector mode فعال باشد
+- diagnostics فایل دست‌خورده **پاک** می‌شود (SE-INC-11): زبان‌سرور در batch
+  افزایشی اجرا نمی‌شود، و نگه‌داشتن هشدارِ محتوای قبلی بدتر از نداشتنش است.
+  در full index بعدی دوباره گرفته می‌شوند.
 
 `blueprint.json` در watcher با حالت `always` (پیش‌فرض CLI) بازسازی می‌شود؛
 با `--blueprint-mode threshold` می‌توان رفتار قدیمیِ مبتنی بر drift را فعال
@@ -177,10 +180,37 @@ UI و MCP همین قرارداد را استفاده می‌کنند. اگر ی
 این، UI/Platform cache و MCP snapshot هنگام تغییر artifactها reload می‌شوند.
 برای اجرای فقط UI و MCP بدون watcher از `--no-watch` استفاده کن.
 
+### diagnostics از زبان‌سرور (اختیاری)
+
+دو نوع diagnostic در ایندکس وجود دارد و منشأشان فرق می‌کند:
+
+- **خودکار** — هشدارهای اسکنر و استخراج (فایل ناخوانا، symlink معلق، تجزیهٔ
+  ناموفق). این‌ها همیشه گرفته می‌شوند و در `FileEntry.diagnostics` و
+  `project-index.json.diagnostics` می‌نشینند.
+- **زبان‌سرور** — خطاهای واقعی کامپایلور. با `--lsp-diagnostics` روشن می‌شود،
+  چون هزینه دارد (۱۶۴ فایل همین مخزن ~۷٫۷s؛ روی `test-projects/unreal-engine`
+  با ۳۰۱ فایل: ۴٫۴s بدون این مرحله در برابر ۱۳٫۲s با آن) و
+  `--diagnostics-budget <ms>` سقفش است. فایل‌هایی که پشتِ سقف می‌مانند
+  «بررسی‌نشده» می‌مانند، نه «تمیز».
+
+  کیفیت این مرحله به همان چیزی وابسته است که tsserver در ویرایشگر به آن
+  وابسته است: به نصب‌بودنِ dependencies. بدون `npm install`، نیمی از
+  یافته‌ها «Cannot find module»های کاذب‌اند — روی همان پروژه، ۶۷۲ diagnostic با
+  `node_modules` حذف‌شده در برابر ۹۰ فایل دارای یافته پس از نصب.
+
+وقتی این مرحله اجرا شود، ایندکس یک رکورد هم‌وضعیت می‌نویسد:
+
+```json
+"diagnosticsRun": { "filesWithFindings": 12, "filesSkippedByBudget": 0, "budgetMs": 60000, "completedAt": "…" }
+```
+
+نبودِ این کلید معنا دارد: `explain_symbol` در آن حالت `diagnosticsNote`
+می‌فرستد و صریح می‌گوید فهرست خالی یعنی «بررسی نشده»، نه «تمیز است».
+
 ### نمونه‌های کاربردی CLI:
 ```bash
 # ۱. اسکن و ایندکس‌سازی پروژه فعلی
-semantic-engine index --root . --vectors
+semantic-engine index --root . --vectors --lsp-diagnostics --diagnostics-budget 20000
 
 # ۲. راه‌اندازی داشبورد بصری و وب‌سرور Standalone
 #    (بدون ایندکس قبلی هم بالا می‌آید؛ ایندکس‌سازی را از داخل UI انجام بده)

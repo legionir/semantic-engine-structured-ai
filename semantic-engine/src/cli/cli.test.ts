@@ -84,6 +84,18 @@ describe('MIG-50 — تجزیهٔ آرگومان', () => {
     expect(parsed.options['blueprint']).toBe(false);
   });
 
+  it('کلیدهای مرحلهٔ diagnostics زبان‌سرور را می‌شناسد', () => {
+    const parsed = parseArgs(['index', '--lsp-diagnostics', '--diagnostics-budget', '1500']);
+    expect(parsed.options['lspDiagnostics']).toBe(true);
+    expect(parsed.options['diagnosticsBudget']).toBe('1500');
+
+    /*
+    | هر دو پیش‌فرض خاموش‌اند — زبان‌سرور روی ۱۶۴ فایل همین مخزن ~۷٫۷ ثانیه
+    | می‌برد، پس روشن‌کردنش باید تصمیم باشد، نه حالت پیش‌فرض.
+    */
+    expect(parseArgs(['index']).options['lspDiagnostics']).toBeUndefined();
+  });
+
   it('آرگومان‌های موضعی را نگه می‌دارد', () => {
     const parsed = parseArgs(['query', 'find_symbol', '--name', 'Foo']);
     expect(parsed.command).toBe('query');
@@ -112,6 +124,12 @@ describeIfBuilt('MIG-50 — راهنما و کد خروج', () => {
     expect(result.stdout).toContain('index');
     expect(result.stdout).toContain('query');
     expect(result.stdout).toContain('doctor');
+    /*
+    | کلیدهای تازه‌ای که بیرون از راهنما بمانند، عملاً وجود ندارند —
+    | مخصوصاً این دو، که هزینه‌شان را کاربر باید قبل از روشن‌کردن ببیند.
+    */
+    expect(result.stdout).toContain('--lsp-diagnostics');
+    expect(result.stdout).toContain('--diagnostics-budget');
     expect(result.stderr).toBe('');
   });
 

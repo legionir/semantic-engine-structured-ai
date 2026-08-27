@@ -62,6 +62,8 @@ index options:
   --out <dir>           output directory           (default: <root>/.semantic-engine)
   --no-blueprint        skip blueprint.json
   --vectors             build vector chunks for semantic search (off by default)
+  --lsp-diagnostics     collect compiler diagnostics via a language server (off)
+  --diagnostics-budget <ms>  time budget for that pass     (default: 60000)
   --no-git              skip git metrics
   --no-tree-sitter      heuristic extractors only
 
@@ -70,6 +72,8 @@ watch options:
   --out <dir>           output directory           (default: <root>/.semantic-engine)
   --debounce <ms>       batch window               (default: 500)
   --vectors             build/update vector chunks and embeddings
+  --lsp-diagnostics     collect language-server diagnostics on the initial index
+  --diagnostics-budget <ms>  time budget for that pass      (default: 60000)
   --no-blueprint        skip blueprint.json updates
   --blueprint-mode <m>  always (default) or threshold
   --skip-initial-index  internal: watch an existing index without rebuilding it

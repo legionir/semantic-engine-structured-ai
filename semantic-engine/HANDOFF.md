@@ -19,7 +19,7 @@ Semantic Engine یک code-intelligence engine مستقل است که از یک w
 - symbol extraction
 - import/dependency resolution
 - call/type/dependency graph
-- LSP enrichment و diagnostics
+- LSP diagnostics (opt-in: `--lsp-diagnostics`) و enrichment
 - blueprint و architecture mapping
 - keyword/vector/hybrid search
 - context assembly برای AI
@@ -90,7 +90,8 @@ node bin/semantic-engine.js start \
 node bin/semantic-engine.js watch \
   --root /path/to/project \
   --out /path/to/project/.semantic-engine \
-  --vectors
+  --vectors \
+  --lsp-diagnostics --diagnostics-budget 20000
 
 # start — UI + MCP + watcher زیر نظر یک parent
 node bin/semantic-engine.js start \
@@ -242,7 +243,9 @@ MCP stdio و هر دو HTTP entry point هنگام تغییر `project-index.jso
 - type graph
 - dependency graph
 - reverse dependency graph
-- diagnostics
+- diagnostics (scanner + extraction always; language-server ones only when
+  the index was built with `--lsp-diagnostics`, and then the index also
+  carries a `diagnosticsRun` record — its absence means "not checked")
 - metrics
 - git metadata
 - optional vector chunks

@@ -476,10 +476,31 @@ export class IncrementalEngine {
       }
     }
 
+    /*
+    | SE-INC-11 — `FileProcessor` این دو را خالی می‌گذارد و پر کردنشان فقط
+    | در `JsonExporter.attachSymbolIdsToFiles` (مسیر کامل) انجام می‌شد.
+    | نتیجه: فایلی که watcher تازه دیده یا بازنویسی شده در ایندکس
+    | `symbolIds: []` و `outline: []` داشت، با اینکه سمبل‌هایش در `symbols[]`
+    | موجود بودند — یعنی هر مصرف‌کننده‌ای که از فایل به سمبل می‌رود تا یک
+    | full re-index بی‌خبر می‌ماند. اینجا همان فرمول، با همان dedupe.
+    */
+    const fileSymbols: SymbolEntry[] = [];
+    for (const sym of symbols) {
+      if (!fileSymbols.some(other => other.id === sym.id)) fileSymbols.push(sym);
+    }
+
     file = {
       ...file,
       imports,
       exports,
+      symbolIds: fileSymbols.map(sym => sym.id),
+      outline: fileSymbols.map(sym => `${sym.kind} ${sym.name}`),
+      /*
+      | diagnostics کهنه بدتر از نبودنِ آن‌هاست: این‌ها به محتوای *پیشین*
+      | اشاره داشتند. در مسیر افزایشی زبان‌سرور اجرا نمی‌شود، پس پاک
+      | می‌شوند و در next full index دوباره گرفته می‌شوند.
+      */
+      diagnostics: [],
     };
 
     return { file, symbols, dependencies: { fileId: file.id, imports, exports }, content };

@@ -622,6 +622,9 @@ export async function runStart(
     '--skip-initial-index',
   ];
   if (wantsVectors) watchArgs.push('--vectors');
+  if (boolOption(args.options, 'lspDiagnostics', false)) watchArgs.push('--lsp-diagnostics');
+  const diagnosticsBudget = stringOption(args.options, 'diagnosticsBudget');
+  if (diagnosticsBudget) watchArgs.push('--diagnostics-budget', diagnosticsBudget);
   if (!boolOption(args.options, 'blueprint', true)) watchArgs.push('--no-blueprint');
   const requestedBlueprintMode = stringOption(args.options, 'blueprintMode');
   if (requestedBlueprintMode) watchArgs.push('--blueprint-mode', requestedBlueprintMode);

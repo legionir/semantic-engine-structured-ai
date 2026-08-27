@@ -35,7 +35,7 @@ import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
 import { GraphQueryEngine, GraphEdge } from '../../graphs/GraphQueryEngine';
 import { FindTestsTool } from './FindTestsTool';
-import { SymbolEntry } from '../../core/types/project-index.types';
+import { ProjectIndex, SymbolEntry } from '../../core/types/project-index.types';
 import { HIGH_CONFIDENCE_THRESHOLD } from '../../graphs/EdgeProvenance';
 
 export interface ExplainSymbolInput extends AiToolInput {
@@ -103,10 +103,42 @@ export interface SymbolExplanation {
   };
 }
 
+/**
+ * چرا این فایل diagnostics ندارد؟ سه جواب ممکن دارد و انتخابِ درست
+ * از خودِ ایندکس خوانده می‌شود:
+ *
+ *   1. `diagnosticsRun` نیست            → مرحلهٔ زبان‌سرور هرگز اجرا نشده
+ *   2. فایل بعد از آن مرحله عوض شده   → یافته‌های کهنه پاک شده‌اند
+ *   3. هیچ‌کدام                        → واقعاً چیزی پیدا نشد (بدون یادآوری)
+ */
+export function diagnosticsCaveat(
+  index: Pick<ProjectIndex, 'diagnosticsRun'>,
+  fileModifiedAt?: string | null
+): string | null {
+  const run = index.diagnosticsRun;
+  if (!run) {
+    return (
+      'no language-server diagnostics in this index (it was built without --lsp-diagnostics); ' +
+      'an empty list here means "not checked", not "clean"'
+    );
+  }
+  if (fileModifiedAt && run.completedAt) {
+    const modified = Date.parse(fileModifiedAt);
+    const completed = Date.parse(run.completedAt);
+    if (Number.isFinite(modified) && Number.isFinite(completed) && modified > completed) {
+      return (
+        `this file changed after the last diagnostics pass (${run.completedAt}), so any findings it ` +
+        'had were cleared as stale — re-run `index --lsp-diagnostics` before reading the empty list as "clean"'
+      );
+    }
+  }
+  return null;
+}
+
 export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
   readonly name = 'explain_symbol';
   readonly description =
-    'Everything known about one symbol in a single call: signature, complexity, calls, callers, tests, git, scores, diagnostics, and how trustworthy each part is.';
+    'Everything known about one symbol in a single call: signature, complexity, calls, callers, tests, git, scores, diagnostics, and how trustworthy each part is. Diagnostics come from a language-server pass that is opt-in (--lsp-diagnostics): an empty list without a diagnosticsRun record on the index means "not checked", not "clean".';
   readonly inputSchema = {
     type: 'object',
     properties: {
@@ -274,6 +306,18 @@ export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
           }
         : {}),
       diagnostics,
+      /*
+      | نبودِ diagnostics دو معنی دارد و مصرف‌کننده باید فرقش را بداند:
+      | یا زبان‌سرور اجرا نشده، یا اجرا شده و چیزی پیدا نکرده — و یک حالت
+      | سوم هم هست: اجرا شده، ولی فایل *بعد از* آن مرحله عوض شده و یافته‌های
+      | کهنه‌اش پاک شده (SE-INC-11). «نبود» را «تمیز» خواندن، همان خطایی است
+      | که SE-EXP-14 برای هشدارهای استخراج بست. هیچ‌کدام از این سه نیازمند
+      | فیلد تازه نیست: `diagnosticsRun` و `file.modified` در خود داده هست.
+      */
+      ...(() => {
+        const note = diagnosticsCaveat(this.reader.projectIndex, file?.modified);
+        return note ? { diagnosticsNote: note } : {};
+      })(),
       confidence: {
         symbol: symbol.confidence,
         source: symbol.source,
