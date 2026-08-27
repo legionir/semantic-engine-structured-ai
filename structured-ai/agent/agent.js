@@ -10,10 +10,11 @@ const toolRuntime = require("./tools");
 
 const {
     PolicyEngine,
+    ApprovalStore,
     getApprovalMode,
     setApprovalMode,
     setApprovalHandler
-} = require("./lib/policy");
+} = require("./policy");
 
 const events = require("./lib/events");
 
@@ -844,15 +845,40 @@ function discussionPersonaNames() {
 |--------------------------------------------------------------------------
 */
 
+/*
+| One store for the whole boundary: the engine writes its audit trail and the
+| gateway cache into it, and the web console renders its pending list from the
+| same object. Two copies of pending approvals is how an approval answered in
+| one view stays unanswered in the other.
+*/
+
+const POLICY_APPROVAL_STORE =
+    new ApprovalStore();
+
+
 POLICY_ENGINE_HOLDER.engine =
     new PolicyEngine({
         policy: POLICY_OF(),
+
+        store: POLICY_APPROVAL_STORE,
 
         toolGroups: TOOL_GROUPS_OF(),
 
         onDecision: decision => {
 
-            events.emit("policy:decision", decision);
+            /*
+        | `run_id` is added when a run is actually in scope: with
+        | per-project concurrency (phase 10) two runs can produce the same
+        | decision, and a consumer that groups by project alone cannot tell
+        | them apart. Absent rather than null, so the historical payload of
+        | every legacy `policy:decision` is unchanged.
+        */
+        events.emit(
+            "policy:decision",
+            currentRun()?.run_id
+                ? { ...decision, run_id: currentRun().run_id }
+                : decision
+        );
 
             if (decision.decision === "allow") {
                 return;
@@ -863,7 +889,12 @@ POLICY_ENGINE_HOLDER.engine =
                 `Policy ${decision.decision} for ${
                     decision.tool
                 }${
-                    decision.approved === undefined
+                    /*
+                | `approved === false` reaches here now: an escalation that a
+                | human (or the gateway cache) turned down used to throw before
+                | the decision was announced, which left this branch dead.
+                */
+                decision.approved === undefined
                         ? ""
                         : decision.approved
                             ? ` (approved, ${decision.approval_mode})`
@@ -5224,6 +5255,7 @@ module.exports = {
     setApprovalMode,
     setApprovalHandler,
     policyEngine: POLICY_ENGINE,
+    policyStore: POLICY_APPROVAL_STORE,
     /*
     | A live view: reading a property reloads the file if it changed.
     */

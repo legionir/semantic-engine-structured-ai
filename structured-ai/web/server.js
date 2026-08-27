@@ -132,7 +132,12 @@ function createServer(runtime, options = {}) {
 
         currentTurnId: null,
 
-        approvals: new Map(),
+        /*
+        | The pending list is the engine's own store, not a mirror of it —
+        | see agent/policy/ApprovalStore. A local fallback keeps the server
+        | constructible with a stubbed runtime in tests.
+        */
+        approvals: runtime.policyStore || new (require("../agent/policy").ApprovalStore)(),
 
         answer: null,
 
@@ -727,9 +732,6 @@ function createServer(runtime, options = {}) {
 
     runtime.setApprovalHandler((evaluation, args) => {
 
-        const id =
-            `approval_${state.approvals.size + 1}_${Date.now()}`;
-
         return new Promise(resolve => {
 
             const projectId =
@@ -741,8 +743,6 @@ function createServer(runtime, options = {}) {
                 null;
 
             const request = {
-                id,
-
                 agent:
                     evaluation.agent,
 
@@ -764,10 +764,17 @@ function createServer(runtime, options = {}) {
                 requested_at:
                     Date.now(),
 
-                resolve
+                resolve,
+
+                requested_from:
+                    "web_console"
             };
 
-            state.approvals.set(id, request);
+            const stored =
+                state.approvals.begin(request);
+
+            const id =
+                stored.id;
 
             runtime.events.emit("approval:request", {
                 id,
@@ -784,21 +791,31 @@ function createServer(runtime, options = {}) {
 
     function resolveApproval(id, approved) {
 
+        /*
+        | `take` removes it, so a second click on the same button resolves
+        | nothing and the endpoint answers 404 — the behaviour the console
+        | depends on when two tabs are open.
+        */
         const request =
-            state.approvals.get(id);
+            state.approvals.take(id);
 
         if (!request) {
             return false;
         }
 
-        state.approvals.delete(id);
-
         request.resolve(approved);
 
+        /*
+        | `agent` and `reason` are additive: a console watching several
+        | projects can group a resolution by tool alone, which is not enough
+        | once two projects can raise the same tool at the same moment.
+        */
         runtime.events.emit("approval:resolved", {
             id,
             tool: request.tool,
             approved,
+            agent: request.agent,
+            reason: request.reason,
             project_id: request.project_id || null
         });
 
@@ -860,7 +877,7 @@ function createServer(runtime, options = {}) {
                 ).length,
 
             pending_approvals:
-                [...state.approvals.values()].map(
+                state.approvals.listPending().map(
                     request => ({
                         id: request.id,
                         agent: request.agent,
@@ -1204,7 +1221,7 @@ function createServer(runtime, options = {}) {
 
             /* nothing may stay pending once the run is over */
 
-            for (const id of [...state.approvals.keys()]) {
+            for (const id of state.approvals.pendingIds()) {
                 resolveApproval(id, false);
             }
 
@@ -2435,8 +2452,8 @@ function createServer(runtime, options = {}) {
                             sessions:
                                 sessions.listSessions(ctx.dataRoot),
                             pending_approvals:
-                                [...state.approvals.values()]
-                                    .filter(item => item.project_id === record.id)
+                                state.approvals
+                                    .listPending({ projectId: record.id, includeUnscoped: false })
                                     .map(item => ({
                                         id: item.id,
                                         agent: item.agent,

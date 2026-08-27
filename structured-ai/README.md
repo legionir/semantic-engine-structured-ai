@@ -54,7 +54,7 @@ structured-ai/
 │   ├── lib/                     # ماژول‌های هسته ران‌تایم
 │   │   ├── context.js           # بودجه‌بندی و فشرده‌سازی تدریجی کانتکست
 │   │   ├── events.js            # سیستم رویدادهای ساختاریافته
-│   │   ├── policy.js            # موتور پالیسی، تأییدیه‌ها و اعتبارسنجی فرامین
+│   │   ├── policy.js            # پوستهٔ سازگاری؛ به agent/policy/ می‌رسد
 │   │   ├── workspace.js         # گارد امنیت مرزهای دیسک
 │   │   ├── semantic.js          # پوستهٔ سازگاری؛ به agent/mcp/semantic.js می‌رسد
 │   │   ├── memory.js            # حافظه کاری و بایگانی رویدادها
@@ -66,6 +66,13 @@ structured-ai/
 │   │   ├── config.js            # خواندن .mcp.json و لایه‌های پیکربندی
 │   │   ├── semantic.js          # Semantic Engine به‌عنوان یک سرور MCP داخلی
 │   │   └── transports/          # stdio · http · sse · websocket
+│   ├── policy/                  # مرز امنیتی: قاعده‌ها، تأییدیه‌ها و audit
+│   │   ├── PolicyEngine.js      # تنها نقطۀ enforce برای هر فراخوانی ابزار
+│   │   ├── PolicyRegistry.js    # سند registry/policy.json و نگاشت ابزار←گروه
+│   │   ├── PolicyMatcher.js     # تطبیق glob/شرط روی آرگومان resolve‌شده
+│   │   ├── ApprovalManager.js   # چرخه auto/prompt/deny و تزریق handler
+│   │   ├── ApprovalStore.js     # ژورنال audit، صف pending per-project، کش gateway
+│   │   └── PolicyErrors.js      # پیام‌های رد، که قراردادند نه متن دلخواه
 │   ├── registry/                # رجیستری ابزارها، نقش‌ها، اسکیل‌ها و پالیسی‌ها
 │   ├── schema/                  # اسکیمای سخت‌گیرانه (Strict JSON Schema) اکشن مدل
 │   └── tools/                   # پیاده‌سازی ابزارهای سیستمی و هوش کد

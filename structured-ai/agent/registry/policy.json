@@ -92,6 +92,7 @@
           "path": [
             "agent/(registry|config|schema)/",
             "agent/agent\\.js$",
+            "agent/policy/",
             "agent/lib/(policy|workspace)\\.js$"
           ]
         }

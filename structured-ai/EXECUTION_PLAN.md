@@ -723,22 +723,40 @@ facade فقط delegate باشد و business logic جدیدی در آن نیای�
 
 ---
 
-## [🔴] فاز ۲۱: Policy و Approval
+## [🟢] فاز ۲۱: Policy و Approval
 
 **هدف و scope:** استقلال boundary امنیتی: matching، lifecycle تأیید و enforcement. خروجی: `agent/policy/`.
 
-### [🔴] گام ۱: استخراج موتور و matcher
+**تکمیل 2026-08-27:** گام‌های ۱ و ۲ — ۲۳ تست جدید در `test/policy/layer.test.js` سبز؛ suite کامل 625/625 و `npm run check` سبز. استخراج یک move است نه fork؛ فلگ MODE تازه‌ای اعلان نشد (تصمیم ۴۰). `agent/lib/policy.js` wrapper سازگار ماند (قانون ۷). دو نقص واقعی که در مسیر بیرون آمد و همین‌جا بسته شد: تصادم id در صف تأییدیه‌ها و نبودِ رویداد برای ردِ escalation (پیوست ب، تصمیم ۴۰).
+
+### [🟢] گام ۱: استخراج موتور و matcher
 
 `PolicyEngine.js`، `PolicyMatcher.js`، `PolicyRegistry.js`، `ApprovalManager.js`، `ApprovalStore.js`، `PolicyErrors.js` را از `agent/lib/policy.js` و بخش‌های `agent.js`/`server.js` استخراج کن. flow: allowlist agent ← argument resolution ← PolicyMatcher ← allow/deny/approval ← execution ← audit event. حالت‌های `auto`، `prompt`، `deny` و approvalهای filesystem/terminal/MCP حفظ؛ policy روی آرگومان resolveشده اعمال شود؛ هیچ callای بدون عبور از policy.
 
-### [🔴] گام ۲: سازگاری approval با Multi-Project
+**انجام شد (2026-08-27):** شش ماژول در `agent/policy/` + `index.js`:
+`PolicyMatcher` (glob، `valueAtPath`، شرط‌سنجی، هدف قاعده، `mcpServerOf`، `mcpEscalation` — هیچ I/O ندارد)،
+`PolicyRegistry` (سند rules + نگاشت tool→group + `reload` + `decide` با قاعدهٔ «آخرین تطبیق برنده است» و escalation فقط-سخت‌گیر)،
+`ApprovalStore` (زنجهٔ audit، صف pending، کش gateway؛ `list(projectId)`/`listPending({projectId, includeUnscoped})`)،
+`ApprovalManager` (mode از `AGENT_APPROVAL`، handler تزریق‌شده، `prompt` با readline، چهار مسیر رد با پیام‌های تاریخی در `PolicyErrors`)،
+و `PolicyEngine` که فقط ترکیب می‌کند — evaluate/enforce/requestApproval/summary.
+`currentProjectId()` از runtime/ALS می‌خواند و هرگز از آرگومان ابزار (قانون ۹).
+حلقۀ اجرا همچنان تنها نقطۀ عبور است: `ToolGraphExecutor` یک `POLICY_ENGINE.enforce` دارد و سه جهش MCP کنسول همان engine را صدا می‌زنند (تست ایستا در `layer.test.js`).
+`additionalProperties: false` روی همهٔ ابزارهای filesystem نگاشتۀ جدیدی است که نشان می‌دهد هیچ مسیر پنهانی در آرگومان تودرتو جا نمی‌شود — این با تست اثبات شد، نه فرض.
+
+### [🟢] گام ۲: سازگاری approval با Multi-Project
 
 pendingها همان‌طور که فاز ۹ تعریف کرد per-project بمانند؛ eventهای `policy:decision`/`approval:request`/`approval:resolved` payload سازگار (به‌علاوهٔ فیلدهای additive) داشته باشند.
+
+**انجام شد (2026-08-27):** یک `ApprovalStore` مشترک بین engine و کنسول — `agent.js` آن را می‌سازد، به engine می‌دهد و به‌صورت `policyStore` export می‌کند؛ `web/server.js` صف `state.approvals` را از آن می‌خواند (با fallback `runtime.policyStore || new ApprovalStore()` تا runtime ساختگی تست‌ها هم قابل‌ساخت بماند؛ دیگر آینه‌ی محلی ندارد. `pending_approvals` کنسول از `listPending()` و نسخهٔ per-project از `listPending({ projectId, includeUnscoped: false })` می‌آید، پس پرس‌وجوی حالت یک پروژه سؤال پروژهٔ دیگر را نشان نمی‌دهد. رویدادها: `policy:decision` کلیدهای تاریخی را بی‌تغییر نگه داشت و `run_id` فقط وقتی اضافه می‌شود که run واقعی در scope باشد (stamp کردن `null` شکل هر رویداد legacy را عوض می‌کرد)؛ `approval:resolved` دو فیلد additive گرفت (`agent`, `reason`) تا کنسول چندپروژه‌ای بتواند تفکیک کند.
 
 **معیار پذیرش:**
 
 - تست‌های policy/approval (موجود در suite وب/runtime) سبز؛ deny/approval eventها payload قبلی+additive دارند.
 - `policy.json` فعلی بدون تغییر معنایی خوانده می‌شود؛ suite سبز.
+
+**وضعیت معیارها (2026-08-27):** هر دو بند اثبات شد — `test/policy/layer.test.js` ۲۳/۲۳ (پانزده سنجش معنای `registry/policy.json` را کلمه‌به‌کلمه مقایسه می‌کند: allow read-only، require_approval برای fs_write/git_commit/mcp_add، deny برای `.git` روی هر سه آرگومان path/source/destination، deny بازنویسی خودِ `policy.json`، deny `rm -rf /` و `git push --force`، allow `git branch --list`)؛ `test/web.test.js` 28/28 و `test/runtime.test.js` 105/105 بدون regression و suite کامل 625/625 سبز. دو مورد که معیارها خواسته بودند ولی پیش از این برقرار نبودند و بسته شدند: (الف) خودمحافظت — قاعدۀ `runtime_configuration` فقط `agent/lib/(policy|workspace)\.js$` را می‌شناخت و آن فایل حالا wrapper یک‌خطی است، پس نوشتن روی `agent/policy/*.js` (کد واقعی enforcement) بدون تأییدیه ممکن بود؛ الگوی `agent/policy/` به قاعده اضافه شد و تست هر چهار ابزار fs_write/fs_edit/fs_delete/fs_move را روی هر دو مسیر old و new می‌سنجد؛ (ب) شمارش pending به‌جای `size + 1` یک شمارندۀ صعودی شد، چون حذف یک درخواست شماره را آزاد می‌کرد و دو درخواست در همان میلی‌ثانیه هم id می‌گرفتند — و چون کلید Map همان id است، سؤال اول دیگر قابل پاسخ نمی‌ماند (تست ۲۰۰ درخواست در همان ms).
+
+**Assumption / نیازمندی ثبت‌شده در جریان فاز:** انتشار `policy:decision` برای escalationهایی که رد می‌شوند اضافه شد (در گذشته throw زودتر از onDecision رخ می‌داد و شاخۀ «rejected» در `agent.js` کد مرده بود). شکل payload تغییر نکرده و شمار رخدادها برای مسیرهای allow/deny همان است؛ اگر مصرف‌کننده‌ای دقیقاً «هیچ رویدادی برای ردِ اپراتور» را انتظار داشت، این تغییر عمدی و مستند است.
 
 ---
 
@@ -993,6 +1011,7 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 37. **استخراج persistence فاز ۱۸ یک move است نه fork و فلگ تازه‌ای ندارد:** JSONهای کامل (session، memory، archive index) با temp+rename اتمیک نوشته می‌شوند؛ JSONL (journal، eventstore، archive segment) append-only می‌ماند و خط truncated در خواندن skip می‌شود. `SchemaVersion.migrate` برای نسخه‌های فعلی identity است.
 38. **استخراج tools فاز ۱۹ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۱۹ `*_MODE` جدیدی اعلان نمی‌کند. پیاده‌سازی واحد در `agent/tools/{ToolRuntime,ToolRegistryAdapter}` و گروه‌های `filesystem/`، `process/`، `code/`، `planning/`، `memory/` است؛ فایل‌های تاریخی `filesystem.js`/`process.js`/`code.js`/`plan.js`/`memory.js`/`fileinfo.js` و `tools/index.js` wrapper سازگارند تا فاز ۳۰. `code/SemanticClient.js` همان کلاس فاز ۶ را re-export می‌کند.
 39. **استخراج MCP فاز ۲۰ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (برخلاف `WEB_SERVER_MODE` فاز ۲۳). پیاده‌سازی واحد در `McpManager`/`McpConfigLoader`/`McpConfigValidator`/`McpConnection`/`McpCatalogue`/`McpTrustPolicy` و `protocol/` + `transports/*Transport.js` است؛ فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگارند تا فاز ۳۰.
+40. **استخراج policy فاز ۲۱ یک move است نه fork و فلگ تازه‌ای ندارد:** متن فاز ۲۱ `*_MODE` جدیدی اعلان نمی‌کند. پیاده‌سازی واحد در `agent/policy/` است و `agent/lib/policy.js` با `module.exports = require("../policy")` wrapper سازگار می‌ماند تا فاز ۳۰ — یک export، پس یک نسخه از حالتِ متغیر (mode، handler تزریق‌شده، کش gateway) و نه دو نسخه که واگرا شوند. دو تغییر رفتاری که معیارها ایجاب کردند و در همین فاز ثبت‌اند: افزودن `agent/policy/` به قاعدۀ خودمحافظت `runtime_configuration` (بی‌آن، انتقال کد enforcement خودِ محافظت را بی‌اثر می‌کرد) و اعلان `policy:decision` برای escalationهای ردشده (شاخۀ rejected در `agent.js` هرگز اجرا نمی‌شد). `policy.json` از نظر معنایی برای مصرف‌کننده تغییر نکرده است: هیچ قاعدۀ موجود ویرایش نشد و فقط یک الگوی path افزوده شد.
 
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
