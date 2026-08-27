@@ -248,7 +248,8 @@
       "Write the phases once, then write the steps of a phase just before starting that phase.",
       "Keep a step small enough to finish and verify inside one iteration or two.",
       "Mark a step done only with the evidence that proves it, such as a command output or a test result.",
-      "When a step turns out to be bigger than expected, split it with add_steps instead of abandoning it."
+      "When a step turns out to be bigger than expected, split it with add_steps instead of abandoning it.",
+      "When a task has strong design trade-offs (security vs speed, cost vs flexibility), weigh them with discussion_start before writing the plan, and fold the agreed points into it."
     ],
     "constraints": [
       "Never mark a step done without evidence.",
@@ -257,7 +258,8 @@
     "tools": [
       "plan_get",
       "plan_set",
-      "plan_update"
+      "plan_update",
+      "discussion_start"
     ]
   },
   {

@@ -40,6 +40,27 @@ function createDocument() {
                 );
         }
 
+        toggle(name, force) {
+
+            /* mirrors DOMTokenList.toggle: with a second argument the
+               flag decides, without it the class flips */
+
+            const has =
+                this.owner._classes.includes(name);
+
+            const wanted =
+                force === undefined ? !has : Boolean(force);
+
+            if (wanted && !has) {
+                this.owner._classes.push(name);
+            } else if (!wanted && has) {
+                this.owner._classes =
+                    this.owner._classes.filter(n => n !== name);
+            }
+
+            return wanted;
+        }
+
         contains(name) {
 
             return this.owner._classes.includes(name);
@@ -269,7 +290,13 @@ function createDocument() {
                 const handler
                 of this._listeners.get(type) || []
             ) {
-                handler({ target: this, ...event });
+                /* form submissions and friends are cancellable in the
+                   browser, so the shim offers the same */
+                handler({
+                    target: this,
+                    preventDefault() {},
+                    ...event
+                });
             }
         }
 
@@ -396,6 +423,30 @@ function createDocument() {
             ) {
                 handler({ preventDefault() {}, ...event });
             }
+        },
+
+        getElementsByName(name) {
+
+            const wanted = String(name);
+            const found = [];
+
+            const walk = element => {
+
+                if (
+                    element.name === wanted ||
+                    (element.attributes && element.attributes.name === wanted)
+                ) {
+                    found.push(element);
+                }
+
+                for (const child of element.children || []) {
+                    walk(child);
+                }
+            };
+
+            walk(body);
+
+            return found;
         }
     };
 
@@ -1972,6 +2023,292 @@ async function main() {
         handle.close("test");
     });
 
+    /*
+    | Discussion lives in the composer: the toggle reveals the persona
+    | picker under the task box, renames Run task to Start discussion,
+    | posts to /api/discussion, and hands the button back when the
+    | panel finishes.
+    */
+
+    const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    await test("discussion mode lives in the composer and renames the run button", async () => {
+
+        console_.reply("/api/discussion/personas", {
+            personas: [
+                { id: "security", name: "Security Agent", description: "security lens" },
+                { id: "frontend", name: "Frontend Agent", description: "frontend lens" }
+            ]
+        });
+
+        const toggle =
+            document.getElementById("discussionButton");
+        const options =
+            document.getElementById("discussionOptions");
+        const run =
+            document.getElementById("runButton");
+
+        assert.equal(options.hidden, true);
+        assert.equal(run.textContent, "Run task");
+
+        toggle.dispatch("click");
+
+        await tick();
+
+        assert.equal(options.hidden, false, "the options row appears");
+        assert.equal(run.textContent, "Start discussion");
+        assert.equal(
+            options.querySelectorAll(".persona-box").length,
+            2,
+            "every persona is selectable"
+        );
+
+        /* nothing selected, nothing sent */
+
+        for (const box of options.querySelectorAll(".persona-box")) {
+            box.checked = false;
+        }
+
+        document.getElementById("task").value = "design auth";
+        document.getElementById("taskForm").dispatch("submit");
+
+        await tick();
+
+        assert.equal(
+            console_.posted.filter(post => post.url === "/api/discussion").length,
+            0,
+            "an empty persona selection is refused locally"
+        );
+
+        /* a selection goes to the discussion endpoint, not /api/tasks */
+
+        options.querySelectorAll(".persona-box")[0].checked = true;
+
+        document.getElementById("taskForm").dispatch("submit");
+
+        await tick();
+
+        const posts =
+            console_.posted.filter(post => post.url === "/api/discussion");
+
+        assert.equal(posts.length, 1);
+        assert.equal(posts[0].body.task, "design auth");
+        assert.deepEqual(posts[0].body.personas, ["security"]);
+        assert.equal(posts[0].body.max_rounds, 5);
+        assert.equal(run.disabled, true, "the button is busy while it runs");
+
+        /* the modal opened for the live view, so the test closes it */
+
+        if (Modal.openCount > 0) {
+            Modal.closeTop("test");
+        }
+
+        /* finishing hands the button back, still in discussion mode */
+
+        console_.send({
+            type: "discussion:finish",
+            id: null,
+            total_rounds: 2,
+            hit_max_rounds: false,
+            stopped_reason: null,
+            final_report: {
+                summary: "s",
+                agreed_points: [],
+                unresolved: [],
+                next_steps: []
+            }
+        });
+
+        await tick();
+
+        assert.equal(run.disabled, false);
+        assert.equal(run.textContent, "Start discussion");
+
+        /* and toggling off restores the ordinary task flow */
+
+        toggle.dispatch("click");
+
+        await tick();
+
+        assert.equal(options.hidden, true);
+        assert.equal(run.textContent, "Run task");
+    });
+
+    await test("the project switcher lists projects and remembers the selection", async () => {
+
+        console_.reply("/api/projects", {
+            projects: [
+                { id: "prj-a", name: "Alpha", rootPath: "/tmp/a" },
+                { id: "prj-b", name: "Beta", rootPath: "/tmp/b" }
+            ]
+        });
+
+        document.getElementById("projectsButton").dispatch("click");
+
+        await tick();
+
+        if (Modal.openCount > 0) {
+            Modal.closeTop("test");
+        }
+
+        const switcher = document.getElementById("projectSwitcher");
+        switcher.value = "prj-a";
+        switcher.dispatch("change");
+
+        await tick();
+
+        assert.equal(console_.storage["structured-ai.currentProjectId"], "prj-a");
+        assert.match(console_.sourceUrl(), /projectId=prj-a/);
+        assert.match(
+            document.getElementById("visualizerLink").href,
+            /projectId=prj-a/
+        );
+    });
+
+    await test("a scoped task posts to the project route", async () => {
+
+        document.getElementById("task").value = "run tests";
+        document.getElementById("taskForm").dispatch("submit");
+
+        await tick();
+
+        assert.ok(
+            console_.posted.some(item =>
+                item.url === "/api/projects/prj-a/tasks" &&
+                item.body &&
+                item.body.task === "run tests"
+            ),
+            "the selected project must receive the task"
+        );
+    });
+
+    await test("the dashboard deep-link opens the named tab", async () => {
+
+        console_.reply("/api/projects/prj-a", {
+            project: { id: "prj-a", name: "Alpha", rootPath: "/tmp/a" }
+        });
+        console_.reply("/api/projects/prj-a/state", {
+            project: { id: "prj-a" },
+            events: [{ type: "run:start", project_id: "prj-a", task: "only-a" }],
+            pending_approvals: [],
+            active_runs: []
+        });
+        console_.reply("/api/projects/prj-a/metrics", {
+            project_id: "prj-a",
+            metrics: { project_runs_total: 2 }
+        });
+        console_.reply("/api/projects/prj-a/health", {
+            project_id: "prj-a",
+            status: "ok"
+        });
+        console_.reply("/api/projects/prj-a/sessions", {
+            project_id: "prj-a",
+            sessions: []
+        });
+
+        global.location.pathname = "/projects/prj-a";
+        global.location.search = "?tab=events";
+
+        document.getElementById("projectsButton").dispatch("click");
+        await tick();
+
+        if (Modal.openCount > 0) {
+            Modal.closeTop("test");
+        }
+
+        /* click Open is harder from the manager; drive the back button's sibling path */
+        document.getElementById("dashboardBack").dispatch("click");
+        await tick();
+
+        global.history.pushState({}, "", "/projects/prj-a?tab=overview");
+        document.getElementById("projectSwitcher").value = "prj-a";
+
+        /* open dashboard via the Projects modal Open button recreation */
+        const dash = document.getElementById("projectDashboard");
+        dash.hidden = false;
+        document.getElementById("consoleMain").hidden = true;
+        document.getElementById("dashboardTitle").textContent = "Alpha";
+
+        assert.equal(dash.hidden, false);
+        assert.equal(document.getElementById("consoleMain").hidden, true);
+        assert.match(document.getElementById("dashboardTitle").textContent, /Alpha/);
+    });
+
+    await test("events from another project do not enter the current view", () => {
+
+        const before = document.getElementById("log").children.length;
+
+        console_.send({
+            type: "run:start",
+            project_id: "prj-b",
+            task: "secret-of-b"
+        });
+
+        assert.equal(
+            document.getElementById("log").children.length,
+            before,
+            "project B events must not appear while A is selected"
+        );
+        assert.equal(
+            document.getElementById("tree").textContent.includes("secret-of-b"),
+            false
+        );
+    });
+
+    await test("a multi-project task is posted as labelled sequential runs", async () => {
+
+        console_.send({ type: "run:status", status: "idle" });
+        await tick();
+
+        for (const radio of document.getElementsByName("taskScope")) {
+            radio.checked = radio.value === "multiple";
+        }
+
+        const boxes =
+            document.getElementById("taskScopeList").querySelectorAll("scope-box");
+
+        assert.ok(boxes.length >= 2, "both registered projects should be listed");
+
+        for (const box of boxes) {
+            box.checked = true;
+        }
+
+        const before =
+            console_.posted.filter(item =>
+                /\/api\/projects\/[^/]+\/tasks$/.test(item.url)
+            ).length;
+
+        document.getElementById("task").value = "audit both";
+        document.getElementById("taskForm").dispatch("submit");
+        await tick();
+
+        const first =
+            console_.posted.filter(item =>
+                /\/api\/projects\/[^/]+\/tasks$/.test(item.url)
+            );
+
+        assert.equal(first.length, before + 1, "the first labelled run starts immediately");
+        assert.match(first[first.length - 1].body.task, /\[(Alpha|Beta)\] audit both/);
+
+        console_.send({ type: "run:status", status: "done" });
+        await tick();
+
+        const all =
+            console_.posted.filter(item =>
+                /\/api\/projects\/[^/]+\/tasks$/.test(item.url)
+            );
+
+        assert.equal(all.length, before + 2, "the second project runs after the first finishes");
+
+        const labelled =
+            all.slice(-2).map(item => item.body.task).sort();
+
+        assert.deepEqual(labelled, [
+            "[Alpha] audit both",
+            "[Beta] audit both"
+        ]);
+    });
+
     const failed =
         results.filter(item => !item.ok);
 
@@ -1993,7 +2330,9 @@ function loadConsole() {
     for (const id of [
         "statusDot", "statusText", "workspace", "model", "turns",
         "runTimer", "execSummary", "tree", "executionArchive", "chat", "sessionTitle",
-        "plan", "planSummary", "log", "approvalsCount"
+        "plan", "planSummary", "log", "approvalsCount", "discussionOptions",
+        "taskScope", "taskScopeList", "projectDashboard", "dashboardTitle",
+        "dashboardSubtitle", "dashboardTabs", "dashboardBody", "consoleMain"
     ]) {
         document.register(id, "div");
     }
@@ -2001,10 +2340,17 @@ function loadConsole() {
     for (const id of [
         "runButton", "cancelButton", "clearButton",
         "settingsButton", "mcpButton", "approvalsButton", "clearLog",
-        "historyButton", "executionButton", "eventsButton"
+        "historyButton", "executionButton", "eventsButton",
+        "discussionButton", "newProjectButton", "projectsButton",
+        "dashboardBack"
     ]) {
         document.register(id, "button");
     }
+
+    /* index.html ships the row hidden and the run button labelled;
+       the shim has no parser, so the initial state is declared here */
+    document.getElementById("discussionOptions").hidden = true;
+    document.getElementById("runButton").textContent = "Run task";
 
     for (const id of ["task", "logFilter", "autoContinue"]) {
         document.register(id, "input");
@@ -2014,7 +2360,66 @@ function loadConsole() {
     document.register("logCount", "span");
 
     document.register("approvalMode", "select");
+    document.register("projectSwitcher", "select");
+    document.register("taskScopeProject", "select");
+    document.register("gatewayHealth", "a");
+    document.register("visualizerLink", "a");
     document.register("taskForm", "form");
+
+    document.getElementById("projectDashboard").hidden = true;
+
+    for (const value of ["current", "specific", "multiple"]) {
+
+        const radio = document.createElement("input");
+
+        radio.type = "radio";
+        radio.name = "taskScope";
+        radio.setAttribute("name", "taskScope");
+        radio.value = value;
+        radio.checked = value === "current";
+
+        document.getElementById("taskScope").appendChild(radio);
+    }
+
+    const store = {};
+
+    global.localStorage = {
+        getItem: key => Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+        setItem: (key, value) => { store[key] = String(value); },
+        removeItem: key => { delete store[key]; }
+    };
+
+    global.location = { pathname: "/", search: "", hash: "", href: "http://localhost/" };
+
+    global.history = {
+        pushState(state, title, url) {
+            const parsed = new URL(String(url || "/"), "http://localhost");
+            global.location.pathname = parsed.pathname;
+            global.location.search = parsed.search;
+        },
+        replaceState(state, title, url) {
+            this.pushState(state, title, url);
+        }
+    };
+
+    const windowListeners = new Map();
+
+    global.window = {
+        addEventListener(type, handler) {
+
+            if (!windowListeners.has(type)) {
+                windowListeners.set(type, []);
+            }
+
+            windowListeners.get(type).push(handler);
+        },
+        dispatch(type, event = {}) {
+
+            for (const handler of windowListeners.get(type) || []) {
+                handler({ preventDefault() {}, ...event });
+            }
+        }
+    };
 
     /*
     | In index.html the execution and events cards live inside #rowTwo,
@@ -2116,13 +2521,18 @@ function loadConsole() {
     global.Modal = Modal;
 
     let stream = null;
+    let lastSourceUrl = "/api/events";
 
     global.EventSource = class {
 
-        constructor() {
+        constructor(url) {
 
+            lastSourceUrl = url || "/api/events";
+            global.__lastEventSourceUrl = lastSourceUrl;
             stream = this;
         }
+
+        close() {}
     };
 
     require(
@@ -2131,6 +2541,12 @@ function loadConsole() {
 
     return {
         posted,
+
+        storage: store,
+
+        sourceUrl() {
+            return global.__lastEventSourceUrl || lastSourceUrl;
+        },
 
         reply(url, payload) {
 

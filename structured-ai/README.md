@@ -144,6 +144,27 @@ node bin/agent.js --serve 7777 -w /path/to/project
 
 ---
 
+### حالت ۴: بحث چندجانبه با پرسوناهای متخصص (Multi-Agent Discussion)
+به‌جای درخت واکل، تعدادی پرسونای هم‌سطح (از ۱۵ پرسونای موجود) یک تسک را در چند دور با هم بحث می‌کنند: در دور ۱ هر پرسونا بدون دیدن بقیه نظر می‌دهد؛ از دور ۲ به بعد همه پیام‌های قبلی را می‌بینند و باید صریحاً موافق/مخالف/بهبوددهنده باشند. یک **Observer** (همیشه فعال، غیرقابل انتخاب) بعد از هر دور تصمیم می‌گیرد بحث ادامه یابد یا تمام شود؛ در صورت ادامه، دستورالعمل هدفمند برای هر ایجنت جداگانه می‌دهد. توقف اجباری با سقف دورها و تشخیص تکرار انجام می‌شود.
+
+```bash
+# اجرای بحث در ترمینال
+node bin/agent.js -w /path/to/project --discussion \
+  --personas security,backend,frontend,architect,performance,qa \
+  --max-rounds 5 "طراحی ذخیره‌سازی نشست کاربر با JWT در اپلیکیشن Next.js"
+
+# خروجی JSON کامل (شامل رونوشت دورها و تصمیمات Observer)
+node bin/agent.js -w /path/to/project --discussion --personas security,frontend --json "..."
+```
+
+همچنین:
+* **ابزار `discussion_start`** — ایجنت اصلی هرگاه کاربر تحلیل چندبُعدی بخواهد، خودش بحث را از داخل اجرای عادی شروع می‌کند.
+* **کنسول وب** — دکمهٔ «Discussion» در هدر: انتخاب تسک، پرسوناها و سقف دورها، مشاهدهٔ زندهٔ دورها و پیام‌ها از طریق SSE، و در نهایت گزارش ساختاریافته (خلاصه، نقاط توافقی، اختلاف‌نظرهای باز با استدلال هر طرف، و گام‌های بعدی مرتب‌شده).
+
+پرسونای موجود: `security, backend, database, frontend, architect, performance, qa, devops, cost, accessibility, data, compliance, mobile, ml, legacy` — تعریف کامل آن‌ها در `agent/discussion/personas.js` و نقشه‌راه پیاده‌سازی در `DISCUSSION_SYSTEM_IMPLEMENTATION.md` در ریشهٔ مخزن.
+
+---
+
 ## ۵. جدول کامل پیکربندی و متغیرهای محیطی
 
 تنظیمات سیستم بدون نیاز به ری‌استارت پروسه از طریق رابط کاربری وب، فایل‌های رجیستری یا متغیرهای محیطی قابل تغییر هستند:
@@ -189,6 +210,14 @@ node bin/agent.js --serve 7777 -w /path/to/project
 * **مسیر:** `POST /api/tasks`
 * **ورودی:** `{ "task": "تست‌های پروژه را اجرا کن" }`
 * **خروجی:** `{ "ok": true, "session_id": "sess_182a" }`
+
+---
+
+### ۱٫۱. شروع بحث چندجانبه
+* **مسیر:** `POST /api/discussion`
+* **ورودی:** `{ "task": "طراحی ذخیره‌سازی نشست با JWT", "personas": ["security", "frontend", "backend"], "max_rounds": 3 }`
+* **خروجی:** `{ "accepted": true, "id": "discussion-..." }` — دورها به‌صورت پس‌زمینه اجرا و رویدادهای `discussion:start`، `discussion:message`، `discussion:round`، `discussion:observer`، `discussion:finish` از طریق `/api/events` استریم می‌شوند؛ وضعیت کامل همیشه در `/api/state` (فیلد `discussion`) موجود است.
+* **لیست پرسونای قابل انتخاب:** `GET /api/discussion/personas`
 
 ---
 

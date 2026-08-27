@@ -114,8 +114,25 @@ async function mcpTools(args = {}) {
     const wanted =
         args.server ? String(args.server) : null;
 
+    let projectId = null;
+
+    try {
+
+        const { runManager } = require("../runtime");
+
+        const run =
+            runManager && typeof runManager.current === "function"
+                ? runManager.current()
+                : null;
+
+        projectId = run && run.projectId ? run.projectId : null;
+
+    } catch {
+        /* unscoped */
+    }
+
     const entries =
-        manager.catalogueEntries().filter(
+        manager.catalogueEntries(projectId).filter(
             entry => !wanted || entry.server === wanted
         );
 

@@ -1,0 +1,60 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "skill_get",
+      "description": "Load the full text of a skill: what it is for, how to do it, what to avoid, and which tools it uses. The prompt lists only skill names and descriptions, so read a skill before starting that kind of work.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skill names to load."
+          },
+          "name": {
+            "type": "string",
+            "description": "A single skill name."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "skill_read",
+      "description": "Read one resource of a skill that carries data, such as a house style, a checklist or a table. skill_get lists which resources a skill has.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Skill name."
+          },
+          "resource": {
+            "type": "string",
+            "description": "Resource id, as listed by skill_get."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "First line to read, 0-based."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of lines to read."
+          }
+        },
+        "required": [
+          "name",
+          "resource"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

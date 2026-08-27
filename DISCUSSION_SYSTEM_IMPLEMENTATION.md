@@ -2,6 +2,28 @@
 
 این سند تحلیل اسپک داده‌شده و نحوه پیاده‌سازی آن روی runtime فعلی `structured-ai` را توضیح می‌دهد.
 
+## وضعیت پیاده‌سازی (به‌روزرسانی پس از اجرا)
+
+همهٔ فازهای ۰ تا ۸ پیاده‌سازی شده‌اند:
+
+| فاز | وضعیت | محل |
+|---|---|---|
+| 0 — رجیستری (۱۵ پرسونا + observer) | ✅ | `agent/registry/personas.json`، `agent/registry/agents.json` (پروفایل‌های `discussion_*`)؛ منبع حقیقت prompt ها: `agent/discussion/personas.js`، تولید از `tools/add-discussion-registry.js` |
+| 1 — Types & Transcript | ✅ | `agent/discussion/types.js`، `transcript.js` |
+| 2 — PersonaRunner & ObserverRunner | ✅ | `personaRunner.js`، `observerRunner.js` (پارس JSON با fallback، تضمین گزارش در هر FINISH) |
+| 3 — Engine | ✅ | `engine.js` (دور ۱ independent، cross-examination از دور ۲، سقف دور، forced finish، محدودسازی parallelism با `MAX_PARALLEL_AGENTS`) |
+| 4 — Tool | ✅ | `agent/tools/discussion.js` + ثبت در `tools.json`/`tool_groups.json` (گروه `discussion`)؛ مدل‌ها از طریق `callAI` ران‌تایم (نقش‌های L1/L2/MAIN) |
+| 5 — CLI | ✅ | `node bin/agent.js --discussion --personas ... --max-rounds N` (با `--json` برای خروجی کامل) |
+| 6 — Web | ✅ | `POST /api/discussion` + `GET /api/discussion/personas` در `web/server.js`، رویدادهای SSE از `discussion:start` تا `discussion:finish`، پنل «Discussion» در `web/public` |
+| 7 — LoopDetector | ✅ | `loopDetector.js` (شبیه‌سازی جاکارد برای تکرار + unaddressed concerns) |
+| 8 — Evaluation | ✅ | `test/discussion.test.js` (۲۳ تست با mock LLM، شامل task نمونه JWT) + تست‌های اندپوینت در `test/web.test.js` |
+
+نکته‌های طراحی که در اجرا اضافه شدند:
+* `callAI` از `agent.js` export شد تا discussion از همان لایهٔ endpoint/role/retry ران‌تایم استفاده کند.
+* پرسوناهای discussion در کاتالوگ‌های prompt (available_agents / available_personas) **نشان داده نمی‌شوند** — آن‌ها هدف delegation نیستند و از `discussion_start` قابل دسترسی‌اند؛ این کار سقف بودجهٔ prompt ثابت را نگه می‌دارد.
+* ابزار در نبود اندپوینت با خطای صریح شکست می‌خورد و هرگز پاسخ mock جایگزین واقعی نمی‌دهد (mock فقط با flag داخلی برای تست).
+* Observer تنها خروجی کاربر را می‌سازد؛ هر FINISH بدون گزارش معتبر، گزارش بازیابی‌شده دریافت می‌کند.
+
 ## 1. خلاصه اسپک
 
 - کاربر یک task + لیست persona های منتخب (از 15 تا) را می‌دهد.

@@ -33,6 +33,32 @@ If FINISH:
 Output MUST be valid JSON matching the schema described in your system prompt. No markdown fence, just JSON.`;
 }
 
+/*
+ * A FINISH without a report is a protocol violation: the report is the
+ * only output the user sees, so every path that ends the discussion
+ * must guarantee one, even if the model disobeyed the shape.
+ */
+function ensureFinalReport(parsed) {
+  if (parsed.final_report && typeof parsed.final_report === "object") {
+    return parsed.final_report;
+  }
+
+  return {
+    summary:
+      (parsed.final_report && typeof parsed.final_report.summary === "string")
+        ? parsed.final_report.summary
+        : "The observer finished the discussion; its report was malformed, so this is the recovered summary of the agreements and open points.",
+    agreed_points: parsed.agreements || [],
+    unresolved: (parsed.open_points || []).map(op => ({
+      topic: op.topic || "(topic)",
+      sides: op.disagreeing
+        ? op.disagreeing.map(d => ({ persona: d, reasoning: op.why || "" }))
+        : []
+    })),
+    next_steps: [{ order: 1, layer: "user", action: "Review the unresolved points and decide" }]
+  };
+}
+
 class ObserverRunner {
   constructor(opts = {}) {
     this.llmCaller = opts.llmCaller;
@@ -83,17 +109,10 @@ class ObserverRunner {
     // Hard stop enforcement
     if (currentRound >= maxRounds && parsed.decision !== "FINISH") {
       parsed.decision = "FINISH";
-      if (!parsed.final_report) {
-        parsed.final_report = {
-          summary: `Max rounds (${maxRounds}) reached. Forced finish.`,
-          agreed_points: parsed.agreements || [],
-          unresolved: (parsed.open_points || []).map(op => ({
-            topic: op.topic,
-            sides: op.disagreeing ? op.disagreeing.map(d => ({ persona: d, reasoning: op.why })) : []
-          })),
-          next_steps: [{ order: 1, layer: "user", action: "Review unresolved points and decide" }]
-        };
-      }
+    }
+
+    if (parsed.decision === "FINISH") {
+      parsed.final_report = ensureFinalReport(parsed);
     }
 
     return parsed;
@@ -124,6 +143,7 @@ Produce JSON with decision=FINISH and final_report containing summary, agreed_po
       if (fenceMatch) content = fenceMatch[1];
       const parsed = JSON.parse(content);
       parsed.decision = "FINISH";
+      parsed.final_report = ensureFinalReport(parsed);
       return parsed;
     } catch {
       return {

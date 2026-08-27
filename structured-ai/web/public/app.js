@@ -41,13 +41,40 @@ const state = {
     approvalModal: null,
     settingsModal: null,
     mcpModal: null,
+    discussionModal: null,
+    discussion: null,
+    discussionEl: null,
+    discussionMode: false,
+    discussionPersonas: [],
     historyOpening: false,
     mcpOpening: false,
     settings: [],
     logFilter: "",
     logType: "",
-    openExecutionKeys: new Set()
+    openExecutionKeys: new Set(),
+    projects: [],
+    currentProjectId: null,
+    dashboard: { open: false, projectId: null, tab: "overview" },
+    eventSource: null,
+    multiQueue: [],
+    gatewayHealth: null
 };
+
+const PROJECT_STORAGE_KEY = "structured-ai.currentProjectId";
+
+const DASHBOARD_TABS = [
+    ["overview", "Overview"],
+    ["runs", "Agent Runs"],
+    ["sessions", "Sessions"],
+    ["memory", "Memory"],
+    ["plan", "Plan"],
+    ["events", "Events"],
+    ["approvals", "Approvals"],
+    ["semantic", "Semantic Engine"],
+    ["mcp", "MCP"],
+    ["logs", "Logs"],
+    ["settings", "Settings"]
+];
 
 
 /* ---------------------------------------------------------------- helpers */
@@ -2389,6 +2416,604 @@ async function openMcp() {
 
 
 /*
+| Discussion
+| ----------
+| The form starts a discussion; while it runs, the same event stream
+| the delegation tree uses paints the rounds into the modal as they
+| happen. The final report is the only part the observer guarantees,
+| so it gets its own section once discussion:finish lands.
+*/
+
+function discussionStatusLine() {
+
+    const discussion = state.discussion;
+
+    if (!discussion) {
+        return "no discussion yet";
+    }
+
+    if (discussion.status === "running") {
+        const round =
+            discussion.rounds && discussion.rounds.length
+                ? `round ${discussion.rounds.length} of ${discussion.max_rounds}`
+                : "starting";
+
+        return `${round} · ${discussion.personas.length} personas`;
+    }
+
+    if (discussion.status === "done") {
+        return `done · ${discussion.total_rounds} round(s)${discussion.hit_max_rounds ? " · max rounds reached" : ""}`;
+    }
+
+    return `failed · ${discussion.error || "unknown error"}`;
+}
+
+
+function discussionReportView(report) {
+
+    const section = node("div", "discussion-report");
+
+    section.appendChild(node("h3", null, "Final report"));
+
+    if (report.summary) {
+        const summary = node("p", "discussion-summary");
+        appendMarkdownParagraph(summary, [report.summary]);
+        section.appendChild(summary);
+    }
+
+    if (report.agreed_points?.length) {
+        section.appendChild(node("h4", null, "Agreed"));
+
+        const list = node("ul", "discussion-points");
+
+        for (const point of report.agreed_points) {
+            list.appendChild(node("li", null, point));
+        }
+
+        section.appendChild(list);
+    }
+
+    if (report.unresolved?.length) {
+        section.appendChild(node("h4", null, "Unresolved"));
+
+        for (const item of report.unresolved) {
+            const entry = node("div", "discussion-unresolved");
+
+            entry.appendChild(node("strong", null, item.topic || "(topic)"));
+
+            for (const side of item.sides || []) {
+                entry.appendChild(
+                    node(
+                        "p",
+                        null,
+                        `${side.persona}: ${side.reasoning}`
+                    )
+                );
+            }
+
+            section.appendChild(entry);
+        }
+    }
+
+    if (report.next_steps?.length) {
+        section.appendChild(node("h4", null, "Next steps"));
+
+        const ordered =
+            [...report.next_steps].sort((a, b) => a.order - b.order);
+
+        for (const step of ordered) {
+            section.appendChild(
+                node(
+                    "p",
+                    "discussion-step",
+                    `${step.order}. [${step.layer}] ${step.action}`
+                )
+            );
+        }
+    }
+
+    return section;
+}
+
+
+function discussionMessageView(message) {
+
+    const details = node("details", "discussion-message");
+
+    details.appendChild(
+        node("summary", null, `${message.persona_name || message.persona} · round ${message.round}`)
+    );
+
+    const body = node("div", "discussion-message-body");
+    appendMarkdownParagraph(body, [message.content || "(empty)"]);
+    details.appendChild(body);
+
+    return details;
+}
+
+
+function discussionObserverView(decision) {
+
+    const box =
+        node("div", `discussion-observer ${decision.decision === "FINISH" ? "finish" : "continue"}`);
+
+    box.appendChild(
+        node(
+            "strong",
+            null,
+            `observer · round ${decision.round} → ${decision.decision}`
+        )
+    );
+
+    for (const point of decision.open_points || []) {
+        box.appendChild(
+            node(
+                "p",
+                null,
+                `${point.topic}${point.disagreeing?.length ? ` — ${point.disagreeing.join("; ")}` : ""}`
+            )
+        );
+    }
+
+    for (const instruction of Object.values(decision.instructions || {})) {
+        box.appendChild(node("p", "muted", instruction));
+    }
+
+    return box;
+}
+
+
+function discussionHistoryView(container) {
+
+    /* Rebuilds the modal body from state, used when the modal opens
+       and when a snapshot arrives: the live stream only appends. */
+
+    container.innerHTML = "";
+
+    const discussion = state.discussion;
+
+    const status = node("div", "discussion-status", discussionStatusLine());
+    status.id = "discussionStatus";
+    container.appendChild(status);
+
+    if (!discussion) {
+        return null;
+    }
+
+    container.appendChild(
+        node("p", "discussion-task", discussion.task)
+    );
+
+    for (const round of discussion.rounds || []) {
+
+        container.appendChild(
+            node("h4", "discussion-round-head", `Round ${round.round}`)
+        );
+
+        for (const message of round.messages || []) {
+            container.appendChild(discussionMessageView(message));
+        }
+    }
+
+    for (const decision of discussion.observer_decisions || []) {
+        container.appendChild(discussionObserverView(decision));
+    }
+
+    if (discussion.status === "failed" && discussion.error) {
+        container.appendChild(node("p", "bad", discussion.error));
+    }
+
+    if (discussion.final_report) {
+        container.appendChild(discussionReportView(discussion.final_report));
+    }
+
+    return container;
+}
+
+
+/*
+| The composer's discussion options: persona checkboxes, the round
+| limit and a live status line. The row sits under the task textarea
+| and only exists while Discussion mode is on, so the default task
+| flow stays untouched.
+*/
+
+function discussionOptionsRow() {
+
+    const container =
+        el("discussionOptions");
+
+    if (!container || container.dataset.built === "1") {
+        return container;
+    }
+
+    container.dataset.built = "1";
+
+    const grid = node("div", "discussion-personas");
+
+    const setAll = checked => {
+
+        for (const box of grid.querySelectorAll("input[type=checkbox]")) {
+            box.checked = checked;
+        }
+    };
+
+    /* the spec's example panel, so a first run already shows a
+       disagreement instead of a monologue */
+    const preselect =
+        new Set(["security", "backend", "frontend", "architect", "performance"]);
+
+    for (const persona of state.discussionPersonas) {
+
+        const label = node("label", "discussion-persona");
+        label.title = persona.description;
+
+        const checkbox = node("input", "persona-box");
+        checkbox.type = "checkbox";
+        checkbox.value = persona.id;
+        checkbox.checked = preselect.has(persona.id);
+
+        label.append(checkbox, node("span", null, persona.id));
+
+        grid.appendChild(label);
+    }
+
+    const head = node("div", "discussion-persona-head");
+    head.appendChild(node("span", null, "personas"));
+
+    head.append(
+        Modal.button("all", "link", () => setAll(true)),
+        Modal.button("none", "link", () => setAll(false))
+    );
+
+    const bottom = node("div", "discussion-meta");
+
+    const rounds = node("input", "filter");
+    rounds.id = "discussionRounds";
+    rounds.type = "number";
+    rounds.min = "1";
+    rounds.max = "10";
+    rounds.value = "5";
+    rounds.title = "maximum rounds (1-10)";
+
+    const status = node("span", "muted discussion-status-line");
+    status.id = "discussionStatusLine";
+
+    bottom.append(
+        node("span", null, "max rounds"),
+        rounds,
+        status
+    );
+
+    container.append(head, grid, bottom);
+
+    return container;
+}
+
+
+function selectedDiscussionPersonas() {
+
+    const boxes =
+        el("discussionOptions")?.querySelectorAll(
+            ".persona-box"
+        );
+
+    return [
+        ...(boxes || [])
+    ].filter(box => box.checked).map(box => box.value);
+}
+
+
+function refreshDiscussionComposerStatus() {
+
+    const button = el("discussionButton");
+    const run = el("runButton");
+    const line = el("discussionStatusLine");
+
+    const discussion = state.discussion;
+
+    if (button) {
+        button.classList.toggle("active", state.discussionMode);
+    }
+
+    if (!run) {
+        return;
+    }
+
+    if (discussion?.status === "running") {
+
+        run.disabled = true;
+        run.dataset.discussionBusy = "1";
+        run.textContent = "Discussion running…";
+
+    } else if (run.dataset.discussionBusy) {
+
+        /* a task and a discussion never run at once (the server
+           refuses one while the other is going), so finishing a
+           discussion always gives the button straight back */
+
+        delete run.dataset.discussionBusy;
+        run.disabled = false;
+
+        run.textContent =
+            state.discussionMode
+                ? "Start discussion"
+                : "Run task";
+    }
+
+    if (!line) {
+        return;
+    }
+
+    line.innerHTML = "";
+
+    if (!discussion) {
+        return;
+    }
+
+    let text;
+
+    if (discussion.status === "running") {
+        const round =
+            discussion.rounds?.length
+                ? `${discussion.rounds.length} of ${discussion.max_rounds}`
+                : "starting";
+
+        text = `round ${round} ·`;
+    } else if (discussion.status === "done") {
+        text = `done in ${discussion.total_rounds} round(s) ·`;
+    } else {
+        text = `failed · ${discussion.error || "unknown error"}`;
+    }
+
+    line.appendChild(node("span", null, text));
+
+    if (discussion.status !== "failed") {
+        line.appendChild(
+            Modal.button("view", "link", () => openDiscussion())
+        );
+    }
+}
+
+
+async function toggleDiscussionMode() {
+
+    /* while a discussion is going, the button opens the live view
+       instead of flipping the form */
+
+    if (state.discussion?.status === "running") {
+        openDiscussion();
+        return;
+    }
+
+    state.discussionMode =
+        !state.discussionMode;
+
+    if (
+        state.discussionMode &&
+        state.discussionPersonas.length === 0
+    ) {
+
+        try {
+            const response =
+                await fetch("/api/discussion/personas");
+
+            const payload =
+                await response.json();
+
+            state.discussionPersonas =
+                payload.personas || [];
+        } catch {
+            state.discussionPersonas = [];
+        }
+    }
+
+    const options =
+        el("discussionOptions");
+
+    if (options) {
+        options.hidden = !state.discussionMode;
+    }
+
+    if (state.discussionMode) {
+        discussionOptionsRow();
+    }
+
+    const run =
+        el("runButton");
+
+    /* the label mirrors the mode in both directions, and only while
+       no discussion owns the button */
+
+    if (run && !run.dataset.discussionBusy) {
+        run.textContent =
+            state.discussionMode
+                ? "Start discussion"
+                : "Run task";
+    }
+
+    refreshDiscussionComposerStatus();
+}
+
+
+async function openDiscussion() {
+
+    if (state.discussionModal && state.discussionModal.isOpen()) {
+        return state.discussionModal;
+    }
+
+    const container = node("div", "discussion");
+
+    if (state.discussion) {
+        discussionHistoryView(container);
+    } else {
+        container.appendChild(
+            node(
+                "p",
+                "muted",
+                "No discussion yet. Enable Discussion under the task box, pick your personas, and send the task."
+            )
+        );
+    }
+
+    state.discussionEl = container;
+
+    const handle =
+        Modal.open({
+            title: "Discussion",
+            subtitle: "specialist personas deliberate in rounds; an observer decides when to finish",
+            size: "large",
+            body: container,
+            footer: Modal.row(Modal.button("Close", "", () => handle.close("footer"))),
+            onClose: () => {
+                state.discussionModal = null;
+                state.discussionEl = null;
+            }
+        });
+
+    state.discussionModal = handle;
+
+    return handle;
+}
+
+
+function pushDiscussionEvent(event) {
+
+    const discussion = state.discussion;
+
+    /* A discussion may also be started from the CLI; the first start
+       event adopts it, a second one is dropped. */
+
+    if (event.type === "discussion:start") {
+
+        if (
+            !discussion ||
+            discussion.status !== "running"
+        ) {
+            state.discussion = {
+                id: event.id,
+                status: "running",
+                task: event.task,
+                personas: event.personas,
+                max_rounds: event.max_rounds,
+                rounds: [],
+                observer_decisions: [],
+                final_report: null
+            };
+        } else if (discussion.id && event.id && discussion.id !== event.id) {
+            return;
+        }
+
+    } else if (!discussion) {
+        return;
+    }
+
+    const target = state.discussion;
+
+    switch (event.type) {
+
+        case "discussion:start": {
+            const status = el("discussionStatus");
+            if (status) {
+                status.textContent = discussionStatusLine();
+            }
+
+            if (state.discussionEl) {
+                /* swap the placeholder for the live view */
+                discussionHistoryView(state.discussionEl);
+            }
+
+            refreshDiscussionComposerStatus();
+
+            break;
+        }
+
+        case "discussion:message": {
+            let round =
+                target.rounds.find(item => item.round === event.round);
+
+            if (!round) {
+                round = { round: event.round, messages: [] };
+                target.rounds.push(round);
+                target.rounds.sort((a, b) => a.round - b.round);
+            }
+
+            round.messages.push({
+                persona: event.persona,
+                persona_name: event.persona_name,
+                content: event.content,
+                round: event.round
+            });
+
+            if (state.discussionEl) {
+                state.discussionEl.appendChild(discussionMessageView({ ...event, round: event.round }));
+            }
+
+            break;
+        }
+
+        case "discussion:observer": {
+            target.observer_decisions.push(event);
+
+            if (state.discussionEl) {
+                state.discussionEl.appendChild(discussionObserverView(event));
+            }
+            break;
+        }
+
+        case "discussion:round": {
+            /* keeps the composer's "round N of M" label current */
+            refreshDiscussionComposerStatus();
+            break;
+        }
+
+        case "discussion:finish": {
+            target.status = "done";
+            target.total_rounds = event.total_rounds;
+            target.hit_max_rounds = event.hit_max_rounds;
+            target.stopped_reason = event.stopped_reason || null;
+            target.final_report = event.final_report;
+
+            const status = el("discussionStatus");
+            if (status) {
+                status.textContent = discussionStatusLine();
+            }
+
+            if (state.discussionEl && event.final_report) {
+                state.discussionEl.appendChild(
+                    discussionReportView(event.final_report)
+                );
+            }
+
+            refreshDiscussionComposerStatus();
+
+            break;
+        }
+
+        case "discussion:error": {
+            target.status = "failed";
+            target.error = event.error;
+
+            const status = el("discussionStatus");
+            if (status) {
+                status.textContent = discussionStatusLine();
+            }
+
+            if (state.discussionEl) {
+                state.discussionEl.appendChild(
+                    node("p", "bad", event.error)
+                );
+            }
+
+            refreshDiscussionComposerStatus();
+
+            break;
+        }
+    }
+}
+
+
+/*
 | Execution and Events live in a hidden row and are shown as header modals.
 | Moving the actual node into the modal body (not a clone) keeps the live
 | renderers working: el("tree")/el("log") still find the node wherever it
@@ -3038,6 +3663,21 @@ function describeEvent(event) {
         case "endpoint:degraded":
             return `${event.role} ${event.model} dropped ${event.dropped}`;
 
+        case "discussion:start":
+            return `start · ${event.personas?.length || 0} personas, max ${event.max_rounds} rounds`;
+
+        case "discussion:message":
+            return `${event.persona} (round ${event.round})`;
+
+        case "discussion:observer":
+            return `observer → ${event.decision} (round ${event.round})`;
+
+        case "discussion:finish":
+            return `done in ${event.total_rounds} round(s)`;
+
+        case "discussion:error":
+            return event.error;
+
         case "run:wrapup":
             return `${
                 Math.round(event.remaining_ms / 1000)
@@ -3391,7 +4031,25 @@ function pushMessage(message) {
 }
 
 
+function eventVisibleForCurrentProject(event) {
+
+    if (!state.currentProjectId) {
+        return true;
+    }
+
+    if (!event || !event.project_id) {
+        return true;
+    }
+
+    return event.project_id === state.currentProjectId;
+}
+
+
 function apply(event) {
+
+    if (!eventVisibleForCurrentProject(event)) {
+        return;
+    }
 
     if (event.plan) {
         state.plan = event.plan;
@@ -3800,6 +4458,13 @@ function apply(event) {
             state.waitingTimer = null;
 
             renderChat();
+
+            /* Phase 11: a multi-project composer run is a sequence of
+               labelled single-project tasks, not a parallel fan-out. */
+            if (event.status !== "running") {
+                drainProjectTaskQueue();
+            }
+
             break;
 
         case "request:start":
@@ -3882,6 +4547,15 @@ function apply(event) {
             renderApprovals();
             break;
 
+        case "discussion:start":
+        case "discussion:message":
+        case "discussion:observer":
+        case "discussion:round":
+        case "discussion:finish":
+        case "discussion:error":
+            pushDiscussionEvent(event);
+            break;
+
         default:
             break;
     }
@@ -3920,6 +4594,16 @@ function applySnapshot(snapshot) {
     state.messages = normalizeConversationMessages(snapshot.messages);
 
     state.session = snapshot.session || null;
+
+    /* A running or finished discussion redraws from the snapshot, so a
+       reload mid-discussion resumes the transcript at the right round. */
+    state.discussion = snapshot.discussion || null;
+
+    if (state.discussionModal && state.discussionModal.isOpen()) {
+        discussionHistoryView(state.discussionEl);
+    }
+
+    refreshDiscussionComposerStatus();
 
     state.sessions = snapshot.sessions || [];
 
@@ -4221,12 +4905,988 @@ function openSettings() {
 }
 
 
+/* ----------------------------------------------------------- projects UI */
+
+function browserLocation() {
+
+    try {
+
+        if (typeof globalThis !== "undefined" && globalThis.location) {
+            return globalThis.location;
+        }
+
+    } catch {
+        /* tests / workers */
+    }
+
+    return { pathname: "/", search: "" };
+}
+
+
+function browserHistory() {
+
+    try {
+
+        if (typeof globalThis !== "undefined" && globalThis.history) {
+            return globalThis.history;
+        }
+
+    } catch {
+        /* tests */
+    }
+
+    return null;
+}
+
+
+function browserStorage() {
+
+    try {
+
+        if (typeof globalThis !== "undefined" && globalThis.localStorage) {
+            return globalThis.localStorage;
+        }
+
+    } catch {
+        /* private mode */
+    }
+
+    return null;
+}
+
+
+function readStoredProjectId() {
+
+    const storage = browserStorage();
+
+    if (!storage) {
+        return null;
+    }
+
+    try {
+        return storage.getItem(PROJECT_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+
+function writeStoredProjectId(projectId) {
+
+    const storage = browserStorage();
+
+    if (!storage) {
+        return;
+    }
+
+    try {
+
+        if (projectId) {
+            storage.setItem(PROJECT_STORAGE_KEY, projectId);
+        } else {
+            storage.removeItem(PROJECT_STORAGE_KEY);
+        }
+
+    } catch {
+        /* private mode */
+    }
+}
+
+
+function parseProjectRoute() {
+
+    const location = browserLocation();
+    const pathname = location.pathname || "/";
+    const search = location.search || "";
+    const params = new URLSearchParams(search);
+    const match = /^\/projects\/([^/]+)\/?$/.exec(pathname);
+    const tab = params.get("tab") || "overview";
+
+    return {
+        projectId: match ? decodeURIComponent(match[1]) : params.get("project"),
+        dashboard: Boolean(match),
+        tab
+    };
+}
+
+
+function navigateConsole(projectId, tab, replace) {
+
+    const dashboard = Boolean(tab);
+    const path =
+        projectId && dashboard
+            ? `/projects/${encodeURIComponent(projectId)}${
+                tab && tab !== "overview"
+                    ? `?tab=${encodeURIComponent(tab)}`
+                    : ""
+            }`
+            : projectId
+                ? `/?project=${encodeURIComponent(projectId)}`
+                : "/";
+
+    try {
+
+        const history = browserHistory();
+        const method = replace ? "replaceState" : "pushState";
+
+        if (history && typeof history[method] === "function") {
+            history[method]({ projectId, tab }, "", path);
+        }
+
+        const location = browserLocation();
+        const url = new URL(path, "http://localhost");
+        location.pathname = url.pathname;
+        location.search = url.search;
+
+    } catch {
+        /* tests */
+    }
+}
+
+
+function projectById(id) {
+
+    return state.projects.find(item => item.id === id) || null;
+}
+
+
+function fillProjectSelect(select, selectedId) {
+
+    if (!select) {
+        return;
+    }
+
+    select.innerHTML = "";
+
+    const empty = node("option", null, "workspace default");
+    empty.value = "";
+    select.appendChild(empty);
+
+    for (const project of state.projects) {
+
+        const option = node("option", null, project.name || project.id);
+        option.value = project.id;
+        select.appendChild(option);
+    }
+
+    select.value = selectedId || "";
+}
+
+
+function renderProjectSwitcher() {
+
+    fillProjectSelect(el("projectSwitcher"), state.currentProjectId);
+    fillProjectSelect(el("taskScopeProject"), el("taskScopeProject")?.value);
+
+    const list = el("taskScopeList");
+
+    if (list) {
+
+        list.innerHTML = "";
+
+        for (const project of state.projects) {
+
+            const label = node("label");
+            const box = node("input", "scope-box");
+            box.type = "checkbox";
+            box.value = project.id;
+            label.append(box, node("span", null, project.name || project.id));
+            list.appendChild(label);
+        }
+    }
+
+    const link = el("visualizerLink");
+
+    if (link) {
+
+        link.href =
+            state.currentProjectId
+                ? `/visualizer.html?projectId=${encodeURIComponent(state.currentProjectId)}`
+                : "/visualizer.html";
+    }
+}
+
+
+function selectedTaskScope() {
+
+    const radios =
+        typeof document !== "undefined" &&
+        typeof document.getElementsByName === "function"
+            ? document.getElementsByName("taskScope")
+            : [];
+
+    for (const radio of radios) {
+
+        if (radio.checked) {
+            return radio.value;
+        }
+    }
+
+    return "current";
+}
+
+
+function selectedTaskProjectIds() {
+
+    const scope = selectedTaskScope();
+
+    if (scope === "specific") {
+
+        const value = el("taskScopeProject")?.value;
+        return value ? [value] : [];
+    }
+
+    if (scope === "multiple") {
+
+        const boxes = el("taskScopeList")?.querySelectorAll(".scope-box") || [];
+        return [...boxes].filter(box => box.checked).map(box => box.value);
+    }
+
+    return state.currentProjectId ? [state.currentProjectId] : [];
+}
+
+
+function labelChatForProject(projectId) {
+
+    const project = projectById(projectId);
+    const name = project ? project.name : projectId;
+
+    pushMessage({
+        role: "system",
+        kind: "message",
+        content: `Project · ${name}`,
+        at: Date.now()
+    });
+}
+
+
+function startLabeledProjectQueue(task, projectIds) {
+
+    state.multiQueue = projectIds.map(id => ({
+        projectId: id,
+        task: `[${(projectById(id) || { name: id }).name}] ${task}`
+    }));
+
+    drainProjectTaskQueue();
+}
+
+
+async function drainProjectTaskQueue() {
+
+    if (state.status === "running" || state.multiQueue.length === 0) {
+        return;
+    }
+
+    const next = state.multiQueue.shift();
+
+    setStatus("running");
+    labelChatForProject(next.projectId);
+
+    const response =
+        await fetch(
+            `/api/projects/${encodeURIComponent(next.projectId)}/tasks`,
+            {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ task: next.task })
+            }
+        );
+
+    if (!response.ok) {
+        setStatus("idle");
+        pushMessage({
+            role: "assistant",
+            kind: "error",
+            content: `Could not start ${next.projectId}`
+        });
+        drainProjectTaskQueue();
+    }
+}
+
+
+async function loadProjects() {
+
+    try {
+
+        const response = await fetch("/api/projects");
+
+        if (!response.ok) {
+            return;
+        }
+
+        const payload = await response.json();
+        state.projects = payload.projects || [];
+        renderProjectSwitcher();
+
+    } catch {
+        state.projects = [];
+    }
+}
+
+
+function setCurrentProject(projectId, options = {}) {
+
+    const next = projectId || null;
+
+    if (state.currentProjectId === next && !options.force) {
+
+        if (options.dashboard) {
+            openProjectDashboard(next, options.tab || "overview");
+        }
+
+        return;
+    }
+
+    state.currentProjectId = next;
+    writeStoredProjectId(next);
+    renderProjectSwitcher();
+
+    const switcher = el("projectSwitcher");
+
+    if (switcher) {
+        switcher.value = next || "";
+    }
+
+    if (!options.skipNavigate) {
+        navigateConsole(next, options.dashboard ? (options.tab || "overview") : null, options.replace);
+    }
+
+    /* Drop the previous project's live cards so B cannot linger in A
+       while the new stream snapshot is in flight. */
+    resetRun(true);
+    state.messages = [];
+    state.events = [];
+    state.approvals.clear();
+
+    const log = el("log");
+
+    if (log) {
+        log.innerHTML = "";
+    }
+
+    renderChat();
+    renderTree();
+    renderApprovals();
+
+    connect();
+
+    if (options.dashboard && next) {
+        openProjectDashboard(next, options.tab || "overview");
+    } else if (!options.keepDashboard) {
+        closeProjectDashboard();
+    }
+}
+
+
+function refreshGatewayHealthChip(health) {
+
+    const chip = el("gatewayHealth");
+
+    if (!chip) {
+        return;
+    }
+
+    const status = health?.status || health?.gateway?.status || "unknown";
+    chip.textContent = `health · ${status}`;
+    chip.classList.remove("health-ok", "health-degraded", "health-down");
+
+    if (status === "ok") {
+        chip.classList.add("health-ok");
+    } else if (status === "down") {
+        chip.classList.add("health-down");
+    } else {
+        chip.classList.add("health-degraded");
+    }
+
+    chip.href = state.currentProjectId
+        ? `/projects/${encodeURIComponent(state.currentProjectId)}?tab=overview`
+        : "/api/health";
+}
+
+
+async function loadGatewayHealth() {
+
+    try {
+
+        const response = await fetch("/api/health");
+
+        if (!response.ok) {
+            return;
+        }
+
+        state.gatewayHealth = await response.json();
+        refreshGatewayHealthChip(state.gatewayHealth);
+
+    } catch {
+        /* health is optional */
+    }
+}
+
+
+function closeProjectDashboard() {
+
+    state.dashboard.open = false;
+
+    const dash = el("projectDashboard");
+    const main = el("consoleMain");
+
+    if (dash) {
+        dash.hidden = true;
+    }
+
+    if (main) {
+        main.hidden = false;
+    }
+}
+
+
+function renderDashboardTabs(active) {
+
+    const nav = el("dashboardTabs");
+
+    if (!nav) {
+        return;
+    }
+
+    nav.innerHTML = "";
+
+    for (const [id, label] of DASHBOARD_TABS) {
+
+        const button = node("button", id === active ? "active" : "", label);
+        button.type = "button";
+        button.dataset.tab = id;
+        button.addEventListener("click", () => openProjectDashboard(state.dashboard.projectId, id));
+        nav.appendChild(button);
+    }
+}
+
+
+function dashboardCard(title, value) {
+
+    const card = node("div", "dashboard-card");
+    card.append(node("h3", null, title), node("div", null, String(value ?? "—")));
+    return card;
+}
+
+
+async function renderDashboardBody(projectId, tab) {
+
+    const body = el("dashboardBody");
+
+    if (!body) {
+        return;
+    }
+
+    body.innerHTML = "";
+    body.appendChild(node("p", "empty", "Loading…"));
+
+    let record = projectById(projectId);
+    let projectState = null;
+    let metrics = null;
+    let health = null;
+    let sessions = [];
+
+    try {
+
+        const [projectRes, stateRes, metricsRes, healthRes, sessionsRes] =
+            await Promise.all([
+                fetch(`/api/projects/${encodeURIComponent(projectId)}`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/state`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/metrics`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/health`),
+                fetch(`/api/projects/${encodeURIComponent(projectId)}/sessions`)
+            ]);
+
+        if (projectRes.ok) {
+            record = (await projectRes.json()).project || record;
+        }
+
+        if (stateRes.ok) {
+            projectState = await stateRes.json();
+        }
+
+        if (metricsRes.ok) {
+            metrics = await metricsRes.json();
+        }
+
+        if (healthRes.ok) {
+            health = await healthRes.json();
+        }
+
+        if (sessionsRes.ok) {
+            sessions = (await sessionsRes.json()).sessions || [];
+        }
+
+    } catch {
+        /* render what we have */
+    }
+
+    body.innerHTML = "";
+
+    const title = el("dashboardTitle");
+    const subtitle = el("dashboardSubtitle");
+
+    if (title) {
+        title.textContent = record?.name || projectId;
+    }
+
+    if (subtitle) {
+        subtitle.textContent = `${record?.rootPath || ""} · ${health?.status || "unknown"}`;
+    }
+
+    if (tab === "overview") {
+
+        const grid = node("div", "dashboard-grid");
+        grid.append(
+            dashboardCard("status", health?.status || projectState?.status),
+            dashboardCard("runs", metrics?.metrics?.project_runs_total ?? 0),
+            dashboardCard("active", metrics?.metrics?.project_active_runs ?? 0),
+            dashboardCard("index", metrics?.metrics?.project_index_state || "unknown"),
+            dashboardCard("root", record?.rootPath)
+        );
+        body.appendChild(grid);
+        return;
+    }
+
+    if (tab === "runs") {
+
+        const runs = projectState?.active_runs || [];
+
+        if (runs.length === 0) {
+            body.appendChild(node("p", "empty", "No active runs for this project."));
+            return;
+        }
+
+        for (const run of runs) {
+            body.appendChild(
+                node("div", "labeled-run", `${run.status} · ${run.run_id} · ${run.task || ""}`)
+            );
+        }
+
+        return;
+    }
+
+    if (tab === "sessions") {
+
+        if (sessions.length === 0) {
+            body.appendChild(node("p", "empty", "No saved sessions for this project."));
+            return;
+        }
+
+        for (const session of sessions) {
+            body.appendChild(
+                node("div", "labeled-run", session.title || session.id)
+            );
+        }
+
+        return;
+    }
+
+    if (tab === "memory") {
+
+        body.appendChild(
+            node(
+                "p",
+                "empty",
+                "Memory is stored in this project's data root. Inspect it with memory_get during a scoped run."
+            )
+        );
+        body.appendChild(
+            dashboardCard("last activity", metrics?.metrics?.project_last_activity || "none")
+        );
+        return;
+    }
+
+    if (tab === "plan") {
+
+        if (state.plan && state.currentProjectId === projectId) {
+            const holder = node("div", "plan-view");
+            holder.id = "dashboardPlan";
+            body.appendChild(holder);
+            const previous = el("plan");
+            /* reuse live plan card text when this is the active project */
+            if (previous) {
+                holder.appendChild(node("div", null, previous.textContent));
+            }
+            return;
+        }
+
+        body.appendChild(
+            node("p", "empty", "Plan appears here while this project is the active console run.")
+        );
+        return;
+    }
+
+    if (tab === "events" || tab === "logs") {
+
+        const events = (projectState?.events || []).slice(-80);
+
+        if (events.length === 0) {
+            body.appendChild(node("p", "empty", "No events recorded for this project."));
+            return;
+        }
+
+        const list = node("ul", "log");
+
+        for (const event of events) {
+
+            if (tab === "logs" && !/error|failed|deadline/i.test(event.type || "")) {
+                continue;
+            }
+
+            list.appendChild(
+                node("li", null, `${event.type} · ${describeEvent(event)}`)
+            );
+        }
+
+        body.appendChild(list);
+        return;
+    }
+
+    if (tab === "approvals") {
+
+        const pending = projectState?.pending_approvals || [];
+
+        if (pending.length === 0) {
+            body.appendChild(node("p", "empty", "No pending approvals for this project."));
+            return;
+        }
+
+        for (const item of pending) {
+            body.appendChild(
+                node("div", "labeled-run", `${item.tool} · ${item.agent}`)
+            );
+        }
+
+        return;
+    }
+
+    if (tab === "semantic") {
+
+        body.append(
+            dashboardCard("index", metrics?.metrics?.project_index_state || "unknown"),
+            dashboardCard("health", health?.index_state || health?.status)
+        );
+        return;
+    }
+
+    if (tab === "mcp") {
+
+        body.appendChild(
+            dashboardCard("mcp calls", metrics?.metrics?.project_mcp_calls_total ?? 0)
+        );
+        return;
+    }
+
+    if (tab === "settings") {
+
+        const form = node("div", "mcp-add");
+        const name = node("input");
+        name.value = record?.name || "";
+        const enabled = node("input");
+        enabled.type = "checkbox";
+        enabled.checked = record?.enabled !== false;
+
+        form.append(
+            node("label", "mcp-field"),
+        );
+
+        const nameField = node("label", "mcp-field");
+        nameField.append(node("span", "label", "name"), name);
+        const enabledField = node("label", "mcp-field");
+        enabledField.append(node("span", "label", "enabled"), enabled);
+        form.append(nameField, enabledField);
+
+        form.appendChild(
+            Modal.button("Save", "", async () => {
+
+                await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+                    method: "PATCH",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        name: name.value,
+                        enabled: enabled.checked
+                    })
+                });
+
+                await loadProjects();
+                renderDashboardBody(projectId, "settings");
+            })
+        );
+
+        body.appendChild(form);
+    }
+}
+
+
+function openProjectDashboard(projectId, tab) {
+
+    if (!projectId) {
+        return;
+    }
+
+    state.dashboard = { open: true, projectId, tab: tab || "overview" };
+    setCurrentProject(projectId, { skipNavigate: true, keepDashboard: true });
+    navigateConsole(projectId, state.dashboard.tab, false);
+
+    const dash = el("projectDashboard");
+    const main = el("consoleMain");
+
+    if (dash) {
+        dash.hidden = false;
+    }
+
+    if (main) {
+        main.hidden = true;
+    }
+
+    renderDashboardTabs(state.dashboard.tab);
+    renderDashboardBody(projectId, state.dashboard.tab);
+}
+
+
+function openNewProjectModal() {
+
+    const name = node("input");
+    name.placeholder = "Display name";
+    const root = node("input");
+    root.placeholder = "/absolute/path/to/workspace";
+    const message = node("p", "mcp-message");
+
+    const form = node("div", "mcp-add");
+    const nameField = node("label", "mcp-field");
+    nameField.append(node("span", "label", "name"), name);
+    const rootField = node("label", "mcp-field");
+    rootField.append(node("span", "label", "rootPath"), root);
+    form.append(nameField, rootField, message);
+
+    const handle = Modal.open({
+        title: "New Project",
+        subtitle: "Registers a workspace. Root comes from you, never from the model.",
+        body: form,
+        footer: Modal.row(
+            Modal.button("Create", "", async () => {
+
+                const response = await fetch("/api/projects", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        name: name.value.trim() || undefined,
+                        rootPath: root.value.trim()
+                    })
+                });
+
+                const payload = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    message.textContent = payload.error || "could not register";
+                    return;
+                }
+
+                await loadProjects();
+                setCurrentProject(payload.project.id);
+                handle.close("created");
+            }),
+            Modal.button("Cancel", "ghost", () => handle.close("cancel"))
+        )
+    });
+}
+
+
+async function openProjectsManager() {
+
+    await loadProjects();
+
+    const body = node("div", "sessions");
+
+    if (state.projects.length === 0) {
+        body.appendChild(node("p", "empty", "No registered projects yet."));
+    }
+
+    for (const project of state.projects) {
+
+        const row = node("div", "project-row");
+        row.appendChild(node("span", "name", project.name || project.id));
+        row.appendChild(node("span", "muted", project.rootPath || ""));
+
+        row.appendChild(
+            Modal.button("Open", "ghost", () => {
+
+                handle.close("open");
+                openProjectDashboard(project.id, "overview");
+            })
+        );
+
+        row.appendChild(
+            Modal.button("Use", "ghost", () => {
+
+                handle.close("use");
+                setCurrentProject(project.id);
+            })
+        );
+
+        row.appendChild(
+            Modal.button("Delete", "ghost danger", async () => {
+
+                await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+                    method: "DELETE"
+                });
+
+                await loadProjects();
+
+                if (state.currentProjectId === project.id) {
+                    setCurrentProject(null);
+                }
+
+                handle.close("deleted");
+                openProjectsManager();
+            })
+        );
+
+        body.appendChild(row);
+    }
+
+    const handle = Modal.open({
+        title: "Projects",
+        subtitle: `${state.projects.length} registered`,
+        size: "medium",
+        body,
+        footer: Modal.row(
+            Modal.button("New Project", "ghost", () => {
+
+                handle.close("new");
+                openNewProjectModal();
+            }),
+            Modal.button("Close", "", () => handle.close("footer"))
+        )
+    });
+}
+
+
+function bindProjectControls() {
+
+    const switcher = el("projectSwitcher");
+
+    if (switcher) {
+
+        switcher.addEventListener("change", event => {
+            setCurrentProject(event.target.value || null);
+        });
+    }
+
+    el("newProjectButton")?.addEventListener("click", openNewProjectModal);
+    el("projectsButton")?.addEventListener("click", openProjectsManager);
+    el("dashboardBack")?.addEventListener("click", () => {
+
+        closeProjectDashboard();
+        navigateConsole(state.currentProjectId, null, false);
+    });
+
+    const scope = el("taskScope");
+
+    if (scope) {
+
+        scope.addEventListener("change", () => {
+
+            const mode = selectedTaskScope();
+            const specific = el("taskScopeProject");
+            const list = el("taskScopeList");
+
+            if (specific) {
+                specific.hidden = mode !== "specific";
+            }
+
+            if (list) {
+                list.hidden = mode !== "multiple";
+            }
+        });
+    }
+
+    try {
+
+        const win =
+            typeof globalThis !== "undefined"
+                ? globalThis.window
+                : undefined;
+
+        if (win && typeof win.addEventListener === "function") {
+
+            win.addEventListener("popstate", () => {
+                applyProjectRoute(true);
+            });
+        }
+
+    } catch {
+        /* tests */
+    }
+}
+
+
+function applyProjectRoute(fromPop) {
+
+    const route = parseProjectRoute();
+    const stored = readStoredProjectId();
+    const projectId = route.projectId || stored || null;
+
+    if (route.dashboard && projectId) {
+
+        setCurrentProject(projectId, {
+            force: true,
+            dashboard: true,
+            tab: route.tab,
+            skipNavigate: true,
+            replace: !fromPop
+        });
+        return;
+    }
+
+    if (projectId) {
+        setCurrentProject(projectId, { force: true, skipNavigate: true, replace: true });
+    }
+}
+
+
+async function initProjects() {
+
+    if (!el("projectSwitcher") && !el("projectDashboard")) {
+        return;
+    }
+
+    bindProjectControls();
+    await loadProjects();
+    applyProjectRoute(false);
+    loadGatewayHealth();
+}
+
+
 /* ------------------------------------------------------------------ wire */
+
+function eventsUrl() {
+
+    if (state.currentProjectId) {
+
+        return `/api/events?projectId=${encodeURIComponent(state.currentProjectId)}`;
+    }
+
+    return "/api/events";
+}
+
 
 function connect() {
 
+    if (state.eventSource && typeof state.eventSource.close === "function") {
+
+        try {
+            state.eventSource.close();
+        } catch {
+            /* the shim EventSource has no close */
+        }
+    }
+
     const source =
-        new EventSource("/api/events");
+        new EventSource(eventsUrl());
+
+    state.eventSource = source;
 
     source.onmessage = message => {
 
@@ -4245,7 +5905,11 @@ function connect() {
 
     source.onerror = () => {
 
-        el("statusText").textContent = "reconnecting";
+        const status = el("statusText");
+
+        if (status) {
+            status.textContent = "reconnecting";
+        }
     };
 }
 
@@ -4261,10 +5925,106 @@ el("taskForm").addEventListener("submit", async submitEvent => {
         return;
     }
 
+    /*
+    | Discussion mode sends the same task box to the panel instead of
+    | the delegation tree: the personas and the round limit come from
+    | the options row, and the live view opens as it runs.
+    */
+
+    if (state.discussionMode) {
+
+        const personas =
+            selectedDiscussionPersonas();
+
+        const line =
+            el("discussionStatusLine");
+
+        if (personas.length === 0) {
+
+            if (line) {
+                line.className = "bad";
+                line.textContent =
+                    "select at least one persona";
+            }
+
+            return;
+        }
+
+        const maxRounds =
+            Math.max(
+                1,
+                Math.min(10, Number(el("discussionRounds")?.value) || 5)
+            );
+
+        el("runButton").disabled = true;
+
+        const response =
+            await fetch("/api/discussion", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ task, personas, max_rounds: maxRounds })
+            });
+
+        if (response.ok) {
+
+            el("task").value = "";
+
+            /* the stream confirms with discussion:start; this keeps
+               the composer honest in the meantime */
+            state.discussion = {
+                id:
+                    (await response.json().catch(() => ({}))).id ||
+                    null,
+                status: "running",
+                task,
+                personas,
+                max_rounds: maxRounds,
+                rounds: [],
+                observer_decisions: [],
+                final_report: null
+            };
+
+            refreshDiscussionComposerStatus();
+
+            openDiscussion();
+
+        } else {
+
+            const payload =
+                await response.json().catch(() => ({}));
+
+            el("runButton").disabled = false;
+
+            if (line) {
+                line.className = "bad";
+                line.textContent =
+                    payload.error ||
+                    `request failed (${response.status})`;
+            }
+        }
+
+        return;
+    }
+
+    const targets = selectedTaskProjectIds();
+
+    if (targets.length > 1) {
+
+        startLabeledProjectQueue(task, targets);
+        el("task").value = "";
+        return;
+    }
+
     setStatus("running");
 
+    const projectId = targets[0] || null;
+    const url =
+        projectId
+            ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
+            : "/api/tasks";
+
     const response =
-        await fetch("/api/tasks", {
+        await fetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ task })
@@ -4273,6 +6033,10 @@ el("taskForm").addEventListener("submit", async submitEvent => {
     if (response.ok) {
 
         el("task").value = "";
+
+        if (projectId) {
+            labelChatForProject(projectId);
+        }
 
         const snapshot =
             await (await fetch("/api/state")).json();
@@ -4287,6 +6051,16 @@ el("taskForm").addEventListener("submit", async submitEvent => {
 
 
 el("cancelButton").addEventListener("click", () => {
+
+    state.multiQueue = [];
+
+    if (state.currentProjectId) {
+
+        fetch(
+            `/api/projects/${encodeURIComponent(state.currentProjectId)}/cancel`,
+            { method: "POST" }
+        );
+    }
 
     fetch("/api/cancel", { method: "POST" });
 });
@@ -4366,6 +6140,8 @@ el("executionButton").addEventListener("click", openExecutionModal);
 
 el("eventsButton").addEventListener("click", openEventsModal);
 
+el("discussionButton").addEventListener("click", toggleDiscussionMode);
+
 
 el("approvalsButton").addEventListener("click", () => {
 
@@ -4390,3 +6166,5 @@ el("task").addEventListener("keydown", event => {
 connect();
 
 loadSettings();
+
+initProjects();

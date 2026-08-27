@@ -5,9 +5,11 @@ const settings = require("../lib/storage");
 
 const {
     ignoredDirectories,
-    resolveWorkspacePath,
+    toRelativeInRoot,
     toWorkspaceRelative
 } = require("../lib/workspace");
+
+const ToolContext = require("./ToolContext");
 
 
 /*
@@ -25,6 +27,20 @@ const SESSIONS = new Map();
 
 let sessionCounter = 0;
 
+
+
+/*
+| Paths are shown relative to the search's own root: the project root
+| for a project-scoped run (Phase 8), the workspace root otherwise —
+| which is exactly what toWorkspaceRelative already printed in legacy
+| mode, so legacy output is bit-identical.
+*/
+function sessionRelative(session, target) {
+
+    return session.tool_root
+        ? toRelativeInRoot(session.tool_root, target)
+        : toWorkspaceRelative(target);
+}
 
 
 function globToRegExp(pattern) {
@@ -221,13 +237,13 @@ async function runSearch(session) {
                     matchesFileName(
                         session,
                         entry.name,
-                        toWorkspaceRelative(fullPath)
+                        sessionRelative(session, fullPath)
                     )
                 ) {
 
                     session.results.push({
                         path:
-                            toWorkspaceRelative(fullPath)
+                            sessionRelative(session, fullPath)
                     });
                 }
 
@@ -284,7 +300,7 @@ async function runSearch(session) {
 
                     session.results.push({
                         path:
-                            toWorkspaceRelative(fullPath),
+                            sessionRelative(session, fullPath),
 
                         line:
                             index + 1,
@@ -366,7 +382,7 @@ function describeSession(
             session.query,
 
         path:
-            toWorkspaceRelative(session.root),
+            sessionRelative(session, session.root),
 
         files_scanned:
             session.files_scanned,
@@ -405,11 +421,16 @@ function describeSession(
 |--------------------------------------------------------------------------
 */
 
-async function searchStart(args) {
+async function searchStart(args, context) {
+
+    /* Phase 8: the search walks the run's project tree. The ToolContext
+       supplies the root; in legacy mode this is WORKSPACE_ROOT itself,
+       so the resolution is the historical one. */
+    const ctx = ToolContext.from(context);
 
     const root =
-        resolveWorkspacePath(
-            args.path,
+        ctx.resolvePath(
+            args.path || ".",
             {
                 mustExist: true
             }
@@ -444,6 +465,22 @@ async function searchStart(args) {
     const session = {
         id:
             `search_${sessionCounter}`,
+
+        /* The run that owns this session (modular mode); a run-scoped
+           reset clears only its own sessions, never a concurrent
+           run's. */
+        run_id:
+            context && context.runId
+                ? context.runId
+                : null,
+
+        /* The project root this session answers relative-path queries
+           against (scoped runs); null means "the workspace root",
+           which keeps legacy display and glob matching unchanged. */
+        tool_root:
+            ctx.scoped
+                ? ctx.root
+                : null,
 
         root,
 
@@ -617,16 +654,25 @@ async function searchStop(args) {
 }
 
 
-function resetSessions() {
+/* No argument: the historical process-wide reset. With a run id only
+   that run's sessions are stopped and cleared. */
+function resetSessions(runId) {
 
-    for (const session of SESSIONS.values()) {
+    for (
+        const [id, session]
+        of [...SESSIONS.entries()]
+    ) {
+
+        if (runId && session.run_id !== runId) {
+            continue;
+        }
 
         if (session.status === "running") {
             session.status = "stopped";
         }
-    }
 
-    SESSIONS.clear();
+        SESSIONS.delete(id);
+    }
 }
 
 

@@ -51,12 +51,26 @@ Options
   -u, --until-done          Keep starting runs while the plan has open steps,
                             until it is complete or Ctrl-C stops it
       --max-cycles <n>      Safety limit for --until-done (default 20)
+      --discussion          Run a multi-agent discussion instead of a run:
+                            selected specialist personas deliberate in rounds
+                            and an observer writes the final synthesis
+      --personas <ids>      Comma-separated personas for --discussion,
+                            e.g. security,backend,frontend
+      --max-rounds <n>      Discussion round limit for --discussion (1-10,
+                            default 5)
   -i, --interactive         Start a session: history is kept between tasks,
                             approvals are answered inline, Ctrl-C cancels
                             the running task instead of the session
   -s, --serve [port]        Serve the web console (default port 7777)
       --host <address>      Address to bind the console to (default 127.0.0.1)
   -w, -C, --workspace <dir> Directory the agent may act in (default: cwd)
+      --project <id>      Run inside the registered project <id>: the root
+                          comes from the project registry (-w must match it
+                          or be omitted), and the run becomes project-aware
+      --migrate <id>      Copy the legacy .agent/ state of registered
+                          project <id> into the central project store
+                          (idempotent, old files are kept; with -w the id
+                          is registered at that directory first)
   -f, --file <path>         Read the task from a file
   -a, --approve <mode>      auto | prompt | deny (default: prompt)
       --dry-run             Refuse anything needing approval, so nothing is changed
@@ -196,6 +210,16 @@ function parseArguments(argv) {
                     requireValue(argument, argv[++index]);
                 break;
 
+            case "--project":
+                options.project =
+                    requireValue(argument, argv[++index]);
+                break;
+
+            case "--migrate":
+                options.migrate =
+                    requireValue(argument, argv[++index]);
+                break;
+
             case "-f":
             case "--file":
                 options.file =
@@ -219,6 +243,23 @@ function parseArguments(argv) {
 
             case "--max-cycles":
                 options.maxCycles =
+                    requireNumber(argument, argv[++index]);
+                break;
+
+            case "--discussion":
+                options.discussion = true;
+                break;
+
+            case "--personas":
+                options.personas =
+                    requireValue(argument, argv[++index])
+                        .split(",")
+                        .map(id => id.trim())
+                        .filter(id => id !== "");
+                break;
+
+            case "--max-rounds":
+                options.maxRounds =
                     requireNumber(argument, argv[++index]);
                 break;
 
@@ -340,6 +381,85 @@ function applyEnvironment(options) {
         }
 
         environment.WORKSPACE_ROOT = resolved;
+    }
+
+    /*
+    | EXECUTION_PLAN Phase 7 گام ۱: --project <id> binds the run to a
+    | registered project. The root is ALWAYS taken from the registry —
+    | a -w that disagrees with the registered root is an error, and
+    | without -w the registered root becomes the workspace (rule: never
+    | trust identity arguments over registry data).
+    */
+    if (options.project) {
+
+        const projects =
+            require(path.join(REPO_ROOT, "agent", "projects", "index.js"));
+
+        const { canonicalizeRoot } =
+            require(path.join(REPO_ROOT, "agent", "projects", "ProjectRegistry.js"));
+
+        let record;
+
+        try {
+
+            record =
+                projects.registry().get(options.project);
+
+        } catch (error) {
+
+            fail(
+                `${error.message} ` +
+                "(--project names a record of the central project registry; " +
+                "register the project there first)"
+            );
+
+        }
+
+        const projectRoot = record.rootPath;
+
+        if (options.workspace) {
+
+            if (
+                canonicalizeRoot(environment.WORKSPACE_ROOT) !==
+                projectRoot
+            ) {
+
+                fail(
+                    `--project ${options.project} is rooted at ${projectRoot}, ` +
+                    `which does not match --workspace ${options.workspace}; ` +
+                    "the project root always comes from the registry, not from flags " +
+                    "(drop -w to run on the registered root)"
+                );
+
+            }
+
+        } else {
+
+            if (
+                !fs.existsSync(projectRoot) ||
+                !fs.statSync(projectRoot).isDirectory()
+            ) {
+
+                fail(
+                    `--project ${options.project} is rooted at ${projectRoot}, ` +
+                    "but that directory does not exist"
+                );
+
+            }
+
+            environment.WORKSPACE_ROOT = projectRoot;
+
+        }
+
+        /* Selecting a project asks for the project-aware execution
+           bundle: scoped run context (Phase 2/3), per-run isolation and
+           the project_context prompt message (Phase 5) engage together.
+           Without --project every flag stays untouched, so today's
+           single-project behavior is bit-identical. */
+        environment.PROJECT_CONTEXT_MODE = "modular";
+        environment.RUN_CONTEXT_MODE = "modular";
+        environment.PROMPT_BUILDER_MODE = "modular";
+
     }
 
     if (options.approve) {
@@ -597,7 +717,11 @@ async function runUntilDone(runtime, options, task) {
                     task:
                         cycle === 1
                             ? task
-                            : "Continue the plan: read it, take the next open step, verify it, and record the result."
+                            : "Continue the plan: read it, take the next open step, verify it, and record the result.",
+
+                    ...(options.project
+                        ? { projectId: options.project }
+                        : {})
                 });
 
             if (
@@ -671,6 +795,315 @@ async function runUntilDone(runtime, options, task) {
 }
 
 
+/*
+| Discussion mode: the task goes to a group of specialist personas
+| instead of the delegation tree. Round progress prints on stderr, the
+| observer's final report on stdout, and --json switches the report to
+| the machine-readable result.
+*/
+
+async function runDiscussion(runtime, options) {
+
+    /* ---------------------------------------------------------------- */
+
+    let task =
+        options.positional.join(" ").trim();
+
+    if (options.file) {
+
+        const resolved =
+            path.resolve(options.file);
+
+        if (!fs.existsSync(resolved)) {
+            fail(`task file not found: ${options.file}`);
+        }
+
+        task =
+            fs.readFileSync(resolved, "utf8").trim();
+    }
+
+    if (!task) {
+
+        const piped =
+            (await readStdin()).trim();
+
+        if (piped) {
+            task = piped;
+        }
+    }
+
+    if (!task && process.env.AGENT_TASK) {
+        task = process.env.AGENT_TASK.trim();
+    }
+
+    if (!task) {
+        fail("no task given: pass it as an argument, on stdin, with --file, or in AGENT_TASK");
+    }
+
+    if (!options.personas || options.personas.length === 0) {
+        fail("--discussion needs --personas, e.g. --personas security,backend,frontend");
+    }
+
+    const {
+        DiscussionEngine,
+        createLlmCaller,
+        PERSONAS
+    } =
+        require(path.join(REPO_ROOT, "agent", "discussion"));
+
+    const available = PERSONAS.map(persona => persona.id);
+
+    for (const persona of options.personas) {
+
+        if (!available.includes(persona)) {
+            fail(`unknown persona "${persona}"; available: ${available.join(", ")}`);
+        }
+    }
+
+    const maxRounds =
+        options.maxRounds || 5;
+
+    /*
+    | The workspace summary is the one context the personas share, so
+    | they do not need tools in the MVP: the report is reasoning, and
+    | the main run can act on it afterwards.
+    */
+
+    const workspace =
+        runtime.createRuntimeContext().runtime.workspace_root;
+
+    const workspaceContext =
+        `Workspace root: ${workspace}\n` +
+        `Platform: ${process.platform} (${process.version})`;
+
+    if (!options.quiet) {
+        process.stderr.write(
+            `agent: discussion started, ${options.personas.length} personas, max ${maxRounds} rounds\n`
+        );
+    }
+
+    const engine =
+        new DiscussionEngine({
+            task,
+            personas: options.personas,
+            maxRounds,
+            /* the panel shares the runtime's parallel-agent budget */
+            maxParallel: runtime.settings.get("MAX_PARALLEL_AGENTS"),
+            llmCaller: createLlmCaller({ callAI: runtime.callAI }),
+            workspaceContext,
+            onMessage: message => {
+
+                if (!options.quiet) {
+                    process.stderr.write(
+                        `  round ${message.round}: ${message.persona} contributed ${message.content.length} chars\n`
+                    );
+                }
+            },
+            onRound: (round, observerDecision) => {
+
+                if (!options.quiet) {
+                    process.stderr.write(
+                        `agent: round ${round.round} complete, observer says ${
+                            observerDecision
+                                ? observerDecision.decision
+                                : "pending"
+                        }\n`
+                    );
+                }
+            }
+        });
+
+    let result;
+
+    try {
+
+        result =
+            await engine.run();
+
+    } catch (error) {
+
+        process.stderr.write(
+            `\nagent: discussion failed\n${error.stack || error.message}\n`
+        );
+
+        return EXIT.FAILED;
+    }
+
+    if (options.json) {
+
+        process.stdout.write(
+            `${JSON.stringify(result, null, 2)}\n`
+        );
+
+        return EXIT.SUCCESS;
+    }
+
+    const report = result.final_report || {};
+
+    process.stdout.write(
+        `\nDiscussion complete: ${result.total_rounds} round${result.total_rounds === 1 ? "" : "s"}${
+            result.stopped_reason
+                ? ` (stopped: ${result.stopped_reason})`
+                : result.hit_max_rounds
+                    ? " (max rounds reached)"
+                    : ""
+        }\n\n`
+    );
+
+    if (report.summary) {
+        process.stdout.write(`Summary\n  ${report.summary}\n\n`);
+    }
+
+    if (report.agreed_points?.length) {
+        process.stdout.write("Agreed\n");
+
+        for (const point of report.agreed_points) {
+            process.stdout.write(`  - ${point}\n`);
+        }
+
+        process.stdout.write("\n");
+    }
+
+    if (report.unresolved?.length) {
+        process.stdout.write("Unresolved\n");
+
+        for (const item of report.unresolved) {
+            process.stdout.write(`  - ${item.topic}\n`);
+
+            for (const side of item.sides || []) {
+                process.stdout.write(
+                    `      ${side.persona}: ${side.reasoning}\n`
+                );
+            }
+        }
+
+        process.stdout.write("\n");
+    }
+
+    if (report.next_steps?.length) {
+        process.stdout.write("Next steps\n");
+
+        for (const step of report.next_steps) {
+            process.stdout.write(
+                `  ${step.order}. [${step.layer}] ${step.action}\n`
+            );
+        }
+    }
+
+    return EXIT.SUCCESS;
+}
+
+
+/*
+| EXECUTION_PLAN Phase 8 گام ۳: --migrate <id> copies the legacy .agent/
+| state of a registered project into its central data root (idempotent,
+| old files kept). The source root comes from the registry record —
+| never from a flag (rule 9); with -w an id the registry does not know
+| is REGISTERED at that directory first, so adopting a legacy workspace
+| as a project plus migrating its state is one step.
+*/
+function runMigration(projectId, options) {
+
+    if (options.project) {
+
+        fail("--migrate and --project are separate operations");
+
+    }
+
+    if (
+        options.interactive ||
+        options.serve ||
+        options.untilDone ||
+        options.discussion
+    ) {
+
+        fail("--migrate is a one-shot operation and cannot be combined with -i, -s, --until-done or --discussion");
+
+    }
+
+    const projects =
+        require(path.join(REPO_ROOT, "agent", "projects", "index.js"));
+
+    const registry = projects.registry();
+
+    let record;
+
+    try {
+
+        record = registry.get(projectId);
+
+    } catch {
+
+        /* An id the registry does not know can still be adopted: -w
+           names the directory it should be registered at. Without -w
+           there is no source root we are allowed to assume. */
+
+        if (!options.workspace) {
+
+            fail(
+                `Unknown project: ${projectId} ` +
+                "(--migrate names a record of the central project registry; " +
+                "pass -w <dir> to register that directory under the id first)"
+            );
+
+        }
+
+        record = registry.register({
+            id: projectId,
+            name: projectId,
+            rootPath: options.workspace
+        });
+
+        process.stderr.write(
+            `agent: registered project ${record.id} at ${record.rootPath}\n`
+        );
+
+    }
+
+    const report =
+        projects.ProjectMigration.migrateProject(record);
+
+    const summary =
+        `agent: migration for ${report.project_id}\n` +
+        `  source : ${report.source}${report.source_present ? "" : " (no legacy state found)"}\n` +
+        `  target : ${report.target}\n` +
+        `  copied : ${report.copied.length} file(s), ` +
+        `skipped ${report.skipped.length} (already migrated), ` +
+        `errors ${report.errors.length}\n`;
+
+    process.stderr.write(summary);
+
+    for (const entry of report.errors) {
+
+        process.stderr.write(
+            `  error : ${entry.file || "target"} — ${entry.error}\n`
+        );
+
+    }
+
+    if (report.copied.length > 0) {
+
+        process.stderr.write(
+            `  files : ${report.copied.join(", ")}\n`
+        );
+
+    } else if (report.errors.length === 0) {
+
+        process.stderr.write(
+            "  nothing new to migrate (idempotent re-run)\n"
+        );
+
+    }
+
+    process.exit(
+        report.errors.length > 0
+            ? EXIT.FAILED
+            : EXIT.SUCCESS
+    );
+
+}
+
+
 async function main() {
 
     const options =
@@ -707,6 +1140,14 @@ async function main() {
 
     const flags =
         applyEnvironment(options);
+
+    /* گام ۳ migration is handled before the runtime is loaded: it only
+       needs the registry and the two data roots. */
+    if (options.migrate) {
+
+        runMigration(options.migrate, options);
+
+    }
 
     if (
         !options.interactive &&
@@ -861,6 +1302,14 @@ async function main() {
         process.exit(code);
     }
 
+    if (options.discussion) {
+
+        const code =
+            await runDiscussion(runtime, options);
+
+        process.exit(code);
+    }
+
     /* ---------------------------------------------------------------- */
 
     let task =
@@ -921,7 +1370,12 @@ async function main() {
 
     try {
 
-        action = await runtime.runAgent();
+        action =
+            await runtime.runAgent(
+                options.project
+                    ? { projectId: options.project }
+                    : undefined
+            );
 
     } catch (error) {
 
@@ -956,9 +1410,10 @@ async function main() {
             );
         }
 
-        require(
-            path.join(REPO_ROOT, "agent", "tools")
-        ).shutdown();
+        await runtime.application.lifecycle.shutdown({
+            tools: require(path.join(REPO_ROOT, "agent", "tools")),
+            eventstore: runtime.eventstore
+        });
 
         process.exit(
             runtime.isRunCancelled()
@@ -967,9 +1422,10 @@ async function main() {
         );
     }
 
-    require(
-        path.join(REPO_ROOT, "agent", "tools")
-    ).shutdown();
+    await runtime.application.lifecycle.shutdown({
+        tools: require(path.join(REPO_ROOT, "agent", "tools")),
+        eventstore: runtime.eventstore
+    });
 
     if (options.json) {
 
