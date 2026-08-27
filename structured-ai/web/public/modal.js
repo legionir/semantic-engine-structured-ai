@@ -383,6 +383,17 @@ const Modal = (() => {
 })();
 
 
+/*
+| Two consumers, two mechanisms. A classic script can share a top-level `const`,
+| but a module cannot see one — so the same object is also published on
+| globalThis, which is how web/public/app/dom.js reaches it (phase 24). Assigning
+| it here keeps modal.js loadable as a classic script by anything that still does.
+*/
+
+if (typeof globalThis !== "undefined") {
+    globalThis.Modal = Modal;
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = Modal;
 }

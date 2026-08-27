@@ -58,6 +58,7 @@ Semantic Engine یک package مستقل TypeScript برای indexing کد، symb
 | `web/server.js` | پوستهٔ سازگاری کنسول؛ به `web/server/` می‌رسد (فاز ۲۳) |
 | `web/server/` | router، middleware، SSE hub، controllerها، serviceها و serializerهای کنسول وب |
 | `web/public/` | frontend console و visualizer |
+| `web/public/app/` | کنسول فرانت‌اند: ماژول‌های ES نیتیو (بدون build step) با `store.js` که state را به ۱۱ دامنه تقسیم می‌کند (فاز ۲۴) |
 
 **اجرای CLI:**
 

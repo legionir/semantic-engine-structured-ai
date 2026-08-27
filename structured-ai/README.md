@@ -101,6 +101,26 @@ structured-ai/
 │   │   └── serializers/         # State (snapshot)، Session (سطرهای pending/call)،
 │   │                            #   Error (خطا←status)
 │   └── public/                  # دارایی‌های فرانت‌اند کنسول و Visualizer
+│       ├── app.js               # پوستهٔ سازگاری (CJS)؛ صفحه /app/main.js را بار می‌کند
+│       ├── app/                 # کنسول به‌شکل ماژول‌های ES نیتیو (فاز ۲۴، بدون build step)
+│       │   ├── main.js          # wiring صفحه + سه فراخوان شروع
+│       │   ├── store.js         # state به ۱۱ دامنه: runtime/conversation/execution/
+│       │   │                    #   plan/event/approval/settings/mcp/history/
+│       │   │                    #   discussion/project (به‌جای یک شیء ۴۳ کلیدی)
+│       │   ├── dom.js           # el/node/definition و دسترسی به Modal
+│       │   ├── api.js           # همهٔ fetchها، از جمله eventsUrl
+│       │   ├── event-stream.js  # connect + reducer (apply/applySnapshot)
+│       │   ├── task-runner.js   # ثبت تسک، صف برچسب‌دار، لغو، پاک‌کردن
+│       │   ├── formatters.js    # shorten/statusIcon/eventLabel/…
+│       │   ├── markdown.js      # رندر markdown بدون تزریق HTML
+│       │   ├── direction.js     # تشخیص RTL/LTR
+│       │   ├── chat.js          # حباب‌ها و بلوک اجرای هر iteration
+│       │   ├── execution-view.js/plan-view.js/event-view.js/
+│       │   ├── settings-view.js/mcp-view.js/discussion-view.js/
+│       │   ├── approvals-view.js/history-view.js/modal-manager.js
+│       │   └── project-state.js/project-switcher.js/project-dashboard.js
+│       ├── modal.js             # سرویس modal (کلاسیک؛ globalThis.Modal را هم ست می‌کند)
+│       └── index.html           # <script type="module" src="/app/main.js">
 ├── test/                        # سوئیت کامل آزمون‌های یکپارچگی و ران‌تایم
 └── semantic-engine/             # موتور مستقل تحلیل کد و گراف معنایی
 ```
@@ -519,7 +539,8 @@ npm run test:tools        # آزمون کلیه ابزارهای سیستمی
 npm run test:runtime      # آزمون موتور پالیسی، ران‌تایم و کانتکست
 npm run test:semantic     # آزمون موتور معنایی و ابزارهای code_*
 npm run test:mcp          # آزمون چهار ترنسپورت، کاتالوگ و پالیسی MCP
-npm run test:web:all      # سرور وب: رفتار، قرارداد ۷۷ مسیر، و مرزهای لایه
+npm run test:web:all      # سرور وب + فرانت‌اند: رفتار، قرارداد مسیرها، مرزهای لایه
+npm run test:web:frontend # گراف ماژول‌های کنسول: importها، idها، sliceهای state، سرو MIME
 npm run test:web:routes   # فقط قرارداد مسیرها (record: npm run test:web:routes:record)
 npm run test:web:layer    # فقط ساختار/سیم‌کشی web/server/ (بدون سوکت، تقریباً)
 npm run test:web          # آزمون رفتار سرور وب کنسول از راه HTTP

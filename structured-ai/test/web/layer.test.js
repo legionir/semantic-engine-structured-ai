@@ -557,7 +557,35 @@ async function main() {
         | dropped route fails here rather than as a blank tab.
         */
 
-        const app = fs.readFileSync(path.join(REPO, "web", "public", "app.js"), "utf8");
+        /*
+        | Phase 24 split app.js into web/public/app/, so the frontend is read as a
+        | tree here — the same way the policy layer's scans read the console as a
+        | tree. Narrowing this back to one file would let a moved fetch drop out of
+        | the router's coverage and still report green.
+        */
+
+        const frontendFiles = [path.join(REPO, "web", "public", "app.js")];
+
+        const walk = dir => {
+
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+
+                const full = path.join(dir, entry.name);
+
+                if (entry.isDirectory()) walk(full);
+                else if (entry.name.endsWith(".js")) frontendFiles.push(full);
+            }
+        };
+
+        walk(path.join(REPO, "web", "public", "app"));
+
+        const app = frontendFiles.map(file => fs.readFileSync(file, "utf8")).join("\n");
+
+        assert.ok(
+            frontendFiles.length > 1,
+            "the console frontend is a module tree now; a single-file scan proves nothing"
+        );
+
         const router = readSource("Router.js");
 
         const called = new Set();
