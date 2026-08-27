@@ -24,6 +24,7 @@ import * as http from 'http';
 import * as net from 'net';
 import * as path from 'path';
 import type { Duplex } from 'stream';
+import { DurationSummary } from './metrics';
 import { GatewayAuth } from './GatewayAuth';
 import { proxyRequest } from './GatewayProxy';
 import { ProjectRegistry } from '../core/config/ProjectRegistry';
@@ -70,6 +71,7 @@ export class GatewayServer {
   private activeRequests = 0;
   private requestsTotal = 0;
   private proxyErrorsTotal = 0;
+  private readonly durations = new DurationSummary();
   private readonly startedAt: number;
 
   constructor(private readonly options: GatewayServerOptions) {
@@ -186,8 +188,10 @@ export class GatewayServer {
     const url = new URL(req.url ?? '/', 'http://gateway.local');
     const pathname = url.pathname;
     const method = req.method ?? 'GET';
+    const startedAt = Date.now();
 
     this.requestsTotal += 1;
+    res.on('finish', () => this.durations.record(Date.now() - startedAt));
 
     /* سلامت خودِ Gateway هیچ دادهٔ پروژه‌ای ندارد، پس باز است. */
     if (pathname === '/health' || pathname === '/api/v1/gateway/health') {
@@ -259,6 +263,12 @@ export class GatewayServer {
         return;
       }
       this.send(res, 405, { error: `method ${method} not allowed` });
+      return;
+    }
+
+    const healthRoute = /^\/api\/v1\/gateway\/projects\/([^/]+)\/health$/.exec(pathname);
+    if (healthRoute && method === 'GET') {
+      await this.projectHealth(res, healthRoute[1]!, record);
       return;
     }
 
@@ -484,10 +494,11 @@ export class GatewayServer {
       gateway_workers_ready: workers.filter(w => w.state === 'ready').length,
       gateway_workers_unhealthy: workers.filter(w => w.degraded || w.state === 'crashed').length,
       gateway_requests_total: this.requestsTotal,
+      gateway_request_duration_ms: this.durations.snapshot(),
       gateway_active_requests: this.activeRequests,
       gateway_proxy_errors_total: this.proxyErrorsTotal,
       gateway_worker_restarts_total: workers.reduce((sum, w) => sum + w.restartCount, 0),
-      gateway_index_jobs_active: 0,
+      gateway_index_jobs_active: this.supervisor.activeIndexJobsCount,
     };
   }
 
@@ -683,6 +694,48 @@ export class GatewayServer {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * health detail یک پروژه (فاز ۱۳): وضعیت خود worker از `/internal/health`
+   * به‌علاوهٔ آنچه فقط Gateway می‌داند — تعداد restart، آخرین خطا و اینکه
+   * degraded شده یا نه. خرابی یک پروژه اینجا هم فقط همان پروژه را قرمز
+   * می‌کند، نه بقیه را.
+   */
+  private async projectHealth(
+    res: http.ServerResponse,
+    projectId: string,
+    record: NonNullable<ReturnType<GatewayAuth['verify']>['record']>
+  ): Promise<void> {
+    if (!this.registry.get(projectId)) {
+      this.send(res, 404, { error: `unknown project: ${projectId}` });
+      return;
+    }
+    if (!this.auth.canAccessProject(record, projectId)) {
+      this.send(res, 403, { error: `token cannot access project ${projectId}` });
+      return;
+    }
+
+    const summary = this.projectEntry(projectId);
+    const diagnostics = this.supervisor.diagnostics(projectId);
+    const worker = this.supervisor.get(projectId);
+
+    let workerHealth: Record<string, unknown> | null = null;
+    if (worker && worker.exitCode === null) {
+      try {
+        const reply = await worker.request('GET', '/internal/health');
+        workerHealth = reply.json;
+      } catch {
+        workerHealth = null;
+      }
+    }
+
+    this.send(res, 200, {
+      projectId,
+      ...summary,
+      health: workerHealth,
+      ...diagnostics,
+    });
   }
 
   private async proxyToProject(

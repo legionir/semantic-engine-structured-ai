@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
+import { WORKER_METRIC_KEYS } from '../../gateway/metrics';
 
 const PACKAGE_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(PACKAGE_ROOT, 'bin', 'semantic-engine.js');
@@ -150,15 +151,18 @@ describeIfBuilt('semantic-engine worker', () => {
 
     const metrics = await call(socketPath, 'GET', '/internal/metrics', auth);
     expect(metrics.status).toBe(200);
-    for (const key of [
-      'worker_uptime_seconds',
-      'worker_memory_bytes',
-      'worker_files_total',
-      'worker_symbols_total',
-      'worker_index_state',
-    ]) {
-      expect(metrics.json).toHaveProperty(key);
-    }
+
+    /*
+    | قرارداد کامل سنجه‌های worker (فاز ۱۳): نه کلید اضافه، نه کلید کم.
+    | یک سنجهٔ تغییرنام‌یافته باید اینجا بشکند، نه بی‌صدا در داشبورد.
+    */
+    expect(Object.keys(metrics.json).sort()).toEqual([...WORKER_METRIC_KEYS].sort());
+    const numbers = metrics.json as Record<string, unknown>;
+    expect(typeof numbers['worker_cpu_percent']).toBe('number');
+    expect(typeof numbers['worker_index_duration_ms']).toBe('number');
+    expect(typeof numbers['worker_index_failures_total']).toBe('number');
+    expect(typeof numbers['worker_active_requests']).toBe('number');
+    expect(numbers['worker_uptime_seconds']).toBeGreaterThanOrEqual(0);
 
     /* The internal surface is not open. */
     const anonymous = await call(socketPath, 'GET', '/internal/ready');

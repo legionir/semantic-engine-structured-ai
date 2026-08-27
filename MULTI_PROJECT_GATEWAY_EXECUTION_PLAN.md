@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۲ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۳ و ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۱۳ 🟢 (۲۰۲۶-۰۸-۲۶) · فاز ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -756,23 +756,23 @@ resolve کردن `projectId` **پیش از** upgrade، ثابت ماندن conte
 
 ---
 
-## [🔴] فاز ۱۳: Metrics، observability، دستور `cache` و استقرار
+## [🟢] فاز ۱۳: Metrics، observability، دستور `cache` و استقرار
 
 **هدف:** سنجه‌ها، پاک‌سازی امن artifactها و استقرار gateway. معادل گام ۱۴ و گام ۱۶ (cleanup) و گام ۱۷ (بخش استقرار) پلن مرجع.
 
-### [🔴] گام ۱: metrics
+### [🟢] گام ۱: metrics
 
 Gateway: `gateway_projects_total`, `gateway_workers_ready`, `gateway_workers_unhealthy`, `gateway_requests_total`, `gateway_request_duration_ms`, `gateway_active_requests`, `gateway_worker_restarts_total`, `gateway_proxy_errors_total`, `gateway_index_jobs_active`. Worker: `worker_uptime_seconds`, `worker_memory_bytes`, `worker_cpu_percent`, `worker_active_requests`, `worker_queue_size`, `worker_index_duration_ms`, `worker_index_failures_total`, `worker_files_total`, `worker_symbols_total`, `worker_dependencies_total`, `worker_vector_chunks_total`, `worker_restart_count` — در `/api/v1/gateway/metrics` و `/internal/metrics`، با schema validation در تست.
 
-### [🔴] گام ۲: health detail در UI
+### [🟢] گام ۲: health detail در UI
 
 برای هر worker: process/index/watcher/SQLite/blueprint/vector/LSP health، آخرین عملیات موفق، آخرین خطا، تاریخچهٔ restart.
 
-### [🔴] گام ۳: دستور `cache`
+### [🟢] گام ۳: دستور `cache`
 
 `semantic-engine cache list | clean --project <id> | clean --older-than 30d | export --project <id> | import --project <id>` در `src/cli/main.ts`؛ **گاردهای ایمنی:** هرگز هیچ مسیری زیر `workspaceRoot` پاک نشود؛ عملیات فقط داخل `artifactRoot`؛ dry-run پیش‌فرض برای `clean --older-than`.
 
-### [🔴] گام ۴: استقرار و مستندسازی عملیاتی
+### [🟢] گام ۴: استقرار و مستندسازی عملیاتی
 
 Dockerfile/compose برای gateway (پورت عمومی فقط gateway؛ workerها loopback/socket)، volume برای `SEMANTIC_ENGINE_DATA_DIR`، healthcheck، و بخش «اجرا در container» در README.
 
@@ -781,6 +781,25 @@ Dockerfile/compose برای gateway (پورت عمومی فقط gateway؛ worker
 - `cache clean --project <id>` فقط `artifactRoot` همان پروژه را پاک کند و source root دست‌نخورده بماند (تست با fixture).
 - خطای یک worker در metrics و UI ثبت شود ولی health بقیه سالم بماند (تست).
 - `docker compose config` معتبر و `npm run build && npm test` سبز.
+
+### وضعیت اجرای فاز ۱۳ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/gateway/metrics.ts` (واژگان سنجه‌ها + `DurationSummary` + `cpuPercent`)، `src/cli/commands/cache-command.ts` + تست‌های `gateway/metrics.test.ts` (۱۰) و `cli/commands/cacheCommand.test.ts` (۸).
+**فایل‌های تغییرکرده:** `gateway/GatewayServer.ts` (+`gateway_request_duration_ms`، +`gateway_index_jobs_active` واقعی، +`GET /api/v1/gateway/projects/:id/health`)، `gateway/WorkerSupervisor.ts` (+`diagnostics` با تاریخچهٔ restart و آخرین خطا، +`activeIndexJobsCount`، رویدادهای خودِ پروسه هم ثبت می‌شوند)، `cli/commands/worker-command.ts` (سنجه‌های کامل worker: cpu/active requests/index duration/failures/restart count)، `cli/main.ts` (+دستور `cache` و help)، `public/gateway.{js,html,css}` (پنل health با ۷ بخش + تاریخچه)، `structured-ai/docker-compose.yml` (+سرویس `semantic-gateway`)، `WorkerSupervisor.test.ts` (+۱ تست)، `workerCommand.test.ts` (قرارداد دقیق کلیدهای worker).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 200 passed / 200 total`، `Tests: 2729 passed / 2729 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۱۳: ۱۹۸ suite و ۲۷۱۰ تست → +۲ suite و +۱۹ تست). پس از suite هیچ worker زنده نماند و چیزی در data root واقعی نوشته نشد.
+- **قرارداد سنجه‌ها به‌شکل «دقیقاً همین کلیدها» سنجیده شد:** `Object.keys(worker /internal/metrics).sort() === WORKER_METRIC_KEYS.sort()` روی worker واقعی، و همان بررسی برای `GATEWAY_METRIC_KEYS` روی Gateway واقعی؛ `gateway_request_duration_ms` پس از چند درخواست `count > 0` داشت و `gateway_index_jobs_active` از supervisor خوانده شد.
+- **خطای یک worker بقیه را خراب نکرد:** با کشتن worker A با `SIGKILL`، `diagnostics(A)` تاریخچهٔ restart و `lastError` گرفت در حالی که `diagnostics(B)` خالی ماند و `health(B).state === 'ready'` بود؛ `/health` خود Gateway هم ۲۰۰ ماند.
+- **health detail:** `GET /api/v1/gateway/projects/:id/health` → ۲۰۰ با `projectId`، `health` (وقتی worker بالا نیست `null`)، `restartHistory` و `degraded`؛ پروژهٔ ناشناخته → ۴۰۴ و توکنِ پروژهٔ دیگر → ۴۰۳، بدون اثر روی پروژهٔ مجاز.
+- **`cache`:** `list` اندازه و تعداد فایل هر پروژه را داد · `clean --project` فقط همان پوشه را برداشت و source tree دست‌نخورده ماند (`readdirSync(workspace) === ['src']`) · `clean --older-than 1d` پیش‌فرض **dry run** بود و با `--force` حذف کرد · **گاردها:** ورودی registry که workspace‌اش همان پوشهٔ کش بود → `refused: overlaps the registered workspace` و پوشه باقی ماند؛ `clean --project ..` → بدون حذف · `export`/`import` هر سه فایل را جابه‌جا کردند · زیردستور ناشناخته → exit 2.
+- **استقرار:** `docker-compose.yml` با پارسر YAML اعتبارسنجی شد — دو سرویس (`semantic-engine`، `semantic-gateway`)، سرویس gateway با `command: ["gateway", …]`، تنها یک port منتشرشده، volume مشترک workspace + `engine-data:/data`، `read_only: true` و healthcheck روی `/health`.
+
+**دو نکتهٔ اجرایی (ثبت‌شده در ADR بخش ۱۴):**
+
+1. `worker_restart_count` از راه `SEMANTIC_ENGINE_WORKER_RESTART_COUNT` به پروسهٔ فرزند داده می‌شود، چون فقط supervisor می‌داند worker چند بار بالا آمده.
+2. رویدادهای خودِ پروسهٔ worker (crash/exit) هم در تاریخچهٔ diagnostics ثبت می‌شوند؛ پیش از این فقط رویدادهای مانیتور ثبت می‌شد و crash واقعی در «آخرین خطا» دیده نمی‌شد (با تست پیدا و رفع شد).
 
 ---
 

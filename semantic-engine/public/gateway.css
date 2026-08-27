@@ -116,3 +116,12 @@ label.field .error { grid-column: 2; color: var(--crashed); font-size: 12px; min
 
 .error { color: var(--crashed); font-size: 12px; margin: 8px 0 0; }
 .form-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.health-item { border: 1px solid var(--line); border-radius: 6px; padding: 8px; display: flex; justify-content: space-between; font-size: 12px; }
+.health-ok strong { color: var(--ready); }
+.health-warn strong { color: var(--indexing); }
+.health-off strong { color: var(--muted); }
+.health-unknown strong { color: var(--muted); }
+.panel h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); }
+.panel ul { margin: 0; padding-left: 18px; font-size: 12px; }

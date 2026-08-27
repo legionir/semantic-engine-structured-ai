@@ -17,6 +17,7 @@ import { runDoctor } from './commands/doctor-command';
 import { runServe, runUi, runStart } from './commands/serve-command';
 import { runWatch } from './commands/watch-command';
 import { runWorker } from './commands/worker-command';
+import { runCache } from './commands/cache-command';
 import { runGateway } from './commands/gateway-command';
 import { createLoggerFromEnv } from '../host/Logger';
 
@@ -31,6 +32,7 @@ const COMMANDS: Record<
   watch: runWatch,
   worker: runWorker,
   gateway: runGateway,
+  cache: runCache,
   ui: runUi,
   start: runStart,
 };
@@ -50,6 +52,7 @@ commands:
   gateway               serve many projects on one port, one worker each
   query [tool] [params] run an AI tool against an existing index
   doctor                check this environment
+  cache                 inspect or clean generated data (list|clean|export|import)
 
 ui & serve options:
   --web / --ui          launch full Web Visualizer UI and REST/LoD APIs (default for 'ui')
@@ -109,6 +112,14 @@ embedding:
   --embedding-base-url and --embedding-model. The API key is read from the
   environment variable named by --embedding-api-key-env, never from the command
   line, so it cannot end up in a process listing or a log.
+
+cache options:
+  list                  what is cached, and how big (default subcommand)
+  clean --project <id>  delete one project's artifacts (never the source tree)
+  clean --older-than <n[s|m|h|d]> [--force]   dry run unless --force
+  export --project <id> --to <dir>
+  import --project <id> --from <dir>
+  --data-dir <dir>      data directory to operate on (default: platform data dir)
 
 artifact location:
   generated data is written to the user data directory

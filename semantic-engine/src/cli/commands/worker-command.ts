@@ -30,6 +30,7 @@ import { SemanticEngineMcpServer } from '../../ai/mcp/SemanticEngineMcpServer';
 import { loadBlueprintBeside } from '../../ai/discovery/loadBlueprint';
 import type { RouteDefinition } from '../../server/types';
 import { ProjectWebSocketChannel } from '../../server/wsProjectChannel';
+import { cpuPercent } from '../../gateway/metrics';
 
 interface WorkerStatus {
   readonly ok: boolean;
@@ -149,6 +150,11 @@ export async function runWorker(
   const startedAt = Date.now();
   let watcher: StartedChild | null = null;
   let reindexing = false;
+  /* سنجه‌های فاز ۱۳ — چیزی که فقط این پروسه می‌داند. */
+  let activeRequests = 0;
+  let indexDurationMs = 0;
+  let indexFailures = 0;
+  const restartCount = Number(process.env['SEMANTIC_ENGINE_WORKER_RESTART_COUNT'] ?? 0);
 
   const status = (): WorkerStatus => {
     const current = server.projects.getProject(paths.projectId);
@@ -223,13 +229,16 @@ export async function runWorker(
           json: {
             worker_uptime_seconds: Math.round((Date.now() - startedAt) / 1000),
             worker_memory_bytes: process.memoryUsage().rss,
-            worker_active_requests: 0,
+            worker_cpu_percent: cpuPercent(process.cpuUsage(), Date.now() - startedAt),
+            worker_active_requests: activeRequests,
             worker_queue_size: snapshot.queueSize,
+            worker_index_duration_ms: indexDurationMs,
+            worker_index_failures_total: indexFailures,
             worker_files_total: snapshot.files,
             worker_symbols_total: snapshot.symbols,
             worker_dependencies_total: snapshot.dependencies,
             worker_vector_chunks_total: snapshot.vectorChunks,
-            worker_restart_count: 0,
+            worker_restart_count: Number.isFinite(restartCount) ? restartCount : 0,
             worker_index_state: snapshot.indexState,
           },
         };
@@ -244,9 +253,17 @@ export async function runWorker(
           return { status: 409, json: { ok: false, error: 'an index run is already in progress' } };
         }
         reindexing = true;
+        const reindexStartedAt = Date.now();
         void runIndex(args, context)
-          .then(() => server.projects.reloadProject(paths.projectId))
-          .catch(() => undefined)
+          .then(result => {
+            indexDurationMs = Date.now() - reindexStartedAt;
+            if (result.code !== EXIT.ok) indexFailures += 1;
+            return server.projects.reloadProject(paths.projectId);
+          })
+          .catch(() => {
+            indexDurationMs = Date.now() - reindexStartedAt;
+            indexFailures += 1;
+          })
           .finally(() => {
             reindexing = false;
           });
@@ -317,9 +334,11 @@ export async function runWorker(
       });
       await mcpServer.connectTransport(transport);
 
+      activeRequests += 1;
       try {
         await transport.handleRequest(ctx.req, ctx.res, ctx.body);
       } finally {
+        activeRequests -= 1;
         await transport.close?.();
         await mcpServer.close();
       }

@@ -66,6 +66,11 @@ export class WorkerStartError extends Error {
   }
 }
 
+export interface WorkerDiagnostics {
+  readonly lastError?: string;
+  readonly restartHistory: readonly { at: string; reason: string }[];
+}
+
 export interface WorkerSummary {
   readonly projectId: string;
   readonly name: string;
@@ -111,17 +116,50 @@ export class WorkerSupervisor {
   private readonly monitor: WorkerHealthMonitor;
   private healthTimer: NodeJS.Timeout | null = null;
   private activeIndexJobs = 0;
+  /** آخرین خطا و تاریخچهٔ restart هر پروژه — برای health detail در UI. */
+  private readonly diagnosticsByProject = new Map<
+    string,
+    { lastError?: string; restartHistory: { at: string; reason: string }[] }
+  >();
 
   constructor(private readonly options: WorkerSupervisorOptions) {
+    const forward = options.onEvent;
     this.monitor = new WorkerHealthMonitor({
       policy: options.restartPolicy ?? DEFAULT_RESTART_POLICY,
       ...(options.now ? { now: options.now } : {}),
       ...(options.sleep ? { sleep: options.sleep } : {}),
-      ...(options.onEvent ? { onEvent: options.onEvent } : {}),
+      /* رویدادها هم به بیرون می‌روند هم در تاریخچهٔ خود پروژه می‌نشینند. */
+      onEvent: event => {
+        this.recordEvent(event);
+        forward?.(event);
+      },
       restart: async projectId => {
         await this.restart(projectId);
       },
     });
+  }
+
+  private recordEvent(event: WorkerEvent): void {
+    if (event.kind !== 'crash' && event.kind !== 'restart' && event.kind !== 'degraded') return;
+
+    const entry = this.diagnosticsByProject.get(event.projectId) ?? { restartHistory: [] };
+    const reason = event.detail ?? event.kind;
+    entry.restartHistory = [...entry.restartHistory, { at: event.at, reason }].slice(-20);
+    if (event.kind !== 'restart') entry.lastError = reason;
+    this.diagnosticsByProject.set(event.projectId, entry);
+  }
+
+  diagnostics(projectId: string): WorkerDiagnostics {
+    const entry = this.diagnosticsByProject.get(projectId);
+    return {
+      ...(entry?.lastError !== undefined ? { lastError: entry.lastError } : {}),
+      restartHistory: entry?.restartHistory ?? [],
+    };
+  }
+
+  /** تعداد jobهای ایندکس در حال اجرا — برای `gateway_index_jobs_active`. */
+  get activeIndexJobsCount(): number {
+    return this.activeIndexJobs;
   }
 
   get maxWorkers(): number {
@@ -240,8 +278,11 @@ export class WorkerSupervisor {
     const childEnv: NodeJS.ProcessEnv = {
       ...(this.options.env ?? process.env),
       SEMANTIC_ENGINE_DATA_DIR: this.options.dataRoot,
+      /* worker خودش نمی‌داند چند بار بالا آمده؛ supervisor می‌داند. */
+      SEMANTIC_ENGINE_WORKER_RESTART_COUNT: String(this.monitor.restartCount(projectId)),
     };
 
+    const forward = this.options.onEvent;
     const processOptions: WorkerProcessOptions = {
       config,
       socketPath,
@@ -249,6 +290,15 @@ export class WorkerSupervisor {
       logFile: this.logFileFor(projectId),
       binary: this.options.binary ?? defaultBinaryPath(),
       env: childEnv,
+      /*
+      | رویدادهای خودِ پروسه (crash/exit) هم در تاریخچهٔ پروژه می‌نشینند،
+      | وگرنه «آخرین خطا» فقط از رویدادهای مانیتور پر می‌شد و crash واقعی
+      | دیده نمی‌شد.
+      */
+      onEvent: event => {
+        this.recordEvent(event);
+        forward?.(event);
+      },
       ...(this.options.workerStartupTimeoutMs
         ? { startupTimeoutMs: this.options.workerStartupTimeoutMs }
         : {}),

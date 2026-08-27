@@ -190,6 +190,32 @@ describeIfBuilt('WorkerSupervisor', () => {
     }
   }, 300_000);
 
+  it('records one worker crash without marking its neighbour', async () => {
+    const sup = create({ restartPolicy: { delaysMs: [1, 1, 1], maxRestarts: 3 } });
+    const configA = configFor(makeProject(base, 'app-a'), 'prj-app-a-00000009');
+    const configB = configFor(makeProject(base, 'app-b'), 'prj-app-b-00000009');
+
+    await sup.start(configA);
+    await sup.start(configB);
+
+    const workerA = sup.get(configA.projectId);
+    process.kill(workerA!.pid as number, 'SIGKILL');
+    await new Promise(resolve => setTimeout(resolve, 400));
+    await sup.checkAll();
+
+    const diagnosticsA = sup.diagnostics(configA.projectId);
+    expect(diagnosticsA.restartHistory.length).toBeGreaterThan(0);
+    expect(diagnosticsA.lastError).toBeTruthy();
+
+    /* همسایهٔ سالم نه تاریخچه دارد نه خطا. */
+    const diagnosticsB = sup.diagnostics(configB.projectId);
+    expect(diagnosticsB.restartHistory).toEqual([]);
+    expect(diagnosticsB.lastError).toBeUndefined();
+
+    const healthB = await sup.health(configB.projectId);
+    expect(healthB?.state).toBe('ready');
+  }, 300_000);
+
   it('writes the worker artifacts under the supervisor data root', async () => {
     const sup = create();
     const config = configFor(makeProject(base, 'app-a'), 'prj-app-a-00000008');

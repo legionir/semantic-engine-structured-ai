@@ -640,7 +640,39 @@ The pure half of `gateway.js` never touches the DOM at load time, which is what
 lets Node require it and test the mapping, validation, rendering and URL
 building directly.
 
-## 14. Verified baseline (2026-08-26)
+## 14. Metrics, cache and deployment (فاز ۱۳)
+
+**The metric key sets are a contract**, declared once in `gateway/metrics.ts`
+(`GATEWAY_METRIC_KEYS`, `WORKER_METRIC_KEYS`) and asserted in tests as an exact
+key set — not "has these keys". A renamed metric breaks a test instead of
+silently emptying a dashboard column.
+
+`gateway_request_duration_ms` is a bounded sample window (`count/sumMs/avgMs/
+maxMs/p95Ms`), deliberately not a full histogram: a Gateway that stays up for
+weeks must not grow per request. `worker_cpu_percent` is
+`(user+system)/wall*100`, so more than 100 means more than one core.
+`worker_restart_count` is passed to the child in
+`SEMANTIC_ENGINE_WORKER_RESTART_COUNT`, because only the supervisor knows how
+often a worker came back.
+
+**Health detail** (`GET /api/v1/gateway/projects/:id/health`) merges what only
+the worker knows (`/internal/health`) with what only the Gateway knows (restart
+history, last error, degraded). One worker's failure is recorded against that
+project alone; the Gateway's own `/health` and the neighbours stay green.
+
+**`semantic-engine cache`** is the housekeeping for data that now lives outside
+the checkout: `list`, `clean --project`, `clean --older-than <n[s|m|h|d]>`,
+`export`, `import`. Its one rule is that it deletes generated data and nothing
+else, enforced twice: the target must be strictly inside `<dataRoot>/projects/`,
+and it must not overlap any workspace registered in `registry.json`.
+`clean --older-than` is a dry run unless `--force` is passed.
+
+**Deployment:** `structured-ai/docker-compose.yml` gains a `semantic-gateway`
+service — only the Gateway publishes a port, workers are child processes, the
+workspace volume is shared so workers see the registered sources, and `/data`
+is where artifacts land because the rootfs is read-only.
+
+## 15. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

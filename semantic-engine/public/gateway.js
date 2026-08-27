@@ -91,6 +91,7 @@ const GatewayUi = (function () {
         { id: "restart", label: "Restart" },
         { id: "reindex", label: "Reindex" },
         { id: "edit", label: "Edit configuration" },
+        { id: "health", label: "Health detail" },
         { id: "logs", label: "View logs" },
         { id: "events", label: "View events" },
         { id: "mcp", label: "Open MCP endpoint" },
@@ -375,6 +376,56 @@ const GatewayUi = (function () {
         }).join("");
     }
 
+    /*
+    | health detail یک worker (فاز ۱۳). هر بخش مستقل سبز/قرمز می‌شود تا خرابی
+    | یک worker فقط همان ردیف را قرمز کند، و تاریخچهٔ restart همراه آخرین
+    | خطا نشان داده شود.
+    */
+    const HEALTH_SECTIONS = [
+        { key: "process", label: "Process", from: function (h) { return h && h.pid ? "ok" : "unknown"; } },
+        { key: "index", label: "Index", from: function (h) { return h && h.indexState === "fresh" ? "ok" : h && h.indexState ? "warn" : "unknown"; } },
+        { key: "watcher", label: "Watcher", from: function (h) { return h && h.watcher === "running" ? "ok" : "warn"; } },
+        { key: "sqlite", label: "SQLite", from: function (h) { return h && h.sqlite === true ? "ok" : "off"; } },
+        { key: "blueprint", label: "Blueprint", from: function (h) { return h && h.blueprint === true ? "ok" : "off"; } },
+        { key: "vectors", label: "Vectors", from: function (h) { return h && h.vectorChunks > 0 ? "ok" : "off"; } },
+        { key: "lsp", label: "LSP", from: function (h) { return h && h.lsp === false ? "warn" : "unknown"; } }
+    ];
+
+    function renderHealthPanel(detail) {
+        const health = (detail && detail.health) || null;
+        const sections = HEALTH_SECTIONS.map(function (section) {
+            const state = section.from(health);
+            return '<div class="health-item health-' + state + '" data-key="' + section.key + '">' +
+                "<span>" + escape(section.label) + "</span>" +
+                "<strong>" + escape(state) + "</strong>" +
+                "</div>";
+        }).join("");
+
+        const history = (detail && detail.restartHistory) || [];
+        const historyHtml = history.length === 0
+            ? '<p class="muted">no restarts recorded</p>'
+            : "<ul>" + history.map(function (entry) {
+                return "<li>" + escape(entry.at) + " — " + escape(entry.reason) + "</li>";
+            }).join("") + "</ul>";
+
+        return '<section class="panel" data-project="' + escape(detail && detail.projectId) + '">' +
+            "<h2>Health — " + escape(detail && (detail.name || detail.projectId)) + "</h2>" +
+            '<div class="health-grid">' + sections + "</div>" +
+            "<h3>Counters</h3><ul>" +
+            "<li>files: " + escape(health && health.files) + "</li>" +
+            "<li>symbols: " + escape(health && health.symbols) + "</li>" +
+            "<li>dependencies: " + escape(health && health.dependencies) + "</li>" +
+            "<li>vector chunks: " + escape(health && health.vectorChunks) + "</li>" +
+            "<li>memory: " + escape(health && health.memoryMb) + " MB</li>" +
+            "<li>queue: " + escape(health && health.queueSize) + "</li>" +
+            "<li>last indexed: " + escape(health && health.lastIndexedAt) + "</li>" +
+            "<li>restarts: " + escape(detail && detail.restartCount) + "</li>" +
+            "</ul>" +
+            "<h3>Last error</h3><p>" + escape((detail && detail.lastError) || "none") + "</p>" +
+            "<h3>Restart history</h3>" + historyHtml +
+            "</section>";
+    }
+
     /* deep link پروژه؛ refresh هم همین context را نگه می‌دارد. */
     function projectDashboardUrl(projectId) {
         return "/visualizer?project=" + encodeURIComponent(projectId);
@@ -400,6 +451,8 @@ const GatewayUi = (function () {
         renderWorkerRow,
         renderSummaryCards,
         renderFormFields,
+        HEALTH_SECTIONS,
+        renderHealthPanel,
         projectDashboardUrl,
         mcpEndpointUrl
     };
@@ -505,6 +558,13 @@ if (typeof document !== "undefined") {
                 if (action === "open") { location.href = GatewayUi.projectDashboardUrl(projectId); return; }
                 if (action === "mcp") { location.href = GatewayUi.mcpEndpointUrl(projectId); return; }
                 if (action === "edit") { openForm(projectId); return; }
+                if (action === "health") {
+                    const detail = await api("/api/v1/gateway/projects/" + encodeURIComponent(projectId) + "/health");
+                    const panel = document.getElementById("health-panel");
+                    panel.innerHTML = GatewayUi.renderHealthPanel(detail);
+                    panel.hidden = false;
+                    return;
+                }
                 if (action === "remove") {
                     await api("/api/v1/gateway/projects/" + encodeURIComponent(projectId), { method: "DELETE" });
                 } else {
