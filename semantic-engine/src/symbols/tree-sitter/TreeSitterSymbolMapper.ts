@@ -16,7 +16,7 @@ import {
   Parameter,
 } from '../../core/types/project-index.types';
 import { makeConfidence, Confidence } from '../../core/types/common.types';
-import { extractDocumentation } from '../heuristic/SymbolExtractionHelpers';
+import { extractDocumentation, declarationSignature } from '../heuristic/SymbolExtractionHelpers';
 import { SymbolIdAllocator, buildFullyQualifiedName } from '../../core/id/SymbolIdentity';
 import { grammarFor, DEFAULT_NAME_NODES } from './languageGrammars';
 
@@ -267,7 +267,17 @@ export class TreeSitterSymbolMapper {
 
     const parameters = this.extractParameters(node);
     const returnType = this.extractReturnType(node);
-    const signature = this.buildSignature(name, parameters, returnType);
+    /*
+    | برای kindهای اعلانی، «امضا» همان سرِ اعلان است — نه `Name()`.
+    | (SE-SYM-19)
+    */
+    const signature =
+      declarationSignature(kind, name, {
+        definitionLine: this.contentLines[node.startPosition.row],
+        generics: this.extractGenerics(node),
+        extendsTypes: this.extractExtends(node),
+        implementsTypes: this.extractImplements(node),
+      }) ?? this.buildSignature(name, parameters, returnType);
     const modifiers = this.extractModifiers(node);
 
     return {

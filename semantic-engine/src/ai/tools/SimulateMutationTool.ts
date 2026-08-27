@@ -4,7 +4,7 @@
 
 import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
-import { AnalysisGraph } from '../../services/analysis/AnalysisGraph';
+import { buildIndexGraph, describeNode, nodePath } from '../../services/analysis/buildIndexGraph';
 import { MutationSimulator, MutationAction } from '../../services/analysis/MutationSimulator';
 import { resolveSymbolId } from './resolveIndexEntity';
 
@@ -46,42 +46,17 @@ export class SimulateMutationTool implements AiTool {
       };
     }
 
-    const graph = new AnalysisGraph();
-
-    // Populate graph from reader
-    const allSymbols = this.reader.getAllSymbols();
-    for (const s of allSymbols) {
-      const f = this.reader.getFileById(s.fileId);
-      graph.addNode({
-        id: s.id,
-        type: s.kind || 'symbol',
-        label: s.name,
-        metadata: { path: f?.path, line: s.line },
-      });
-    }
-
-    const depEdges = this.reader.projectIndex.graphs?.dependencyGraph ?? [];
-    for (const [idx, dep] of depEdges.entries()) {
-      graph.addEdge({
-        id: `e_${idx}`,
-        source: dep.from,
-        target: dep.to,
-        relation: 'depends_on',
-      });
-    }
-
-    /* A rename/delete can break callers even when no import edge changes.
-       The previous implementation forgot the indexed call graph, so every
-       symbol with callers was incorrectly reported as safe. */
-    const callEdges = this.reader.projectIndex.graphs?.callGraph ?? [];
-    for (const [idx, call] of callEdges.entries()) {
-      graph.addEdge({
-        id: `call_${idx}`,
-        source: call.caller,
-        target: call.callee,
-        relation: 'calls',
-      });
-    }
+    /*
+    | گراف از یک سازندهٔ مشترک می‌آید تا سر/انتهای غیرسمبل (فایل، نام خارجی)
+    | هم node داشته باشند — پیش از این `callerFile` برای فراخوانِ سطح ماژول
+    | 'unknown' می‌شد.
+    */
+    /*
+    | سازندهٔ مشترک، هم node فایل‌ها و هم هر دو دسته یال (dependency و call) را
+    | می‌گذارد. یال‌های call برای این ابزار حیاتی‌اند: یک rename/delete حتی وقتی
+    | هیچ یال import عوض نمی‌شود می‌تواند فراخوان‌ها را بشکند.
+    */
+    const graph = buildIndexGraph(this.reader, { callEdges: true });
 
     const simulator = new MutationSimulator();
     const diff = simulator.simulate(graph, {
@@ -95,15 +70,23 @@ export class SimulateMutationTool implements AiTool {
       metadata: { diff },
       items: diff.brokenReferences.map(b => ({
         id: b.callerId,
-        name: b.callerId,
+        /*
+        | نامِ آیتم شناسهٔ هش نبود؛ یک فهرست از `a4f9…` برای هیچ مصرف‌کننده‌ای
+        | قابل استفاده نیست. مسیر/نام گرهنشانه جای آن را می‌گیرد.
+        */
+        name: nodePath(graph, b.callerId) ?? describeNode(graph, b.callerId),
         kind: 'broken_reference',
         path: b.callerFile,
         source: 'mutation-simulator',
-        excerpt: `Relation '${b.relation}' to '${b.targetId}' would be broken`,
+        excerpt:
+          `${b.callerFile}${b.callerLine ? `:${b.callerLine}` : ''} — relation '${b.relation}' to ` +
+          `'${b.targetId}' would be broken`,
       })),
       context: diff.isSafe
         ? `Simulation complete: Mutation is safe with 0 broken references.`
-        : `Simulation complete: Mutation creates ${diff.brokenReferences.length} broken references.`,
+        : `Mutation creates ${diff.brokenReferences.length} broken references across ${
+            new Set(diff.brokenReferences.map(b => b.callerFile)).size
+          } file(s).`,
     };
   }
 }

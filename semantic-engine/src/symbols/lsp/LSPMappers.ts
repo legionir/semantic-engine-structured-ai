@@ -23,6 +23,7 @@ import {
   SymbolTagLike,
   lspKindFromVsCode,
 } from '../types';
+import { declarationSignature } from '../heuristic/SymbolExtractionHelpers';
 
 /**
  * LSP → schema.
@@ -162,7 +163,7 @@ function flattenWithGenerator(
       kind,
       name: sym.name,
       fullyQualifiedName: fqName,
-      signature: buildSignature(sym),
+      signature: buildSignature(sym, kind),
       visibility: inferVisibility(sym.name, language),
       line: sym.range.start.line + 1,        // LSP صفرمبنا → schema یک‌مبنا
       endLine: sym.range.end.line + 1,
@@ -216,9 +217,18 @@ function detectLanguage(filePath: string): string | undefined {
   return languageRegistry.detect(filePath)?.id;
 }
 
-function buildSignature(sym: DocumentSymbolLike): string {
+function buildSignature(sym: DocumentSymbolLike, kind?: string): string {
   if (sym.detail) {
     return `${sym.name}${sym.detail.startsWith('(') ? '' : ': '}${sym.detail}`;
+  }
+  /*
+  | زبان‌سرور برای یک کلاس معمولاً `detail` خالی می‌دهد؛ بیرون‌ازِ آن
+  | `FrameMeter` تنها چیزی بود که مصرف‌کننده می‌دید، بدون اینکه بفهمد
+  | کلاس است یا متغیر (SE-SYM-19).
+  */
+  if (kind) {
+    const declaration = declarationSignature(kind, sym.name);
+    if (declaration) return declaration;
   }
   return sym.name;
 }

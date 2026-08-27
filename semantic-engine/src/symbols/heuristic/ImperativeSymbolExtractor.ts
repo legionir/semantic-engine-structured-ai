@@ -251,7 +251,7 @@ export class ImperativeSymbolExtractor implements ISymbolExtractor {
       const parentId = parentForId ? idByPending.get(parentForId) ?? null : null;
 
       const parameters = extractParameters(sym.signatureText ?? sym.definitionLine, languageId);
-      const signature = buildSignature(sym.name, parameters, languageId);
+      const signature = buildSignature(sym.name, parameters, languageId, kind, sym.definitionLine);
       const documentation = extractDocumentation(lines, sym.line, languageId);
       const visibility = extractVisibility(sym.definitionLine, languageId);
 

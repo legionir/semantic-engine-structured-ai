@@ -14,6 +14,14 @@ export interface MutationAction {
 export interface BrokenReference {
   readonly callerId: string;
   readonly callerFile: string;
+  /**
+   * آنچه یک انسان می‌شناسد: مسیر فایل برای فراخوانِ سطح ماژول، یا
+   * «path:line → name» برای یک سمبل. `callerFile` برای نام‌های خارجی
+   * هنوز 'unknown' است و این فیلد همان‌جا هم چیزی برای نشان دادن دارد.
+   */
+  readonly callerLabel: string;
+  /** سطر محل فراخوانی، اگر گراف آن را داشته باشد. */
+  readonly callerLine?: number | null;
   readonly targetId: string;
   readonly relation: string;
 }
@@ -41,6 +49,8 @@ export class MutationSimulator {
         brokenReferences.push({
           callerId: edge.source,
           callerFile: callerNode?.metadata?.path || 'unknown',
+          callerLabel: callerNode ? (callerNode.metadata?.path ?? callerNode.label) : edge.source,
+          callerLine: typeof edge.metadata?.line === 'number' ? edge.metadata.line : null,
           targetId: action.targetSymbolId,
           relation: edge.relation,
         });
@@ -52,6 +62,8 @@ export class MutationSimulator {
           brokenReferences.push({
             callerId: edge.source,
             callerFile: callerNode?.metadata?.path || 'unknown',
+            callerLabel: callerNode ? (callerNode.metadata?.path ?? callerNode.label) : edge.source,
+            callerLine: typeof edge.metadata?.line === 'number' ? edge.metadata.line : null,
             targetId: action.targetSymbolId,
             relation: edge.relation,
           });

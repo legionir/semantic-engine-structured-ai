@@ -9,7 +9,7 @@
 
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
-import { ExplainSymbolTool, SymbolExplanation, diagnosticsCaveat } from './ExplainSymbolTool';
+import { ExplainSymbolTool, SymbolExplanation, diagnosticsCaveat, displaySymbolName } from './ExplainSymbolTool';
 import { FindSymbolTool } from './FindSymbolTool';
 import { FindTestsTool } from './FindTestsTool';
 import { ImpactAnalysisTool } from './ImpactAnalysisTool';
@@ -393,3 +393,16 @@ describe('diagnosticsCaveat — یک فهرست خالی، سه معنی', () =>
   });
 });
 
+describe('displaySymbolName — پیشوند فایل و پسوند dedupe در نام نمی‌آیند', () => {
+  it('`#1` حذف می‌شود؛ سطر، کارِ تمایز را می‌کند', () => {
+    expect(displaySymbolName({ name: '{ scene }', fullyQualifiedName: 'a/b.ts::{ scene }#2' })).toBe('{ scene }');
+  });
+
+  it('سمبلِ تودرتو مالکش را نگه می‌دارد', () => {
+    expect(displaySymbolName({ name: 'login', fullyQualifiedName: 'src/auth.ts::AuthService.login' })).toBe('AuthService.login');
+  });
+
+  it('بی‌نام‌کامل، همان name', () => {
+    expect(displaySymbolName({ name: 'login', fullyQualifiedName: undefined })).toBe('login');
+  });
+});

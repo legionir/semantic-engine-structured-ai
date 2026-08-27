@@ -1615,7 +1615,7 @@
       "kind": "class",
       "line": 5,
       "name": "Storage",
-      "signature": "Storage()"
+      "signature": "interface Storage"
     },
     {
       "fileId": "0a68334964de39b3",
@@ -1633,7 +1633,7 @@
       "kind": "class",
       "line": 10,
       "name": "Repository",
-      "signature": "Repository()"
+      "signature": "class Repository implements Storage"
     },
     {
       "fileId": "0a68334964de39b3",
@@ -1687,7 +1687,7 @@
       "kind": "class",
       "line": 4,
       "name": "NestUsersController",
-      "signature": "NestUsersController()"
+      "signature": "class NestUsersController"
     },
     {
       "fileId": "196c8a2927256128",
@@ -1714,7 +1714,7 @@
       "kind": "interface",
       "line": 1,
       "name": "User",
-      "signature": "User()"
+      "signature": "interface User"
     },
     {
       "fileId": "1c291ee1dbeaf317",
@@ -1723,7 +1723,7 @@
       "kind": "enum",
       "line": 7,
       "name": "Role",
-      "signature": "Role()"
+      "signature": "enum Role"
     },
     {
       "fileId": "1c291ee1dbeaf317",
@@ -1750,7 +1750,7 @@
       "kind": "type-alias",
       "line": 12,
       "name": "UserWithRole",
-      "signature": "UserWithRole()"
+      "signature": "type UserWithRole = User & { role: Role }"
     },
     {
       "fileId": "1f1241b6ea5dfe88",
@@ -1759,7 +1759,7 @@
       "kind": "type-alias",
       "line": 1,
       "name": "Level",
-      "signature": "Level()"
+      "signature": "type Level = 'debug' | 'info' | 'warn' | 'error'"
     },
     {
       "fileId": "1f1241b6ea5dfe88",
@@ -1768,7 +1768,7 @@
       "kind": "class",
       "line": 3,
       "name": "Logger",
-      "signature": "Logger()"
+      "signature": "class Logger"
     },
     {
       "fileId": "1f1241b6ea5dfe88",
@@ -1939,7 +1939,7 @@
       "kind": "class",
       "line": 3,
       "name": "User",
-      "signature": "User(val id: String, val name: String)"
+      "signature": "data class User(val id: String, val name: String)"
     },
     {
       "fileId": "4ac2e66c4754461a",
@@ -1948,7 +1948,7 @@
       "kind": "interface",
       "line": 5,
       "name": "Repository",
-      "signature": "Repository(id: String)"
+      "signature": "interface Repository"
     },
     {
       "fileId": "4ac2e66c4754461a",
@@ -1966,7 +1966,7 @@
       "kind": "class",
       "line": 9,
       "name": "InMemoryRepository",
-      "signature": "InMemoryRepository()"
+      "signature": "class InMemoryRepository : Repository"
     },
     {
       "fileId": "52a81ebf47179edf",
@@ -1975,7 +1975,7 @@
       "kind": "class",
       "line": 8,
       "name": "UserRepository",
-      "signature": "UserRepository()"
+      "signature": "class UserRepository:"
     },
     {
       "fileId": "52a81ebf47179edf",
@@ -2056,7 +2056,7 @@
       "kind": "class",
       "line": 6,
       "name": "Main",
-      "signature": "Main()"
+      "signature": "public class Main"
     },
     {
       "fileId": "603f5b91896bbebf",
@@ -2092,7 +2092,7 @@
       "kind": "class",
       "line": 1,
       "name": "Shape",
-      "signature": "Shape()"
+      "signature": "abstract class Shape"
     },
     {
       "fileId": "62ebc1357d05148b",
@@ -2110,7 +2110,7 @@
       "kind": "class",
       "line": 5,
       "name": "Circle",
-      "signature": "Circle()"
+      "signature": "class Circle extends Shape"
     },
     {
       "fileId": "62ebc1357d05148b",
@@ -2137,7 +2137,7 @@
       "kind": "namespace",
       "line": 10,
       "name": "Geometry",
-      "signature": "Geometry()"
+      "signature": "namespace Geometry"
     },
     {
       "fileId": "62ebc1357d05148b",
@@ -2164,7 +2164,7 @@
       "kind": "class",
       "line": 3,
       "name": "IService",
-      "signature": "IService()"
+      "signature": "public interface IService"
     },
     {
       "fileId": "6307c0a08191b0db",
@@ -2182,7 +2182,7 @@
       "kind": "class",
       "line": 8,
       "name": "Service",
-      "signature": "Service()"
+      "signature": "public class Service : IService"
     },
     {
       "fileId": "6307c0a08191b0db",
@@ -2209,7 +2209,7 @@
       "kind": "interface",
       "line": 3,
       "name": "Route",
-      "signature": "Route()"
+      "signature": "interface Route"
     },
     {
       "fileId": "69bbc8bb2b544799",
@@ -2389,7 +2389,7 @@
       "kind": "class",
       "line": 14,
       "name": "UserController",
-      "signature": "UserController()"
+      "signature": "class UserController"
     },
     {
       "fileId": "7bafc2ae9961d1cc",
@@ -2488,7 +2488,7 @@
       "kind": "class",
       "line": 9,
       "name": "Cache",
-      "signature": "Cache()"
+      "signature": "class Cache"
     },
     {
       "fileId": "83d5eff7e322a682",
@@ -2524,7 +2524,7 @@
       "kind": "class",
       "line": 7,
       "name": "Application",
-      "signature": "Application()"
+      "signature": "class Application"
     },
     {
       "fileId": "841254fe75488c1b",
@@ -2587,7 +2587,7 @@
       "kind": "class",
       "line": 1,
       "name": "PaymentService",
-      "signature": "PaymentService()"
+      "signature": "class PaymentService"
     },
     {
       "fileId": "849bdafa2627bbb4",
@@ -2632,7 +2632,7 @@
       "kind": "class",
       "line": 7,
       "name": "Repo",
-      "signature": "Repo()"
+      "signature": "class Repo"
     },
     {
       "fileId": "86d8498258acef85",
@@ -2794,7 +2794,7 @@
       "kind": "interface",
       "line": 9,
       "name": "Handler",
-      "signature": "Handler()"
+      "signature": "type Handler interface"
     },
     {
       "fileId": "9ae711be6ef7125a",
@@ -2803,7 +2803,7 @@
       "kind": "struct",
       "line": 14,
       "name": "Server",
-      "signature": "Server()"
+      "signature": "type Server struct"
     },
     {
       "fileId": "9ae711be6ef7125a",
@@ -2848,7 +2848,7 @@
       "kind": "interface",
       "line": 3,
       "name": "Identifiable",
-      "signature": "Identifiable()"
+      "signature": "protocol Identifiable"
     },
     {
       "fileId": "a05d9167dc9da29b",
@@ -2857,7 +2857,7 @@
       "kind": "struct",
       "line": 7,
       "name": "User",
-      "signature": "User()"
+      "signature": "struct User: Identifiable"
     },
     {
       "fileId": "a05d9167dc9da29b",
@@ -2866,7 +2866,7 @@
       "kind": "class",
       "line": 12,
       "name": "Store",
-      "signature": "Store()"
+      "signature": "final class Store"
     },
     {
       "fileId": "a05d9167dc9da29b",
@@ -2884,7 +2884,7 @@
       "kind": "module",
       "line": 1,
       "name": "Parsing",
-      "signature": "Parsing()"
+      "signature": "module Parsing"
     },
     {
       "fileId": "a695523a199c1519",
@@ -2893,7 +2893,7 @@
       "kind": "class",
       "line": 2,
       "name": "Parser",
-      "signature": "Parser(source)"
+      "signature": "class Parser"
     },
     {
       "fileId": "a695523a199c1519",
@@ -3019,7 +3019,7 @@
       "kind": "interface",
       "line": 1,
       "name": "AppConfig",
-      "signature": "AppConfig()"
+      "signature": "interface AppConfig"
     },
     {
       "fileId": "c3095d5010e65c52",
@@ -3037,7 +3037,7 @@
       "kind": "class",
       "line": 3,
       "name": "UserRepository",
-      "signature": "UserRepository()"
+      "signature": "class UserRepository"
     },
     {
       "fileId": "ca200b4d6ea180d3",
@@ -3073,7 +3073,7 @@
       "kind": "struct",
       "line": 4,
       "name": "Token",
-      "signature": "Token()"
+      "signature": "struct Token"
     },
     {
       "fileId": "cad0442a03487d51",
@@ -3100,7 +3100,7 @@
       "kind": "interface",
       "line": 3,
       "name": "Order",
-      "signature": "Order()"
+      "signature": "interface Order"
     },
     {
       "fileId": "dbe10fdaf60cb3f9",
@@ -3109,7 +3109,7 @@
       "kind": "class",
       "line": 8,
       "name": "OrderService",
-      "signature": "OrderService()"
+      "signature": "class OrderService"
     },
     {
       "fileId": "dbe10fdaf60cb3f9",
@@ -3136,7 +3136,7 @@
       "kind": "struct",
       "line": 1,
       "name": "Config",
-      "signature": "Config()"
+      "signature": "pub struct Config"
     },
     {
       "fileId": "de1716d2030fd3db",
@@ -3154,7 +3154,7 @@
       "kind": "trait",
       "line": 5,
       "name": "Handler",
-      "signature": "Handler()"
+      "signature": "pub trait Handler"
     },
     {
       "fileId": "de1716d2030fd3db",
@@ -3172,7 +3172,7 @@
       "kind": "struct",
       "line": 9,
       "name": "Echo",
-      "signature": "Echo()"
+      "signature": "pub struct Echo"
     },
     {
       "fileId": "de1716d2030fd3db",
@@ -3235,7 +3235,7 @@
       "kind": "interface",
       "line": 3,
       "name": "PanelProps",
-      "signature": "PanelProps()"
+      "signature": "interface PanelProps"
     },
     {
       "fileId": "e4a56356571a88e9",
@@ -3262,7 +3262,7 @@
       "kind": "class",
       "line": 4,
       "name": "BaseService",
-      "signature": "BaseService()"
+      "signature": "abstract class BaseService<T>"
     },
     {
       "fileId": "fc8d89e014891ad6",
@@ -3289,7 +3289,7 @@
       "kind": "class",
       "line": 9,
       "name": "UserService",
-      "signature": "UserService()"
+      "signature": "class UserService extends BaseService<User>"
     },
     {
       "fileId": "fc8d89e014891ad6",

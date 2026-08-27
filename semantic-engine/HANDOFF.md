@@ -20,6 +20,8 @@ Semantic Engine یک code-intelligence engine مستقل است که از یک w
 - import/dependency resolution
 - call/type/dependency graph
 - LSP diagnostics (opt-in: `--lsp-diagnostics`) و enrichment
+- امضای اعلانی برای class/interface/enum/… و `explain_symbol` سطح‌کلاس
+  (`members` / `aggregateComplexity` / `referencedBy`)
 - blueprint و architecture mapping
 - keyword/vector/hybrid search
 - context assembly برای AI

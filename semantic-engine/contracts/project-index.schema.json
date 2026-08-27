@@ -512,7 +512,8 @@
           "type": "string"
         },
         "signature": {
-          "type": "string"
+          "type": "string",
+          "description": "برای سمبل فراخوانی‌شدنی: نام + پارامترها (+ بازگشتی). برای سمبل اعلانی (class / interface / enum / struct / trait / type-alias / namespace / module) خودِ اعلانِ فشرده، مثل «class Repository implements Storage» — `Name()` برای یک کلاس بی‌معناست (SE-SYM-19)"
         },
         "visibility": {
           "enum": [

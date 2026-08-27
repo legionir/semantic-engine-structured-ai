@@ -411,10 +411,84 @@ function parseParameter(param: string, languageId: string): Parameter | null {
   };
 }
 
+/*
+| ── SE-SYM-19 ──────────────────────────────────────────────────────────
+|
+| `FrameMeter()` امضای یک کلاس نیست؛ یک *سازنده* است که هیچ‌جا اعلام نشده.
+| قرارداد داده می‌گوید `signature` یعنی «signature or compact declaration»
+| — یعنی برای سمبل‌های اعلانی باید سرِ خودِ اعلان برگرردد. تا این اصلاح،
+| هر چهار استخراج‌گر (heuristic، imperative، tree-sitter، LSP) برای همهٔ
+| kindها یک الگو می‌زدند و نتیجه‌اش در `find_symbol` و `explain_symbol` به
+| شکل `Name()` دیده می‌شد.
+*/
+
+/** سمبل‌هایی که فراخوانی‌شدنی نیستند؛ `name(params)` برایشان بی‌معناست. */
+export const DECLARATION_KINDS: ReadonlySet<string> = new Set([
+  'class',
+  'interface',
+  'enum',
+  'struct',
+  'trait',
+  'namespace',
+  'module',
+  'type-alias',
+]);
+
+const DECLARATION_NOISE = /^\s*(export\s+default\s+|export\s+declare\s+|declare\s+|export\s+)/;
+const TRAILING_PUNCT = /\s*[{;=]\s*$/;
+
+/**
+ * امضای اعلانیِ فشرده. `null` یعنی «این kind اعلانی نیست، همان امضای
+ * تابعی را نگه دار».
+ *
+ * خطِ خودِ سورس اگر موجود و قابل‌استفاده باشد برتر است: همان چیزی است که
+ * برنامه‌نویس نوشته، و شکلِ `pub struct Foo<T>` در Rust را هم درست نگه
+ * می‌دارد. اگر نبود، از قطعه‌های ساختاریافته می‌سازیم.
+ */
+export function declarationSignature(
+  kind: string,
+  name: string,
+  parts: {
+    readonly definitionLine?: string;
+    readonly generics?: readonly string[];
+    readonly extendsTypes?: readonly string[];
+    readonly implementsTypes?: readonly string[];
+  } = {}
+): string | null {
+  if (!DECLARATION_KINDS.has(kind)) return null;
+
+  const raw = (parts.definitionLine ?? '').trim();
+  if (raw && raw.includes(name) && !raw.startsWith('@') && !raw.startsWith('//')) {
+    const cleaned = raw.replace(DECLARATION_NOISE, '').replace(TRAILING_PUNCT, '').replace(/\s+/g, ' ').trim();
+    if (cleaned.length > 0 && cleaned.length <= 120) return cleaned;
+  }
+
+  const generics = (parts.generics ?? []).filter(entry => entry.trim() !== '');
+  const extendsTypes = (parts.extendsTypes ?? []).filter(entry => entry.trim() !== '');
+  const implementsTypes = (parts.implementsTypes ?? []).filter(entry => entry.trim() !== '');
+
+  const keyword = kind === 'type-alias' ? 'type' : kind;
+  let signature = `${keyword} ${name}`;
+  if (generics.length > 0) signature += `<${generics.join(', ')}>`;
+  if (extendsTypes.length > 0) signature += ` extends ${extendsTypes.join(', ')}`;
+  if (implementsTypes.length > 0) signature += ` implements ${implementsTypes.join(', ')}`;
+  return signature;
+}
+
 /**
  * ساخت signature از name + parameters.
  */
-export function buildSignature(name: string, parameters: Parameter[], languageId: string): string {
+export function buildSignature(
+  name: string,
+  parameters: Parameter[],
+  languageId: string,
+  kind?: string,
+  definitionLine?: string
+): string {
+  if (kind) {
+    const declaration = declarationSignature(kind, name, { definitionLine });
+    if (declaration) return declaration;
+  }
   const isJavaStyle = ['java', 'php', 'csharp', 'cpp', 'c'].includes(languageId);
 
   const params = parameters.map(p => {
