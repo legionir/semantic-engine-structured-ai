@@ -490,7 +490,47 @@ only measurement revealed:
 `maxWorkers` or `maxConcurrentIndexJobs` is reached, and `LockHeldError` when
 another live process already serves the project.
 
-## 10. Verified baseline (2026-08-26)
+## 10. The Gateway HTTP surface (فاز ۹)
+
+```text
+GET    /health, /ready, /metrics            open (no project data in them)
+GET    /api/v1/gateway/health|ready|metrics
+GET    /api/v1/gateway/events               SSE: worker + registry events
+GET    /api/v1/gateway/projects             list
+POST   /api/v1/gateway/projects             register (+ autoStart)
+GET    /api/v1/gateway/projects/:id
+PATCH  /api/v1/gateway/projects/:id         rename
+DELETE /api/v1/gateway/projects/:id         stop + unregister
+POST   /api/v1/gateway/projects/:id/start|stop|restart|reindex
+
+GET    /api/v1/projects                     the shape public/open.js renders
+POST   /api/v1/projects                     the call public/open.js makes
+ANY    /api/v1/projects/:id/...             proxied to that worker, unrewritten
+```
+
+**Proxy rules.** Body and response are piped, never buffered, so uploads,
+long tool calls and SSE behave as they would against the worker. The inbound
+`Origin` is dropped, `X-Forwarded-For/Proto/Host` are added (which is how the
+worker recognizes a proxied request), `Authorization` is replaced with the
+worker's internal token, and hop-by-hop headers are not forwarded. Every
+proxied response carries `X-Semantic-Project-Id`, so a client can tell whose
+answer it is reading without buffering the body. A dead worker is a clean
+`502`; its neighbours keep serving.
+
+**Authorization** reuses the platform vocabulary instead of inventing one:
+`ApiKeyStore` keeps tokens as SHA-256 hashes with `PermissionScope`
+permissions, and `ApiKeyRecord` gained an optional `allowedProjects` list
+(absent means the old `resourceScope` still applies, so existing keys keep
+working). `'*'` means every project. Errors are `401` without a token, `403`
+for a project the token cannot reach, `404` for an unknown project, `503` when
+`maxWorkers` is full and `409` when another live process holds the project
+lock.
+
+**The Gateway token is not a worker token.** The internal token is fetched
+from the supervisor per request and never returned to a client — covered by a
+test that asserts it appears in no response body.
+
+## 11. Verified baseline (2026-08-26)
 
 `cd semantic-engine && npm run build && npm run lint && npm test` →
 `tsc -p ./` exit 0, `eslint src` silent, `Test Suites: 170 passed / 170 total`,

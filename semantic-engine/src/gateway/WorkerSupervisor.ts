@@ -152,6 +152,14 @@ export class WorkerSupervisor {
     return this.workers.get(projectId)?.process;
   }
 
+  /**
+   * توکن داخلی یک worker. فقط Gateway آن را می‌گیرد تا در هدر
+   * `Authorization` پروکسی بگذارد؛ هرگز به کلاینت داده نمی‌شود.
+   */
+  workerToken(projectId: string): string | undefined {
+    return this.workers.get(projectId)?.token;
+  }
+
   isRunning(projectId: string): boolean {
     const entry = this.workers.get(projectId);
     return Boolean(entry && entry.process.pid !== null && entry.process.exitCode === null);

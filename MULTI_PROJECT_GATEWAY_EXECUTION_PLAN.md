@@ -1,6 +1,6 @@
 # پلن اجرایی Multi-Project Semantic Engine — Gateway، Worker و Data Directory متمرکز
 
-**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۸ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۹ تا ۱۴ 🔴
+**وضعیت:** 🟡 در حال اجرا — فاز ۱ تا ۹ 🟢 (۲۰۲۶-۰۸-۲۶) · فازهای ۱۰ تا ۱۴ 🔴
 **تاریخ:** 2026-08-26
 **مخزن:** `legionir/semantic-engine-structured-ai` (شاخهٔ کاری: `arena/01a03f7c-semantic-engine-structured-ai`)
 **بسته‌های درگیر:** `semantic-engine/` (TypeScript) و `structured-ai/` (JavaScript)
@@ -554,31 +554,31 @@ SIGTERM → توقف graceful همهٔ workerها و آزادسازی lockها. 
 
 ---
 
-## [🔴] فاز ۹: Gateway HTTP — registry API، proxy پروژه‌محور REST/SSE و authorization
+## [🟢] فاز ۹: Gateway HTTP — registry API، proxy پروژه‌محور REST/SSE و authorization
 
 **هدف:** یک پورت عمومی برای همهٔ پروژه‌ها با routing قطعی، بدون شکستن UI فعلی. معادل گام ۸، گام ۹ (REST/SSE) و گام ۱۰ (authz) پلن مرجع.
 
-### [🔴] گام ۱: روت‌های مدیریتی
+### [🟢] گام ۱: روت‌های مدیریتی
 
 `src/gateway/GatewayServer.ts` + `src/gateway/routes/gatewayRoutes.ts`: `GET/POST /api/v1/gateway/projects`، `GET/PATCH/DELETE /api/v1/gateway/projects/:projectId`، `POST …/start|stop|restart|reindex`، `GET /api/v1/gateway/health|ready|metrics|events`.
 
-### [🔴] گام ۲: سازگاری با UI موجود (D7)
+### [🟢] گام ۲: سازگاری با UI موجود (D7)
 
 Gateway باید `GET/POST /api/v1/projects` را با **همان شکل پاسخ** `src/server/routes/projectRoutes.ts:12-52` سرو کند تا `public/open.js:195` و `:74` بدون تغییر کار کنند؛ در این سطح، `POST` پروژه را در registry ثبت و worker را lazy start می‌کند.
 
-### [🔴] گام ۳: proxy پروژه‌محور REST
+### [🟢] گام ۳: proxy پروژه‌محور REST
 
 `/api/v1/projects/:projectId/...` → worker همان پروژه، **بدون بازنویسی مسیر**؛ حفظ method/headers/body/status؛ streaming body و response؛ حذف `Origin` و افزودن `X-Forwarded-*` (D6)؛ تزریق توکن داخلی worker؛ `404` برای projectId نامعتبر؛ `403` برای توکن بدون scope؛ `502` تمیز وقتی worker مرده است.
 
-### [🔴] گام ۴: proxy SSE
+### [🟢] گام ۴: proxy SSE
 
 `GET /api/v1/projects/:projectId/events` (worker: `src/server/routes/jobRoutes.ts:286`) بدون buffering و بدون timeout معمولی؛ propagate شدن disconnect کلاینت به worker؛ شمارش active requests در metrics.
 
-### [🔴] گام ۵: authorization
+### [🟢] گام ۵: authorization
 
 token store با scope (`project:read`, `semantic:query`, `semantic:index`, `auth:manage`) سازگار با `PermissionChecker` موجود در `src/security/rbac/`؛ `allowedProjects` در هر توکن؛ token عمومی Gateway جدا از توکن داخلی worker؛ redaction در لاگ و manifest.
 
-### [🔴] گام ۶: تست‌های routing و stream
+### [🟢] گام ۶: تست‌های routing و stream
 
 routing isolation (درخواست A هرگز به B نرود، با شمارش درخواست در هر worker)، stream isolation، `404`/`403`، cancel/timeout/disconnect، و یک تست که `public/visualizer.js`-style requestها (`/api/v1/projects/<id>/visualization/architecture`) از Gateway درست proxy شوند.
 
@@ -588,6 +588,27 @@ routing isolation (درخواست A هرگز به B نرود، با شمارش �
 - هر پاسخ project-scoped شامل `projectId` باشد.
 - worker مرده → `502` و بقیهٔ پروژه‌ها سالم.
 - `npm run build && npm test` سبز.
+
+### وضعیت اجرای فاز ۹ — 🟢 (۲۰۲۶-۰۸-۲۶)
+
+**فایل‌های ساخته‌شده:** `src/gateway/GatewayAuth.ts`، `src/gateway/GatewayProxy.ts`، `src/gateway/GatewayServer.ts` + تست `src/gateway/GatewayServer.test.ts` (۹ تست، کلاینت HTTP واقعی و worker واقعی).
+**فایل‌های تغییرکرده:** `security/rbac/types.ts` (`ApiKeyRecord.allowedProjects` افزوده)، `security/rbac/ApiKeyStore.ts` (`createKey` همان فیلد را می‌پذیرد)، `gateway/WorkerSupervisor.ts` (+`workerToken`).
+
+**verification اجراشده:**
+
+- `npm run build` exit 0 · `npm run lint` بدون خروجی · `npm run test:gate` → **`Test Suites: 193 passed / 193 total`، `Tests: 2661 passed / 2661 total`، «all suites ran» و «artifact location gate: ok»** (پیش از فاز ۹: ۱۹۲ suite و ۲۶۵۲ تست → +۱ suite و +۹ تست).
+- **routing isolation با دو worker واقعی:** `GET /api/v1/projects/<A>` → `id === A` و `rootPath === realpath(rootA)`؛ همان درخواست برای B → `id === B` و `rootPath === realpath(rootB)`؛ هدر `X-Semantic-Project-Id` هم برای هر پاسخ ست شد.
+- **سازگاری UI بدون تغییر کد:** `POST /api/v1/projects {path}` → ۲۰۱ با `{id,name,rootPath,status,stats}` و `GET /api/v1/projects` → `{total, projects:[…]}` با همان فیلدها (دقیقاً دو فراخوانی `public/open.js:195` و `:74`).
+- **URLهای visualizer بدون بازنویسی proxy شدند:** `/api/v1/projects/<id>/visualization/architecture` → هیچ ۴۰۴ سطح Gateway نگرفت.
+- **خطاها:** پروژهٔ ناشناخته → ۴۰۴ · بدون توکن → ۴۰۱ · توکن محدود به A روی B → ۴۰۳ و لیستش فقط ۱ پروژه · worker متوقف‌شده → **۵۰۲** در حالی که همسایه‌اش ۲۰۰ می‌دهد و بعد با `start` برمی‌گردد.
+- **SSE:** `GET /api/v1/gateway/events` → `event: gateway` و `{"type":"hello"}` روی stream واقعی.
+- **نشت نکردن توکن داخلی:** `supervisor.workerToken(A)` با توکن عمومی Gateway متفاوت است و در هیچ پاسخ body ظاهر نمی‌شود (تست صریح).
+- **چرخهٔ زندگی (lifecycle):** `reindex` → ۲۰۰/۲۰۲، `GET/PATCH` روی `/api/v1/gateway/projects/:id` → rename اعمال شد.
+
+**دو تصمیم اجرایی (ثبت‌شده در ADR بخش ۱۰):**
+
+1. authorization از واژگان خود platform بازاستفاده شد (`ApiKeyStore` + `PermissionScope`) و `allowedProjects` به‌صورت **افزودنی** به `ApiKeyRecord` اضافه شد؛ نبود فیلد یعنی `resourceScope` قدیمی معتبر است، پس کلیدهای موجود نمی‌شکنند.
+2. «پاسخ شامل projectId» به‌جای بافر کردن body، با هدر `X-Semantic-Project-Id` انجام شد تا streaming (و SSE) دست‌نخورده بماند.
 
 ---
 
