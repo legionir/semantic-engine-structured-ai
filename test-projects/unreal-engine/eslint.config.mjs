@@ -14,7 +14,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['packages/**/*.ts', 'apps/editor/src/**/*.ts'],
+    /* `apps/web` is linted with type information (its tsconfig covers `src` and
+       `__tests__`). `apps/editor` still appears because the Angular editor
+       workspace is referenced by `package-lock.json` even though it is not on
+       disk — see docs/development.md. */
+    files: ['packages/**/*.ts', 'apps/editor/src/**/*.ts', 'apps/web/src/**/*.ts', 'apps/web/__tests__/**/*.ts'],
     languageOptions: {
       parserOptions: {
         projectService: {

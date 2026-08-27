@@ -496,6 +496,92 @@ Connect to `ws://host/ws` with JWT token.
 }
 ```
 
+### WebSocket Messages (as implemented)
+
+`apps/server/src/websocket/websocket.service.ts` uses flat frames — the payload
+is on the message itself, not nested under `data` as the sketch above shows:
+
+```jsonc
+// server → client
+{ "type": "connected", "clientId": "u1-1690000000000", "userId": "u1", "projectId": "p1" }
+{ "type": "presence", "users": [{ "userId": "u2", "username": "ada", "projectId": "p1", "status": "online", "lastSeen": 1690000000000 }] }
+{ "type": "cursor", "userId": "u2", "username": "ada", "position": { "x": 12, "y": 4 } }
+{ "type": "cursor_update", "cursors": [] }
+{ "type": "operation", "userId": "u2", "operation": {}, "timestamp": 1690000000000 }
+{ "type": "crdt_operation", "userId": "u2", "operation": {}, "revision": {}, "timestamp": 1690000000000 }
+{ "type": "pong" }
+
+// client → server
+{ "type": "cursor", "position": { "x": 12, "y": 4 } }
+{ "type": "cursor_update", "position": { "x": 12, "y": 4 }, "selection": "entity-1" }
+{ "type": "presence", "status": "away" }
+{ "type": "operation", "operation": {} }
+{ "type": "crdt_operation", "operation": {}, "description": "moved cube" }
+{ "type": "ping" }
+```
+
+Identity is taken from the query string on connect (`?userId=&username=&projectId=`),
+not from the JWT.
+
+---
+
+## Web Client (`apps/web`)
+
+Public surface for embedders and tests — everything else in the app is internal:
+
+`apps/web` is an application, not a published library: it has no `exports` map
+and is imported by path from its own entry module. `src/main.ts` is that entry,
+and it is short enough to be the contract:
+
+```typescript
+// apps/web/src/main.ts (what the shell does on boot)
+const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
+const app = await mountWebApp({
+  config: readConfigFromDocument(document),   // <meta name="web-engine:*"> tags
+  elements: collectElements(document, canvas),
+});
+
+app.state.status;   // 'idle' | 'starting' | 'running' | 'paused' | 'stopped' | 'error'
+await app.save();   // serialize into IndexedDB under the configured project id
+await app.push();   // PUT /projects/:id with scenes[0] = the snapshot
+app.dispose();      // tears down the loop, the socket, the HUD and the listeners
+```
+
+A host page that loads the built `dist/` (an Electron `BrowserWindow`, a Tauri
+webview) reaches the same handle through `window.__WEB_ENGINE_APP__`, and can
+override the configuration with `window.__WEB_ENGINE__` before the module runs.
+
+### REST calls the client makes
+
+| Method | Path | Used for |
+|--------|------|----------|
+| GET | `/health` | availability probe (`health()`) |
+| POST | `/auth/login`, `/auth/logout` | optional sign-in for embedders; the anonymous client stores no token |
+| GET | `/projects/:id` | boot: load `scenes[0]` as the scene to render |
+| PUT | `/projects/:id` | Push — writes `{ scenes: [snapshot] }` |
+| GET/POST | `/projects` | project list/create helpers |
+| GET | `/assets`, `/assets/:id` | asset browse (GLB payloads can feed `importGLBIntoScene`) |
+| POST | `/builds`, `/builds/:id/start` | publish a web build |
+| GET | `/builds/:id`, `/builds/project/:id` | build status |
+
+`/projects` and `/assets` resolve the caller from the `x-user-id` header, so the
+client always sends one: a random anonymous id kept in `localStorage`
+(`web-engine:device-user`) unless a host page supplies its own user.
+
+### Client modules
+
+| Export | Purpose |
+|--------|---------|
+| `resolveConfig({ read, overrides, pageOrigin })` | turns `<meta>` tags into a `WebAppConfig`; derives the `/ws` URL from the API base |
+| `createApiClient({ baseUrl, fetchImpl, tokenProvider, userIdProvider })` | typed `fetch` wrapper; non-2xx responses become `ApiError` with `status` and `isUnauthorized` |
+| `createPresenceClient({ url, projectId, username, socketFactory, timers })` | presence socket with bounded reconnect; `parseSocketMessage` is exported for tests |
+| `createSceneStorage(store)` / `openKvStore(win)` | IndexedDB `web-engine-web` / `scenes` store, silently memory-backed when IDB is unavailable |
+| `createRuntimeSession({ canvas, preference, webgpuAvailable, snapshot })` | renderer choice + `SceneRuntime`; `fallbackReason` records a WebGPU failure it recovered from |
+| `createDemoScene(options)` / `createSceneModel({ snapshot })` | demo content, and the restore path that reuses `createRuntimeComponentFactories` |
+| `formatHud(state, now)` / `computeButtonStates(state)` | the HUD text and the button rules, both pure |
+
+---
+
 ### Database Migrations
 
 Located at `apps/server/database/migrations/`:
