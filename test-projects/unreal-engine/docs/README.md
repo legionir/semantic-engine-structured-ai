@@ -49,6 +49,12 @@ npm run lint
 
 # Run the web client (proxies /api to apps/server on :3000)
 npm run dev:web
+```
+
+The root workspace is the engine packages plus `apps/web`; the Electron, Tauri,
+Capacitor and server shells are installed from their own folders
+(`cd apps/desktop && npm install`) so that developing the web client never
+downloads a native runtime. See [Development Guide](docs/development.md).
 
 ## Key Features
 

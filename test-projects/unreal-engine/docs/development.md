@@ -8,7 +8,7 @@
 ## Setup
 
 ```bash
-# Clone and install (links every workspace, including `apps/web`)
+# Clone and install (root workspace = engine packages + `apps/web`)
 npm install
 
 # Run the web client against the engine packages
@@ -177,8 +177,8 @@ default `PORT`), stripping the `/api` prefix because the server mounts its route
 at the root. So:
 
 ```bash
-PORT=3000 npm run dev -w @webengine/server   # terminal 1
-npm run dev:web                              # terminal 2
+cd apps/server && npm install && npm run dev   # terminal 1 (Fastify on :3000)
+npm run dev:web                                 # terminal 2, from the repo root
 ```
 
 Reaching that dev server from another device — a tunnel, a LAN address, which is
@@ -192,6 +192,27 @@ WEB_ENGINE_ALLOWED_HOSTS=.example.test npm run dev:web
 Without a server the page still boots: the client falls back to the locally
 stored scene and then to the built-in demo scene, and says which it used in the
 HUD.
+
+### Which workspaces the root install covers
+
+The root workspace is `packages/*` + `apps/web` only — about **440 packages, no
+native downloads**. `apps/desktop`, `apps/desktop-tauri`, `apps/mobile` and
+`apps/server` are deliberately outside it: none of them imports anything from
+`packages/*`, each ships its own `package-lock.json`, and Electron, Tauri and
+Capacitor fetch platform binaries during install. Joining them to the root
+workspace made every `npm install` of the web client resolve ~1070 packages and
+pull Electron (plus `@tauri-apps/cli-win32-x64-msvc` — Windows binaries, on a
+Linux box) for code that only ever wraps the built page.
+
+To work on a shell, install it from its own folder:
+
+```bash
+cd apps/desktop && npm install && npm run dev
+cd apps/server  && npm install && npm run dev
+```
+
+`npm run build --workspaces --if-present` therefore builds the engine packages
+and `apps/web`; shells are built by their own scripts when you are in them.
 
 ### Configuration
 

@@ -4,9 +4,10 @@
   "private": true,
   "description": "Web-native 3D engine and visual editor - monorepo",
   "type": "module",
+  "//workspaces": "Root workspace = engine packages + the web client. The app shells (desktop, desktop-tauri, mobile, server) import nothing from packages/*, each ships its own package-lock.json, and Electron/Tauri/Capacitor download native binaries on install — so they are installed from their own folder (`cd apps/desktop && npm install`) instead of being dragged into every `npm install` of the web app.",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "packages/*",
+    "apps/web"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
