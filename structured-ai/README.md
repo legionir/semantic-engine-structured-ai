@@ -20,6 +20,9 @@
 10. [لایهٔ اتصال به MCP و پروتکل‌های چهارگانه](#۱۰-لایهٔ-اتصال-به-mcp-و-پروتکلهای-چهارگانه)
 11. [Semantic Engine به‌عنوان سرور MCP داخلی](#۱۱-semantic-engine-بهعنوان-سرور-mcp-داخلی)
 12. [آزمون‌ها و ارزیابی کیفیت](#۱۲-آزمونها-و-ارزیابی-کیفیت)
+13. [راهنمای معماری چندپروژه‌ای (Multi-Project Guide)](#۱۳-راهنمای-معماری-چندپروژه‌ای-multi-project-guide)
+14. [راهنمای توسعه‌دهندگان (Developer Guide)](#۱۴-راهنمای-توسعه‌دهندگان-developer-guide)
+15. [اسناد مرجع معماری و پلن اجرایی (Reference Documents)](#۱۵-اسناد-مرجع-معماری-و-پلن-اجرایی-reference-documents)
 
 ---
 
@@ -45,97 +48,54 @@
 ```text
 structured-ai/
 ├── bin/
-│   ├── agent.js                 # رابط اصلی خط فرمان (CLI)
-│   ├── interactive.js           # نشست تعاملی ترمینال (REPL)
+│   ├── agent.js                 # رابط اصلی خط فرمان (CLI wrapper سازگار)
+│   ├── interactive.js           # نشست تعاملی ترمینال (REPL wrapper سازگار)
 │   └── backfill-eventstore.js   # ابزار بک‌فیل لاگ‌ها و رویدادها
 ├── agent/
-│   ├── agent.js                 # حلقه هماهنگ‌کننده اصلی، مدیریت ساب‌ایجنت‌ها و زمان‌بندی
-│   ├── config/                  # دستورالعمل‌های سیستمی و پرامپت‌ها
-│   ├── lib/                     # ماژول‌های هسته ران‌تایم
-│   │   ├── context.js           # بودجه‌بندی و فشرده‌سازی تدریجی کانتکست
-│   │   ├── events.js            # سیستم رویدادهای ساختاریافته
-│   │   ├── policy.js            # پوستهٔ سازگاری؛ به agent/policy/ می‌رسد
-│   │   ├── workspace.js         # گارد امنیت مرزهای دیسک
-│   │   ├── semantic.js          # پوستهٔ سازگاری؛ به agent/mcp/semantic.js می‌رسد
-│   │   ├── memory.js            # حافظه کاری و بایگانی رویدادها
-│   │   └── storage.js           # مدیریت داینامیک تنظیمات و Hot-reload
-│   ├── mcp/                     # لایهٔ اتصال به سرورهای MCP
-│   │   ├── protocol.js          # پیام‌های JSON-RPC، فریمینگ و بازکردن نتیجهٔ ابزار
-│   │   ├── client.js            # یک سرور، یک کلاینت: handshake و tools/list و tools/call
-│   │   ├── manager.js           # رجیستری سرورها و کاتالوگ ابزارها با فضای‌نام
-│   │   ├── config.js            # خواندن .mcp.json و لایه‌های پیکربندی
-│   │   ├── semantic.js          # Semantic Engine به‌عنوان یک سرور MCP داخلی
-│   │   └── transports/          # stdio · http · sse · websocket
-│   ├── hooks/                   # hookهای اعلامی ران‌تایم: بارگذاری، شرط، قالب، اجرا
-│   │   ├── HookRegistry.js      # نمای خواندنی: enabledHooks و routine
-│   │   ├── HookLoader.js        # hooks.json + overlay، اعتبارسنجی و گراف وابستگی
-│   │   ├── HookCondition.js     # زبان شرطِ بسته (بدون eval)
-│   │   ├── HookRenderer.js      # قالب ${path.to.context}
-│   │   ├── HookRunner.js        # اجرای tool/agent/git_commit با ددلاین فاز
-│   │   └── HookResult.js        # خلاصه و payload رویداد hook:end
-│   ├── policy/                  # مرز امنیتی: قاعده‌ها، تأییدیه‌ها و audit
-│   │   ├── PolicyEngine.js      # تنها نقطۀ enforce برای هر فراخوانی ابزار
-│   │   ├── PolicyRegistry.js    # سند registry/policy.json و نگاشت ابزار←گروه
-│   │   ├── PolicyMatcher.js     # تطبیق glob/شرط روی آرگومان resolve‌شده
-│   │   ├── ApprovalManager.js   # چرخه auto/prompt/deny و تزریق handler
-│   │   ├── ApprovalStore.js     # ژورنال audit، صف pending per-project، کش gateway
-│   │   └── PolicyErrors.js      # پیام‌های رد، که قراردادند نه متن دلخواه
+│   ├── agent.js                 # حلقه هماهنگ‌کننده و نما (Facade سازگار)
+│   ├── application/             # لایه ارکستراسیون چرخه حیات (runAgent، runSession، lifecycle)
+│   ├── cli/                     # زیرسیستم خط فرمان (ArgParser، CommandRegistry، RunCommand، ServeCommand...)
+│   ├── interactive/             # زیرسیستم REPL (Repl، ReplCommands، InputReader، OutputRenderer، ApprovalPrompt)
+│   ├── events/                  # زیرسیستم رویدادها (EventBus، EventTypes، EventValidator، EventContext، EventProjector...)
+│   ├── prompt/                  # سازنده پرامپت پویا (PromptBuilder، MainPromptBuilder، SubAgentPromptBuilder...)
+│   ├── actions/                 # پردازش و اعتبارسنجی پاسخ مدل (ActionParser، NativeToolCallAdapter، ResponseRepair...)
+│   ├── runtime/                 # موتور زمان‌بندی و چرخه اجرا (AgentRun، IterationRunner، ToolGraphExecutor، RunManager...)
+│   ├── context/                 # بودجه‌بندی و فشرده‌سازی تدریجی کانتکست (ContextManager، Compactor، MemoryCoordinator...)
+│   ├── persistence/             # لایه پایداری داده (AtomicFile، JsonRepository، SessionRepository، JournalRepository...)
+│   ├── tools/                   # پیاده‌سازی ماژولار ابزارها (ToolRuntime، ToolRegistryAdapter، filesystem/، process/...)
+│   ├── mcp/                     # لایه ارتباطات MCP (McpManager، McpCatalogue، SemanticClient، SemanticClientPool...)
+│   ├── policy/                  # مرز امنیتی و تأییدیه‌ها (PolicyEngine، PolicyRegistry، PolicyMatcher، ApprovalStore)
+│   ├── hooks/                   # هوک‌های اجرایی (HookRegistry، HookLoader، HookRunner، HookResult)
+│   ├── projects/                # رجیستری و کانتکست چندپروژه‌ای (ProjectRegistry، ProjectStore، ProjectContext...)
+│   ├── discussion/              # سیستم مباحثه چندعاملی (DiscussionEngine، PersonaRunner، ObserverRunner، LoopDetector...)
+│   ├── config/                  # تنظیمات و پرامپت‌های پایه (SettingsSchema، SettingsStore، SettingsResolver...)
 │   ├── registry/                # رجیستری ابزارها، نقش‌ها، اسکیل‌ها و پالیسی‌ها
+│   │   └── tool-schemas/        # اسکیمای تفکیک‌شده ابزارها (filesystem، process، git، code، planning...)
 │   ├── schema/                  # اسکیمای سخت‌گیرانه (Strict JSON Schema) اکشن مدل
-│   └── tools/                   # پیاده‌سازی ابزارهای سیستمی و هوش کد
+│   └── lib/                     # لایه‌های سازگاری (Compatibility Wrappers جهت حفظ یکپارچگی)
 ├── web/
-│   ├── server.js                # پوستهٔ سازگاری؛ به web/server/ می‌رسد
-│   ├── server/                  # لایهٔ کنسول وب (فاز ۲۳)
-│   │   ├── WebServer.js         # state، سیم‌کشی نگرانی‌ها، سوکت و lifecycle
-│   │   ├── Router.js            # هر URL به کدام handler — به همان ترتیب قبلی
-│   │   ├── Middleware.js        # توکن، rate limit، گیت Origin و تعویض کوکی
-│   │   ├── SseHub.js            # چه کسی گوش می‌دهد و هرکس چه می‌بیند
-│   │   ├── RequestBody.js       # خواندن body و سقف ۱MB
-│   │   ├── Response.js          # JSON و fallback استاتیک
-│   │   ├── ServerMode.js        # خوانندهٔ تک WEB_SERVER_MODE
-│   │   ├── controllers/         # یک فایل برای هر گروه مسیر (Task، Session، State،
-│   │   │                        #   Settings، Approval، Mcp، Discussion، Graph،
-│   │   │                        #   EventStream، Project)
-│   │   ├── services/            # Task، Session، Settings، EventStream،
-│   │   │                        #   Approval، GitReport، Discussion
-│   │   └── serializers/         # State (snapshot)، Session (سطرهای pending/call)،
-│   │                            #   Error (خطا←status)
+│   ├── server.js                # پوستهٔ سازگاری سرور وب
+│   ├── server/                  # لایهٔ سرور ماژولار کنسول وب (WebServer، Router، controllers/، services/...)
 │   └── public/                  # دارایی‌های فرانت‌اند کنسول و Visualizer
-│       ├── app.js               # پوستهٔ سازگاری (CJS)؛ صفحه /app/main.js را بار می‌کند
-│       ├── app/                 # کنسول به‌شکل ماژول‌های ES نیتیو (فاز ۲۴، بدون build step)
-│       │   ├── main.js          # wiring صفحه + سه فراخوان شروع
-│       │   ├── store.js         # state به ۱۱ دامنه: runtime/conversation/execution/
-│       │   │                    #   plan/event/approval/settings/mcp/history/
-│       │   │                    #   discussion/project (به‌جای یک شیء ۴۳ کلیدی)
-│       │   ├── dom.js           # el/node/definition و دسترسی به Modal
-│       │   ├── api.js           # همهٔ fetchها، از جمله eventsUrl
-│       │   ├── event-stream.js  # connect + reducer (apply/applySnapshot)
-│       │   ├── task-runner.js   # ثبت تسک، صف برچسب‌دار، لغو، پاک‌کردن
-│       │   ├── formatters.js    # shorten/statusIcon/eventLabel/…
-│       │   ├── markdown.js      # رندر markdown بدون تزریق HTML
-│       │   ├── direction.js     # تشخیص RTL/LTR
-│       │   ├── chat.js          # حباب‌ها و بلوک اجرای هر iteration
-│       │   ├── execution-view.js/plan-view.js/event-view.js/
-│       │   ├── settings-view.js/mcp-view.js/discussion-view.js/
-│       │   ├── approvals-view.js/history-view.js/modal-manager.js
-│       │   └── project-state.js/project-switcher.js/project-dashboard.js
-│       ├── modal.js             # سرویس modal (کلاسیک؛ globalThis.Modal را هم ست می‌کند)
-│       ├── visualizer.js        # پوستهٔ سازگاری ویزوالایزر (کلاسیک + require برای تست)
-│       ├── visualizer/          # ویزوالایزر به‌شکل ماژول‌های ES نیتیو (فاز ۲۵)
-│       │   ├── main.js          # boot: bindEvents سپس loadView("architecture")
-│       │   ├── graph-store.js   # تنها state قابل‌تغییر صفحه + setGraphData (تنها writer)
-│       │   ├── page.js          # idهای DOM و projectId از URL
-│       │   ├── api-client.js    # loadView / loadNeighborhood / loadImpact با projectId
-│       │   ├── graph-model.js   # دادهٔ نمونهٔ fallback، breadcrumb، drill-down
-│       │   ├── graph-renderer.js# گره‌ها/یال‌ها در SVG (کپ ۲۰/۵۰/۴۰)
-│       │   ├── layout-client.js # چیدمان گرید؛ worker اعلام‌شده ولی بی‌مشتری (باز ۱۳)
-│       │   ├── viewport.js      # pan/zoom/fit و transform مشترکشان
-│       │   ├── selection-state.js# انتخاب، focus mode تا عمق focusDepth، reset
-│       │   ├── node-details.js  # inspector یک ستونه
-│       │   ├── search.js        # search-to-graph روی همان گراف بارگذاری‌شده
-│       │   └── visualizer-events.js # گوش‌سپاری‌های صفحه، بدون منطق
-│       └── index.html           # <script type="module" src="/app/main.js">
-├── test/                        # سوئیت کامل آزمون‌های یکپارچگی و ران‌تایم
+│       ├── app/                 # کنسول به‌شکل ماژول‌های ES نیتیو (۱۱ دامنهٔ state، بدون build step)
+│       └── visualizer/          # ویزوالایزر ماژولار ES نیتیو مستقل
+├── test/
+│   ├── contracts/               # تست‌های سخت‌گیرانه قراردادها (actions، events، prompt، tool، api، persistence...)
+│   ├── tools/                   # تست‌های ابزارهای سیستمی
+│   ├── runtime/                 # تست‌های حلقه اجرا و موتور رانتایم
+│   ├── context/                 # تست‌های کانتکست و آرشیو
+│   ├── persistence/             # تست‌های ذخیره‌سازی و مهاجرت
+│   ├── mcp/                     # تست‌های لایه MCP و کلاینت پول سمانتیک
+│   ├── web/                     # تست‌های سرور، روت‌ها و لایه‌های کنسول
+│   ├── ui/                      # تست‌های رندرینگ کنسول و تعاملات DOM
+│   ├── projects/                # تست‌های چندپروژه‌ای و API پروژه‌ها
+│   ├── discussion/              # تست‌های مباحثه چندعاملی
+│   ├── cli/                     # تست‌های خط فرمان
+│   ├── interactive/             # تست‌های نشست تعاملی REPL
+│   ├── events/                  # تست‌های لایه رویدادها
+│   ├── hooks/                   # تست‌های هوک‌ها
+│   ├── e2e/                     # تست‌های انتها‌به‌انتها
+│   └── mvp/                     # سناریوهای پذیرش MVP
 └── semantic-engine/             # موتور مستقل تحلیل کد و گراف معنایی
 ```
 
@@ -562,6 +522,83 @@ npm run test:web:layer    # فقط ساختار/سیم‌کشی web/server/ (ب�
 npm run test:web          # آزمون رفتار سرور وب کنسول از راه HTTP
 npm run test:cli          # آزمون‌های خط فرمان و پارامترها
 ```
+
+---
+
+## ۱۳. راهنمای معماری چندپروژه‌ای (Multi-Project Guide)
+
+پلتفرم Structured AI از معماری **چندپروژه‌ای کاملاً ایزوله (Multi-Project Isolation)** پشتیبانی می‌کند. هر پروژه دارای هویت پایدار، ریشهٔ کانونیکال، داده‌های متمرکز و ایزولاسیون کامل در ابزارها، پردازه‌ها، حافظه، رخدادها و نشست‌ها است.
+
+### ۱۳.۱ ذخیره‌سازی داده‌های متمرکز (Centralized Data Home)
+به‌جای پراکندگی داده‌ها در دایرکتوری‌های محلی `.agent/`، داده‌های تمام پروژه‌ها در یک فروگاه مرکزی ذخیره می‌شوند:
+```text
+~/.local/share/structured-ai/
+├── registry.json                    # رجیستری مرکزی پروژه‌ها
+└── projects/<project-id>/
+    ├── project.json                 # تنظیمات خاص پروژه
+    ├── memory.json                  # حافظهٔ کاری پایدار
+    ├── plan.json                    # برنامهٔ اجرایی پروژه
+    ├── sessions/                    # نشست‌های مکالمه‌ای
+    ├── archive/                     # بایگانی فشرده رویدادها
+    ├── journal/                     # ژورنال اجرایی تفکیک‌شده per-run
+    ├── eventstore/                  # مخزن روزانه رویدادها
+    └── discussions/                 # رونوشت‌های پایدار مباحثات چندعاملی
+```
+مسیر مرکزی از طریق متغیر محیطی `STRUCTURED_AI_DATA_HOME` قابل تنظیم و override است.
+
+### ۱۳.۲ ثبت و مدیریت پروژه از خط فرمان (CLI)
+```bash
+# اجرای یک تسک در کانتکست پروژهٔ ثبت‌شده
+node bin/agent.js --project prj-my-app "تسک مورد نظر"
+
+# ثبت و مهاجرت ورک‌اسپیس قدیمی .agent به فروگاه مرکزی (ایدم‌پوتنت)
+node bin/agent.js --migrate prj-my-app -w /path/to/workspace
+```
+
+### ۱۳.۳ وب API چندپروژه‌ای
+* `GET /api/projects` — فهرست پروژه‌های ثبت‌شده
+* `POST /api/projects` — ثبت پروژهٔ جدید با `name` و `rootPath`
+* `GET /api/projects/:id/state` — وضعیت زنده و اختصاصی پروژه
+* `POST /api/projects/:id/tasks` — اجرای تسک اسکوپ‌شده به پروژه
+* `GET /api/projects/:id/events` — استریم رویدادهای فیلترشده و ایزولهٔ همان پروژه
+
+---
+
+## ۱۴. راهنمای توسعه‌دهندگان (Developer Guide)
+
+معماری ماژولار Structured AI به گونه‌ای طراحی شده است که توسعه و افزودن قابلیت‌ها نیازی به ویرایش فایل‌های هسته ندارد:
+
+### ۱۴.۱ افزودن ابزار جدید (Tool)
+1. **تعریف اسکیما:** اسکیما پارامترهای ابزار را در `agent/registry/tool-schemas/<group>.json` تعریف کنید.
+2. **پیاده‌سازی ابزار:** تابع اجرا را در `agent/tools/<group>/` با امضای `(args, context)` پیاده‌سازی کنید.
+3. **پالیسی امنیت:** قانون سطح دسترسی ابزار (`allow`، `require_approval` یا `deny`) را در `agent/registry/policy.json` مشخص کنید.
+4. **تست قرارداد:** رفتار ابزار را در `test/tools/` و `test/contracts/tool.contract.test.js` اعتبارسنجی کنید.
+
+### ۱۴.۲ افزودن مهارت جدید (Skill)
+1. مهارت و توضیحات آن را در `agent/registry/skills.json` ثبت کنید.
+2. در صورت نیاز به رویه‌های on-demand، محتوای پرامپت را در `agent/tools/skills.js` قرار دهید.
+
+### ۱۴.۳ افزودن ایجنت و پرسونای جدید (Agent & Persona)
+1. خصوصیات اخلاقی و اولویت‌های پرسونا را در `agent/registry/personas.json` تعریف کنید.
+2. ابزارهای مجاز، مهارت‌ها و بودجهٔ delegation را در `agent/registry/agents.json` ثبت نمایید.
+
+### ۱۴.۴ افزودن بخش جدید به پرامپت (Prompt Section)
+1. منطق قالب‌بندی پیام را در `agent/prompt/PromptMessages.js` اضافه کنید.
+2. تزریق به پرامپت اصلی در `agent/prompt/MainPromptBuilder.js` یا ساب‌ایجنت در `agent/prompt/SubAgentPromptBuilder.js` را انجام دهید.
+
+### ۱۴.۵ افزودن رویداد جدید (Event)
+1. نوع رویداد را در `agent/events/EventTypes.js` به فهرست `KNOWN_EVENT_TYPES` اضافه کنید.
+2. فیلدهای مورد انتظار را در `test/fixtures/events.json` درج کرده و انولوپ را با `test/contracts/events.contract.test.js` بسنجید.
+
+---
+
+## ۱۵. اسناد مرجع معماری و پلن اجرایی (Reference Documents)
+
+* **[EXECUTION_PLAN.md](EXECUTION_PLAN.md):** سند حاکم بر ترتیب اجرا و پلن ۳۰ فازی پلتفرم (تمام فازها به وضعیت 🟢 رسیده‌اند).
+* **[MULTI_PROJECT_REFACTOR_ORDER_PLAN.md](MULTI_PROJECT_REFACTOR_ORDER_PLAN.md):** معماری حاکم بر تقدم و تأخر فازهای MVP و ریفکتور ماژولار.
+* **[MULTI_PROJECT_IMPLEMENTATION_PLAN.md](MULTI_PROJECT_IMPLEMENTATION_PLAN.md):** دامنهٔ کامل نیازمندی‌ها و ویژگی‌های چندپروژه‌ای.
+* **[REFACTOR_EXECUTION_PLAN.md](REFACTOR_EXECUTION_PLAN.md):** دامنهٔ بازطراحی ساختار ماژولار و تفکیک فایل‌های Monolithic.
+* **[DISCUSSION_SYSTEM_IMPLEMENTATION.md](DISCUSSION_SYSTEM_IMPLEMENTATION.md):** مشخصات و تحلیل سیستم مباحثه چندعاملی (Multi-Agent Discussion).
 
 ---
 

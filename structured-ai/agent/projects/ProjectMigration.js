@@ -60,7 +60,8 @@ const DIRECTORIES = [
     "eventstore",
     "searches",
     "processes",
-    "logs"
+    "logs",
+    "discussions"
 ];
 
 

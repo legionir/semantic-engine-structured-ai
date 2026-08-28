@@ -179,6 +179,17 @@ function createDiscussionService(ctx) {
             discussion.stopped_reason = result.stopped_reason || null;
             discussion.finished_at = Date.now();
 
+            try {
+                if (typeof DISCUSSION_MODULE.saveDiscussion === "function") {
+                    DISCUSSION_MODULE.saveDiscussion(
+                        discussion,
+                        typeof runtime.currentProject === "function" ? runtime.currentProject() : undefined
+                    );
+                }
+            } catch {
+                /* non-fatal */
+            }
+
             runtime.events.emit("discussion:finish", {
                 id: discussion.id,
                 total_rounds: result.total_rounds,
