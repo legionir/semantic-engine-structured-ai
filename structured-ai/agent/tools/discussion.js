@@ -1,10 +1,12 @@
 "use strict";
 
 const path = require("path");
+const config = require("../config");
+const events = require("../events");
 
 /**
- * discussion_start tool
- * ---------------------
+ * discussion_start tool — EXECUTION_PLAN Phase 28
+ * -----------------------------------------------
  * The main agent can open a multi-agent discussion when the user asks
  * for a multi-perspective analysis. The engine runs the rounds itself,
  * outside the delegation tree: personas are peers that see each other
@@ -43,7 +45,7 @@ function agentRuntime() {
  * argument), because a silent fallback would make the tool report
  * canned opinions as if the specialists had spoken.
  */
-function createCaller(task, { mock = false } = {}) {
+function createCaller(task, { mock = false } = {}, context = {}) {
 
     const runtime = agentRuntime();
 
@@ -57,6 +59,14 @@ function createCaller(task, { mock = false } = {}) {
 
     if (mock) {
         return mockCaller(task);
+    }
+
+    if (typeof context?.callAI === "function") {
+        return createLlmCaller({ callAI: context.callAI });
+    }
+
+    if (typeof context?.agent?.callAI === "function") {
+        return createLlmCaller({ callAI: context.agent.callAI });
     }
 
     if (typeof runtime?.callAI === "function") {
@@ -123,14 +133,21 @@ function mockCaller(task) {
 }
 
 /**
- * The events are what the web console's Discussion panel and the CLI
- * stream display; without a bus (unit tests) they are simply skipped.
+ * Emits events onto the event bus, carrying correlation context when available.
  */
-function emit(runtime, type, payload) {
+function emit(type, payload, context = {}) {
 
-    if (runtime?.events?.emit) {
-        runtime.events.emit(type, payload);
+    const correlation = {};
+
+    if (context?.projectId || context?.projectContext?.id) {
+        correlation.project_id = context.projectId || context.projectContext?.id;
     }
+
+    if (context?.runId) {
+        correlation.run_id = context.runId;
+    }
+
+    events.emit(type, { ...correlation, ...payload });
 }
 
 /*
@@ -140,7 +157,7 @@ function emit(runtime, type, payload) {
 | schema has additionalProperties: false.
 */
 
-async function discussion_start(args) {
+async function runDiscussionInternal(args, context = {}) {
 
     const task = args.task;
     const personas = args.personas;
@@ -164,7 +181,7 @@ async function discussion_start(args) {
         throw new Error("personas must be non-empty array of persona ids");
     }
 
-    const { PERSONAS } = getEngine();
+    const { PERSONAS, saveDiscussion } = getEngine();
     const available = PERSONAS.map(persona => persona.id);
 
     for (const persona of personas) {
@@ -179,48 +196,51 @@ async function discussion_start(args) {
         throw new Error("max_rounds must be between 1 and 10");
     }
 
-    const runtime = agentRuntime();
-
     const discussionId =
         `discussion-${Date.now().toString(36)}-${Math.random()
             .toString(36)
             .slice(2, 8)}`;
 
-    const caller = createCaller(task, { mock: args.mock === true });
+    const caller = createCaller(task, { mock: args.mock === true }, context);
 
     const { DiscussionEngine } = getEngine();
+
+    const workspaceRoot =
+        context?.projectContext?.workspaceRoot ||
+        args.workspace ||
+        args.workspace_root ||
+        "";
+
+    const maxParallel =
+        config.get("MAX_PARALLEL_AGENTS") || 4;
 
     const engine = new DiscussionEngine({
         task,
         personas,
         maxRounds: max_rounds,
         /* the panel shares the runtime's parallel-agent budget */
-        maxParallel:
-            runtime?.settings?.get?.("MAX_PARALLEL_AGENTS") || 4,
+        maxParallel,
         llmCaller: caller,
-        workspaceContext:
-            args.workspace ||
-            args.workspace_root ||
-            "",
+        workspaceContext: workspaceRoot,
         onMessage: message => {
-            emit(runtime, "discussion:message", {
+            emit("discussion:message", {
                 id: discussionId,
                 round: message.round,
                 persona: message.persona,
                 persona_name: message.persona_name,
                 content: message.content,
                 tools_used: message.tools_used || []
-            });
+            }, context);
         },
         onRound: round => {
-            emit(runtime, "discussion:round", {
+            emit("discussion:round", {
                 id: discussionId,
                 round: round.round,
                 messages: round.messages.length
-            });
+            }, context);
         },
         onObserver: (observerDecision, round) => {
-            emit(runtime, "discussion:observer", {
+            emit("discussion:observer", {
                 id: discussionId,
                 round,
                 decision: observerDecision.decision,
@@ -228,16 +248,16 @@ async function discussion_start(args) {
                 open_points: observerDecision.open_points || [],
                 unaddressed: observerDecision.unaddressed || [],
                 instructions: observerDecision.instructions || {}
-            });
+            }, context);
         }
     });
 
-    emit(runtime, "discussion:start", {
+    emit("discussion:start", {
         id: discussionId,
         task,
         personas,
         max_rounds
-    });
+    }, context);
 
     const startedAt = Date.now();
 
@@ -246,21 +266,49 @@ async function discussion_start(args) {
     try {
         result = await engine.run();
     } catch (error) {
-        emit(runtime, "discussion:error", {
+        emit("discussion:error", {
             id: discussionId,
             error: error.message
-        });
+        }, context);
         throw error;
     }
 
-    emit(runtime, "discussion:finish", {
+    emit("discussion:finish", {
         id: discussionId,
         total_rounds: result.total_rounds,
         hit_max_rounds: result.hit_max_rounds,
         stopped_reason: result.stopped_reason || null,
         final_report: result.final_report,
         duration_ms: Date.now() - startedAt
-    });
+    }, context);
+
+    /*
+    | EXECUTION_PLAN Phase 28: Discussion transcript is persisted per project
+    | in dataRoot, making discussions replayable and persistent across restarts.
+    */
+    const recordToPersist = {
+        id: discussionId,
+        project_id: context?.projectId || context?.projectContext?.projectId || context?.projectContext?.id || null,
+        run_id: context?.runId || null,
+        task,
+        personas,
+        max_rounds,
+        total_rounds: result.total_rounds,
+        hit_max_rounds: result.hit_max_rounds,
+        stopped_reason: result.stopped_reason || null,
+        created_at: startedAt,
+        finished_at: Date.now(),
+        duration_ms: Date.now() - startedAt,
+        final_report: result.final_report,
+        rounds: result.rounds,
+        observer_decisions: result.observer_decisions
+    };
+
+    try {
+        saveDiscussion(recordToPersist, context);
+    } catch {
+        /* persistence failure should not break the tool output */
+    }
 
     /*
     | The tool result is the synthesis, not the transcript dump: the
@@ -292,6 +340,23 @@ async function discussion_start(args) {
             instructions: decision.instructions
         }))
     };
+}
+
+async function discussion_start(args, context = {}) {
+
+    const scopeOptions = {
+        project_id: context?.projectId || context?.projectContext?.projectId || context?.projectContext?.id || null,
+        run_id: context?.runId || null
+    };
+
+    if (scopeOptions.project_id || scopeOptions.run_id) {
+
+        return events.runWithScope(scopeOptions, () =>
+            runDiscussionInternal(args, context)
+        );
+    }
+
+    return runDiscussionInternal(args, context);
 }
 
 module.exports = {

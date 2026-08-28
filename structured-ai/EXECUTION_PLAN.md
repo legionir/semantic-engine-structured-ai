@@ -938,55 +938,67 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 ---
 
-## [🔴] فاز ۲۶: CLI و Interactive REPL
+## [🟢] فاز ۲۶: CLI و Interactive REPL
 
 **هدف و scope:** استقلال CLI اصلی و REPL. خروجی: `agent/cli/` و `agent/interactive/`.
 
-### [🔴] گام ۱: تفکیک parsing و commandها
+**تکمیل 2026-08-28:** گام ۱ 🟢 — استخراج کامل ماژول‌های `agent/cli/` (شامل `ArgParser.js`، `CommandRegistry.js`، `OutputFormatter.js`، `RunCommand.js`، `ServeCommand.js`، `InteractiveCommand.js`، `HelpCommand.js`، `index.js`) و `agent/interactive/` (شامل `Repl.js`، `ReplCommands.js`، `InputReader.js`، `OutputRenderer.js`، `ApprovalPrompt.js`، `index.js`). فایل‌های `bin/agent.js` و `bin/interactive.js` به wrapperهای نازک تبدیل شدند و تا فاز ۳۰ حفظ می‌شوند (قانون ۷). ۱۳ تست لایهٔ جدید در `test/cli/layer.test.js` سبز؛ `test/cli.test.js` (19/19) و `test/interactive.test.js` (12/12) بدون هیچ ویرایشی سبز؛ `bin/backfill-eventstore.js` کار می‌کند؛ suite کامل ۷۹۸/۷۹۸ در ۴۴ فایل سبز و `npm run check` سبز. تصمیم ۴۶ در پیوست ب.
 
-از `bin/agent.js` و `bin/interactive.js` (logic تعبیه‌شده) بساز: `ArgParser.js`، `CommandRegistry.js`، `OutputFormatter.js`، `RunCommand.js`، `ServeCommand.js`، `InteractiveCommand.js`، `HelpCommand.js` و `Repl.js`، `ReplCommands.js`، `InputReader.js`، `OutputRenderer.js`، `ApprovalPrompt.js`. binها wrapper نازک شوند. رفتار: commandها و فلگ‌های فعلی (شامل `--project` فاز ۷)، `--json` فقط JSON معتبر روی stdout، log stream و final output فعلی، فرمان‌های REPL (`/help`، `/clear`، `/history`، `/approve`، `/tools`، `/save`) و approval prompt سازگار با runtime.
+### [🟢] گام ۱: تفکیک parsing و commandها
+
+**انجام شد (2026-08-28):** ماژول‌های `agent/cli/` و `agent/interactive/` ساخته شدند: `ArgParser` (مدیریت آرگومان‌ها، اعتبارسنجی اعداد و مسیرها، `--project` و `--migrate` و تطبیق ریشه با رجیستری، اعمال تنظیمات به env، `fail` و `EXIT` و `USAGE`)؛ `CommandRegistry` (نگاشت و dispatch دستورات `help`، `migrate`، `catalogue`، `serve`، `interactive`، `discussion`، `run`؛ تابع `runMigration` ایدم‌پوتنت)؛ `OutputFormatter` (`printCatalogue` برای ابزارها، عامل‌ها و سیاست؛ قالب‌بندی duration و خروجی JSON و گزارش‌ها)؛ `HelpCommand` (`--help` و `--version`)؛ `ServeCommand` (راه‌اندازی وب کنسول)؛ `InteractiveCommand` (اتصال به نشست تعاملی)؛ `RunCommand` (حل تسک از آرگومان/فایل/stdin، اجرای تک‌ران، `--until-done` حلقهٔ پلن، و `--discussion` ارکستراسیون بحث چندعاملی). در لایهٔ تعاملی: `OutputRenderer` (رنگ‌ها، بنر، تاریخچه، نتایج تسک، خطاهای لغو و زمان‌بندی)؛ `InputReader` (مدیریت readline، صف مرتب خطوط، پاسخ درجا به تأییدیه‌ها بدون مسابقه با پرامپت، خروج منظم)؛ `ApprovalPrompt` (مدیریت پرسش تأییدیه در جریان نشست تعاملی با خوانندهٔ داخلی)؛ `ReplCommands` (اجرای تمام فرمان‌های اسلش `/help`، `/clear`، `/history`، `/approve`، `/model`، `/workspace`، `/limits`، `/stats`، `/tools`، `/agents`، `/policy`، `/save`، خروج)؛ و `Repl` (ارکستراسیون نشست، هندلر SIGINT برای لغو تسک بدون بستن نشست، مدیریت چرخهٔ ابزارها). `bin/agent.js` و `bin/interactive.js` به wrapperهای نازک تقلیل یافتند.
 
 **معیار پذیرش:**
 
 - `cli.test.js` و `interactive.test.js` بدون تغییر سبز؛ `bin/backfill-eventstore.js` کار می‌کند؛ suite سبز.
 
+**وضعیت معیارها (2026-08-28):** هر سه بخش با شواهد قفل شدند — `test/cli.test.js` ۱۹/۱۹ و `test/interactive.test.js` ۱۲/۱۲ بدون هیچ تغییری در تست‌ها سبز؛ `bin/backfill-eventstore.js` بررسی و عملکردش تأیید شد؛ `test/cli/layer.test.js` ۱۳/۱۳ ماژول‌های جدید را مستقیماً می‌سنجد؛ suite کامل ۷۹۸/۷۹۸ در ۴۴ فایل سبز؛ `npm run check` سبز.
+
 ---
 
-## [🔴] فاز ۲۷: Event Contract و Observability Boundaries
+## [🟢] فاز ۲۷: Event Contract و Observability Boundaries
 
 **هدف و scope:** تفکیک تولید، اعتبارسنجی، ذخیره، replay و نمایش eventها با قرارداد پایدار. خروجی: `agent/events/`.
 
-### [🔴] گام ۱: لایهٔ events
+**تکمیل 2026-08-28:** گام ۱ 🟢 — استخراج کامل ماژول‌های `agent/events/` (شامل `EventBus.js`، `EventTypes.js`، `EventValidator.js`، `EventContext.js`، `EventProjector.js`، `EventRedactor.js`، `index.js`). فایل `agent/lib/events.js` به wrapper سازگار تبدیل شد و تا فاز ۳۰ حفظ می‌شود (قانون ۷). ۱۱ تست لایهٔ جدید در `test/events/layer.test.js` سبز؛ `test/contracts/events.contract.test.js` (5/5) و `test/eventstore.test.js` (5/5) و `test/journal.test.js` (2/2) سبز؛ suite کامل ۸۰۹/۸۰۹ در ۴۵ فایل سبز و `npm run check` سبز. تصمیم ۴۷ در پیوست ب.
 
-`EventBus.js`، `EventTypes.js`، `EventValidator.js`، `EventContext.js`، `EventProjector.js`، `EventRedactor.js` را بساز. نام‌های event فعلی حفظ؛ payload validation اضافه شود؛ secret و source content در log/redaction ماسک شوند؛ journal و eventstore همان eventها را ذخیره کنند؛ UI همان eventها (+ additive) را replay کند؛ telemetry از business event جدا باشد. تعریف مستند `turnId` (خروجی فاز ۹) در contract درج شود.
+### [🟢] گام ۱: لایهٔ events
+
+**انجام شد (2026-08-28):** شش ماژول لایهٔ رویداد در `agent/events/` ساخته شدند: `EventBus` (انتشار رویدادها با sequence صعودی، مدیریت شنوندگان، و ارسال دوگانه به استریم سراسری `"event"` و استریم نوعی)؛ `EventTypes` (فهرست کامل ۶۴ رویداد رسمی، دسته‌بندی موضوعی، تفکیک رویدادهای کسب‌وکار از تلمتری، و ثبت رسمی قرارداد `turn_id` با تعریف سلسله‌مراتب `project_id ⊃ run_id ⊃ turn_id ⊃ iteration`)؛ `EventValidator` (اعتبارسنجی صریح ساختار انولوپ و فیلدهای الزامی payloadهای کلیدی ثبت‌شده در قرارداد)؛ `EventContext` (مدیریت زمینه‌های هم‌بستگی با `AsyncLocalStorage` برای اجراهای موازی و سازگاری با زمینهٔ سراسری legacy)؛ `EventProjector` (فیلتر کردن استریم‌های مختص پروژه، تقلیل رویدادهای عمومی به متادیتای تجمیعی برای عدم نشت اطلاعات، و متد deduplicate بر اساس `(run_id, seq)` جهت replay امن)؛ و `EventRedactor` (ماسک‌کردن ایمن کلیدهای محرمانه نظیر API keys، توکن‌ها، پسوردها، هدرهای `Bearer` و توکن‌های URL بدون جهش شیء اصلی). فایل `agent/lib/events.js` با بازتصدیر ماژول جدید، wrapper سازگار ماند.
 
 **معیار پذیرش:**
 
 - contract test رویدادها (فاز ۱ + گسترش) سبز؛ replay در UI خراب نمی‌شود؛ دادهٔ پروژه‌ای در رویداد پروژهٔ دیگر ظاهر نمی‌شود (تست isolation)؛ suite سبز.
 
+**وضعیت معیارها (2026-08-28):** همهٔ بخش‌ها اثبات شدند — `test/contracts/events.contract.test.js` ۵/۵ سبز (بدون نشت نام جدید یا مغایرت انولوپ)؛ `test/events/layer.test.js` ۱۱/۱۱ سبز؛ ایزولاسیون پروژه‌ای و بازتولید بدون تکرار اثبات شد؛ تست‌های UI و وب سبزند؛ suite کامل ۸۰۹/۸۰۹ در ۴۵ فایل سبز و `npm run check` سبز.
+
 ---
 
-## [🔴] فاز ۲۸: ماژولارسازی و یکپارچه‌سازی ماژول Discussion (جبران شکاف)
+## [🟢] فاز ۲۸: ماژولارسازی و یکپارچه‌سازی ماژول Discussion (جبران شکاف)
 
 **هدف و scope:** ماژول `agent/discussion/` (~۵۰KB در ۸ فایل: `engine`، `index`، `loopDetector`، `observerRunner`، `personaRunner`، `personas`، `transcript`، `types`) + ابزار `agent/tools/discussion.js` (~۱۱KB) + بخش‌های `web/server.js` (۵۲ ارجاع) در هیچ‌کدام از اسناد مرجع پوشش نداشته‌اند. این فاز جای آن‌ها را در معماری هدف تعیین و اجرا می‌کند. **پیش‌نیاز فازهای ۱۴–۱۶:** discussion از طریق `callAI` (مسیر request رانتایم) با endpoint resolution نقش‌محور کار می‌کند؛ بنابراین پس از تثبیت لایه‌های application/runtime اجرا می‌شود.
 
-### [🔴] گام ۱: inventory مسئولیت‌ها و قراردادها
+**تکمیل 2026-08-28:** گام‌های ۱ تا ۳ 🟢 — تثبیت مرزهای ماژول `agent/discussion/`، استخراج `DiscussionRepository` در `agent/persistence/` برای پایداری per-project (تصمیم ۶)، پوشش کامل با contract test و layer test، همگام‌سازی ابزار `discussion_start` و `DiscussionService` با ProjectContext/RunContext و ارسال رویدادهای scoped، حذف وابستگی‌های چرخه‌ای به `agent.js`. ۵ تست جدید در `test/contracts/discussion.contract.test.js` و ۶ تست در `test/discussion/layer.test.js` سبز؛ `test/discussion.test.js` (23/23) بدون تغییر سبز؛ suite کامل ۸۲۰/۸۲۰ در ۴۷ فایل سبز و `npm run check` سبز. تصمیم ۴۸ در پیوست ب.
 
-مرزهای ماژول را مستند کن: DiscussionEngine (ارکستر rounds)، PersonaRunner/ObserverRunner (فراخوانی LLM با `callAI` و `MAX_PARALLEL_AGENTS` budget)، LoopDetector، TranscriptStore (در حافظه)، personas ثابت + پروفایل‌های `discussion_*` در registry (که از تبلیغ delegation فیلتر می‌شوند)، ابزار `discussion_start`، endpointها/UI وب (۵۲ ارجاع در server.js). قرارداد هر سطح (tool args، APIها، eventها) مشخص و contract test ساخته شود.
+### [🟢] گام ۱: inventory مسئولیت‌ها و قراردادها
 
-### [🔴] گام ۲: سازگاری Multi-Project
+**انجام شد (2026-08-28):** مرزهای مسئولیت مستند و با contract test قفل شدند: `DiscussionEngine` (ارکستراسیون دورها، اعمال سقف هم‌زمانی `mapLimited` با `MAX_PARALLEL_AGENTS`، تشخیص لوپ و توقف اجباری با خروجی سنتز)؛ `PersonaRunner` و `ObserverRunner` (فراخوانی مدل، تفکیک دور ۱ مستقل و دورهای ۲+ با ارجاع به دورهای پیشین)؛ `LoopDetector` (تشخیص تکرار با شباهت جاکارد و دغدغه‌های پاسخ‌داده‌نشده)؛ `TranscriptStore` (نگهداری حافظه‌ای و فرمت‌بندی پرامپت‌ها)؛ ۱۵ پرسونای تخصصی در `personas.js` و `OBSERVER` (فیلترشده از تبلیغ delegation برای حفظ بودجه پرامپت)؛ ابزار `discussion_start` با اعتبارسنجی پارامترها (`task`، `personas`، `max_rounds` و `additionalProperties: false`)؛ و روت‌های وب کنسول (`GET /api/discussion/personas` و `POST /api/discussion`). قراردادهای کامل در `test/contracts/discussion.contract.test.js` قفل شدند.
 
-discussion باید ProjectContext/RunContext فعلی را مصرف کند: `workspaceContext` و endpoint resolution از context پروژه؛ eventهای آن `projectId`/`runId` حمل کنند. **تصمیم تأییدشده (2026-08-25):** transcript discussion به‌صورت **per-project پایدار** می‌شود — علاوه‌بر `TranscriptStore` فعلیِ درون‌حافظه‌ای، خلاصه/خروجی هر session بحث در `dataRoot` پروژه (فاز ۸) با repository ساخته‌شده در فاز ۱۸ ذخیره و قابل مرور/replay شود؛ این تفاوت رفتاری به‌عنوان بهبود محصول تعمدی در همین گام مستند می‌گردد (قانون ثابت ۴).
+### [🟢] گام ۲: سازگاری Multi-Project
 
-### [🔴] گام ۳: ورود به ساختار هدف
+**انجام شد (2026-08-28):** سازگاری چندپروژه‌ای و پایداری بحث‌ها تکمیل شد: ابزار `discussion_start` و سرویس وب `workspaceContext` را از `projectContext.workspaceRoot` تأمین می‌کنند؛ اجرای بحث در اسکوپ ران پروسه اجرا شده و رویدادهای `discussion:*` به‌صورت خودکار `project_id` و `run_id` را حمل می‌کنند. ماژول `DiscussionRepository` در `agent/persistence/` پیاده‌سازی و دیرکتوری `"discussions"` به `SCAFFOLD_DIRS` مرکزی اضافه شد. خروجی کامل و راندهای هر بحث پس از اتمام به صورت اتمیک در `dataRoot` همان پروژه ذخیره می‌شود. تست‌های ایزولاسیون اثبات کردند که بحث ذخیره‌شدهٔ پروژه الف هرگز توسط پروژه ب دیده یا لیست نمی‌شود.
 
-جای نهایی ماژول در ساختار refactor تعیین و اجرا شود (پیشنهاد: باقی‌ماندن در `agent/discussion/` با facade `index.js` تزریق‌پذیر — `createLlmCaller` به‌جای وابستگی به globalهای `agent.js` روی interface application (فاز ۱۴) سوار شود)؛ وابستگی معکوس `discussion ← agent.js` حذف شود.
+### [🟢] گام ۳: ورود به ساختار هدف
+
+**انجام شد (2026-08-28):** ماژول در `agent/discussion/` با ساختار تمیز باقی ماند؛ facade اصلی `index.js` متدهای ذخیره و مرور دیسکاشن (`saveDiscussion`، `getDiscussion`، `listDiscussions`، `deleteDiscussion`) را اکسپورت می‌کند؛ وابستگی چرخه‌ای به `agent.js` حذف شد و `tools/discussion.js` از ماژول‌های مستقل `config` و `events` استفاده می‌کند و `callAI` را از زمینهٔ تزریق‌شده دریافت می‌کند.
 
 **معیار پذیرش:**
 
 - `discussion.test.js` بدون تغییر رفتار سبز؛ discussion همراه Runهای پروژه‌ای درست (context صحیح، event labelدار) کار می‌کند.
 - transcript هر بحث در `dataRoot` همان پروژه ذخیره و بازیابی می‌شود؛ transcript پروژهٔ الف در ب دیده نمی‌شود (تست isolation).
 - contract testهای discussion (tool + API) موجود؛ وابستگی جهتی تمیز (بدون require چرخه‌ای به `agent.js`)؛ suite سبز.
+
+**وضعیت معیارها (2026-08-28):** هر سه معیار با شواهد قفل شدند — `test/discussion.test.js` ۲۳/۲۳ سبز؛ ایزولاسیون و ذخیره‌سازی per-project با ۵ تست در `test/contracts/discussion.contract.test.js` و ۶ تست در `test/discussion/layer.test.js` اثبات شد؛ عدم لود شدن `agent.js` با تست ساختاری قفل شد؛ suite کامل ۸۲۰/۸۲۰ در ۴۷ فایل سبز؛ `npm run check` سبز.
 
 ---
 
@@ -1002,7 +1014,7 @@ discussion باید ProjectContext/RunContext فعلی را مصرف کند: `wo
 
 **قانون الزامی که فاز ۲۵ کشف کرد و در این فاز به همهٔ تست‌ها تعمیم می‌یابد:** هر تستی که پروژه‌ای ثبت می‌کند باید `STRUCTURED_AI_DATA_HOME` مستقل (temp) داشته باشد و در `finally` هم unregister کند — چون رجیستری در data home کاربر زنده است، نه در ورک‌اسپیس تست، و یک اجرای ناموفق، اجرای بعدی را روی باقی‌ماندهٔ خودش می‌شکند (الگوی فعلی در `test/web/routeHarness.js` و `test/web/graph-index.test.js`؛ هفت فایل دیگر از قبل همین را داشتند).
 
-**مبنای شمارش برای معیار «کاهش نیافتن تعداد»:** انتهای فاز ۲۵ = **785/785 در ۴۳ فایل** (آغاز فاز ۲۱: 625/625؛ فازهای ۲۲→۶۴۰، ۲۳→۷۴۸، ۲۴→۷۶۶، ۲۵→۷۸۵). این عدد مرجعِ «قبل» فاز ۲۹ است.
+**مبنای شمارش برای معیار «کاهش نیافتن تعداد»:** انتهای فاز ۲۵ = 785/785 در ۴۳ فایل؛ انتهای فاز ۲۶ = 798/798 در ۴۴ فایل؛ انتهای فاز ۲۷ = 809/809 در ۴۵ فایل؛ انتهای فاز ۲۸ = **820/820 در ۴۷ فایل** (آغاز فاز ۲۱: 625/625؛ فازهای ۲۲→۶۴۰، ۲۳→۷۴۸، ۲۴→۷۶۶، ۲۵→۷۸۵، ۲۶→۷۹۸، ۲۷→۸۰۹، ۲۸→۸۲۰). این عدد مرجعِ «قبل» فاز ۲۹ است.
 
 ### [🔴] گام ۲: تثبیت تست differential
 
@@ -1136,6 +1148,12 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 44. **تقسیم frontend فاز ۲۴ هم move است نه بازنویسی، و دو تصمیم آگاهانه دارد:** (الف) `apply(event)` به‌عنوان یک reducer در `event-stream.js` منتقل شد و به reducerهای per-domain خرد نشد — خردکردن ترتیب «mutation + render» را در ۳۰+ شاخه عوض می‌کرد و آن تغییر رفتاری است، نه move؛ domain‌ها در *سطح داده* جدی شدند (۱۱ اسلایس، importهای صریح) نه در سطح توابع. (ب) ماژول `state` مشترک ساخته نشد، چون هیچ مصرف‌کننده‌ای نداشت (spread/enumerate/pass شدن `state` قبل از حذف بررسی شد) — یک façade بی‌مصرف فقط سطحِ مردهٔ معماری را بالا می‌برد. دو ماژول به فهرست سند refactor افزوده شد (`discussion-view`، `approvals-view`) چون ~590 و ~200 خط منطق بی‌خانمان بودند و فرورفتنشان در mcp-view/modals «مخفی‌کردن» بود، نه ساده‌سازی؛ `project-state`/`project-switcher`/`project-dashboard` هم همان «+ ماژول‌های پروژهٔ فاز ۱۱» هستند. معیار برابری، inventory ضبط‌شده از فایل پیش از split است (idها، endpointها، کلاس‌ها، eventها، wiring، شکل state) — با Deep-equal مجموعه‌ها، نه شامل‌شدن.
 
 45. **فاز ۲۵ هم move است: تفکیک visualizer بدون تغییر رفتار، با trace به‌جای مشاهدهٔ انسانی.** سه تصمیم ثبت‌شده: (الف) `worker` چیدمان وصل نشد — بی‌مشتری است (هیچ `new Worker` در ریپو نیست)، seed آن تصادفی است، و وصل‌کردن «رفتار layout برابر» را نقض می‌کند؛ جای اتصالش `layout-client.js` است و تستی همین بازنشدگی را قفل می‌کند. (ب) state صفحه در یک ماژول قفل شد (`graph-store.js`) و تست، هر `let`/`var` سطح‌ماژول در جای دیگر را شکست می‌شمارد — این همان «عدم نشت state» است، به‌شکل ساختاری نه کامنتی. (ج) برای بارگذاری ماژول‌ها در تست، هر سناریو در **پروسهٔ جدا** اجرا می‌شود: کش CJS کوئری را نادیده می‌گیرد و ESM را کوئری جدا می‌کند، و بدون این، boot دوم، عناصر boot اول را می‌دید و trace، «صفحهٔ خالی» را به‌جای رفتار ضبط می‌کرد — همان دامی که فاز ۲۴ با require(esm)/Node 18 دید. ابزار `tools/frontend_inventory.js` هم برای نام‌های `export`-شده اصلاح شد (وگرنه ۴۶ نام را «گم‌شده» گزارش می‌کرد).
+
+46. **تفکیک CLI و REPL (فاز ۲۶):** منطق تعبیه‌شدهٔ `bin/agent.js` و `bin/interactive.js` بدون تغییر رفتار به ماژول‌های مستقل در `agent/cli/` (شامل `ArgParser.js`، `CommandRegistry.js`، `OutputFormatter.js`، `RunCommand.js`، `ServeCommand.js`، `InteractiveCommand.js`، `HelpCommand.js`، `index.js`) و `agent/interactive/` (شامل `Repl.js`، `ReplCommands.js`، `InputReader.js`، `OutputRenderer.js`، `ApprovalPrompt.js`، `index.js`) منتقل شد. هر دو فایل `bin/agent.js` و `bin/interactive.js` به wrapperهای نازک تقلیل یافتند و تا فاز ۳۰ حفظ می‌شوند (قانون ۷). تمام ۱۹ تست `cli.test.js` و ۱۲ تست `interactive.test.js` بدون تغییر سبز ماندند و ۱۳ تست لایهٔ جدید در `test/cli/layer.test.js` افزوده شد (مجموع suite: ۷۹۸/۷۹۸ در ۴۴ فایل).
+
+47. **تفکیک Event Contract و Observability (فاز ۲۷):** سیستم رویدادها به ماژول‌های مستقل در `agent/events/` تفکیک شد: `EventBus` (هستهٔ انتشار با سکانس صعودی)، `EventTypes` (فهرست ۶۴ رویداد مجاز، دسته‌بندی و تفکیک رویدادهای telemetry از business، و تعریف رسمی turn_id)، `EventValidator` (اعتبارسنجی انولوپ و payloadهای کلیدی)، `EventContext` (مدیریت هم‌بستگی اسکوپ با ALS و fallback سراسری)، `EventProjector` (فیلتر استریم‌های پروژه‌ای، ساخت متادیتای تجمیعی و deduplication)، و `EventRedactor` (ماسک کردن کلیدهای حساس، توکن‌های Bearer و query tokenها). فایل `agent/lib/events.js` به عنوان wrapper سازگار به `../events` هدایت شد و تا فاز ۳۰ حفظ می‌شود (قانون ۷). ۱۱ تست جدید در `test/events/layer.test.js` افزوده شد؛ تست‌های قرارداد رویدادها و کل سوئیت (۸۰۹/۸۰۹ در ۴۵ فایل) کاملاً سبزند.
+
+48. **ماژولارسازی و یکپارچه‌سازی Discussion (فاز ۲۸):** مرزهای ماژول `agent/discussion/` تثبیت شد: `DiscussionEngine` (ارکستراسیون دورها با محدودیت هم‌زمانی `MAX_PARALLEL_AGENTS`)، `PersonaRunner` و `ObserverRunner`، `LoopDetector`، `TranscriptStore`، و کاتالوگ ۱۵ پرسونای تخصصی (فیلترشده از پرامپت delegation). برای پایداری پروژه‌ای (تصمیم ۶)، ماژول `agent/persistence/DiscussionRepository.js` پیاده‌سازی و پوشهٔ `discussions/` به `SCAFFOLD_DIRS` اضافه شد؛ هر بحث در `dataRoot` همان پروژه به صورت اتمیک ذخیره می‌شود و ایزولاسیون کامل تضمین شده است (پروژه ب هرگز بحث‌های پروژه الف را نمی‌بیند). ابزار `discussion_start` و سرویس وب با context پروژه‌ای همگام شدند و وابستگی مستقیم چرخه‌ای به `agent.js` با استفاده از ماژول‌های مستقل `config` و `events` و تزریق LLM caller حذف شد. ۵ تست قرارداد در `test/contracts/discussion.contract.test.js` و ۶ تست لایه در `test/discussion/layer.test.js` افزوده شد؛ کل سوئیت (۸۲۰/۸۲۰ در ۴۷ فایل) کاملاً سبز است.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. ~~قالب ماژول فرانت‌اند~~ **بسته شد (فاز ۲۴ گام ۱، تصمیم ۴۳):** ESM نیتیو بدون build step؛ دو محدودیتِ احتمالی اندازه‌گیری و با یک خط هر کدام حل شد (دیدن `Modal` بین اسکریپت کلاسیک و ماژول، و بارگذاری ESM در Node با `await import()`)، پس bundler لازم نشد. سنجش زمان load در مرورگر واقعی در این محیط ممکن نبود (Unknown / Requires Verification: بدون مرورگر، ادعای کارایی نمی‌شود).

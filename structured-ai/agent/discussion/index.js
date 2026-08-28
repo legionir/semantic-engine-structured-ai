@@ -6,6 +6,13 @@ const { TranscriptStore } = require("./transcript");
 const { PersonaRunner } = require("./personaRunner");
 const { ObserverRunner } = require("./observerRunner");
 const { LoopDetector } = require("./loopDetector");
+const {
+    saveDiscussion,
+    getDiscussion,
+    listDiscussions,
+    deleteDiscussion,
+    discussionsDirectory
+} = require("../persistence/DiscussionRepository");
 
 /**
  * Factory for an LLM caller that speaks the discussion protocol:
@@ -122,5 +129,11 @@ module.exports = {
     ObserverRunner,
     LoopDetector,
     createLlmCaller,
-    listPersonas
+    listPersonas,
+    saveDiscussion,
+    getDiscussion,
+    listDiscussions,
+    deleteDiscussion,
+    discussionsDirectory
 };
+

@@ -44,7 +44,8 @@ const SCAFFOLD_DIRS = [
     "eventstore",
     "searches",
     "processes",
-    "logs"
+    "logs",
+    "discussions"
 ];
 
 /* Roots whose central layout has already been materialised this
@@ -94,12 +95,12 @@ function fromContext(raw) {
     }
 
     /* ToolContext / AgentRunContext expose .project directly; raw
-       executeTool-shaped objects carry projectContext. */
+       executeTool-shaped objects carry projectContext; callers
+       passing a ProjectContext directly carry .dataRoot. */
     const project =
-
         raw.project ??
         raw.projectContext ??
-        null;
+        (raw.dataRoot ? raw : null);
 
     return fromProject(project);
 
