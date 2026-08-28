@@ -190,6 +190,10 @@ class StdioTransport {
                         windowsHide: true
                     });
 
+                child.stdin.on("error", error => {
+                    this.diagnose(`stdin error: ${error.message}`);
+                });
+
                 child.stdout.on("data", chunk => {
                     this.decoder.push(chunk);
                 });

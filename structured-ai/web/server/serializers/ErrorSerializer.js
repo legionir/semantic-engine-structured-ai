@@ -22,6 +22,15 @@ const { sendJson } = require("../Response");
 
 function sendError(res, error) {
 
+    if (res.headersSent) {
+        try {
+            res.end();
+        } catch {
+            /* stream was already finished */
+        }
+        return;
+    }
+
     sendJson(
         res,
         error.status || 500,

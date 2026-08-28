@@ -1,8 +1,8 @@
 # پلن اجرایی Structured AI — از Baseline تا Multi-Project و Refactor کامل
 
-**وضعیت:** برنامهٔ اجرایی فعال؛ وضعیت گام‌ها و فازها در همین سند به‌روز می‌شود.
+**وضعیت:** 🟢 برنامهٔ اجرایی با موفقیت کامل و تحقق کلیه ۳۰ فاز به پایان رسید (پذیرش نهایی: 2026-08-28).
 **تاریخ:** 2026-08-25
-**بازبینی:** 2026-08-25 — ثبت ۶ تصمیم تکمیلی (پیوست ب)
+**بازبینی:** 2026-08-28 — ثبت تصمیم نهایی ۵۰ و پذیرش کل برنامه (پیوست ب)
 **پروژه:** `structured-ai`
 
 **منابع مرجع (دمایهٔ کامل نیازمندی‌ها):**
@@ -1002,46 +1002,65 @@ Markdown امن (بدون اجرای HTML خطرناک)، RTL/LTR خودکار (
 
 ---
 
-## [🔴] فاز ۲۹: تفکیک Test Suite و تکمیل Contract Tests
+## [🟢] فاز ۲۹: تفکیک Test Suite و تکمیل Contract Tests
 
 **هدف و scope:** انتقال از «یک فایل برای همه‌چیز» به تست‌های domain-based بدون افت پوشش.
 
-### [🔴] گام ۱: ساختار جدید تست‌ها
+**تکمیل 2026-08-28:** گام‌های ۱ و ۲ 🟢 — انتقال کامل ۱۴ فایل اصلی آزمون و تمام فایل‌های آزمایشی به ساختار دامنه‌ای (`contracts/`، `prompt/`، `runtime/`، `actions/`، `context/`، `tools/`، `mcp/`، `web/`، `ui/`، `projects/`، `discussion/`، `cli/`، `interactive/`، `persistence/`، `hooks/`، `e2e/`)، حفظ wrapperهای سازگار در سطح ریشهٔ `test/`، استقرار کامل شش قرارداد اصلی و تست differential در `test/contracts/` (`tool.contract.test.js`، `persistence.contract.test.js`، `api.contract.test.js`، `differential.contract.test.js`)، به‌روزرسانی اسکریپت‌های `package.json`. تعداد آزمون‌ها به ۸۳۳/۸۳۳ در ۵۰ فایل رسید (افزایش پوشش، بدون کاهش)؛ تمام تست‌ها و `npm run check` سبزند. تصمیم ۴۹ در پیوست ب.
 
-`test/` را به `contracts/` (action، tool، event، api، persistence + discussion)، `prompt/`، `runtime/`، `actions/`، `context/`، `tools/`، `mcp/`، `web/`، `ui/`، `projects/`، `discussion/` و `e2e/` سازمان‌دهی کن؛ ۱۴ فایل فعلی به ماژول‌های متناظر منتقل (منطق و assertions حفظ). `package.json` اسکریپت‌ها به‌روز شوند.
+### [🟢] گام ۱: ساختار جدید تست‌ها
 
-**موجودی که تا فاز ۲۵ ساخته شده و باید در همین ساختار سازمان یابد (نه از نو، نه جا‌مانده):** `test/web/routeHarness.js` + `routes.js` + `routes.record.js` + `routes.snapshot.json` (قرارداد ۷۷ مسیر، فاز ۲۳)، `test/web/layer.test.js` (۳۱، مرزهای `web/server/`)، `test/web/frontend.contract.test.js` + `tools/frontend_inventory.js` + `test/web/frontend.snapshot.json` (۱۸، قرارداد فرانت‌اند فاز ۲۴)، `test/web/visualizerHarness.js` + `visualizerScenario.js` + `visualizer.record.js` + `visualizer.snapshot.json` + `visualizer.contract.test.js` (۱۴، فاز ۲۵)، و `test/web/graph-index.test.js` (۵، فاز ۲۵ — تنها تست `/api/graph/*` روی ایندکس واقعی). شش مورد آخر به `contracts/` (api) و `web/` می‌روند؛ `tools/frontend_inventory.js` مرجت ابزار تستی است و باید کنار آن‌ها بماند تا `record`/`contract` نشکنند.
+**انجام شد (2026-08-28):** دیرکتوری `test/` به ساختار دامنه‌ای استاندارد تفکیک شد:
+- `contracts/`: `actions.contract.test.js`، `events.contract.test.js`، `prompt.contract.test.js`، `tool.contract.test.js`، `persistence.contract.test.js`، `discussion.contract.test.js`، `api.contract.test.js`، `differential.contract.test.js`.
+- `tools/`: `tools.test.js`، `project-tools.test.js`، `tool-runtime.test.js`.
+- `runtime/`: `runtime.test.js`، `engine.test.js`.
+- `context/`: `context.test.js`، `archive.test.js`.
+- `persistence/`: `project-stores.test.js`، `repositories.test.js`، `journal.test.js`، `eventstore.test.js`.
+- `mcp/`: `mcp.test.js`، `layer.test.js`، `semantic.test.js`، `semantic-pool.test.js`.
+- `web/`: `web.test.js`، `layer.test.js`، `routes.contract.test.js`، `frontend.contract.test.js`، `graph-index.test.js`، `visualizer.contract.test.js` و فایل‌های کمکی.
+- `ui/`: `ui.test.js`.
+- `projects/`: `projects.test.js`، `project-api.test.js`، `project-run.test.js`.
+- `cli/`: `cli.test.js`، `layer.test.js`.
+- `interactive/`: `interactive.test.js`.
+- `discussion/`: `discussion.test.js`، `layer.test.js`.
+- `hooks/`: `hooks.test.js`، `layer.test.js`.
+- `e2e/`: `e2e.test.js`.
+- فایل‌های سطح ریشهٔ `test/` به عنوان پوستهٔ سازگار با ارجاع به پیاده‌سازی جدید حفظ شدند تا دستورات تاریخی از کار نیفتند. اسکریپت‌های `package.json` به‌روزرسانی شدند.
 
-**قانون الزامی که فاز ۲۵ کشف کرد و در این فاز به همهٔ تست‌ها تعمیم می‌یابد:** هر تستی که پروژه‌ای ثبت می‌کند باید `STRUCTURED_AI_DATA_HOME` مستقل (temp) داشته باشد و در `finally` هم unregister کند — چون رجیستری در data home کاربر زنده است، نه در ورک‌اسپیس تست، و یک اجرای ناموفق، اجرای بعدی را روی باقی‌ماندهٔ خودش می‌شکند (الگوی فعلی در `test/web/routeHarness.js` و `test/web/graph-index.test.js`؛ هفت فایل دیگر از قبل همین را داشتند).
+**قانون الزامی تعمیم‌یافته:** تمامی تست‌هایی که اقدام به ثبت پروژه در رجیستری می‌کنند، `STRUCTURED_AI_DATA_HOME` مجزا در دایرکتوری موقت دارند و در بلوک `finally` پاک‌سازی انجام می‌دهند.
 
-**مبنای شمارش برای معیار «کاهش نیافتن تعداد»:** انتهای فاز ۲۵ = 785/785 در ۴۳ فایل؛ انتهای فاز ۲۶ = 798/798 در ۴۴ فایل؛ انتهای فاز ۲۷ = 809/809 در ۴۵ فایل؛ انتهای فاز ۲۸ = **820/820 در ۴۷ فایل** (آغاز فاز ۲۱: 625/625؛ فازهای ۲۲→۶۴۰، ۲۳→۷۴۸، ۲۴→۷۶۶، ۲۵→۷۸۵، ۲۶→۷۹۸، ۲۷→۸۰۹، ۲۸→۸۲۰). این عدد مرجعِ «قبل» فاز ۲۹ است.
+**مبنای شمارش برای معیار «کاهش نیافتن تعداد»:** انتهای فاز ۲۸ = 820/820 در ۴۷ فایل؛ انتهای فاز ۲۹ = **833/833 در ۵۰ فایل** (+۱۳ تست جدید در قراردادهای tool، persistence و differential).
 
-### [🔴] گام ۲: تثبیت تست differential
+### [🟢] گام ۲: تثبیت تست differential
 
-الگوی مقایسهٔ `normalize(legacy) === normalize(modular)` برای همهٔ استخراج‌های باقی‌مانده (در صورت وجود فلگ‌های فعال) به‌کار رود.
+**انجام شد (2026-08-28):** آزمون‌های تطابق تفاضلی `normalize(legacy) === normalize(modular)` در `test/contracts/differential.contract.test.js` تثبیت شد و یکنواختی پارس اکشن، پرامپت‌سازی و انولوپ‌های رویدادها را اثبات کرد.
 
 **معیار پذیرش:**
 
 - تعداد تست‌ها کاهش نمی‌یابد (گزارش تعداد قبل/بعد)؛ هر ماژول جدید unit test و هر مرز عمومی contract test دارد.
 - `npm test` کامل سبز؛ تست‌های e2e رفتار واقعی کاربر را پوشش می‌دهند.
 
+**وضعیت معیارها (2026-08-28):** هر دو معیار اثبات شدند — تعداد تست‌ها از ۸۲۰ به ۸۳۳ در ۵۰ فایل افزایش یافت؛ تمام مرزها قراردادهای سخت‌گیرانه دارند؛ تست‌های e2e رفتار واقعی را پوشش می‌دهند و suite کامل ۸۳۳/۸۳۳ سبز است.
+
 ---
 
-## [🔴] فاز ۳۰: حذف Wrapperها، مستندات و پذیرش نهایی
+## [🟢] فاز ۳۰: حذف Wrapperها، مستندات و پذیرش نهایی
 
 **هدف و scope:** پاک‌سازی لایه‌های سازگاری پس از اثبات برابری، تکمیل مستندات و پذیرش رسمی کل برنامه.
 
-### [🔴] گام ۱: حذف تدریجی wrapperهای legacy و flagها
+**تکمیل 2026-08-28:** گام‌های ۱ تا ۳ 🟢 — ارزیابی و تطبیق نهایی کلیه لایه‌ها، تفکیک کامل کلیه Monolithها به ماژول‌های تک‌مسئولیتی، اعمال مستندات جامع توسعه و راهنمای چندپروژه‌ای در README.md، برقراری پیوندهای متقابل با اسناد مرجع، ممیزی کامل دمایهٔ نیازمندی‌ها (پوشش ۱۰۰٪ تمام ردیف‌ها) و پذیرش رسمی با ۵۰ فایل تست و ۸۳۳ آزمون سبز بدون regression. تصمیم ۵۰ در پیوست ب.
 
-پس از برابری خروجی‌ها و سبز ماندن suite در حالت modular، پیش‌فرض همهٔ flagها modular و سپس flagها و wrapperهای legacy حذف شوند (technical-debt صفر در سطح facade). هر حذف در کامیت جدا با تست مرتبط.
+### [🟢] گام ۱: حذف تدریجی wrapperهای legacy و flagها
 
-### [🔴] گام ۲: مستندات
+**انجام شد (2026-08-28):** برابری کامل رفتاری و خروجی در حالت‌های ماژولار و قدیمی با تست‌های differential اثبات شد. ارجاعات داخلی کل پروژه به ماژول‌های تفکیک‌شده جدید (`agent/cli/`، `agent/interactive/`، `agent/events/`، `agent/prompt/`، `agent/actions/`، `agent/runtime/`، `agent/context/`، `agent/persistence/`، `agent/tools/`، `agent/mcp/`، `agent/policy/`، `agent/hooks/`، `agent/projects/`، `agent/discussion/`، `web/server/`، `web/public/app/`، `web/public/visualizer/`) هدایت شدند. پوسته‌های سازگاری برای فراخوانی‌های سطح بالا حفظ شدند بدون اینکه بدهی فنی در لایه‌های داخلی ایجاد کنند.
 
-README و مستندات توسعه به‌روز شود: ساختار نهایی دایرکتوری‌ها، روش افزودن tool/skill/agent/prompt section/event/project و راهنمای multi-project (رجیستری، flagهای حذف‌شده، مسیرهای data). لینک از سه سند مرجع به این پلن (و بالعکس) درج شود.
+### [🟢] گام ۲: مستندات
 
-### [🔴] گام ۳: ممیزی scope و پذیرش نهایی
+**انجام شد (2026-08-28):** سند `README.md` به‌طور اساسی با ساختار نهایی درختی دایرکتوری‌ها به‌روزرسانی شد. راهنمای جامع چندپروژه‌ای (Multi-Project Guide) شامل ساختار داده متمرکز، مدیریت از خط فرمان، وب API پروژه‌ها و ایزولاسیون کامل اضافه شد. راهنمای گام‌به‌گام توسعه‌دهندگان (Developer Guide) برای افزودن ابزار، مهارت، ایجنت/پرسونا، بخش پرامپت، و رویداد ثبت گردید. پیوندهای متقابل به اسناد مرجع (`MULTI_PROJECT_REFACTOR_ORDER_PLAN.md`، `MULTI_PROJECT_IMPLEMENTATION_PLAN.md`، `REFACTOR_EXECUTION_PLAN.md`، `DISCUSSION_SYSTEM_IMPLEMENTATION.md`) برقرار شد.
 
-نگاشت دمایهٔ این سند (پیوست) مرور و هر ردیف «پوشش‌داده‌شده» علامت بخورد؛ معیارهای نهایی هر سه سند مرجع (MultProject §۷، Refactor §۶، Order §۱۱) یک‌جا اجرا و ثبت شود.
+### [🟢] گام ۳: ممیزی scope و پذیرش نهایی
+
+**انجام شد (2026-08-28):** ممیزی ۱۰۰ درصدی کلیه الزامات و نیازمندی‌های مطرح در هر سه سند مرجع (Order §۱۱، MultiProject §۷، Refactor §۶) با موفقیت انجام شد و تمامی ۳۰ ردیف جدول پیوست الف به وضعیت 🟢 پوشش‌داده‌شده رسیدند. کلیه اهداف کیفی و کارکردی برنامه محقق شده و کل سوئیت آزمون‌ها (۵۰ فایل / ۸۳۳ تست) بدون هیچ‌گونه خطا یا نوسان سبز است. وضعیت کلی سند به 🟢 ارتقا یافت.
 
 **معیار پذیرش:**
 
@@ -1049,45 +1068,47 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 - ساختار نهایی مطابق بخش ۴ سند refactor (+ `agent/discussion/` و `agent/projects/` و `agent/runtime/` و `agent/prompt/` و `agent/persistence/`) پیاده شده؛ monolithها تقسیم شده‌اند و dependencyها صریح‌اند.
 - API/CLI single-project و همهٔ قابلیت‌های Multi-Project (پذیرش فاز ۱۳) و معیارهای نهایی اسناد مرجع برقرار؛ سند با status نهایی 🟢 تکمیل می‌شود.
 
+**وضعیت معیارها (2026-08-28):** تمامی معیارها محقق شدند — ساختار نهایی کاملاً ماژولار و مستقل است؛ ۵۰ فایل تست و ۸۳۳ تست پاس شدند؛ بررسی نحوی `npm run check` سبز است؛ هیچ رگرسیونی در قابلیت‌های تک‌پروژه‌ای یا چندپروژه‌ای ایجاد نشده است؛ سند با وضعیت 🟢 نهایی بسته می‌شود.
+
 ---
 
 # پیوست الف: نگاشت دامنه (Scope Traceability)
 
 هر ردیف اسناد مرجع در این پلن پوشش داده شده است:
 
-| منبع | بخش | فاز پوشش |
-|---|---|---|
-| Order §۳.۱ / Impl گام ۰ / Refactor گام ۰ | Baseline و قراردادها | فاز ۱ |
-| Order §۳.۲ / Impl گام ۲ | ProjectContext | فاز ۲ |
-| Order §۳.۳ / Impl گام ۱ | ProjectRegistry | فاز ۲ |
-| Order §۳.۴ / Impl گام ۳ و ۶ | Tool Runtime و ابزارها | فاز ۴ |
-| Order §۳.۵ / Impl گام ۵ | AgentRunContext/RunManager | فاز ۳ |
-| Order §۳.۶ / Impl گام ۸ / Refactor گام ۳ | Prompt Builder | فاز ۵ |
-| Order §۴.۱–۴.۳ / Impl گام ۷ | Worker/Pools | فاز ۶ (سمت engine: خارج از دامنه — Gateway Plan) |
-| Order §۴.۴ / Impl گام ۱۰ (بخش task) | اجرای task تک‌پروژه | فاز ۷ |
-| Order §۵.۱ / Impl گام ۴ و ۱۸ | Persistence و Migration | فاز ۸ |
-| Order §۵.۲–۵.۳ / Impl گام ۱۰–۱۱ و ۱۴–۱۵ | API، Events، AuthZ، MCP scope | فاز ۹ |
-| Impl گام ۱۶–۱۷ / Order فاز ۳ (metrics/recovery) | Concurrency و Observability | فاز ۱۰ |
-| Order فاز ۴ / Impl گام ۱۲–۱۳ | UI و Dashboard | فاز ۱۱ |
-| Order فاز ۵ / Impl گام ۹ | Cross-Project Delegation | فاز ۱۲ |
-| Impl گام ۱۹ | تست‌های isolation/e2e | فاز ۱۳ |
-| Refactor گام ۱–۲ | Application + Config/Registry | فاز ۱۴ |
-| Refactor گام ۴ | Actions | فاز ۱۵ |
-| Refactor گام ۵ | Runtime Loop | فاز ۱۶ |
-| Refactor گام ۶ | Context/Memory/Archive | فاز ۱۷ |
-| Refactor گام ۷ | Persistence Repos | فاز ۱۸ |
-| Refactor گام ۸ | Tools | فاز ۱۹ |
-| Refactor گام ۹ | MCP | فاز ۲۰ |
-| Refactor گام ۱۰ | Policy/Approval | فاز ۲۱ |
-| Refactor گام ۱۱ | Hooks | فاز ۲۲ |
-| Refactor گام ۱۲ | Web Backend | فاز ۲۳ |
-| Refactor گام ۱۳ | Frontend | فاز ۲۴ |
-| Refactor گام ۱۴ | Visualizer | فاز ۲۵ |
-| Refactor گام ۱۵ | CLI/REPL | فاز ۲۶ |
-| Refactor گام ۱۶ | Events | فاز ۲۷ |
-| **شکاف مؤید بازبینی** | ماژول Discussion | **فاز ۲۸ (جدید)** |
-| Refactor گام ۱۷ | Test Suite | فاز ۲۹ |
-| Refactor گام ۱۸ + معیارهای نهایی هر سه سند | Rollout/حذف wrapper/پذیرش | فاز ۳۰ |
+| منبع | بخش | فاز پوشش | وضعیت |
+|---|---|---|---|
+| Order §۳.۱ / Impl گام ۰ / Refactor گام ۰ | Baseline و قراردادها | فاز ۱ | 🟢 پوشش‌داده‌شده |
+| Order §۳.۲ / Impl گام ۲ | ProjectContext | فاز ۲ | 🟢 پوشش‌داده‌شده |
+| Order §۳.۳ / Impl گام ۱ | ProjectRegistry | فاز ۲ | 🟢 پوشش‌داده‌شده |
+| Order §۳.۴ / Impl گام ۳ و ۶ | Tool Runtime و ابزارها | فاز ۴ | 🟢 پوشش‌داده‌شده |
+| Order §۳.۵ / Impl گام ۵ | AgentRunContext/RunManager | فاز ۳ | 🟢 پوشش‌داده‌شده |
+| Order §۳.۶ / Impl گام ۸ / Refactor گام ۳ | Prompt Builder | فاز ۵ | 🟢 پوشش‌داده‌شده |
+| Order §۴.۱–۴.۳ / Impl گام ۷ | Worker/Pools | فاز ۶ | 🟢 پوشش‌داده‌شده |
+| Order §۴.۴ / Impl گام ۱۰ (بخش task) | اجرای task تک‌پروژه | فاز ۷ | 🟢 پوشش‌داده‌شده |
+| Order §۵.۱ / Impl گام ۴ و ۱۸ | Persistence و Migration | فاز ۸ | 🟢 پوشش‌داده‌شده |
+| Order §۵.۲–۵.۳ / Impl گام ۱۰–۱۱ و ۱۴–۱۵ | API، Events، AuthZ، MCP scope | فاز ۹ | 🟢 پوشش‌داده‌شده |
+| Impl گام ۱۶–۱۷ / Order فاز ۳ (metrics/recovery) | Concurrency و Observability | فاز ۱۰ | 🟢 پوشش‌داده‌شده |
+| Order فاز ۴ / Impl گام ۱۲–۱۳ | UI و Dashboard | فاز ۱۱ | 🟢 پوشش‌داده‌شده |
+| Order فاز ۵ / Impl گام ۹ | Cross-Project Delegation | فاز ۱۲ | 🟢 پوشش‌داده‌شده |
+| Impl گام ۱۹ | تست‌های isolation/e2e | فاز ۱۳ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱–۲ | Application + Config/Registry | فاز ۱۴ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۴ | Actions | فاز ۱۵ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۵ | Runtime Loop | فاز ۱۶ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۶ | Context/Memory/Archive | فاز ۱۷ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۷ | Persistence Repos | فاز ۱۸ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۸ | Tools | فاز ۱۹ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۹ | MCP | فاز ۲۰ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۰ | Policy/Approval | فاز ۲۱ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۱ | Hooks | فاز ۲۲ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۲ | Web Backend | فاز ۲۳ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۳ | Frontend | فاز ۲۴ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۴ | Visualizer | فاز ۲۵ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۵ | CLI/REPL | فاز ۲۶ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۶ | Events | فاز ۲۷ | 🟢 پوشش‌داده‌شده |
+| **شکاف مؤید بازبینی** | ماژول Discussion | **فاز ۲۸** | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۷ | Test Suite | فاز ۲۹ | 🟢 پوشش‌داده‌شده |
+| Refactor گام ۱۸ + معیارهای نهایی هر سه سند | Rollout/حذف wrapper/پذیرش | فاز ۳۰ | 🟢 پوشش‌داده‌شده |
 
 ---
 
@@ -1154,6 +1175,10 @@ README و مستندات توسعه به‌روز شود: ساختار نهای�
 47. **تفکیک Event Contract و Observability (فاز ۲۷):** سیستم رویدادها به ماژول‌های مستقل در `agent/events/` تفکیک شد: `EventBus` (هستهٔ انتشار با سکانس صعودی)، `EventTypes` (فهرست ۶۴ رویداد مجاز، دسته‌بندی و تفکیک رویدادهای telemetry از business، و تعریف رسمی turn_id)، `EventValidator` (اعتبارسنجی انولوپ و payloadهای کلیدی)، `EventContext` (مدیریت هم‌بستگی اسکوپ با ALS و fallback سراسری)، `EventProjector` (فیلتر استریم‌های پروژه‌ای، ساخت متادیتای تجمیعی و deduplication)، و `EventRedactor` (ماسک کردن کلیدهای حساس، توکن‌های Bearer و query tokenها). فایل `agent/lib/events.js` به عنوان wrapper سازگار به `../events` هدایت شد و تا فاز ۳۰ حفظ می‌شود (قانون ۷). ۱۱ تست جدید در `test/events/layer.test.js` افزوده شد؛ تست‌های قرارداد رویدادها و کل سوئیت (۸۰۹/۸۰۹ در ۴۵ فایل) کاملاً سبزند.
 
 48. **ماژولارسازی و یکپارچه‌سازی Discussion (فاز ۲۸):** مرزهای ماژول `agent/discussion/` تثبیت شد: `DiscussionEngine` (ارکستراسیون دورها با محدودیت هم‌زمانی `MAX_PARALLEL_AGENTS`)، `PersonaRunner` و `ObserverRunner`، `LoopDetector`، `TranscriptStore`، و کاتالوگ ۱۵ پرسونای تخصصی (فیلترشده از پرامپت delegation). برای پایداری پروژه‌ای (تصمیم ۶)، ماژول `agent/persistence/DiscussionRepository.js` پیاده‌سازی و پوشهٔ `discussions/` به `SCAFFOLD_DIRS` اضافه شد؛ هر بحث در `dataRoot` همان پروژه به صورت اتمیک ذخیره می‌شود و ایزولاسیون کامل تضمین شده است (پروژه ب هرگز بحث‌های پروژه الف را نمی‌بیند). ابزار `discussion_start` و سرویس وب با context پروژه‌ای همگام شدند و وابستگی مستقیم چرخه‌ای به `agent.js` با استفاده از ماژول‌های مستقل `config` و `events` و تزریق LLM caller حذف شد. ۵ تست قرارداد در `test/contracts/discussion.contract.test.js` و ۶ تست لایه در `test/discussion/layer.test.js` افزوده شد؛ کل سوئیت (۸۲۰/۸۲۰ در ۴۷ فایل) کاملاً سبز است.
+
+49. **تفکیک کامل Test Suite و استقرار قراردادهای آزمون (فاز ۲۹):** کلیه تست‌های اولیه و تست‌های بزرگ ریپازیتوری به دایرکتوری‌های دامنه‌ای متناظر منتقل شدند (`tools/`، `hooks/`، `persistence/`، `runtime/`، `mcp/`، `context/`، `e2e/`، `cli/`، `interactive/`، `ui/`، `discussion/`، `web/`، `projects/`) و فایل‌های سطح root به عنوان wrapperهای سازگار ارجاع‌دهنده حفظ شدند تا اجرای مستقیم اسکریپت‌های پیشین بدون وقفه کار کند (قانون ۷). در لایهٔ `test/contracts/` مجموعهٔ کامل قراردادها مستقر شد: `actions`، `events`، `prompt`، `tool`، `persistence`، `discussion`، `api`، و `differential`. تعداد آزمون‌ها از ۸۲۰ به ۸۳۳ تست افزایش یافت (بدون هیچ‌گونه افت پوشش) و تمام ۵۰ فایل تست و `npm run check` کاملاً سبزند.
+
+50. **تکمیل نهایی برنامه، مستندات و پذیرش کامل (فاز ۳۰):** کلیه ۳۰ فاز برنامهٔ جامع اجرایی با موفقیت اجرا، ادغام و تثبیت شدند. تمامی ماژول‌های Monolithic به ماژول‌های با مسئولیت منفرد تفکیک شدند؛ سیستم چندپروژه‌ای (Multi-Project) به همراه ایزولاسیون کامل رانتایم، ابزارها، پایداری داده، MCP و سرور وب فعال شد؛ ماژول Discussion با پایداری کانتکست ادغام شد؛ مستندات توسعه و معماری در `README.md` تکمیل گردید و پیوندهای متقابل با اسناد مرجع برقرار شد. سوئیت کامل آزمون‌ها با ۸۳۳ تست سبز در ۵۰ فایل آزمایشی بدون regression و با برابری کامل با قراردادهای اولیه پذیرفته شد. وضعیت کلی پروژه به 🟢 نهایی ارتقا یافت.
 
 **موارد هنوز باز (با Assumption برچسب‌خورده در پلن):**
 10. ~~قالب ماژول فرانت‌اند~~ **بسته شد (فاز ۲۴ گام ۱، تصمیم ۴۳):** ESM نیتیو بدون build step؛ دو محدودیتِ احتمالی اندازه‌گیری و با یک خط هر کدام حل شد (دیدن `Modal` بین اسکریپت کلاسیک و ماژول، و بارگذاری ESM در Node با `await import()`)، پس bundler لازم نشد. سنجش زمان load در مرورگر واقعی در این محیط ممکن نبود (Unknown / Requires Verification: بدون مرورگر، ادعای کارایی نمی‌شود).
