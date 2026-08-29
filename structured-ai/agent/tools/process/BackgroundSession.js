@@ -4,7 +4,7 @@ const {
     WORKSPACE_ROOT,
     toRelativeInRoot,
     truncateText
-} = require("../../lib/workspace");
+} = require("../../context/WorkspaceBoundary");
 
 const ToolContext = require("../ToolContext");
 

@@ -24,9 +24,6 @@ fs.writeFileSync(path.join(ROOT_C, "c.txt"), "c\n");
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.STRUCTURED_AI_DATA_HOME = DATA_HOME;
-process.env.PROJECT_CONTEXT_MODE = "modular";
-process.env.RUN_CONTEXT_MODE = "modular";
-process.env.PROMPT_BUILDER_MODE = "modular";
 process.env.MAX_EMPTY_FINAL_NUDGES = "0";
 process.env.AGENT_APPROVAL = "auto";
 process.env.AGENT_VERBOSE = "0";

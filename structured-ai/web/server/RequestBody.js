@@ -1,21 +1,17 @@
 "use strict";
 
 /*
-|--------------------------------------------------------------------------
-| Web console request body (EXECUTION_PLAN Phase 23 گام ۲)
-|--------------------------------------------------------------------------
-| The one place a console request body is read, and the one place that
-| decides a body is too large to be a console request.
+| Request body parsing — EXECUTION_PLAN Phase 23
 |
-| Moved verbatim out of web/server.js: the 1 MB ceiling, the
-| empty-body-means-`{}` rule and the destroy-then-reject order all stay,
-| because answering 400 after the socket has been torn down is the bug that
-| order avoids. Every route that accepts a body reaches it as
-| ctx.readBody(req) — none of them parses JSON on its own.
-|--------------------------------------------------------------------------
+| The limit and error messages are part of the Web API contract. Keep the
+| parser independent from routing so every controller receives the same
+| bounded JSON input.
 */
 
-function readBody(req) {
+const defaultMaxBytes = 1_000_000;
+
+
+function readBody(req, { maxBytes = defaultMaxBytes } = {}) {
 
     return new Promise((resolve, reject) => {
 
@@ -30,7 +26,11 @@ function readBody(req) {
             }
 
             rejected = true;
-            req.destroy();
+
+            if (typeof req.destroy === "function") {
+                req.destroy();
+            }
+
             reject(new Error("request body is too large"));
         };
 
@@ -42,7 +42,7 @@ function readBody(req) {
 
             size += chunk.length;
 
-            if (size > 1_000_000) {
+            if (size > maxBytes) {
                 rejectTooLarge();
                 return;
             }
@@ -57,18 +57,13 @@ function readBody(req) {
             }
 
             if (body.trim() === "") {
-
                 resolve({});
-
                 return;
             }
 
             try {
-
                 resolve(JSON.parse(body));
-
             } catch {
-
                 reject(new Error("request body is not valid JSON"));
             }
         });
@@ -82,6 +77,8 @@ function readBody(req) {
     });
 }
 
+
 module.exports = {
+    DEFAULT_MAX_BYTES: defaultMaxBytes,
     readBody
 };

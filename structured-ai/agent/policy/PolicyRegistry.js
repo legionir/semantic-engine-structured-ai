@@ -1,71 +1,108 @@
+"use strict";
+
+const { DECISIONS } = require("./PolicyMatcher");
+
+
+const VALID_ACTIONS = Object.freeze([
+    DECISIONS.ALLOW,
+    DECISIONS.DENY,
+    DECISIONS.REQUIRE_APPROVAL
+]);
+
+
+function toolNamesOf(tools) {
+
+    if (tools instanceof Map) {
+        return new Set(tools.keys());
+    }
+
+    return new Set(
+        (tools || [])
+            .filter(item => item?.type === "function")
+            .map(item => item.function.name)
+    );
+}
+
+
 /*
-|--------------------------------------------------------------------------\
-| Policy registry
-|--------------------------------------------------------------------------\
-|
-| Owns the declarative half of the decision: the rule document from
-| `registry/policy.json` and the tool→group map from
-| `registry/tool_groups.json`. The rules come from files, so the engine has
-| to be able to take a new version of them without the process restarting —
-| that is what `reload` is for, and why the document is never read at
-| import time by anyone else.
-|
-| Semantics kept exactly as they were:
-|   • the LAST matching rule wins, so a specific rule may follow a broad one;
-|   • `default_action` answers when nothing matched;
-|   • an MCP escalation may tighten a non-denial, never a denial.
-|--------------------------------------------------------------------------*/
+| Policy-specific validation belongs beside the policy registry. The generic
+| registry validator can include these messages without knowing policy
+| matching details, while the historical "Registry validation failed"
+| envelope remains unchanged.
+*/
+function policyProblems({ policy, toolGroups, tools } = {}) {
 
-const {
-    conditionMatches,
-    ruleTargets,
-    mcpEscalation
-} = require("./PolicyMatcher");
+    const problems = [];
+    const knownTools = toolNamesOf(tools);
+    const groups = toolGroups || {};
 
-const { DECISIONS } = require("./PolicyErrors");
+    for (const rule of policy?.rules || []) {
 
-const settings = require("../lib/storage");
+        for (const name of rule.tools || []) {
 
+            if (!String(name).includes("*") && !knownTools.has(name)) {
 
-const EMPTY_POLICY = Object.freeze({
-    default_action: DECISIONS.ALLOW,
-    rules: []
-});
+                problems.push(
+                    `Policy rule "${rule.id}" references unknown tool "${name}".`
+                );
+            }
+        }
+
+        for (const group of rule.groups || []) {
+
+            if (!groups[group]) {
+
+                problems.push(
+                    `Policy rule "${rule.id}" references unknown tool group "${group}".`
+                );
+            }
+        }
+
+        if (!VALID_ACTIONS.includes(rule.action)) {
+
+            problems.push(
+                `Policy rule "${rule.id}" has an unknown action "${rule.action}".`
+            );
+        }
+    }
+
+    return problems;
+}
 
 
 class PolicyRegistry {
 
     constructor({ policy, toolGroups } = {}) {
-
-        this.groupsByTool =
-            new Map();
-
         this.reload({ policy, toolGroups });
     }
 
 
-    /*
-    | A malformed or missing document degrades to "allow everything", which
-    | is the historical default_action with no rules — not an exception at
-    | startup. Silent, but see `isEmpty`: the console shows it as such.
-    */
-
     reload({ policy, toolGroups } = {}) {
 
         this.policy =
-            policy && typeof policy === "object"
-                ? policy
-                : EMPTY_POLICY;
+            policy === undefined
+                ? (this.policy || {
+                    default_action: DECISIONS.ALLOW,
+                    rules: []
+                })
+                : (policy || {
+                    default_action: DECISIONS.ALLOW,
+                    rules: []
+                });
 
-        this.groupsByTool =
-            new Map();
+        this.toolGroups =
+            toolGroups === undefined
+                ? (this.toolGroups || {})
+                : (toolGroups || {});
+
+        this.groupsByTool = new Map();
 
         for (
             const [group, definition]
-            of Object.entries(toolGroups || {})
+            of Object.entries(this.toolGroups)
         ) {
 
-            for (const tool of definition.tools || []) {
+            for (const tool of definition?.tools || []) {
 
                 this.groupsByTool.set(
                     tool,
@@ -81,96 +118,59 @@ class PolicyRegistry {
     }
 
 
-    get document() {
-
-        return this.policy;
-    }
-
-    get ruleCount() {
-
-        return (this.policy.rules || []).length;
-    }
-
-    get isEmpty() {
-
-        return this.ruleCount === 0;
-    }
-
-
     groupsFor(toolName) {
-
         return this.groupsByTool.get(toolName) || [];
     }
 
 
-    /*
-    | Which rule, if any, governs this call — after the argument resolution
-    | that happened upstream, on the arguments the tool will receive.
-    */
+    rules() {
+        return this.policy.rules || [];
+    }
 
-    decide(toolName, context) {
 
-        const groups =
-            this.groupsFor(toolName);
+    defaultAction() {
+        return this.policy.default_action || DECISIONS.ALLOW;
+    }
 
-        let decision = {
-            decision:
-                this.policy.default_action ||
-                DECISIONS.ALLOW,
 
-            reason:
-                "default policy",
-
-            rule:
-                null
-        };
-
-        for (const rule of this.policy.rules || []) {
-
-            if (!ruleTargets(rule, toolName, groups)) {
-                continue;
-            }
-
-            if (!conditionMatches(rule.when, context)) {
-                continue;
-            }
-
-            decision = {
-                decision:
-                    rule.action,
-
-                reason:
-                    rule.reason ||
-                    `rule "${rule.id || rule.action}"`,
-
-                rule:
-                    rule.id || null
-            };
-        }
-
-        /*
-        | A denial stands; anything softer may still be escalated by the
-        | server's own trust setting.
-        */
-
-        if (decision.decision !== DECISIONS.DENY) {
-
-            const escalation =
-                mcpEscalation(toolName, { settings, DECISIONS });
-
-            if (escalation) {
-                decision = escalation;
-            }
-        }
+    snapshot() {
 
         return {
-            tool: toolName,
-            agent: context.agent,
-            groups,
-            ...decision
+            default_action: this.defaultAction(),
+            rules: this.rules().length
         };
+    }
+
+
+    problems(tools) {
+
+        return policyProblems({
+            policy: this.policy,
+            toolGroups: this.toolGroups,
+            tools
+        });
+    }
+
+
+    validate(tools) {
+
+        const problems = this.problems(tools);
+
+        if (problems.length > 0) {
+
+            throw new Error(
+                `Registry validation failed:\n- ${problems.join("\n- ")}`
+            );
+        }
+
+        return true;
     }
 }
 
 
-module.exports = { PolicyRegistry, DECISIONS };
+module.exports = {
+    PolicyRegistry,
+    VALID_ACTIONS,
+    policyProblems,
+    toolNamesOf
+};

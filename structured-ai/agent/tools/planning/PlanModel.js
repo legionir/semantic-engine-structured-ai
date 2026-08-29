@@ -1,6 +1,6 @@
 "use strict";
 
-const hooks = require("../../lib/hooks");
+const hooks = require("../../hooks");
 
 
 const STATUSES = [

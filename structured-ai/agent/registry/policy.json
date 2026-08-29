@@ -90,10 +90,8 @@
       "when": {
         "argument_matches": {
           "path": [
-            "agent/(registry|config|schema)/",
-            "agent/agent\\.js$",
-            "agent/policy/",
-            "agent/lib/(policy|workspace)\\.js$"
+            "agent/(registry|config|schema|policy|context)/",
+            "agent/agent\\.js$"
           ]
         }
       },

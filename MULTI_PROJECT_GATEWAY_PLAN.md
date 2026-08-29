@@ -11,6 +11,14 @@ SQLite همان artifactRoot را باز کند» منتفی است.
 
 ---
 
+> **Structured AI execution status:** the runtime-side phases and final
+> acceptance are tracked in [`structured-ai/EXECUTION_PLAN.md`](structured-ai/EXECUTION_PLAN.md).
+>
+> **Engine-side execution plan:** فازبندی اجرایی، تصمیم‌های معماری قطعی و رفع
+> شکاف‌های شناسایی‌شده نسبت به کد فعلی در
+> [`MULTI_PROJECT_GATEWAY_EXECUTION_PLAN.md`](MULTI_PROJECT_GATEWAY_EXECUTION_PLAN.md)
+> آمده است. این سند منبع نیازمندی‌ها می‌ماند؛ ترتیب و قرارداد فنی با سند اجرایی است.
+
 ## ۱. هدف
 
 دو تغییر زیر باید هم‌زمان و هماهنگ پیاده‌سازی شوند:

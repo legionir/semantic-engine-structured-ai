@@ -1,50 +1,64 @@
-/*
-|--------------------------------------------------------------------------
-| Visualizer node-details (EXECUTION_PLAN Phase 25 گام ۱)
-|--------------------------------------------------------------------------
-| The inspector: what a selected node is, in one column.
-|
-| Type badge, path or `in-memory`, line range, complexity, reference count, a signature block, and the direct connections computed from the *loaded* edges (so "no direct connections in view" means exactly that). Covering tests are listed from the node's own metadata.
-|--------------------------------------------------------------------------
-*/
+/* Node inspector model and safe DOM renderer — Phase 25. */
 
-import { emptyHint, inspComplexity, inspConfidence, inspConnections, inspPath, inspRange, inspRefs, inspSignature, inspTests, inspTitle, inspType, inspectorDetails } from "./page.js";
-import { state } from "./graph-store.js";
+import { connectedEdges } from "./graph-model.js";
 
-export function openInspector(node) {
-  emptyHint.hidden = true;
-  inspectorDetails.hidden = false;
+export function detailsFor(node, nodes, edges) {
+  if (!node) return null;
+  const connections = connectedEdges(edges, node.id).map(edge => {
+    const outbound = edge.source === node.id;
+    const otherId = outbound ? edge.target : edge.source;
+    const other = (nodes || []).find(item => item.id === otherId);
+    return {
+      direction: outbound ? "out" : "in",
+      relation: edge.relation || "connected",
+      id: otherId,
+      label: other?.label || otherId
+    };
+  });
+  return {
+    type: node.type || "symbol",
+    title: node.label || node.id,
+    path: node.metadata?.path || "in-memory",
+    range: node.metadata?.line
+      ? `Line ${node.metadata.line}–${node.metadata.endLine || node.metadata.line}`
+      : "Workspace level",
+    complexity: node.metadata?.complexity || 1,
+    references: node.metadata?.referencesCount || 0,
+    confidence: node.metadata?.confidence ?? 100,
+    signature: node.metadata?.path
+      ? `export ${node.type || "symbol"} ${node.label || node.id} {\n  // defined in ${node.metadata.path}\n}`
+      : `// ${node.label || node.id}`,
+    connections
+  };
+}
 
-  inspType.textContent = node.type;
-  inspType.className = `node-type-badge ${node.type}`;
-  inspTitle.textContent = node.label;
-
-  inspPath.textContent = node.metadata?.path || "in-memory";
-  inspRange.textContent = node.metadata?.line ? `Line ${node.metadata.line}–${node.metadata.endLine || node.metadata.line}` : "Workspace level";
-  inspComplexity.textContent = node.metadata?.complexity || 1;
-  inspRefs.textContent = node.metadata?.referencesCount || 0;
-  inspConfidence.textContent = "100%";
-
-  inspSignature.textContent = node.metadata?.path
-    ? `export ${node.type} ${node.label} {\n  // defined in ${node.metadata.path}\n}`
-    : `// ${node.label}`;
-
-  // Connected edges
-  inspConnections.innerHTML = "";
-  const connections = state.edges.filter(e => e.source === node.id || e.target === node.id);
-  if (connections.length === 0) {
-    inspConnections.innerHTML = "<li class='muted'>No direct connections in view</li>";
-  } else {
-    connections.slice(0, 10).forEach(e => {
-      const isOut = e.source === node.id;
-      const otherId = isOut ? e.target : e.source;
-      const other = state.nodes.find(n => n.id === otherId);
-      const li = document.createElement("li");
-      li.textContent = `${isOut ? "→ calls" : "← called by"} ${other ? other.label : otherId}`;
-      inspConnections.appendChild(li);
-    });
+export function renderDetails(details, elements) {
+  if (!details || !elements) return;
+  elements.emptyHint.hidden = true;
+  elements.details.hidden = false;
+  elements.type.textContent = details.type;
+  elements.type.className = `node-type-badge ${details.type}`;
+  elements.title.textContent = details.title;
+  elements.path.textContent = details.path;
+  elements.range.textContent = details.range;
+  elements.complexity.textContent = details.complexity;
+  elements.refs.textContent = details.references;
+  elements.confidence.textContent = `${details.confidence}%`;
+  elements.signature.textContent = details.signature;
+  elements.connections.replaceChildren();
+  details.connections.slice(0, 10).forEach(connection => {
+    const item = document.createElement("li");
+    item.textContent = `${connection.direction === "out" ? "→" : "←"} ${connection.relation} ${connection.label}`;
+    elements.connections.appendChild(item);
+  });
+  if (!details.connections.length) {
+    const item = document.createElement("li");
+    item.className = "muted";
+    item.textContent = "No direct connections in view";
+    elements.connections.appendChild(item);
   }
-
-  // Covering tests
-  inspTests.innerHTML = `<li>✓ Covered by ${node.label.toLowerCase()}.test.ts</li>`;
+  elements.tests.replaceChildren();
+  const test = document.createElement("li");
+  test.textContent = `✓ Covered by ${details.title.toLowerCase()}.test.ts`;
+  elements.tests.appendChild(test);
 }

@@ -7,7 +7,7 @@
 |
 | Locks the multi-project foundation: canonical id identity, duplicate-root
 | detection, rename stability, store durability, default-project
-| compatibility, and the legacy/modular switch on runAgent.
+| compatibility and canonical project resolution on runAgent.
 |
 */
 
@@ -430,122 +430,60 @@ async function main() {
 
     });
 
-    /* ----------------------- runAgent mode integration ----------------------- */
+    /* ----------------------- canonical run integration ----------------------- */
 
-    await test("legacy mode ignores project options entirely (behavior unchanged)", async () => {
+    await test("the canonical runtime validates an explicit project id", async () => {
+
+        await assert.rejects(
+            () => runtime.runAgent({ task: "Answer and stop.", projectId: "prj-does-not-exist" }),
+            /Unknown project: prj-does-not-exist/
+        );
+
+    });
+
+    await test("removed rollout environment variables cannot bypass project validation", async () => {
+
+        assert.equal(typeof runtime.projects.resolveProjectForRun, "function");
+        await assert.rejects(
+            () => runtime.runAgent({ task: "Answer and stop.", projectId: "prj-unknown-00000000" }),
+            /Unknown project: prj-unknown-00000000/
+        );
+
+    });
+
+    await test("the canonical default project runs and scopes its Run context", async () => {
 
         const stub = await finalAnswerServer();
 
-        process.env.PROJECT_CONTEXT_MODE = "legacy";
-
         try {
-
             await withStubbedModel(stub, async () => {
-
-                const output =
-                    await runtime.runAgent({
-                        task: "Answer and stop.",
-                        projectId: "prj-does-not-exist"
-                    });
-
-                assert.ok(output, "legacy mode should not validate projectId");
-
-            });
-
-        } finally {
-
-            delete process.env.PROJECT_CONTEXT_MODE;
-            await stub.close();
-
-        }
-    });
-
-    await test("modular mode: unknown projectId fails with a clear error", async () => {
-
-        process.env.PROJECT_CONTEXT_MODE = "modular";
-
-        try {
-
-            await assert.rejects(
-                () =>
-                    runtime.runAgent({
-                        task: "Answer and stop.",
-                        projectId: "prj-unknown-00000000"
-                    }),
-                /Unknown project: prj-unknown-00000000/
-            );
-
-        } finally {
-
-            delete process.env.PROJECT_CONTEXT_MODE;
-
-        }
-    });
-
-    await test("modular mode: default project runs and scopes RUN.project", async () => {
-
-        const stub = await finalAnswerServer();
-
-        process.env.PROJECT_CONTEXT_MODE = "modular";
-
-        try {
-
-            await withStubbedModel(stub, async () => {
-
                 const output = await runtime.runAgent({ task: "Answer and stop." });
-
                 assert.ok(output);
-
+                assert.equal(runtime.runManager.activeRuns().length, 0);
             });
-
         } finally {
-
-            delete process.env.PROJECT_CONTEXT_MODE;
             await stub.close();
-
         }
-
-        /* context is reset between runs (startRun clean slate) — verify via
-           a second modular run observing a fresh context assign, not a leak */
 
     });
 
-    await test("modular mode: a project rooted elsewhere fails loudly (pre-Phase-4 guard)", async () => {
+    await test("a registered project rooted elsewhere runs through its own context", async () => {
 
         const registry = runtime.projects.registry();
-
-        let record;
-
-        try {
-
-            record = registry.get(
-                registry.findByRoot(OTHER_ROOT)?.id || ""
-            );
-
-        } catch (error) {
-
-            record = registry.register({ name: "Elsewhere", rootPath: OTHER_ROOT });
-
-        }
-
-        process.env.PROJECT_CONTEXT_MODE = "modular";
+        const existing = registry.findByRoot(OTHER_ROOT);
+        const record = existing || registry.register({ name: "Elsewhere", rootPath: OTHER_ROOT });
+        const stub = await finalAnswerServer();
 
         try {
-
-            await assert.rejects(
-                () =>
-                    runtime.runAgent({
-                        task: "Answer and stop.",
-                        projectId: record.id
-                    }),
-                /rooted at .*Phase 4/s
-            );
-
+            await withStubbedModel(stub, async () => {
+                const output = await runtime.runAgent({ task: "Answer and stop.", projectId: record.id });
+                assert.ok(output);
+                assert.equal(output.error, null);
+            });
         } finally {
-
-            delete process.env.PROJECT_CONTEXT_MODE;
-
+            await stub.close();
         }
+
     });
 
     fs.rmSync(WORKSPACE, { recursive: true, force: true });

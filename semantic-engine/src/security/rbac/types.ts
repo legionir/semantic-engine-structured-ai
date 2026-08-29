@@ -30,6 +30,11 @@ export interface ApiKeyRecord {
   readonly role: PlatformRole;
   readonly permissions: readonly PermissionScope[];
   readonly resourceScope: string; // '*' for all projects, or 'project:<id>'
+  /**
+   * فهرست صریح پروژه‌هایی که این کلید به آن‌ها می‌رسد (فاز ۹). نبودِ فیلد
+   * یعنی همان `resourceScope` قدیمی معتبر است، پس کلیدهای موجود نمی‌شکنند.
+   */
+  readonly allowedProjects?: readonly string[];
   readonly createdAt: number;
   readonly expiresAt?: number;
   readonly lastUsedAt?: number;

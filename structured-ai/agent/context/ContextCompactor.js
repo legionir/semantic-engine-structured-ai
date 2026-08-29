@@ -1,6 +1,6 @@
 "use strict";
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 const { conversationSize } = require("./ConversationSizer");
 const { findExchanges } = require("./ExchangeDetector");
 
@@ -10,8 +10,8 @@ const { findExchanges } = require("./ExchangeDetector");
 | Context compaction (EXECUTION_PLAN Phase 17)
 |--------------------------------------------------------------------------
 |
-| Extracted from agent/lib/context.js. Compression is graduated by age.
-| Only tool results are compressed, and every message stays in place, so
+| Compression is graduated by age. Only tool results are compressed,
+| and every message stays in place, so
 | an assistant message carrying tool_calls is always still answered by a
 | tool message for each of its ids.
 |--------------------------------------------------------------------------

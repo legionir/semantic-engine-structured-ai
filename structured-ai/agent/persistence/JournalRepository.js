@@ -3,8 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const settings = require("../lib/storage");
-const dataRoot = require("../lib/dataRoot");
+const settings = require("../config");
+const dataRoot = require("../persistence/DataRoot");
 const { safeName } = require("./SafeIdentifier");
 const SchemaVersion = require("./SchemaVersion");
 
@@ -14,10 +14,8 @@ const SchemaVersion = require("./SchemaVersion");
 | Journal repository (EXECUTION_PLAN Phase 18)
 |--------------------------------------------------------------------------
 |
-| Moved from agent/lib/journal.js. Paths, JSONL shape and per-run
-| buckets are unchanged. Append-only files skip a truncated last line
-| at read time (the historical contract). agent/lib/journal.js is the
-| legacy wrapper until Phase 30.
+| Canonical journal repository. Paths, JSONL shape and per-run buckets
+| remain stable; append-only files skip a truncated last line on read.
 |--------------------------------------------------------------------------
 */
 

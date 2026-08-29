@@ -1,13 +1,13 @@
 const fs = require("fs");
 
-const settings = require("../lib/storage");
-const events = require("../lib/events");
-const { realpath } = require("../lib/workspace");
+const settings = require("../config");
+const events = require("../events");
+const { realpath } = require("../context/WorkspaceBoundary");
 
-const legacy = require("./semantic");
+const localEngine = require("./semantic");
 
-const { McpClient } = require("./client");
-const config = require("./config");
+const { McpClient } = require("./McpConnection");
+const config = require("./McpConfig");
 
 
 /*
@@ -15,10 +15,10 @@ const config = require("./config");
 | Per-project Semantic client                                              |
 |--------------------------------------------------------------------------|
 |
-| Phase 6 of EXECUTION_PLAN: in SEMANTIC_POOL_MODE=modular every project
-| talks to its own Semantic worker through one of these clients. The
+| Phase 6 of EXECUTION_PLAN: every registered project talks to its own
+| Semantic worker through one of these clients. The
 | client owns the whole lifecycle (definition, connection, call,
-| disconnect) plus the two per-project pieces of state the legacy module
+| disconnect) plus the two per-project pieces of state the local engine
 | keeps process-wide: index sessions and the staleness probe root.
 |
 | Isolation rules enforced here:
@@ -112,7 +112,7 @@ class SemanticClient {
 
         /* Index generation as last reported by the worker; null when the
            endpoint does not take part in the generation protocol (then
-           nothing is cached at all, matching legacy freshness). */
+           nothing is cached at all, matching local-engine freshness). */
         this.indexGeneration = null;
 
         this.resultCache = new Map();
@@ -139,7 +139,7 @@ class SemanticClient {
     /*
     | The MCP server definition for this project's worker. URL transport
     | inference stays inside the normalizer, exactly as it does for the
-    | legacy single client.
+    | local-engine client.
     */
     definition() {
 
@@ -227,7 +227,7 @@ class SemanticClient {
 
     /* Eagerly establishes the MCP handshake; optional — the first call
        connects lazily through McpClient.ensureReady, which is what the
-       legacy path does today. */
+       local-engine path does today. */
     async connect() {
 
         const client = this.ensureClient();
@@ -392,14 +392,14 @@ class SemanticClient {
 
 
     /* The staleness probe reads the index file under THIS project's
-       root; the heuristics are the legacy module's, only the root
+       root; the heuristics are the local engine's, only the root
        differs. */
     checkStaleness() {
 
         return (
             this.root
-                ? legacy.checkStaleness(this.root)
-                : legacy.checkStaleness()
+                ? localEngine.checkStaleness(this.root)
+                : localEngine.checkStaleness()
         );
 
     }

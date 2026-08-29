@@ -3,34 +3,36 @@
 const { AsyncLocalStorage } = require("async_hooks");
 
 /*
-|--------------------------------------------------------------------------
-| Event Correlation Context — EXECUTION_PLAN Phase 27
-|--------------------------------------------------------------------------
-|
-| Manages async-local and ambient correlation contexts (run_id, turn_id,
-| scope, iteration, project_id). Ensures that concurrent runs cannot
-| overwrite each other's attribution and Sub-Agents maintain proper scoping.
-|--------------------------------------------------------------------------
+| Correlation context — EXECUTION_PLAN Phase 27.
+| Global context is retained for legacy callers; modular runs use an async
+| scope so concurrent run/turn/project attribution cannot overwrite it.
 */
+
+const CONTEXT_FIELDS = Object.freeze([
+    "run_id",
+    "turn_id",
+    "scope",
+    "iteration"
+]);
+
 
 class EventContext {
 
     constructor() {
-
-        this.globalContext = {
+        this.global = {
             run_id: null,
             turn_id: null,
             scope: null,
             iteration: null
         };
-
-        this.scopeStorage = new AsyncLocalStorage();
+        this.storage = new AsyncLocalStorage();
     }
 
-    currentScope() {
 
-        return this.scopeStorage.getStore() || null;
+    current() {
+        return this.storage.getStore() || null;
     }
+
 
     runWithScope(initial = {}, fn) {
 
@@ -45,19 +47,19 @@ class EventContext {
                     : null
         };
 
-        for (const key of ["run_id", "turn_id", "scope", "iteration"]) {
-
+        for (const key of CONTEXT_FIELDS) {
             if (Object.prototype.hasOwnProperty.call(initial, key)) {
                 scope[key] = initial[key];
             }
         }
 
-        return this.scopeStorage.run(scope, fn);
+        return this.storage.run(scope, fn);
     }
+
 
     withProjectId(projectId, fn) {
 
-        const scoped = this.currentScope();
+        const scoped = this.current();
 
         if (!scoped) {
             return fn();
@@ -75,21 +77,18 @@ class EventContext {
         }, fn);
     }
 
-    setContext(patch = {}) {
 
-        const scoped = this.currentScope();
-        const target = scoped || this.globalContext;
+    set(patch = {}) {
 
-        for (const key of Object.keys(this.globalContext)) {
+        const scoped = this.current();
+        const target = scoped || this.global;
 
+        for (const key of CONTEXT_FIELDS) {
             if (Object.prototype.hasOwnProperty.call(patch, key)) {
                 target[key] = patch[key];
             }
         }
 
-        /* project_id lives only on a scoped (modular) envelope; a nested
-           Sub-Agent may retarget it for its own async chain without
-           touching the process-global context. */
         if (
             scoped &&
             Object.prototype.hasOwnProperty.call(patch, "project_id")
@@ -98,47 +97,17 @@ class EventContext {
         }
     }
 
-    resolveCorrelation(payload = {}) {
 
-        const scoped = this.currentScope();
+    resolve(payload, key) {
 
-        const resolve = key =>
-            Object.prototype.hasOwnProperty.call(payload, key)
-                ? payload[key]
-                : (scoped ? scoped[key] : this.globalContext[key]);
-
-        const correlation = {
-            run_id: resolve("run_id"),
-            turn_id: resolve("turn_id"),
-            scope: resolve("scope"),
-            iteration: resolve("iteration")
-        };
-
-        if (scoped) {
-
-            correlation.project_id =
-                Object.prototype.hasOwnProperty.call(payload, "project_id")
-                    ? payload.project_id
-                    : scoped.project_id;
-        }
-
-        return correlation;
-    }
-
-    getSnapshot() {
-
-        const scoped = this.currentScope();
-
-        return {
-            ...(scoped || this.globalContext),
-            isScoped: scoped !== null
-        };
+        return Object.prototype.hasOwnProperty.call(payload, key)
+            ? payload[key]
+            : (this.current() ? this.current()[key] : this.global[key]);
     }
 }
 
-const defaultContext = new EventContext();
 
 module.exports = {
-    EventContext,
-    defaultContext
+    CONTEXT_FIELDS,
+    EventContext
 };

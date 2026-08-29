@@ -25,6 +25,14 @@ import { ToolInputValidator } from './tools/ToolInputValidator';
 export interface AiToolRegistryOptions {
   readonly reader: ProjectIndexReader;
   readonly workspaceRoot?: string;
+  /**
+   * پوشهٔ artifact پروژه (جایی که `project-index.sqlite` واقعاً هست).
+   *
+   * تا فاز ۳ این مسیر از `resolveProjectIndexPath(workspaceRoot)` حدس زده
+   * می‌شد، یعنی همیشه داخل root؛ وقتی artifact به data directory می‌رود آن
+   * حدس به فایل ناموجود می‌رسد و `query_index` از کار می‌افتد.
+   */
+  readonly artifactRoot?: string;
   readonly projectHash?: string;
   readonly enableCache?: boolean;
   /** SE-AI-07 — تا فاز ۴۵ هیچ‌کدام از این دو به کش پاس داده نمی‌شد. */

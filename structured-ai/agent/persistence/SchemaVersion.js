@@ -20,7 +20,8 @@ const CURRENT = {
     journal: "1.0",
     eventstore: "1",
     memory: 1,
-    archive: "1"
+    archive: "1",
+    discussion: "1"
 };
 
 

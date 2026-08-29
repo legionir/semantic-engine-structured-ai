@@ -646,7 +646,7 @@ async function main() {
     console.log("\ncontext budget");
 
     const { compactConversation, conversationSize } =
-        require("../../agent/lib/context");
+        require("../../agent/context");
 
     function buildConversation(exchanges, size) {
 
@@ -883,7 +883,7 @@ async function main() {
     await test("the tier of an exchange follows its distance from the newest", async () => {
 
         const { levelForPosition, LEVELS } =
-            require("../../agent/lib/context");
+            require("../../agent/context");
 
         const options = {
             keepRecentExchanges: 2,
@@ -931,7 +931,7 @@ async function main() {
     /* ---------------------------------------------------------------- */
     console.log("\npolicy engine");
 
-    const { PolicyEngine } = require("../../agent/lib/policy");
+    const { PolicyEngine } = require("../../agent/policy");
 
     const engine =
         new PolicyEngine({
@@ -1088,13 +1088,7 @@ async function main() {
             "agent/registry/agents.json",
             "agent/config/system_prompt.txt",
             "agent/schema/response_format.json",
-            "agent/lib/policy.js",
-            /*
-            | فاز ۲۱: کد واقعی enforcement به agent/policy/ رفت؛ اگر آن مسیرها
-            | پوشش داده نشوند، «خودمحافظت» فقط پوستهٔ wrapper را می‌بیند.
-            */
             "agent/policy/PolicyEngine.js",
-            "agent/policy/ApprovalManager.js",
             "agent/agent.js"
         ]) {
 
@@ -1566,7 +1560,7 @@ async function main() {
     /* ---------------------------------------------------------------- */
     console.log("\nsettings storage");
 
-    const settings = require("../../agent/lib/storage");
+    const settings = require("../../agent/config");
 
     await test("a value resolves override, then environment, then default", async () => {
 
@@ -2021,7 +2015,7 @@ async function main() {
     await test("old exchanges are replaced by one summary", async () => {
 
         const { digestOldest } =
-            require("../../agent/lib/context");
+            require("../../agent/context");
 
         const messages =
             buildConversation(12, 3000);
@@ -2072,7 +2066,7 @@ async function main() {
     await test("a failing summariser falls back instead of breaking the run", async () => {
 
         const { digestOldest } =
-            require("../../agent/lib/context");
+            require("../../agent/context");
 
         const messages =
             buildConversation(8, 3000);
@@ -2301,7 +2295,7 @@ async function main() {
     /* ---------------------------------------------------------------- */
     console.log("\nworking memory");
 
-    const memory = require("../../agent/lib/memory");
+    const memory = require("../../agent/context/Memory");
 
     await test("memory merges without duplicating and stays capped", async () => {
 
@@ -2644,7 +2638,7 @@ async function main() {
         assert.equal(report.archived > 0, true);
 
         const archive =
-            require("../../agent/lib/archive");
+            require("../../agent/persistence/ArchiveRepository");
 
         const found =
             archive.searchArchive("fs_read", { limit: 50 });
@@ -3342,7 +3336,7 @@ async function main() {
 
     await test("compaction reports itself once, not twice", async () => {
 
-        const events = require("../../agent/lib/events");
+        const events = require("../../agent/events");
 
         const seen = [];
 
@@ -3394,7 +3388,7 @@ async function main() {
 
     await test("events carry a run/scope/iteration correlation envelope", async () => {
 
-        const events = require("../../agent/lib/events");
+        const events = require("../../agent/events");
 
         const seen = [];
 
@@ -3670,7 +3664,7 @@ async function main() {
     await test("the workspace boundary holds on a case insensitive filesystem", async () => {
 
         const { isInsideRoot } =
-            require("../../agent/lib/workspace");
+            require("../../agent/context/WorkspaceBoundary");
 
         const windows = (root, target) =>
             isInsideRoot(root, target, true, "\\");
@@ -3759,7 +3753,7 @@ async function main() {
     await test("a sub-agent's skills can be inlined or indexed", async () => {
 
         const settings =
-            require("../../agent/lib/storage");
+            require("../../agent/config");
 
         const profile =
             runtime.resolveAgentProfile("implementation");
@@ -3948,7 +3942,7 @@ async function main() {
     await test("a claim the runtime cannot support is reported", async () => {
 
         const events =
-            require("../../agent/lib/events");
+            require("../../agent/events");
 
         const seen = [];
 

@@ -6,10 +6,10 @@
 |--------------------------------------------------------------------------
 */
 
-const memoryStore = require("../../lib/memory");
-const archive = require("../../lib/archive");
+const memoryStore = require("../../context/Memory");
+const archive = require("../../persistence/ArchiveRepository");
 
-const { toWorkspaceRelative } = require("../../lib/workspace");
+const { toWorkspaceRelative } = require("../../context/WorkspaceBoundary");
 
 const ToolContext = require("../ToolContext");
 

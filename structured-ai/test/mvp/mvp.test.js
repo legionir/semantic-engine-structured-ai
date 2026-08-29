@@ -49,10 +49,6 @@ fs.writeFileSync(path.join(ROOT_C, "marker.txt"), `gamma-only ${MARKER_C}\n`);
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.STRUCTURED_AI_DATA_HOME = DATA_HOME;
-process.env.PROJECT_CONTEXT_MODE = "modular";
-process.env.RUN_CONTEXT_MODE = "modular";
-process.env.PROMPT_BUILDER_MODE = "modular";
-process.env.SEMANTIC_POOL_MODE = "modular";
 process.env.PROCESS_SANDBOX_MODE = "test";
 process.env.MAX_EMPTY_FINAL_NUDGES = "0";
 process.env.AGENT_APPROVAL = "auto";
@@ -447,12 +443,12 @@ async function main() {
 
     const runtime = require(path.join(REPO, "agent", "agent.js"));
     const tools = require(path.join(REPO, "agent", "tools"));
-    const mcpConfig = require(path.join(REPO, "agent", "mcp", "config.js"));
-    const { manager } = require(path.join(REPO, "agent", "mcp", "manager.js"));
-    const memoryStore = require(path.join(REPO, "agent", "lib", "memory.js"));
-    const sessions = require(path.join(REPO, "agent", "lib", "sessions.js"));
-    const archive = require(path.join(REPO, "agent", "lib", "archive.js"));
-    const eventstore = require(path.join(REPO, "agent", "lib", "eventstore.js"));
+    const mcpConfig = require(path.join(REPO, "agent", "mcp", "McpConfig.js"));
+    const { manager } = require(path.join(REPO, "agent", "mcp", "McpManager.js"));
+    const memoryStore = require(path.join(REPO, "agent", "context", "Memory"));
+    const sessions = require(path.join(REPO, "agent", "persistence", "SessionRepository"));
+    const archive = require(path.join(REPO, "agent", "persistence", "ArchiveRepository"));
+    const eventstore = require(path.join(REPO, "agent", "persistence", "EventStoreRepository"));
     const { createServer } = require(path.join(REPO, "web", "server.js"));
 
     runtime.settings.set("AGENT_BASE_URL", `http://127.0.0.1:${stub.port}/v1`);
@@ -1149,7 +1145,7 @@ async function main() {
             assert.equal(healthG.status, 200);
             assert.ok(healthG.body.gateway);
 
-            /* single-project API still accepts the legacy route */
+            /* single-project API still accepts the established route */
             const legacy = await request(
                 baseUrl,
                 "POST",
@@ -1187,32 +1183,25 @@ async function main() {
     });
 
 
-    await test("MVP flag bundle is modular; schema defaults stay legacy", async () => {
+    await test("the MVP uses canonical context, prompt and semantic boundaries", async () => {
 
-        assert.equal(process.env.PROJECT_CONTEXT_MODE, "modular");
-        assert.equal(process.env.RUN_CONTEXT_MODE, "modular");
-        assert.equal(process.env.PROMPT_BUILDER_MODE, "modular");
-        assert.equal(process.env.SEMANTIC_POOL_MODE, "modular");
+        for (const removed of [
+            "PROJECT_CONTEXT_MODE",
+            "RUN_CONTEXT_MODE",
+            "PROMPT_BUILDER_MODE",
+            "SEMANTIC_POOL_MODE",
+            "RUNTIME_ENGINE_MODE",
+            "WEB_SERVER_MODE"
+        ]) {
+            assert.throws(
+                () => runtime.settings.definitionOf(removed),
+                /Unknown setting/
+            );
+        }
 
-        assert.equal(
-            runtime.settings.definitionOf("PROJECT_CONTEXT_MODE").default,
-            "legacy"
-        );
-        assert.equal(
-            runtime.settings.definitionOf("RUN_CONTEXT_MODE").default,
-            "legacy"
-        );
-        assert.equal(
-            runtime.settings.definitionOf("PROMPT_BUILDER_MODE").default,
-            "legacy"
-        );
-        assert.equal(
-            runtime.settings.definitionOf("SEMANTIC_POOL_MODE").default,
-            "legacy"
-        );
-
-        assert.equal(runtime.projects.projectContextMode(), "modular");
-        assert.equal(runtime.runContextMode(), "modular");
+        assert.equal(typeof runtime.projects.createProjectContext, "function");
+        assert.equal(typeof runtime.runManager.createRun, "function");
+        assert.equal(typeof runtime.runtimeEngine.runAgentCore, "function");
 
     });
 

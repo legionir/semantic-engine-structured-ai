@@ -481,3 +481,373 @@
 | **مجموع** | **602/602 passed** |
 
 *نکته:* استخراج MCP بدون تغییر handshake/framing/namespace. `manager.js`/`client.js`/`config.js`/`protocol.js` wrapperاند؛ چهار transport حفظ شدند؛ server خراب runtime را crash نمی‌کند. فلگ MODE تازه‌ای اعلان نشد. `npm run check` سبز.
+
+## suite پایان فاز ۲۱ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` (جدید فاز ۲۱) | 8/8 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| ۱۴ فایل اصلی (ui.test.js ۴۰/۴۰، runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷) | 420/420 passed |
+| **مجموع** | **610/610 passed** |
+
+*نکته:* matching و lifecycle approval به `agent/policy/` منتقل شدند؛ `agent/lib/policy.js` facade و `state.approvals` Map برای سازگاری حفظ شدند. policy روی آرگومان‌های resolveشده اعمال می‌شود؛ approvalهای پروژه‌ای، MCP gateway cache و writeهای cross/multi پروژه از lifecycle مشترک استفاده می‌کنند. `npm run check` سبز.
+
+## suite پایان فاز ۲۲ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` (جدید فاز ۲۲) | 8/8 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| ۱۴ فایل اصلی (ui.test.js ۴۰/۴۰، runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷) | 420/420 passed |
+| **مجموع** | **618/618 passed** |
+
+*نکته:* HookRegistry/Loader، condition، renderer، result و runner ماژولار شدند. runner همچنان از graph/executorهای موجود استفاده می‌کند، بنابراین policy/approval، telemetry، project context و eventهای `hook:*` حفظ شده‌اند. `npm run check` سبز.
+
+## suite پایان فاز ۲۳ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` (جدید فاز ۲۳) | 8/8 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، ui.test.js ۴۰/۴۰، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **626/626 passed** |
+
+*نکته:* Web Backend به facade، Router، request/response/middleware، SSE hub، controller/service/serializer graph و route inventory تفکیک شد. `WEB_SERVER_MODE=legacy` پیش‌فرض سازگار است و `WEB_SERVER_MODE=modular` با همان API/status/SSE قرارداد تأیید شد. `npm run check` سبز.
+
+## suite پایان فاز ۲۴ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` | 8/8 passed |
+| `test/ui.test.js` | 40/40 passed |
+| `test/ui/modules.test.js` (جدید فاز ۲۴) | 8/8 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **634/634 passed** |
+
+*نکته:* frontend با native ESM بدون build step bootstrap می‌شود؛ `app.js` renderer سازگار باقی مانده و domain modules/store/reducers در `web/public/app/` ثبت شده‌اند. APIها relative و project-aware هستند و behavior فعلی UI، markdown امن، RTL/LTR، modal، history، SSE replay و selectorها حفظ شده‌اند.
+
+## suite پایان فاز ۲۵ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` | 8/8 passed |
+| `test/ui.test.js` | 40/40 passed |
+| `test/ui/modules.test.js` | 8/8 passed |
+| `test/ui/visualizer.test.js` (جدید فاز ۲۵) | 9/9 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **643/643 passed** |
+
+*نکته:* Visualizer با native ESM به graph domainهای مستقل تفکیک شد؛ API و state پروژه‌آگاه، worker layout deterministic، fallback، focus/selection، inspector و direct-embed compatibility renderer تأیید شدند. `npm run check` سبز.
+
+## suite پایان فاز ۲۶ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` | 8/8 passed |
+| `test/ui.test.js` | 40/40 passed |
+| `test/ui/modules.test.js` | 8/8 passed |
+| `test/ui/visualizer.test.js` | 9/9 passed |
+| `test/cli.test.js` | 19/19 passed |
+| `test/cli/modules.test.js` (جدید فاز ۲۶) | 10/10 passed |
+| `test/interactive.test.js` | 12/12 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **653/653 passed** |
+
+*نکته:* CLI و REPL به moduleهای `agent/cli/` و `agent/interactive/` تفکیک شدند؛ binها wrapper سازگارند، JSON/stdout/stderr، exit codeها و commandهای REPL حفظ شده‌اند. `npm run check` سبز.
+
+## suite پایان فاز ۲۷ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/events/events.test.js` (جدید فاز ۲۷) | 8/8 passed |
+| `test/contracts/events.contract.test.js` | 5/5 passed |
+| `test/eventstore.test.js` | 5/5 passed |
+| `test/journal.test.js` | 2/2 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` | 8/8 passed |
+| `test/ui.test.js` | 40/40 passed |
+| `test/ui/modules.test.js` | 8/8 passed |
+| `test/ui/visualizer.test.js` | 9/9 passed |
+| `test/cli.test.js` | 19/19 passed |
+| `test/cli/modules.test.js` | 10/10 passed |
+| `test/interactive.test.js` | 12/12 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **661/661 passed** |
+
+*نکته:* Event Contract به `agent/events/` تفکیک شد؛ EventBus/Context/Validator/Types/Projector/Redactor مستقل‌اند، `lib/events` facade است، eventstore/journal raw events را حفظ می‌کنند و redaction فقط در log/external projection اعمال می‌شود. `npm run check` سبز.
+
+## suite پایان فاز ۲۸ (وضعیت فعلی)
+
+**تاریخ:** 2026-08-26 · **exit code: 0** · `npm run check` سبز
+
+| فایل | نتیجه |
+|---|---|
+| `test/helpers/normalize.test.js` | 6/6 passed |
+| `test/contracts/*.contract.test.js` | 16/16 passed |
+| `test/events/events.test.js` | 8/8 passed |
+| `test/policy/policy.test.js` | 8/8 passed |
+| `test/hooks.test.js` | 5/5 passed |
+| `test/hooks/hooks.test.js` | 8/8 passed |
+| `test/web/routes.test.js` | 8/8 passed |
+| `test/ui.test.js` | 40/40 passed |
+| `test/ui/modules.test.js` | 8/8 passed |
+| `test/ui/visualizer.test.js` | 9/9 passed |
+| `test/cli.test.js` | 19/19 passed |
+| `test/cli/modules.test.js` | 10/10 passed |
+| `test/interactive.test.js` | 12/12 passed |
+| `test/discussion.test.js` | 23/23 passed |
+| `test/discussion/project-discussion.test.js` (جدید فاز ۲۸) | 8/8 passed |
+| `test/projects/projects.test.js` | 17/17 passed |
+| `test/projects/project-api.test.js` | 17/17 passed |
+| `test/runs/run-context.test.js` | 5/5 passed |
+| `test/runs/concurrency.test.js` | 11/11 passed |
+| `test/runs/delegation-projects.test.js` | 5/5 passed |
+| `test/tools/project-tools.test.js` | 9/9 passed |
+| `test/tools/tool-runtime.test.js` | 8/8 passed |
+| `test/prompt/builder.test.js` | 7/7 passed |
+| `test/application/application.test.js` | 8/8 passed |
+| `test/actions/parser.test.js` | 8/8 passed |
+| `test/runtime/engine.test.js` | 5/5 passed |
+| `test/context/context.test.js` | 7/7 passed |
+| `test/persistence/repositories.test.js` | 9/9 passed |
+| `test/semantic-pool.test.js` | 9/9 passed |
+| `test/project-run.test.js` | 8/8 passed |
+| `test/persistence/project-stores.test.js` | 9/9 passed |
+| `test/mcp/layer.test.js` | 8/8 passed |
+| `test/mvp/mvp.test.js` | 10/10 passed |
+| `test/web.test.js` | 28/28 passed |
+| ۱۴ فایل اصلی (runtime.test.js ۱۰۵/۱۰۵، mcp.test.js ۳۷/۳۷ و discussion.test.js ۲۳/۲۳) | 420/420 passed |
+| **مجموع** | **669/669 passed** |
+
+*نکته:* DiscussionService/Context و TranscriptRepository، persistence per-project و routeهای start/list/replay افزوده شدند. transcript کامل با AtomicFile ذخیره می‌شود، eventهای discussion project_id دارند، ابزار و CLI context معتبر را مصرف می‌کنند و `/api/discussion` legacy حفظ شده است. `npm run check` سبز.
+
+
+## suite پایان فاز ۲۹ — split و contract completion
+
+**تاریخ:** 2026-08-26 · **command:** `npm test` · **exit code: 0** · **نتیجه:** 690/690 passed
+
+| اندازه‌گیری | قبل از split (پایان فاز ۲۸) | بعد از split فاز ۲۹ |
+|---|---:|---:|
+| تعداد test entrypointها | 44 | 48 |
+| تعداد تست‌ها | 669 | 690 |
+| تست‌های شکست‌خورده | 0 | 0 |
+| تغییر assertionهای legacy | — | 0 |
+| contract testهای جدید | 0 | 21 |
+
+چهارده suiteٔ legacy ریشه‌ای به domainهای زیر منتقل شدند و دو suiteٔ root که در فازهای ۶ و ۷ اضافه شده بودند نیز برای یک‌دستی منتقل شدند:
+
+| suiteٔ منتقل‌شده | مسیر canonical | نتیجه |
+|---|---|---:|
+| runtime | `test/runtime/runtime.test.js` | 105/105 |
+| tools | `test/tools/tools.test.js` | 56/56 |
+| hooks | `test/hooks/legacy.test.js` | 5/5 |
+| journal/eventstore | `test/persistence/{journal,eventstore}.test.js` | 2/2، 5/5 |
+| semantic/MCP | `test/mcp/{semantic,semantic-pool,mcp}.test.js` | 14/14، 9/9، 37/37 |
+| archive | `test/context/archive.test.js` | 16/16 |
+| project run | `test/projects/project-run.test.js` | 8/8 |
+| e2e/CLI/REPL | `test/e2e/{e2e,cli,interactive}.test.js` | 58/58، 19/19، 12/12 |
+| UI | `test/ui/ui.test.js` | 40/40 |
+| discussion | `test/discussion/discussion.test.js` | 23/23 |
+| web | `test/web/web.test.js` | 28/28 |
+
+contractهای افزوده‌شده: `test/contracts/tool.contract.test.js` (5/5)، `api.contract.test.js` (5/5)، `persistence.contract.test.js` (5/5) و `discussion.contract.test.js` (6/6). مسیرهای `test:contracts` و همهٔ scriptهای domain-aware در `structured-ai/package.json` قابل اجرای مستقل‌اند. `npm run check` نیز exit 0 است.
+
+
+## suite پایان فاز ۳۰ — rollout canonical و پذیرش نهایی
+
+**تاریخ:** 2026-08-26 · **command:** `npm test` · **exit code: 0** · **نتیجه:** 694/694 passed
+
+| اندازه‌گیری | پایان فاز ۲۹ | پایان فاز ۳۰ |
+|---|---:|---:|
+| تعداد test entrypointها | 48 | 49 |
+| تعداد تست‌ها | 690 | 694 |
+| تست‌های شکست‌خورده | 0 | 0 |
+| facadeهای legacy باقی‌مانده | موجود تا rollout | 0 |
+| rollout flagهای موقت در SettingsSchema | 6 | 0 |
+
+چهار تست rollout (`test/contracts/rollout.contract.test.js`) حذف facadeهای
+`agent/lib`، MCP/tool wrapperهای قدیمی، rendererهای compatibility و شش flag
+موقت را قفل می‌کنند. `test/mvp/mvp.test.js`، suiteهای isolation/concurrency،
+API/CLI/UI، persistence و e2e پس از فعال بودن دائمی مسیر canonical سبز هستند.
+synthetic default و فایل‌های `.agent/` فقط به‌عنوان data compatibility حفظ شده‌اند.
+
+**پذیرش اسناد مرجع:**
+
+- Multi-Project implementation و isolation/concurrency: سبز.
+- Refactor modules و dependency boundaries: سبز.
+- Order plan و Scope Traceability: همهٔ ردیف‌ها به فازهای سبز نگاشت شده‌اند.
+- Gateway واقعی Semantic Engine: طبق Decision 1 خارج از این repository باقی
+  مانده و stub contract در تست‌ها فعال است.

@@ -91,7 +91,24 @@ export class SecurityPipeline {
       return { ok: true };
     }
 
-    const remoteIp = req.socket.remoteAddress || '';
+    const remoteAddress = req.socket.remoteAddress;
+
+    /*
+    | ── Unix domain socket ────────────────────────────────────────────
+    |
+    | روی socket هیچ آدرس peer وجود ندارد: `remoteAddress` برابر `undefined`
+    | است (اندازه‌گیری‌شده در همین مخزن). تا فاز ۶ این یعنی ۴۰۳ برای هر
+    | درخواست Gateway، یعنی transport پیشنهادی معماری اساساً کار نمی‌کرد.
+    |
+    | دسترسی از socket فقط وقتی local حساب می‌شود که سرور *واقعاً* روی یک
+    | socket path گوش بدهد؛ و در حالت gateway-managed، داشتن توکن داخلی هم
+    | در همان لایهٔ احراز هویت اجباری است (هیچ سطح بدون توکن نمی‌ماند).
+    */
+    if ((remoteAddress === undefined || remoteAddress === '') && this.config.socketPath) {
+      return { ok: true };
+    }
+
+    const remoteIp = remoteAddress || '';
     const isLocal = isLoopbackHost(remoteIp) || remoteIp === '::1' || remoteIp.startsWith('127.');
 
     if (!isLocal) {
@@ -177,6 +194,17 @@ export class SecurityPipeline {
       return { ok: true };
     }
 
+    /*
+    | پشت Gateway، مرورگر با Gateway حرف می‌زند و Gateway هدر `Origin` را
+    | حذف می‌کند؛ اگر هم چیزی بماند، متعلق به میزبان عمومی Gateway است و
+    | سنجیدنش روی worker فقط ۴۰۳ تولید می‌کند. نشانهٔ واقعیِ «از Gateway
+    | آمده» هدرهای `X-Forwarded-*` است که Gateway ست می‌کند — درخواست
+    | مستقیم آن‌ها را ندارد.
+    */
+    if (this.isTrustedGateway(req)) {
+      return { ok: true };
+    }
+
     let hostname: string;
     try {
       hostname = new URL(origin).hostname;
@@ -193,6 +221,27 @@ export class SecurityPipeline {
     }
 
     return { ok: true };
+  }
+
+  /** آیا این حالت، worker پشت Gateway است؟ */
+  get gatewayManaged(): boolean {
+    return Boolean(this.config.gatewayManaged);
+  }
+
+  /**
+   * `true` یعنی proxy بودن Gateway پذیرفته شده. خودِ این flag کافی نیست:
+   * نبودِ `X-Forwarded-*` یعنی درخواست مستقیم زده شده، که دقیقاً همان چیزی
+   * است که حالت managed باید رد کند.
+   */
+  isTrustedGateway(req: http.IncomingMessage): boolean {
+    const trusted = this.config.trustedGateway ?? this.gatewayManaged;
+    if (!trusted) return false;
+
+    return (
+      req.headers['x-forwarded-for'] !== undefined ||
+      req.headers['x-forwarded-proto'] !== undefined ||
+      req.headers['x-forwarded-host'] !== undefined
+    );
   }
 
   /**

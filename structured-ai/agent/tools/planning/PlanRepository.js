@@ -3,9 +3,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const dataRoot = require("../../lib/dataRoot");
+const dataRoot = require("../../persistence/DataRoot");
 
-const { toWorkspaceRelative } = require("../../lib/workspace");
+const { toWorkspaceRelative } = require("../../context/WorkspaceBoundary");
 
 const PlanModel = require("./PlanModel");
 

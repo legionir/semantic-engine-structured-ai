@@ -1,6 +1,6 @@
 "use strict";
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 const { conversationSize } = require("./ConversationSizer");
 const { compactConversation } = require("./ContextCompactor");
 const { foldIntoMemory } = require("./MemoryCoordinator");

@@ -1,7 +1,5 @@
 "use strict";
 
-const settings = require("../lib/storage");
-
 const { ProjectRegistry, canonicalizeRoot } = require("./ProjectRegistry");
 const { createProjectContext } = require("./ProjectContext");
 
@@ -17,23 +15,11 @@ const { createProjectContext } = require("./ProjectContext");
 | ) into exactly one ProjectContext, with one class of clear error text
 | for every failure mode.
 |
-| PROJECT_CONTEXT_MODE=legacy keeps today's behavior: project options are
-| ignored entirely and nothing in the run notices multi-project exists.
-| This is the default until the pool/runtime phases complete (rule 8).
-| The flag is a declared setting (lib/storage), so env, overlay and UI all
-| see the same value.
+| Every run resolves a ProjectContext. An unscoped caller receives the
+| synthetic default project, while explicit project options are validated
+| against the registry before execution.
 |
 */
-
-
-function projectContextMode() {
-
-    const mode =
-        String(settings.get("PROJECT_CONTEXT_MODE") || "legacy").toLowerCase();
-
-    return mode === "modular" ? "modular" : "legacy";
-
-}
 
 
 function looksLikeProjectRecord(value) {
@@ -123,7 +109,6 @@ function assertWorkspaceMatch(context, workspaceRoot) {
 
 
 module.exports = {
-    projectContextMode,
     resolveProjectForRun,
     assertWorkspaceMatch
 };

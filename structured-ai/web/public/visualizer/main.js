@@ -1,29 +1,36 @@
 /*
-|--------------------------------------------------------------------------
-| Visualizer main (EXECUTION_PLAN Phase 25 گام ۱)
-|--------------------------------------------------------------------------
-| Boot: bind, then load the default view.
-|
-| The page ends with `window.addEventListener("DOMContentLoaded", init)`; as a module this file is deferred, so the DOM exists when page.js resolves its ids, and DOMContentLoaded still fires after module evaluation — the order the classic script relied on is kept by the platform rather than by where the tag sits.
-|--------------------------------------------------------------------------
-*/
+ * Visualizer ESM entry point — EXECUTION_PLAN Phase 25.
+ *
+ * Domain modules and the renderer are explicit and independently testable;
+ * the graph UX, selectors and fallback behavior remain unchanged.
+ */
 
-import { loadView } from "./api-client.js";
-import { bindEvents } from "./visualizer-events.js";
+import * as api from "./api-client.js";
+import * as model from "./graph-model.js";
+import { createGraphStore } from "./graph-store.js";
+import { LayoutClient } from "./layout-client.js";
+import { SelectionState } from "./selection-state.js";
+import { GraphRenderer } from "./graph-renderer.js";
+import * as details from "./node-details.js";
+import * as events from "./visualizer-events.js";
 
-/*
-|--------------------------------------------------------------------------
-| Project Intelligence Visualizer Client
-|--------------------------------------------------------------------------
-|
-| Handles Level of Detail (LoD) graph rendering, progressive drill-down,
-| focus mode, search-to-graph highlights, and the 360° Symbol Inspector.
-|--------------------------------------------------------------------------
-*/
+import "./renderer.js";
 
-export function init() {
-  bindEvents();
-  loadView("architecture");
+export const store = createGraphStore(api.projectIdFromLocation());
+export const layout = new LayoutClient();
+export const selection = new SelectionState();
+
+export const modules = Object.freeze({
+  api,
+  model,
+  store,
+  layout,
+  selection,
+  GraphRenderer,
+  details,
+  events
+});
+
+if (typeof globalThis !== "undefined") {
+  globalThis.StructuredAIVisualizer = modules;
 }
-
-window.addEventListener("DOMContentLoaded", init);

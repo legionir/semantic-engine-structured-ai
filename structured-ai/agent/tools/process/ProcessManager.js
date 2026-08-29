@@ -2,7 +2,7 @@
 
 const { spawn } = require("child_process");
 
-const settings = require("../../lib/storage");
+const settings = require("../../config");
 
 
 /*

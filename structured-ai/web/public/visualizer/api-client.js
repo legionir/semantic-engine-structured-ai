@@ -1,54 +1,42 @@
 /*
-|--------------------------------------------------------------------------
-| Visualizer api-client (EXECUTION_PLAN Phase 25 گام ۱)
-|--------------------------------------------------------------------------
-| The three fetches, with the project id that scopes them.
-|
-| Every URL carries `projectId`, taken from the page URL (`?projectId=…`, default `current`), so the visualizer asks for one project's index and never for "whatever the server last looked at". A failed request is not an error screen: `loadView` falls back to the structured sample dataset, and neighborhood/impact fall back to focus mode over what is already loaded — a viewer that refuses to draw an empty box is the point.
-|--------------------------------------------------------------------------
-*/
+ * Visualizer API client — EXECUTION_PLAN Phase 25.
+ * All URLs are relative to the console origin and every project id is
+ * encoded before crossing the browser/server boundary.
+ */
 
-import { projectTitleEl } from "./page.js";
-import { setGraphData, state } from "./graph-store.js";
-import { generateFallbackData, updateBreadcrumb } from "./graph-model.js";
-import { applyFocusMode, selectNode } from "./selection-state.js";
-
-export async function loadView(viewType) {
-  projectTitleEl.textContent = `Loading ${viewType} view…`;
-  updateBreadcrumb(viewType);
-
+export function projectIdFromLocation(location = globalThis.location) {
   try {
-    const res = await fetch(`/api/graph/${viewType}?projectId=${state.projectId}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    setGraphData(data.nodes || [], data.edges || []);
-    projectTitleEl.textContent = data.projectName || "Active Workspace";
-  } catch (err) {
-    // Fallback: Generate structured visualization data from client tools
-    generateFallbackData(viewType);
+    return new URLSearchParams(location?.search || "").get("projectId") || "current";
+  } catch {
+    return "current";
   }
 }
 
-export async function loadNeighborhood(nodeId) {
-  try {
-    const res = await fetch(`/api/graph/neighborhood?seedId=${encodeURIComponent(nodeId)}&depth=${state.focusDepth}&projectId=${encodeURIComponent(state.projectId)}`);
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    setGraphData(data.nodes || [], data.edges || []);
-    selectNode(nodeId);
-  } catch {
-    applyFocusMode(nodeId);
-  }
+
+export function graphUrl(view, { projectId = "current", seedId, depth, symbol } = {}) {
+  const params = new URLSearchParams();
+  params.set("projectId", projectId);
+  if (seedId !== undefined) params.set("seedId", seedId);
+  if (depth !== undefined) params.set("depth", String(depth));
+  if (symbol !== undefined) params.set("symbol", symbol);
+  return `/api/graph/${encodeURIComponent(view)}?${params.toString()}`;
 }
 
-export async function loadImpact(nodeId) {
-  try {
-    const res = await fetch(`/api/graph/impact?symbol=${encodeURIComponent(nodeId)}&projectId=${encodeURIComponent(state.projectId)}`);
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    setGraphData(data.nodes || [], data.edges || []);
-    selectNode(nodeId);
-  } catch {
-    applyFocusMode(nodeId);
-  }
+
+async function read(response) {
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+
+export async function fetchGraph(view, options = {}, fetcher = globalThis.fetch) {
+  return read(await fetcher(graphUrl(view, options)));
+}
+
+export async function fetchNeighborhood(nodeId, options = {}, fetcher = globalThis.fetch) {
+  return read(await fetcher(graphUrl("neighborhood", { ...options, seedId: nodeId })));
+}
+
+export async function fetchImpact(nodeId, options = {}, fetcher = globalThis.fetch) {
+  return read(await fetcher(graphUrl("impact", { ...options, symbol: nodeId })));
 }

@@ -1,7 +1,7 @@
 "use strict";
 
-const events = require("../lib/events");
-const settings = require("../lib/storage");
+const events = require("../events");
+const settings = require("../config");
 
 
 /*
@@ -225,7 +225,7 @@ class Observability {
 
         try {
 
-            const processTools = require("../tools/process");
+            const processTools = require("../tools/process/index.js");
             const sessions = processTools._sessions;
 
             if (!sessions) {

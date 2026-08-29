@@ -8,11 +8,11 @@
 | The parser/validator modules must not require agent.js (that would be a
 | cycle). Live registry, event bus and logLine are therefore injected by
 | the facade after those closures exist. settings is the same singleton
-| agent.js already uses (agent/lib/storage → agent/config).
+| agent.js already uses the canonical agent/config store.
 |--------------------------------------------------------------------------
 */
 
-const storage = require("../lib/storage");
+const storage = require("../config");
 
 const state = {
     toolsOf: () => [],

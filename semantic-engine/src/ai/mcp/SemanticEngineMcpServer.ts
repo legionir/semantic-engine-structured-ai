@@ -17,6 +17,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  CallToolResult,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -26,11 +27,18 @@ import type { BlueprintIndex } from '../discovery/BlueprintIndex';
 import { AiToolInput } from '../tools/types';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { resolveProjectIndexPath } from '../../core/config/ProjectPaths';
+import { parseIndexGeneration } from '../../core/config/indexGeneration';
 import { loadBlueprintBeside } from '../discovery/loadBlueprint';
 
 export interface McpServerOptions {
   readonly projectIndex: ProjectIndex;
   readonly workspaceRoot?: string;
+  /**
+   * شناسهٔ پروژه و مسیر ایندکس، برای `structuredContent` پاسخ‌ها (فاز ۷).
+   * `indexPath` همان‌جایی است که manifest کنارش نوشته می‌شود.
+   */
+  readonly projectId?: string;
+  readonly indexPath?: string;
   /**
    * blueprint، اگر کنار project-index پیدا شد.
    *
@@ -49,10 +57,16 @@ export class SemanticEngineMcpServer {
   private indexWatcher?: fs.FSWatcher;
   private reloadTimer?: NodeJS.Timeout;
   private watchedIndexPath?: string;
+  private readonly projectId?: string;
+  private indexPath?: string;
+  private generation: number = 0;
 
   constructor(options: McpServerOptions) {
     this.workspaceRoot = options.workspaceRoot;
+    this.projectId = options.projectId;
+    this.indexPath = options.indexPath;
     this.registry = this.createRegistry(options.projectIndex, options.blueprint);
+    if (options.indexPath) this.refreshGeneration(options.indexPath);
 
     this.server = new Server(
       {
@@ -85,6 +99,8 @@ export class SemanticEngineMcpServer {
    */
   reload(projectIndex: ProjectIndex, blueprint?: BlueprintIndex): void {
     this.registry = this.createRegistry(projectIndex, blueprint);
+    /* ایندکس عوض شده، پس generation هم باید دوباره خوانده شود. */
+    if (this.indexPath) this.refreshGeneration(this.indexPath);
   }
 
   /**
@@ -94,6 +110,8 @@ export class SemanticEngineMcpServer {
    */
   watchIndexFile(indexPath = resolveProjectIndexPath(this.workspaceRoot ?? process.cwd())): void {
     const absoluteIndexPath = path.resolve(indexPath);
+    this.indexPath = absoluteIndexPath;
+    this.refreshGeneration(absoluteIndexPath);
     if (this.indexWatcher || !fs.existsSync(path.dirname(absoluteIndexPath))) return;
 
     this.watchedIndexPath = absoluteIndexPath;
@@ -124,12 +142,35 @@ export class SemanticEngineMcpServer {
     this.reloadTimer.unref?.();
   }
 
+  /**
+   * خواندن `indexGeneration` از manifest کنار ایندکس. نبودِ manifest یعنی
+   * ایندکسِ پیش از فاز ۷، که `0` می‌گیرد و مصرف‌کننده را به رفتار قبلی
+   * (بدون کش) برمی‌گرداند.
+   */
+  private refreshGeneration(indexPath: string): void {
+    try {
+      const manifestPath = path.join(
+        path.dirname(indexPath),
+        'project-artifacts.manifest.json'
+      );
+      this.generation = parseIndexGeneration(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
+    } catch {
+      this.generation = 0;
+    }
+  }
+
+  /** generation فعلی؛ برای تست و برای `/internal/status`. */
+  get indexGeneration(): number {
+    return this.generation;
+  }
+
   private reloadFromDisk(): void {
     const indexPath = this.watchedIndexPath;
     if (!indexPath || !fs.existsSync(indexPath)) return;
 
     try {
       const projectIndex = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ProjectIndex;
+      this.refreshGeneration(indexPath);
       const loaded = loadBlueprintBeside(indexPath);
       this.reload(projectIndex, loaded.index ?? undefined);
     } catch {
@@ -148,34 +189,46 @@ export class SemanticEngineMcpServer {
       return { tools };
     });
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const toolName = request.params.name;
-      const args = (request.params.arguments ?? {}) as AiToolInput;
+    this.server.setRequestHandler(CallToolRequestSchema, async request =>
+      this.callTool(request.params.name, (request.params.arguments ?? {}) as AiToolInput)
+    );
+  }
 
-      try {
-        const result = await this.registry.executeWithValidation(toolName, args);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result),
-            },
-          ],
-          isError: !result.success,
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({ success: false, error: message, items: [] }),
-            },
-          ],
-          isError: true,
-        };
-      }
-    });
+  /**
+   * ساخت پاسخ `tools/call`.
+   *
+   * `content` دقیقاً همان متن قبلی است؛ `structuredContent` افزودهٔ فاز ۷ است
+   * و همان خروجی ابزار را به‌علاوهٔ `projectId` و `indexGeneration` می‌برد.
+   * مصرف‌کننده‌ای که `structuredContent` را unpack می‌کند
+   * (`structured-ai/agent/mcp/protocol/JsonRpcCodec.js`) همان آبجکت را
+   * می‌بیند و `trackGeneration` روی همان `indexGeneration` کار می‌کند؛ بقیهٔ
+   * کلاینت‌ها متن قبلی را.
+   */
+  async callTool(toolName: string, args: AiToolInput): Promise<CallToolResult> {
+    try {
+      const result = await this.registry.executeWithValidation(toolName, args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result) }],
+        structuredContent: {
+          ...result,
+          ...(this.projectId !== undefined ? { projectId: this.projectId } : {}),
+          indexGeneration: this.generation,
+        },
+        isError: !result.success,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failed = { success: false, error: message, items: [] };
+      return {
+        content: [{ type: 'text', text: JSON.stringify(failed) }],
+        structuredContent: {
+          ...failed,
+          ...(this.projectId !== undefined ? { projectId: this.projectId } : {}),
+          indexGeneration: this.generation,
+        },
+        isError: true,
+      };
+    }
   }
 
   /**

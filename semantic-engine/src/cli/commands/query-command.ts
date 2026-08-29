@@ -12,13 +12,22 @@ import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
 import { normalizeWorkspaceRoot, resolveProjectIndexPath, workspaceRootFromIndex } from '../../core/config/ProjectPaths';
+import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
+import { indexLookupFromArgs } from '../projectPathsFromArgs';
 
 /** گزینه‌هایی که خودِ CLI مصرف می‌کند و پارامتر ابزار نیستند. */
 const RESERVED = new Set(['index', 'json', 'root', 'help', 'version']);
 
 export async function runQuery(args: ParsedArgs, context: CommandContext): Promise<CommandResult> {
   const root = normalizeWorkspaceRoot(stringOption(args.options, 'root') ?? context.cwd);
-  const indexPath = resolveProjectIndexPath(root, stringOption(args.options, 'index'));
+  const lookup = indexLookupFromArgs(args, root);
+  migrateLegacyArtifacts({
+    workspaceRoot: root,
+    projectId: lookup.projectId ?? '',
+    location: lookup.location,
+    ...(lookup.dataRoot !== undefined ? { dataRoot: lookup.dataRoot } : {}),
+  });
+  const indexPath = resolveProjectIndexPath(root, stringOption(args.options, 'index'), lookup);
 
   if (!fs.existsSync(indexPath)) {
     return {

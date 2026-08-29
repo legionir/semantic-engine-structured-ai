@@ -1,40 +1,24 @@
 "use strict";
 
-/*
-|--------------------------------------------------------------------------
-| CLI Help Command — EXECUTION_PLAN Phase 26
-|--------------------------------------------------------------------------
-|
-| Handles --help and --version options for the structured-ai CLI.
-|--------------------------------------------------------------------------
-*/
-
-const { USAGE, PACKAGE, EXIT } = require("./ArgParser");
+/* Help/version command — EXECUTION_PLAN Phase 26. */
 
 class HelpCommand {
+    constructor({ usage, version } = {}) {
+        this.usage = usage || "";
+        this.version = version || "";
+    }
 
-    static execute(options, out = process.stdout) {
-
-        if (options.help) {
-
-            out.write(`${USAGE}\n`);
-
-            return EXIT.SUCCESS;
+    execute(kind = "help", stream = process.stdout) {
+        if (kind === "version") {
+            stream.write(`${this.version}\n`);
+            return 0;
         }
-
-        if (options.version) {
-
-            out.write(`${PACKAGE.version}\n`);
-
-            return EXIT.SUCCESS;
-        }
-
-        return null;
+        stream.write(`${this.usage}\n`);
+        return 0;
     }
 }
 
+
 module.exports = {
-    HelpCommand,
-    USAGE,
-    PACKAGE
+    HelpCommand
 };

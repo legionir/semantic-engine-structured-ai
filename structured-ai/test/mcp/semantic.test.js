@@ -16,10 +16,10 @@ const WORKSPACE =
 process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.SEMANTIC_CALL_TIMEOUT_MS = "2000";
 
-const semantic = require("../../agent/lib/semantic");
+const semantic = require("../../agent/mcp/semantic");
 const tools = require("../../agent/tools");
-const settings = require("../../agent/lib/storage");
-const { WORKSPACE_ROOT } = require("../../agent/lib/workspace");
+const settings = require("../../agent/config");
+const { WORKSPACE_ROOT } = require("../../agent/context/WorkspaceBoundary");
 
 const results = [];
 

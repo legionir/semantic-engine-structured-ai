@@ -15,7 +15,7 @@
 |--------------------------------------------------------------------------
 */
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 
 
 class RequestBuilder {

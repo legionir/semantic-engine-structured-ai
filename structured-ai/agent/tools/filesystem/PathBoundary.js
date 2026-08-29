@@ -12,11 +12,11 @@
 |--------------------------------------------------------------------------
 */
 
-const settings = require("../../lib/storage");
+const settings = require("../../config");
 
 const {
     ignoredDirectories
-} = require("../../lib/workspace");
+} = require("../../context/WorkspaceBoundary");
 
 const ToolContext = require("../ToolContext");
 

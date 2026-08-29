@@ -1,20 +1,15 @@
+"use strict";
+
 /*
-|--------------------------------------------------------------------------\
-| Hook results
-|--------------------------------------------------------------------------\
+|--------------------------------------------------------------------------
+| Hook result model — EXECUTION_PLAN Phase 22
+|--------------------------------------------------------------------------
 |
-| A hook run produces one record per hook, in three shapes: done, skipped,
-| failed. The record itself is built by the runner — it is the only place that
-| knows the timing and the error — while this module owns the two things that
-| were duplicated across those three paths:
-|
-|   • `hookResultSummary`: how a result becomes the one line a model and the
-|     console both read, capped so a tool that dumps a megabyte cannot blow
-|     the prompt;
-|   • `endEvent`: the `hook:end` payload. It used to be spelled out three
-|     times, and a field added to two of the three copies is precisely the bug
-|     no test would have caught.
-|--------------------------------------------------------------------------*/
+| Hook execution records are deliberately plain objects: they are embedded
+| in runtime notices and event payloads. The constructors centralize their
+| shape while preserving the fields used by the existing UI and tests.
+|--------------------------------------------------------------------------
+*/
 
 function hookResultSummary(value) {
 
@@ -30,7 +25,10 @@ function hookResultSummary(value) {
         return value.response.content.slice(0, 600);
     }
 
-    if (typeof value?.stdout === "string" && value.stdout.trim() !== "") {
+    if (
+        typeof value?.stdout === "string" &&
+        value.stdout.trim() !== ""
+    ) {
         return value.stdout.trim().slice(0, 600);
     }
 
@@ -42,30 +40,100 @@ function hookResultSummary(value) {
 }
 
 
-/*
-| The one projection of a record onto the event bus. Field names are what
-| the web console and the SSE stream already consume; `error` stays `undefined`
-| (not null) on success, which is how JSON.stringify drops it.
-*/
-
-function endEvent(record) {
+function skippedResult(hook, durationMs) {
 
     return {
-        id: record.id,
-        phase: record.phase,
-        hook_type: record.type,
-        ok: record.ok,
-        skipped: record.skipped,
-        status: record.status,
-        summary: record.summary,
-        error: record.error,
-        on_failure: record.on_failure,
-        duration_ms: record.duration_ms
+        id: hook.id,
+        type: hook.type,
+        phase: hook.phase,
+        ok: false,
+        skipped: true,
+        status: "skipped",
+        summary: `condition was false: ${hook.when}`,
+        on_failure: hook.on_failure,
+        duration_ms: durationMs
     };
+}
+
+
+function completedResult(hook, result, durationMs) {
+
+    return {
+        id: hook.id,
+        type: hook.type,
+        phase: hook.phase,
+        ok: true,
+        skipped: false,
+        status: "done",
+        summary: hookResultSummary(result),
+        result,
+        on_failure: hook.on_failure,
+        duration_ms: durationMs
+    };
+}
+
+
+function failedResult(hook, error, durationMs) {
+
+    return {
+        id: hook.id,
+        type: hook.type,
+        phase: hook.phase,
+        ok: false,
+        skipped: false,
+        status: "failed",
+        summary: error.message,
+        error: error.message,
+        on_failure: hook.on_failure,
+        duration_ms: durationMs
+    };
+}
+
+
+function phaseResult(phase, results, skipped = false, stopped = false) {
+
+    return {
+        phase,
+        skipped,
+        stopped,
+        results
+    };
+}
+
+
+function phaseEventResult(results) {
+
+    return results.map(item => ({
+        id: item.id,
+        status: item.status,
+        ok: item.ok,
+        summary: item.summary
+    }));
+}
+
+
+function hookReportText(report) {
+
+    if (!report || report.results.length === 0) {
+        return "";
+    }
+
+    return report.results
+        .filter(item => !item.skipped)
+        .map(
+            item =>
+                `- ${item.id}: ${item.ok ? "ok" : "failed"} — ${item.summary}`
+        )
+        .join("\n");
 }
 
 
 module.exports = {
     hookResultSummary,
-    endEvent
+    skippedResult,
+    completedResult,
+    failedResult,
+    phaseResult,
+    phaseEventResult,
+    hookReportText
 };

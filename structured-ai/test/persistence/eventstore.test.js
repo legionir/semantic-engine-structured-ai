@@ -10,8 +10,8 @@ const WORKSPACE =
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
-const eventstore = require("../../agent/lib/eventstore");
-const events = require("../../agent/lib/events");
+const eventstore = require("../../agent/persistence/EventStoreRepository");
+const events = require("../../agent/events");
 
 const results = [];
 
@@ -144,7 +144,7 @@ async function main() {
 
     await test("EVENTSTORE_ENABLED=false stops appending", () => {
 
-        const settings = require("../../agent/lib/storage");
+        const settings = require("../../agent/config");
 
         settings.set("EVENTSTORE_ENABLED", false);
 

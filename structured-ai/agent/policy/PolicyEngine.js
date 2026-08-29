@@ -1,32 +1,161 @@
-/*
-|--------------------------------------------------------------------------\
-| Policy engine
-|--------------------------------------------------------------------------\
-|
-| The tool allowlist on an Agent Profile answers "may this agent use this
-| capability at all". The policy engine answers the separate question "may
-| this specific call run right now", and is the single place where a
-| destructive operation can be denied or sent for approval.
-|
-|   Agent -> Tool Request -> Policy Engine -> allow
-|                                         -> deny
-|                                         -> require_approval -> Approval
-|
-| Rules are declarative and live in registry/policy.json so the runtime
-| behaviour can be changed without touching code.
-|
-| This class is deliberately thin: matching belongs to PolicyMatcher, the
-| document to PolicyRegistry, the asking to ApprovalManager, and the record
-| of what was asked and answered to ApprovalStore. Splitting it that way is
-| what keeps a security boundary reviewable — the composition below is the
-| whole enforcement path, and there is no second copy of it anywhere.
-|--------------------------------------------------------------------------*/
+"use strict";
 
+const settings = require("../config");
+
+const { PolicyMatcher, DECISIONS } = require("./PolicyMatcher");
 const { PolicyRegistry } = require("./PolicyRegistry");
-const { ApprovalStore, currentProjectId } = require("./ApprovalStore");
-const { ApprovalManager, getApprovalMode } = require("./ApprovalManager");
-const { mcpServerOf } = require("./PolicyMatcher");
-const { DECISIONS, deniedByPolicy } = require("./PolicyErrors");
+const { ApprovalManager } = require("./ApprovalManager");
+const {
+    PolicyDeniedError
+} = require("./PolicyErrors");
+
+
+function currentProjectId() {
+
+    try {
+
+        const runtime = require("../runtime");
+
+        if (typeof runtime.effectiveProjectId === "function") {
+
+            const overridden = runtime.effectiveProjectId();
+
+            if (overridden) {
+                return overridden;
+            }
+        }
+
+        const run =
+            runtime.runManager &&
+            typeof runtime.runManager.current === "function"
+                ? runtime.runManager.current()
+                : null;
+
+        return run && run.projectId ? run.projectId : null;
+
+    } catch {
+        return null;
+    }
+}
+
+
+function mcpServerOf(toolName, args) {
+
+    if (toolName === "mcp_call") {
+
+        if (args && args.server) {
+            return String(args.server);
+        }
+
+        const requested =
+            args && (args.tool || args.name);
+
+        if (typeof requested === "string") {
+
+            try {
+
+                const { parseToolName } = require("../mcp/McpManager");
+                const parsed = parseToolName(requested);
+                return parsed ? parsed.server : null;
+
+            } catch {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    try {
+
+        const { parseToolName } = require("../mcp/McpManager");
+        const parsed = parseToolName(toolName);
+        return parsed ? parsed.server : null;
+
+    } catch {
+        return null;
+    }
+}
+
+
+function globalMcpServer(serverName) {
+
+    if (!serverName) {
+        return null;
+    }
+
+    try {
+
+        const { manager } = require("../mcp/McpManager");
+        const client = manager.client(serverName);
+
+        if (!client) {
+            return null;
+        }
+
+        return (client.config.scope || "global") === "global"
+            ? client
+            : null;
+
+    } catch {
+        return null;
+    }
+}
+
+
+function mcpEscalation(toolName, { settingsStore = settings } = {}) {
+
+    const isGatewayCall =
+        toolName === "mcp_call";
+
+    const isNamespaced =
+        toolName.startsWith("mcp__");
+
+    if (!isGatewayCall && !isNamespaced) {
+        return null;
+    }
+
+    const mode =
+        settingsStore.get("MCP_APPROVAL");
+
+    if (mode === "never") {
+        return null;
+    }
+
+    if (mode === "always") {
+
+        return {
+            decision: DECISIONS.REQUIRE_APPROVAL,
+            reason: "every MCP call needs approval (MCP_APPROVAL=always)",
+            rule: "mcp_approval_always"
+        };
+    }
+
+    if (!isNamespaced) {
+        return null;
+    }
+
+    let manager;
+
+    try {
+        ({ manager } = require("../mcp/McpManager"));
+    } catch {
+        return null;
+    }
+
+    const entry =
+        manager.catalogueEntry(toolName);
+
+    if (!entry || entry.trust !== "restricted") {
+        return null;
+    }
+
+    return {
+        decision: DECISIONS.REQUIRE_APPROVAL,
+        reason: `the MCP server "${entry.server}" is configured as restricted`,
+        rule: "mcp_restricted_server"
+    };
+}
 
 
 class PolicyEngine {
@@ -35,113 +164,100 @@ class PolicyEngine {
         policy,
         toolGroups,
         onDecision,
-        /*
-        | A console that renders pending approvals injects the store it
-        | reads from, so the audit trail and the button list are the same
-        | objects rather than two copies that drift.
-        */
-        store
-    }) {
+        settingsStore,
+        registry,
+        matcher,
+        approvalManager
+    } = {}) {
 
-        this.approvals = [];
+        this.settings = settingsStore || settings;
+        this.registry =
+            registry ||
+            new PolicyRegistry({
+                policy,
+                toolGroups
+            });
 
-        this.store =
-            store ||
-            new ApprovalStore({ records: this.approvals });
+        this.approvalManager =
+            approvalManager ||
+            new ApprovalManager({
+                settingsStore: this.settings,
+                currentProjectId,
+                mcpServerOf,
+                globalMcpServer
+            });
+
+        this.matcher =
+            matcher ||
+            new PolicyMatcher({
+                mcpEscalation:
+                    toolName =>
+                        mcpEscalation(toolName, {
+                            settingsStore: this.settings
+                        })
+            });
 
         this.onDecision =
             onDecision || (() => {});
-
-        this.manager =
-            new ApprovalManager({
-                store: this.store,
-                mcpServerOf,
-
-                /*
-                | A refusal the manager made on the engine's behalf is still a
-                | policy decision, so it is announced with the same shape the
-                | allow/deny paths already use.
-                */
-                onRefusal: (evaluation, record) => {
-
-                    this.onDecision({
-                        ...evaluation,
-
-                        approved: false,
-
-                        approval_mode:
-                            record.mode,
-
-                        gateway_cached:
-                            record.gateway_cached === true
-                    });
-                }
-            });
-
-        this.registry =
-            new PolicyRegistry({ policy, toolGroups });
     }
 
 
-    /*
-    | The rules come from a file, so the engine has to be able to take a
-    | new version of them without the process restarting.
-    */
+    get approvals() {
+        return this.approvalManager.approvals;
+    }
+
+
+    /* Compatibility views retained for callers that inspected the old
+       monolithic engine while the wrapper migration is in progress. */
+    get policy() {
+        return this.registry.policy;
+    }
+
+
+    get groupsByTool() {
+        return this.registry.groupsByTool;
+    }
+
 
     reload({ policy, toolGroups } = {}) {
 
         this.registry.reload({ policy, toolGroups });
-
         return this;
     }
 
 
     groupsFor(toolName) {
-
         return this.registry.groupsFor(toolName);
     }
 
 
-    /*
-    | The last matching rule wins, so a specific rule can be written after
-    | a broad one.
-    */
-
     evaluate(toolName, args, agent) {
 
-        return this.registry.decide(toolName, {
-            args: args || {},
-            agent: agent || "main_agent"
-        });
+        return this.matcher.evaluate(
+            toolName,
+            args,
+            agent,
+            this.registry
+        );
     }
 
 
     async requestApproval(evaluation, args) {
-
-        return this.manager.request(evaluation, args);
+        return this.approvalManager.request(evaluation, args);
     }
 
 
     prompt(evaluation, args) {
-
-        return this.manager.prompt(evaluation, args);
+        return this.approvalManager.prompt(evaluation, args);
     }
 
-
-    /*
-    | The single enforcement point called by the tool graph.
-    */
 
     async enforce(toolName, args, agent) {
 
         const evaluation =
             this.evaluate(toolName, args, agent);
 
-        /*
-        | Additive project attribution only when a project is actually in
-        | scope. Stamping `project_id: null` would change the historical
-        | shape of every legacy policy:decision.
-        */
+        /* Add project attribution only when a project is actually scoped. */
         const projectId = currentProjectId();
 
         if (projectId) {
@@ -151,37 +267,104 @@ class PolicyEngine {
         if (evaluation.decision === DECISIONS.DENY) {
 
             this.onDecision(evaluation);
-
-            throw deniedByPolicy(toolName, evaluation.reason);
+            throw new PolicyDeniedError(toolName, evaluation.reason);
         }
 
-        if (
-            evaluation.decision ===
-            DECISIONS.REQUIRE_APPROVAL
-        ) {
+        if (evaluation.decision === DECISIONS.REQUIRE_APPROVAL) {
 
             const approval =
                 await this.requestApproval(evaluation, args);
 
             this.onDecision({
                 ...evaluation,
-
-                approved:
-                    approval.approved,
-
-                approval_mode:
-                    approval.mode,
-
-                gateway_cached:
-                    approval.gateway_cached === true
+                approved: approval.approved,
+                approval_mode: approval.mode,
+                gateway_cached: approval.gateway_cached === true
             });
 
             return evaluation;
         }
 
         this.onDecision(evaluation);
-
         return evaluation;
+    }
+
+
+    /* Used by cross-project/multi-project write guards. Keeping the
+       lifecycle here ensures every approval is recorded and audited by the
+       same boundary as ordinary policy approvals. */
+    async enforceApproval(evaluation, args) {
+
+        const approval =
+            await this.requestApproval(evaluation, args);
+
+        this.onDecision({
+            ...evaluation,
+            approved: approval.approved,
+            approval_mode: approval.mode,
+            gateway_cached: approval.gateway_cached === true
+        });
+
+        return approval;
+    }
+
+
+    /*
+    | The extra guard for a delegated write is policy, not tool execution.
+    | Runtime supplies the current project frame and the feature gate; the
+    | approval lifecycle and audit callback stay centralized here.
+    */
+    async enforceCrossProjectWrite({
+        toolName,
+        args,
+        agent,
+        enabled,
+        fileMutatingTools,
+        currentRun,
+        effectiveProject,
+        projectIdOf,
+        isMultiProjectTask
+    } = {}) {
+
+        if (
+            !enabled ||
+            !Array.isArray(fileMutatingTools) ||
+            !fileMutatingTools.includes(toolName)
+        ) {
+            return null;
+        }
+
+        const run = currentRun();
+        const effective = effectiveProject(run.project);
+        const effectiveId =
+            projectIdOf(effective) || run.projectId || null;
+        const parentId =
+            run.projectId || projectIdOf(run.project) || null;
+        const cross =
+            Boolean(effectiveId && parentId && effectiveId !== parentId);
+        const multi = isMultiProjectTask(run);
+
+        if (!cross && !multi) {
+            return null;
+        }
+
+        const evaluation = {
+            tool: toolName,
+            agent: agent || "main_agent",
+            groups: this.groupsFor(toolName),
+            decision: DECISIONS.REQUIRE_APPROVAL,
+            reason:
+                cross
+                    ? `cross-project write on "${effectiveId}" (run project is "${parentId}")`
+                    : `write in a multi-project task (project "${effectiveId || parentId}")`,
+            rule:
+                cross
+                    ? "cross_project_write"
+                    : "multi_project_write",
+            project_id: effectiveId
+        };
+
+        return this.enforceApproval(evaluation, args);
     }
 
 
@@ -189,14 +372,11 @@ class PolicyEngine {
 
         return {
             mode:
-                getApprovalMode(),
-
+                this.approvalManager.getMode(),
             default_action:
-                this.registry.policy.default_action,
-
+                this.registry.defaultAction(),
             rules:
-                this.registry.ruleCount,
-
+                this.registry.rules().length,
             approvals:
                 this.approvals.length
         };
@@ -204,4 +384,11 @@ class PolicyEngine {
 }
 
 
-module.exports = { PolicyEngine };
+module.exports = {
+    PolicyEngine,
+    DECISIONS,
+    currentProjectId,
+    mcpServerOf,
+    globalMcpServer,
+    mcpEscalation
+};

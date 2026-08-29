@@ -1,177 +1,121 @@
-/*
-|--------------------------------------------------------------------------\
-| Approval manager
-|--------------------------------------------------------------------------\
-|
-| The lifecycle of one escalation: ask whoever is listening, record the
-| answer, and refuse if it was no. Modes:
-|
-|   auto    approve everything a rule sends for approval, and record it
-|   prompt  ask an interactive approver — a handler if one was injected,
-|           otherwise the terminal, and if there is no TTY: refuse
-|   deny    refuse anything that needs approval, for unattended runs
-|
-| An interactive front end already owns stdin, so it injects its own
-| handler instead of letting the engine open a second reader. That seam is
-| `setApprovalHandler`, and the web console is built on it.
-|
-| The engine never decides *whether* to ask — the rules do. This class only
-| answers "how do we ask, and what did we hear back".
-|--------------------------------------------------------------------------*/
+"use strict";
 
 const readline = require("readline");
 
-const settings = require("../lib/storage");
-
+const settings = require("../config");
 const {
-    deniedByOperator,
-    unattendedDenied,
-    noInteractiveApprover
+    ApprovalDeniedError,
+    unattendedApproval,
+    interactiveApprovalUnavailable
 } = require("./PolicyErrors");
+const { ApprovalStore } = require("./ApprovalStore");
 
-const { currentProjectId } = require("./ApprovalStore");
 
-
-/*
-| Injected by an interactive front end (the web console, the REPL). Module
-| scope, not instance: it is one runtime-wide question with one answerer.
-*/
-
+/* The historical handler and gateway cache were process-wide. Keep that
+   property while giving each engine its own decision history. */
 let approvalHandler = null;
-
-
-/*
-| A `scope: global` MCP server is configured once by the operator, so
-| approving it once for a project is the honest unit of consent — but every
-| use is still audited with the consuming project_id. Only consulted when a
-| run actually has a project, so legacy single-project approval is unchanged.
-*/
-
-function globalMcpServer(serverName) {
-
-    if (!serverName) {
-        return null;
-    }
-
-    try {
-
-        const { manager } = require("../mcp/manager");
-
-        const client = manager.client(serverName);
-
-        if (!client) {
-            return null;
-        }
-
-        return (client.config.scope || "global") === "global"
-            ? client
-            : null;
-
-    } catch {
-
-        return null;
-    }
-}
-
-
-function getApprovalMode() {
-
-    return settings.get("AGENT_APPROVAL");
-}
-
-
-function setApprovalMode(mode) {
-
-    return settings.set("AGENT_APPROVAL", mode);
-}
-
-
-function setApprovalHandler(handler) {
-
-    approvalHandler = handler;
-}
 
 
 class ApprovalManager {
 
-    /*
-    | `onRefusal` is the engine's chance to report a decision it did not make.
-    | Without it, every refusal below throws before the engine reaches its
-    | `onDecision`, so the console's log line for a rejected call —
-    | `Policy … rejected` — was unreachable code, and an SSE client saw a
-    | tool error but no policy event. The record still throws exactly as
-    | before; only the announcement is added.
-    */
+    constructor({
+        settingsStore,
+        store,
+        currentProjectId,
+        mcpServerOf,
+        globalMcpServer
+    } = {}) {
 
-    constructor({ store, mcpServerOf, onRefusal }) {
-
-        this.store = store;
-        this.mcpServerOf = mcpServerOf;
-        this.onRefusal =
-            typeof onRefusal === "function"
-                ? onRefusal
-                : null;
+        this.settings = settingsStore || settings;
+        this.store = store || new ApprovalStore();
+        this.currentProjectId =
+            typeof currentProjectId === "function"
+                ? currentProjectId
+                : () => null;
+        this.mcpServerOf =
+            typeof mcpServerOf === "function"
+                ? mcpServerOf
+                : () => null;
+        this.globalMcpServer =
+            typeof globalMcpServer === "function"
+                ? globalMcpServer
+                : () => null;
     }
 
 
-    get handler() {
+    getMode() {
+        return this.settings.get("AGENT_APPROVAL");
+    }
 
+
+    setMode(mode) {
+        return this.settings.set("AGENT_APPROVAL", mode);
+    }
+
+
+    setHandler(handler) {
+        approvalHandler = handler;
+    }
+
+
+    setApprovalHandler(handler) {
+        return this.setHandler(handler);
+    }
+
+
+    getApprovalMode() {
+        return this.getMode();
+    }
+
+
+    setApprovalMode(mode) {
+        return this.setMode(mode);
+    }
+
+
+    handler() {
         return approvalHandler;
     }
 
 
-    refuse(evaluation, record) {
-
-        if (this.onRefusal) {
-            this.onRefusal(evaluation, record);
-        }
+    get approvals() {
+        return this.store.records();
     }
 
 
-    /*
-    | One escalation, from ask to answer to audit record. Returns the record
-    | when the call may proceed and throws when it may not — so a caller can
-    | never mistake "answered no" for "answered".
-    |
-    | `project_id` is the evaluation's if something upstream already decided
-    | it (a cross-project write in the agent loop does), otherwise the
-    | ambient run's. Never from tool arguments.
-    */
+    async requestApproval(evaluation, args) {
+        return this.request(evaluation, args);
+    }
+
 
     async request(evaluation, args) {
+
+        const projectId =
+            evaluation.project_id || this.currentProjectId();
 
         const record = {
             tool: evaluation.tool,
             agent: evaluation.agent,
             reason: evaluation.reason,
-            project_id:
-                evaluation.project_id || currentProjectId(),
+            project_id: projectId,
             at: new Date().toISOString()
         };
-
-        return this.settle(evaluation, args, record);
-    }
-
-
-    /*
-    | Split out because the engine sometimes hands in a record it built
-    | itself, with attribution already stamped.
-    */
-
-    async settle(evaluation, args, record) {
 
         const serverName =
             this.mcpServerOf(evaluation.tool, args);
 
         const globalServer =
-            record.project_id ? globalMcpServer(serverName) : null;
-
-        const cached =
-            globalServer
-                ? this.store.gatewayGet(serverName)
+            projectId
+                ? this.globalMcpServer(serverName)
                 : null;
 
-        if (globalServer && cached) {
+        if (
+            globalServer &&
+            this.store.hasGateway(serverName)
+        ) {
+
+            const cached =
+                this.store.gatewayFor(serverName);
 
             record.approved = cached.approved;
             record.mode = "gateway";
@@ -180,84 +124,97 @@ class ApprovalManager {
             this.store.record(record);
 
             if (!cached.approved) {
-                this.refuse(evaluation, record);
-                throw deniedByOperator(evaluation.tool, evaluation.reason);
+                throw new ApprovalDeniedError(
+                    evaluation.tool,
+                    evaluation.reason
+                );
             }
 
             return record;
         }
 
-        if (getApprovalMode() === "deny") {
+        const mode = this.getMode();
+
+        if (mode === "deny") {
 
             record.approved = false;
             record.mode = "deny";
-
             this.store.record(record);
 
-            this.refuse(evaluation, record);
-
-            throw unattendedDenied(evaluation.tool, evaluation.reason);
+            throw unattendedApproval(
+                evaluation.tool,
+                evaluation.reason
+            );
         }
 
+        const handler = this.handler();
+
         if (
-            getApprovalMode() === "prompt" &&
-            !approvalHandler &&
+            mode === "prompt" &&
+            !handler &&
             !process.stdin.isTTY
         ) {
+
             record.approved = false;
             record.mode = "prompt (no tty)";
             this.store.record(record);
 
-            this.refuse(evaluation, record);
-
-            throw noInteractiveApprover(evaluation.tool, evaluation.reason);
+            throw interactiveApprovalUnavailable(
+                evaluation.tool,
+                evaluation.reason
+            );
         }
 
         if (
-            getApprovalMode() === "prompt" &&
-            (approvalHandler || process.stdin.isTTY)
+            mode === "prompt" &&
+            (handler || process.stdin.isTTY)
         ) {
 
             const answer =
-                approvalHandler
-                    ? await approvalHandler(evaluation, args)
+                handler
+                    ? await handler(evaluation, args)
                     : await this.prompt(evaluation, args);
 
             record.approved = answer;
             record.mode = "prompt";
-
             this.store.record(record);
 
             if (globalServer && serverName) {
-                this.store.gatewayPut(serverName, { approved: answer });
+
+                this.store.rememberGateway(serverName, {
+                    approved: answer,
+                    at: Date.now()
+                });
             }
 
             if (!answer) {
-                this.refuse(evaluation, record);
-                throw deniedByOperator(evaluation.tool, evaluation.reason);
+                throw new ApprovalDeniedError(
+                    evaluation.tool,
+                    evaluation.reason
+                );
             }
 
             return record;
         }
 
         record.approved = true;
-
         record.mode =
-            getApprovalMode() === "prompt"
+            mode === "prompt"
                 ? "auto (no tty)"
                 : "auto";
 
         if (globalServer && serverName) {
-            this.store.gatewayPut(serverName, { approved: true });
+
+            this.store.rememberGateway(serverName, {
+                approved: true,
+                at: Date.now()
+            });
         }
 
         this.store.record(record);
-
         return record;
     }
 
-
-    /* The terminal is the fallback approver, not a second one. */
 
     prompt(evaluation, args) {
 
@@ -295,20 +252,64 @@ class ApprovalManager {
             );
         });
     }
+
+
+    /*
+    | Adapt the manager to a web/interactive pending-approval boundary.
+    | The callback is intentionally just an operator-facing adapter; the
+    | policy engine remains responsible for recording the final decision.
+    */
+    createPendingHandler({
+        store,
+        createId,
+        projectIdOf,
+        onRequest
+    } = {}) {
+
+        const pendingStore =
+            store || this.store;
+
+        return (evaluation, args) =>
+            new Promise(resolve => {
+
+                const projectId =
+                    typeof projectIdOf === "function"
+                        ? projectIdOf(evaluation, args)
+                        : evaluation.project_id || this.currentProjectId() || null;
+
+                const id =
+                    typeof createId === "function"
+                        ? createId(evaluation, args, pendingStore)
+                        : `approval_${pendingStore.pendingSize() + 1}_${Date.now()}`;
+
+                const request = {
+                    id,
+                    agent: evaluation.agent,
+                    tool: evaluation.tool,
+                    reason: evaluation.reason,
+                    groups: evaluation.groups,
+                    arguments: args,
+                    project_id: projectId,
+                    requested_at: Date.now(),
+                    resolve
+                };
+
+                pendingStore.addPending(request);
+
+                if (typeof onRequest === "function") {
+                    onRequest(request, args);
+                }
+            });
+    }
 }
 
 
-function getApprovalHandler() {
-
-    return approvalHandler;
+function setGlobalApprovalHandler(handler) {
+    approvalHandler = handler;
 }
 
 
 module.exports = {
     ApprovalManager,
-    getApprovalMode,
-    setApprovalMode,
-    setApprovalHandler,
-    getApprovalHandler,
-    globalMcpServer
+    setGlobalApprovalHandler
 };

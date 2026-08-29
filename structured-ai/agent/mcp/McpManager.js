@@ -1,7 +1,7 @@
 "use strict";
 
-const settings = require("../lib/storage");
-const events = require("../lib/events");
+const settings = require("../config");
+const events = require("../events");
 
 const loader = require("./McpConfigLoader");
 const validator = require("./McpConfigValidator");

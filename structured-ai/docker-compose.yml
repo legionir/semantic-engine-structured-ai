@@ -6,10 +6,14 @@ services:
     environment:
       NODE_ENV: production
       SEMANTIC_ENGINE_TOKEN: ${SEMANTIC_ENGINE_TOKEN:?SEMANTIC_ENGINE_TOKEN must be set}
+      # Generated data (indexes, blueprints, SQLite, job state) lives outside
+      # the read-only rootfs and outside the mounted source tree.
+      SEMANTIC_ENGINE_DATA_DIR: /data
     ports:
       - "127.0.0.1:4000:4000"
     volumes:
       - ${SEMANTIC_WORKSPACE:-./workspace}:/workspace
+      - engine-data:/data
     command: ["ui", "--root", "/workspace", "--host", "0.0.0.0", "--allow-remote", "--port", "4000"]
     restart: unless-stopped
     read_only: true
@@ -24,3 +28,38 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # فاز ۱۳ — حالت چندپروژه‌ای: فقط Gateway پورت عمومی دارد و workerها را
+  # به‌عنوان پروسهٔ فرزند بالا می‌آورد. workspace بین دو سرویس مشترک است تا
+  # workerها همان منبعی را ببینند که ثبت شده، و /data جایی است که artifactها
+  # می‌نشینند (rootfs فقط‌خواندنی است).
+  semantic-gateway:
+    build:
+      context: .
+      dockerfile: semantic-engine/Dockerfile
+    environment:
+      NODE_ENV: production
+      SEMANTIC_ENGINE_GATEWAY_TOKEN: ${SEMANTIC_GATEWAY_TOKEN:?SEMANTIC_GATEWAY_TOKEN must be set}
+      SEMANTIC_ENGINE_DATA_DIR: /data
+    ports:
+      - "127.0.0.1:4100:4000"
+    volumes:
+      - ${SEMANTIC_WORKSPACE:-./workspace}:/workspace
+      - engine-data:/data
+    command: ["gateway", "--host", "0.0.0.0", "--port", "4000"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  engine-data:

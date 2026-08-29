@@ -1,75 +1,97 @@
-/*
-|--------------------------------------------------------------------------\
-| Policy errors
-|--------------------------------------------------------------------------\
-|
-| Every refusal this runtime makes is phrased the same way for the same
-| reason: the message is what the model reads, what the audit log keeps and
-| what several tests assert. Building them here keeps a refactor from
-| quietly rewording a refusal — the wording IS the contract.
-|
-|--------------------------------------------------------------------------*/
-
-const DECISIONS = {
-    ALLOW: "allow",
-    DENY: "deny",
-    REQUIRE_APPROVAL: "require_approval"
-};
-
-
-/* A rule said no. Nothing asks the operator; the call never happens. */
-
-function deniedByPolicy(toolName, reason) {
-
-    return new Error(
-        `Tool "${toolName}" is denied by policy: ${reason}`
-    );
-}
-
+"use strict";
 
 /*
-| An approval that came back as a no — from the terminal prompt, from the
-| web console handler, or from the cached gateway answer for a
-| `scope: global` MCP server. One message for all three: to the caller the
-| fact is the same, and the audit record carries which one it was.
+|--------------------------------------------------------------------------
+| Policy errors — EXECUTION_PLAN Phase 21
+|--------------------------------------------------------------------------
+|
+| Policy and approval failures have historically been plain Error instances
+| with stable messages. These small types give the extracted boundary a
+| useful vocabulary without changing the legacy error name or message that
+| callers and the tool graph already consume.
+|--------------------------------------------------------------------------
 */
 
-function deniedByOperator(toolName, reason) {
+const CODES = Object.freeze({
+    POLICY: "POLICY_ERROR",
+    POLICY_DENIED: "POLICY_DENIED",
+    APPROVAL_DENIED: "APPROVAL_DENIED",
+    APPROVAL_UNAVAILABLE: "APPROVAL_UNAVAILABLE",
+    POLICY_CONFIGURATION: "POLICY_CONFIGURATION"
+});
 
-    return new Error(
-        `Tool "${toolName}" was denied by the operator: ${reason}`
+
+class PolicyError extends Error {
+
+    constructor(message, code = CODES.POLICY) {
+
+        super(message);
+
+        /* Keep the historical `Error` identity used by tool results. */
+        this.name = "Error";
+        this.code = code;
+    }
+}
+
+
+class PolicyDeniedError extends PolicyError {
+
+    constructor(tool, reason) {
+        super(
+            `Tool "${tool}" is denied by policy: ${reason}`,
+            CODES.POLICY_DENIED
+        );
+    }
+}
+
+
+class ApprovalDeniedError extends PolicyError {
+
+    constructor(tool, reason) {
+        super(
+            `Tool "${tool}" was denied by the operator: ${reason}`,
+            CODES.APPROVAL_DENIED
+        );
+    }
+}
+
+
+class ApprovalUnavailableError extends PolicyError {
+
+    constructor(message) {
+        super(message, CODES.APPROVAL_UNAVAILABLE);
+    }
+}
+
+
+function unattendedApproval(tool, reason) {
+
+    return new ApprovalUnavailableError(
+        `Tool "${tool}" requires approval and the runtime is running unattended (AGENT_APPROVAL=deny): ${reason}`
     );
 }
 
 
-/* AGENT_APPROVAL=deny is the unattended mode: refuse rather than hang. */
+function interactiveApprovalUnavailable(tool, reason) {
 
-function unattendedDenied(toolName, reason) {
-
-    return new Error(
-        `Tool "${toolName}" requires approval and the runtime is running unattended (AGENT_APPROVAL=deny): ${reason}`
+    return new ApprovalUnavailableError(
+        `Tool "${tool}" requires an interactive approval, but no approval handler or TTY is available: ${reason}`
     );
 }
 
 
-/*
-| `prompt` with nobody to prompt. The distinction from `unattendedDenied`
-| matters when reading a log: one is an operator's choice, the other is a
-| runtime that cannot ask.
-*/
-
-function noInteractiveApprover(toolName, reason) {
-
-    return new Error(
-        `Tool "${toolName}" requires an interactive approval, but no approval handler or TTY is available: ${reason}`
-    );
+function configurationError(message) {
+    return new PolicyError(message, CODES.POLICY_CONFIGURATION);
 }
 
 
 module.exports = {
-    DECISIONS,
-    deniedByPolicy,
-    deniedByOperator,
-    unattendedDenied,
-    noInteractiveApprover
+    CODES,
+    PolicyError,
+    PolicyDeniedError,
+    ApprovalDeniedError,
+    ApprovalUnavailableError,
+    unattendedApproval,
+    interactiveApprovalUnavailable,
+    configurationError
 };
