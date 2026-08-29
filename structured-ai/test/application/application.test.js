@@ -43,7 +43,7 @@ async function test(name, fn) {
 async function main() {
 
     const runtime = require(path.join(REPO, "agent", "agent.js"));
-    const storage = require(path.join(REPO, "agent", "lib", "storage.js"));
+    const storage = require(path.join(REPO, "agent", "config"));
     const config = require(path.join(REPO, "agent", "config"));
     const loader = require(path.join(REPO, "agent", "registry", "RegistryLoader.js"));
     const validator = require(path.join(REPO, "agent", "registry", "RegistryValidator.js"));
@@ -77,7 +77,7 @@ async function main() {
     });
 
 
-    await test("storage.js is the legacy wrapper over agent/config", async () => {
+    await test("agent/config is the canonical settings surface", async () => {
 
         assert.equal(storage.get, config.get);
         assert.equal(storage.set, config.set);
@@ -96,8 +96,20 @@ async function main() {
 
         assert.equal(storage.get("MAX_PARALLEL_TOOLS"), 8);
         assert.equal(storage.sourceOf("MAX_PARALLEL_TOOLS"), "default");
-        assert.equal(storage.definitionOf("PROJECT_CONTEXT_MODE").default, "legacy");
-        assert.equal(storage.definitionOf("RUN_CONTEXT_MODE").default, "legacy");
+        for (const removed of [
+            "PROJECT_CONTEXT_MODE",
+            "RUN_CONTEXT_MODE",
+            "PROMPT_BUILDER_MODE",
+            "SEMANTIC_POOL_MODE",
+            "RUNTIME_ENGINE_MODE",
+            "WEB_SERVER_MODE"
+        ]) {
+            assert.throws(
+                () => storage.definitionOf(removed),
+                /Unknown setting/,
+                `${removed} should be removed after Phase 30 rollout`
+            );
+        }
 
         storage.set("AGENT_API_KEY", "supersecretvalue");
 

@@ -72,6 +72,7 @@ describe('LodService — Semantic Level of Detail (LoD) Engine', () => {
     id: 'test-prj',
     name: 'Test Project',
     rootPath: '/tmp/test-prj',
+    aliases: [],
     indexPath: '/tmp/test-prj/.agent/semantic/project-index.json',
     status: 'ready',
     index: mockIndex,

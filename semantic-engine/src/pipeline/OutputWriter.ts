@@ -18,6 +18,7 @@ import { BlueprintExporter } from '../export/BlueprintExporter';
 import { validateAgainstSchema } from '../export/schemaValidation';
 import { FileSystemPort, NodeFileSystem } from '../host/FileSystem';
 import { ILogger, silentLogger } from '../host/Logger';
+import { nextIndexGeneration, parseIndexGeneration } from '../core/config/indexGeneration';
 
 export interface OutputWriterOptions {
   readonly outputDir: string;
@@ -127,20 +128,25 @@ export class OutputWriter {
       files: indexToWrite.files.length,
     });
 
+    const manifestPath = path.join(this.options.outputDir, MANIFEST_FILE_NAME);
+    let previousGeneration = 0;
+    try {
+      previousGeneration = parseIndexGeneration(JSON.parse(await this.fs.readFile(manifestPath)));
+    } catch {
+      /* اولین نوشتن، یا manifest ناقص: از صفر شروع می‌شود. */
+    }
+
     const manifest = {
       version: 1,
       generation: crypto.randomUUID(),
+      indexGeneration: nextIndexGeneration(previousGeneration),
       committedAt: new Date().toISOString(),
       artifacts: {
         index: await this.artifactDigest(this.indexPath),
         blueprint: blueprintPath ? await this.artifactDigest(this.blueprintPath) : null,
       },
     };
-    await this.fs.writeJsonAtomic(
-      path.join(this.options.outputDir, MANIFEST_FILE_NAME),
-      manifest,
-      { pretty }
-    );
+    await this.fs.writeJsonAtomic(manifestPath, manifest, { pretty });
 
     return { indexPath: this.indexPath, blueprintPath };
   }

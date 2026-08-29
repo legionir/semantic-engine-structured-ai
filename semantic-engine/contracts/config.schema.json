@@ -6,6 +6,23 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "semanticEngine.dataDir": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "description": "Directory holding generated data (indexes, blueprints, SQLite databases, locks, logs) instead of the workspace root. Defaults to the platform data directory: $XDG_DATA_HOME/semantic-engine on Linux, ~/Library/Application Support/SemanticEngine on macOS, %LOCALAPPDATA%/SemanticEngine on Windows. Also settable with SEMANTIC_ENGINE_DATA_DIR."
+    },
+    "semanticEngine.artifactLocation": {
+      "type": "string",
+      "enum": [
+        "in-root",
+        "external"
+      ],
+      "default": "external",
+      "description": "Where artifacts are written: 'external' (default) writes under semanticEngine.dataDir, 'in-root' keeps the legacy <workspace>/.semantic-engine for backward compatibility. An explicit --out always wins."
+    },
     "semanticEngine.treeSitter.grammarDir": {
       "type": [
         "string",

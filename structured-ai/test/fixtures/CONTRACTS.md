@@ -99,9 +99,7 @@ envelope پاسخ مدل (کلیدهای سطح-یک): `version`(`"1.0"`), `tool
 
 ## ۵. قرارداد API وب
 
-مسیرهای فعلی (literal) در `api-surface.json` ثبت‌اند؛ وجود همهٔ آن‌ها در لایهٔ وب الزامی است و `test/web/layer.test.js` همان را می‌سنجد (از فاز ۲۳ فایل `web/server.js` پوستهٔ سازگاری است و literalها در `web/server/Router.js` و `controllers/` زندگی می‌کنند). رفتار اثبات‌شده توسط تست‌های موجود: `POST /api/tasks`, `GET /api/events` (SSE), `GET /api/discussion/personas`, `POST /api/discussion`.
-
-**ماتریس کامل method × route — ثبت‌شده در فاز ۲۳:** inventory در `test/web/routes.js` (۷۷ probe، همهٔ مسیرهای مستندنشده هم در آن‌اند) و قرارداد ضبط‌شدهٔ status + content-type + شکل JSON (و فریم اول SSE) در `test/web/routes.snapshot.json`، با `npm run test:web:routes`. تغییر پاسخ/کد وضعیت هر endpoint ممنوع است؛ اگر تغییری عمدی بود، باید با دلیل در `EXECUTION_PLAN.md` ثبت و snapshot بازضبط شود (یک بار این کار انجام شد: رفع باگ `/api/cancel` در فاز ۲۳ گام ۲ — 500 → 200).
+مسیرهای فعلی (literal) در `api-surface.json` ثبت‌اند؛ تست قرارداد، وجود همهٔ آن‌ها و عدم ظهور مسیر مستندنشدهٔ جدید را در `web/server.js` اعمال می‌کند. رفتار اثبات‌شده توسط تست‌های موجود: `POST /api/tasks`, `GET /api/events` (SSE), `GET /api/discussion/personas`, `POST /api/discussion`. ماتریس کامل method × route در فاز ۲۳ (Web Backend refactor) مستند می‌شود؛ در این فاز تغییر پاسخ/کد وضعیت endpointها ممنوع است.
 
 ---
 
@@ -124,7 +122,7 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - `PROMPT_BUILDER_MODE` (پیش‌فرض `legacy`) — از فاز ۵.
 - `SEMANTIC_POOL_MODE` (پیش‌فرض `legacy`) — از فاز ۶.
 - `RUNTIME_ENGINE_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — از فاز ۱۶؛ هر دو مقدار همان engine استخراج‌شده را اجرا می‌کنند (تصمیم ۳۵). مقدار غلط رفتار legacy دارد.
-- `WEB_SERVER_MODE` (پیش‌فرض `legacy`؛ مقدار مجاز دیگر `modular`) — اعلان‌شده در فاز ۲۳ گام ۲ با یک خواننده (`web/server/ServerMode.js`)؛ هر دو مقدار همان ماژول‌های `web/server/` را می‌سازند (تصمیم ۴۲، مثل تصمیم ۳۵). مقدار غلط رفتار legacy دارد. حذف فلگ: فاز ۳۰.
+- `WEB_SERVER_MODE` هنگام ورود به فاز ۲۳ اعلان می‌شود.
 
 ## ۸. تغییرات additive فاز ۳ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
 
@@ -160,8 +158,8 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 ## ۱۲. تغییرات additive فاز ۷ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
 
 - **CLI:** فلگ `--project <id>` به `bin/agent.js` افزوده شد (نه delete/rename؛ گزینه‌های فعلی دست‌نخورده). رفتار اجرایی: root از registry خوانده می‌شود (با `-w` ناسازگار → usage error با پیام «does not match ... registry»؛ بدون `-w` → root ثبت‌شده = WORKSPACE_ROOT)؛ id ناشناخته → `Unknown project: <id>`؛ بدون فلگ هیچ تغییری در env/رفتار نیست. `--project` فلگهای `PROJECT_CONTEXT_MODE`/`RUN_CONTEXT_MODE`/`PROMPT_BUILDER_MODE` را modular می‌کند (بقیهٔ فلگها — از جمله `SEMANTIC_POOL_MODE` — دست‌نخورده).
-- **Web API:** مسیر `POST /api/projects/:projectId/tasks` به کنسول وب اضافه شد (فاز ۲۳: `web/server/controllers/ProjectController.js`): 202 `{accepted:true, project_id}` (فیلد جدید فقط در همین مسیر)؛ 404 `Unknown project`؛ 409 `PROJECT_MODE_REQUIRED` هنگام نبود فلگهای modular؛ 400/409-running عین مسیر قدیمی. قرارداد `POST /api/tasks` بدون هیچ تغییری (202 `{accepted:true}` دقیقاً همان بدنه است — تست deep-equal).
-- **امضای داخلی:** `startTask(task, runOptions)` (فاز ۲۳: در `web/server/services/TaskService.js`) پارامتر اختیاری دوم گرفت (پیش‌فرض `{}`؛ رفتار legacy یکسان)؛ runAgent همان گزینهٔ `{projectId}` فاز ۲ را می‌گیرد.
+- **Web API:** مسیر `POST /api/projects/:projectId/tasks` به `web/server.js` اضافه شد: 202 `{accepted:true, project_id}` (فیلد جدید فقط در همین مسیر)؛ 404 `Unknown project`؛ 409 `PROJECT_MODE_REQUIRED` هنگام نبود فلگهای modular؛ 400/409-running عین مسیر قدیمی. قرارداد `POST /api/tasks` بدون هیچ تغییری (202 `{accepted:true}` دقیقاً همان بدنه است — تست deep-equal).
+- **امضای داخلی:** `startTask(task, runOptions)` در web/server.js پارامتر اختیاری دوم گرفت (پیش‌فرض `{}`؛ رفتار legacy یکسان)؛ runAgent همان گزینهٔ `{projectId}` فاز ۲ را می‌گیرد.
 - **رویدادها:** در اجرای scoped (modular) رویدادهای run فیلدهای envelope موجود `run_id` + `project_id` (additive فاز ۲/۳) را دارند و در `/api/state` (فیلد `events`) بدون تغییر قرارداد دیده می‌شوند.
 
 ## ۱۳. تغییرات additive فاز ۸ (ثبت‌شده ۲۰۲۶-۰۸-۲۵)
@@ -269,3 +267,143 @@ flagهای فاز-به-فاز در schema تنظیمات اعلان می‌شو�
 - **MCP:** پیاده‌سازی در `agent/mcp/{McpManager,McpConfigLoader,McpConfigValidator,McpConnection,McpCatalogue,McpTrustPolicy}.js`، `protocol/{JsonRpcCodec,ContentLengthCodec,NdjsonCodec,McpErrors}.js` و `transports/{Stdio,Http,Sse,WebSocket}Transport.js`. فایل‌های تاریخی `manager.js`/`client.js`/`config.js`/`protocol.js` و `transports/{stdio,http,sse,websocket}.js` wrapper سازگار با همان exportها هستند.
 - **Export additive:** `McpConnection` همان کلاس `McpClient` است. `config.serverVisibleTo` به `McpTrustPolicy` delegate می‌شود.
 - **Flag:** فاز ۲۰ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۳۹). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۶. تغییرات additive فاز ۲۱ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** policy.json، نام/گروه ابزارها، ترتیب آخرین rule، حالت‌های `auto`/`prompt`/`deny` و پیام‌های خطای policy/approval حفظ شده‌اند؛ استخراج ساختاری است.
+- **Policy:** پیاده‌سازی در `agent/policy/{PolicyEngine,PolicyMatcher,PolicyRegistry,PolicyErrors}.js`؛ `PolicyMatcher` روی آرگومان‌های resolveشده match می‌کند و `PolicyEngine` تنها نقطهٔ enforcement/audit است. `agent/lib/policy.js` facade سازگار باقی مانده است.
+- **Approval:** `ApprovalManager` lifecycle terminal prompt، handler تزریقی، MCP trust escalation و gateway-level cache را مدیریت می‌کند؛ `ApprovalStore` history و pending recordها را encapsulate می‌کند. `setApprovalHandler`، `getApprovalMode`، `setApprovalMode` و `resetGatewayApprovals` از facade همان exportهای قبلی‌اند.
+- **Multi-Project:** pendingها و eventهای `approval:request`/`approval:resolved` فیلد additive `project_id` و filtering per-project فاز ۹ را حفظ می‌کنند؛ approvalهای `cross_project_write`/`multi_project_write` از lifecycle مشترک عبور می‌کنند.
+- **Web adapter:** Web Console فقط adapter UI است و pending state را از `ApprovalStore` می‌گیرد؛ `state.approvals` برای سازگاری به‌صورت Map باقی مانده است.
+- **Flag:** فاز ۲۱ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۴۰). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۷. تغییرات additive فاز ۲۲ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** `hooks.json`، ترتیب `before_task`/`after_task`، زبان شرط، templateها، `on_failure`، eventهای hook و نتیجهٔ hookها حفظ شده‌اند؛ استخراج ساختاری است.
+- **Hooks:** declaration و live reload در `agent/hooks/{HookLoader,HookRegistry}.js`، شرط در `HookCondition.js`، rendering در `HookRenderer.js`، result/report در `HookResult.js` و اجرای runtime در `HookRunner.js` قرار گرفت.
+- **Facade:** `agent/lib/hooks.js` و exportهای `runHooks`/`hookRegistry` در `agent.js` wrapperهای سازگار هستند؛ هیچ module جدیدی به `agent.js` وابستگی ندارد.
+- **Execution:** HookRunner از executorهای عادی tool/delegation استفاده می‌کند؛ بنابراین policy/approval، telemetry، project context، dependency graph، cancellation و رویدادهای `hook:*` همان مسیر قبلی را حفظ می‌کنند.
+- **Flag:** فاز ۲۲ `*_MODE` جدیدی اعلان نمی‌کند (تصمیم ۴۱). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۲۸. تغییرات additive فاز ۲۳ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **بدون تغییر قرارداد محصول:** تمام routeها، methodها، status codeها، شکل JSON، authentication/rate-limit، session replay، approval، settings، MCP و SSE بدون تغییر معنایی حفظ شده‌اند؛ استخراج backend ساختاری است.
+- **Route inventory:** `web/server/RouteInventory.js` و فیلد additive `method_paths` در `test/fixtures/api-surface.json` مرجع 42 مسیر method × path هستند؛ پارامترهای dynamic با `:name` مستند می‌شوند.
+- **Web modules:** `web/server/{WebServer,Router,RequestBody,Response,Middleware,SseHub}.js` و `controllers/`، `services/` و `serializers/` مرزهای جدیدند. `web/server.js` facade mode و `LegacyWebServer.js` compatibility implementation را نگه می‌دارند.
+- **Modular rollout:** `WEB_SERVER_MODE` با پیش‌فرض `legacy` و مقدار `modular` از طریق settings schema خوانده می‌شود. در هر دو mode، `web.test.js` و APIهای project-scoped همان رفتار را دارند.
+- **SSE:** client filtering و keep-alive در `SseHub` encapsulate شده و project authorization روی eventهای live و snapshot حفظ شده است.
+
+## ۲۹. تغییرات additive فاز ۲۴ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **قالب frontend:** native browser ESM بدون build step انتخاب شد؛ `index.html` بعد از `modal.js`، `/app/main.js` را با `type="module"` بارگذاری می‌کند.
+- **Domain modules:** `web/public/app/` شامل bootstrap، store/reducers، API، SSE، task، chat، execution، events، settings، MCP، history، plan، modal، markdown، direction، DOM، formatters و project/runtime/approval selectors است.
+- **Compatibility:** `app.js` به‌عنوان renderer سازگار باقی مانده و از `app/main.js` import می‌شود؛ `/app.js` همچنان به‌عنوان asset موجود است تا embedها و تست‌های فعلی نشکنند. selector/idهای `index.html` و Modal lifecycle تغییر نکرده‌اند.
+- **State/security:** store با domainهای جدا و reducerهای additive کار می‌کند؛ EventStream URL نسبی و `projectId` encode‌شده می‌سازد؛ API client هیچ endpoint absolute یا localhost ندارد؛ markdown با `textContent` و direction با تشخیص RTL امن می‌ماند.
+- **Flag:** فاز ۲۴ flag جدیدی اعلان نمی‌کند (تصمیم ۴۳). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۰. تغییرات additive فاز ۲۵ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **Visualizer:** native ESM در `web/public/visualizer/main.js` فعال شد و `visualizer.js` compatibility renderer برای direct embed حفظ شد.
+- **Graph domain:** `api-client`، `graph-store`، `graph-model`، `graph-renderer`، `layout-client`، `selection-state`، `node-details` و `visualizer-events` state و مسئولیت‌ها را از chat console جدا می‌کنند.
+- **Project scope:** graph، neighborhood و impact URLها relative هستند و `projectId`، `seedId` و `symbol` را encode می‌کنند؛ state هر visualizer project-local است.
+- **Layout/selection:** worker layout deterministic است و در نبود Worker یا خطای worker به layout grid deterministic fallback می‌کند؛ focus depth، resolved-only، node selection، drill-down و inspector metadata حفظ می‌شوند.
+- **Security:** متن label/signature/connection با `textContent`/DOM API رندر می‌شود و خروجی inspector مسیر HTML خام ندارد؛ graph interactions و endpointهای موجود حذف یا rename نشده‌اند.
+- **Flag:** فاز ۲۵ flag جدیدی اعلان نمی‌کند (تصمیم ۴۴). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۱. تغییرات additive فاز ۲۶ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **CLI:** `agent/cli/` شامل `ArgParser`، `CommandRegistry`، `OutputFormatter`، commandهای Help/Run/Serve/Interactive و facade `Cli` است؛ `bin/agent.js` wrapper سازگار باقی مانده است. تمام flagها و exit codeها حفظ شده‌اند.
+- **Interactive:** `agent/interactive/` شامل `Repl`، `ReplCommands`، `InputReader`، `OutputRenderer` و `ApprovalPrompt` است؛ `bin/interactive.js` مسیر قدیمی را حفظ می‌کند. commandهای `/help`، `/clear`، `/history`، `/approve`، `/tools` و `/save` و ترتیب input/approval تغییر نکرده‌اند.
+- **Output:** `--json` همچنان فقط action JSON معتبر روی stdout می‌دهد؛ progress، error و approval output روی stderr/stdout تاریخی باقی می‌مانند؛ error action شکل قبلی را حفظ می‌کند.
+- **Migration safety:** parsing قبل از load کردن runtime انجام می‌شود؛ `--project`/`--migrate`، project root registry، session history و `backfill-eventstore.js` بدون تغییر معنایی حفظ شده‌اند.
+- **Flag:** فاز ۲۶ flag جدیدی اعلان نمی‌کند (تصمیم ۴۵). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۲. تغییرات additive فاز ۲۷ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **Event modules:** تولید و correlation در `agent/events/EventBus.js` و `EventContext.js`، inventory در `EventTypes.js`، validation در `EventValidator.js`، projection در `EventProjector.js` و redaction در `EventRedactor.js` قرار گرفتند؛ `agent/lib/events.js` facade سازگار است.
+- **Envelope:** فیلدهای `seq`، `type`، `at`، `run_id`، `turn_id`، `scope` و `iteration` حفظ شدند؛ `project_id` فقط به‌صورت additive روی scopeهای پروژه‌ای می‌آید؛ payload صریح بر context مقدم است.
+- **Projection:** استریم پروژهٔ جاری eventهای همان پروژه را کامل، eventهای global را metadata aggregate و eventهای پروژهٔ دیگر را حذف می‌کند؛ replay از همان projector استفاده می‌کند.
+- **Redaction:** event durable برای replay/نویسنده تغییر نمی‌کند؛ `redactForLog` secretها و source material را برای log/external surface mask می‌کند و `logObject` از آن استفاده می‌کند.
+- **Observability:** metric/health consumer event bus باقی می‌ماند و business event تولید نمی‌کند؛ تفکیک سری‌های project/global و سلامت پروژه‌ها حفظ شده است.
+- **Flag:** فاز ۲۷ flag جدیدی اعلان نمی‌کند (تصمیم ۴۶). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+## ۳۳. تغییرات additive فاز ۲۸ (ثبت‌شده ۲۰۲۶-۰۸-۲۶)
+
+- **Discussion boundary:** `DiscussionService` و `DiscussionContext` runtime caller، project identity، event attribution و lifecycle را inject می‌کنند؛ `DiscussionEngine`، `PersonaRunner`، `ObserverRunner`، `LoopDetector` و `TranscriptStore` بدون require چرخه‌ای به `agent.js` کار می‌کنند.
+- **Transcript persistence:** `TranscriptRepository` با `JsonRepository`/AtomicFile سند کامل هر discussion را در `<project dataRoot>/discussion/<id>.json` ذخیره می‌کند؛ rounds، observer decisions، final report، status و خطا برای replay حفظ می‌شوند. synthetic/legacy به `.agent/discussion` map می‌شود و فایل‌های قدیمی حذف نمی‌شوند.
+- **Project isolation:** `GET/POST /api/projects/:projectId/discussions` و `GET /api/projects/:projectId/discussions/:discussionId` فقط dataRoot همان project را می‌خوانند/می‌نویسند؛ project دیگر transcript را list یا replay نمی‌کند؛ permission chain فاز ۹ حفظ است.
+- **Events/UI/CLI:** eventهای `discussion:*` project_id additive دارند؛ UI برای project فعال به route scoped می‌رود و `/api/discussion` legacy باقی است؛ CLI `--discussion --project` transcript را در context پروژه ذخیره می‌کند.
+- **Security:** workspace/root از runtime/registry می‌آید؛ `workspace` و `workspace_root` از آرگومان tool برای identity پذیرفته نمی‌شوند؛ caller همچنان از `callAI` role-based runtime استفاده می‌کند.
+- **Flag:** فاز ۲۸ flag جدیدی اعلان نمی‌کند (تصمیم ۴۷). پیش‌فرض schema عوض نمی‌شود (تصمیم ۳۲).
+
+
+## ۳۴. تکمیل قراردادها و تفکیک Test Suite (فاز ۲۹)
+
+فاز ۲۹ قراردادهای عمومی را از تست‌های domain جدا کرد؛ split تست‌ها نباید قرارداد محصول را تغییر دهد. suiteهای قبلی با همان assertions اجرا می‌شوند و contractهای جدید فقط شکاف‌های شناخته‌شده را قفل می‌کنند.
+
+### Tool boundary
+
+- منبع canonical schema، concat فایل‌های `agent/registry/tool-schemas/*.json` است؛ snapshot `agent/registry/tools.json` باید با آن برابر بماند.
+- هر declaration از شکل `type: "function"`، نام پایدار و `parameters` یا `input_schema` تشکیل می‌شود.
+- `ToolRegistryAdapter.parity()` باید `missing: []` و `extra: []` بدهد؛ هیچ implementation بدون declaration نباید model-facing شود.
+- هویت پروژه (`projectId`/`project_id`/`project`/root) در args ابزار مجاز نیست و فقط از context معتبر می‌آید.
+
+### API boundary
+
+`test/fixtures/api-surface.json` مرجع مستقل method/path و response contracts است. فیلدهای موجود حذف نمی‌شوند؛ فیلدهای project و discussion additive هستند:
+
+| contract | status | required keys |
+|---|---:|---|
+| `legacy_task` | 202 | `accepted` |
+| `project_task` | 202 | `accepted`, `project_id` |
+| `discussion_start` | 202 | `accepted`, `id`, `project_id` |
+| `discussion_replay` | 200 | `project_id`, `discussion` |
+| `error` | 400 | `error` |
+
+`test/contracts/api.contract.test.js` هم‌خوانی fixture با `RouteInventory`، decode شدن پارامترهای dynamic فقط یک‌بار، status/content-type و serializerهای additive را بررسی می‌کند؛ تست‌های live در `test/web/` باقی می‌مانند.
+
+### Persistence boundary
+
+- JSON documentها با temp sibling و rename اتمیک نوشته می‌شوند؛ شکست rename فایل قبلی را تغییر نمی‌دهد.
+- JSONLهای journal/eventstore append-only هستند؛ خط ناقص یا خراب در انتهای فایل read را fail نمی‌کند.
+- `SchemaVersion`، `SafeIdentifier` و facadeهای session/eventstore/journal نام‌ها و مسیرهای تاریخی را حفظ می‌کنند.
+
+### Discussion boundary
+
+`DiscussionService` caller، context و event lifecycle را inject می‌کند. transcript با `project_id` و `dataRoot` پروژه قفل می‌شود؛ list/load پروژهٔ دیگر null/غیرقابل‌مشاهده است و workspace ارائه‌شده توسط model هویت محسوب نمی‌شود.
+
+### Differential rule
+
+در extractionهایی که mode legacy/modular دارند، خروجی قراردادی باید پس از حذف نویز با الگوی زیر برابر بماند و تفاوت‌های پروژه‌ای فقط additive باشند:
+
+```js
+assert.deepStrictEqual(normalize(modularOutput), normalize(legacyOutput));
+```
+
+شواهد اجرایی این قاعده در `test/prompt/builder.test.js`، `test/runs/run-context.test.js`، `test/runtime/engine.test.js` و تست‌های compatibility وب/CLI حفظ شده است.
+
+
+## ۳۵. Rollout نهایی و حذف facadeها (فاز ۳۰)
+
+پس از تثبیت برابری مسیرهای استخراج‌شده، مسیرهای compatibility دیگر بخشی از
+runtime نیستند:
+
+- importهای داخلی فقط به `agent/config`، `agent/context`، `agent/events`،
+  `agent/hooks`، `agent/mcp`، `agent/persistence`، `agent/policy`،
+  `agent/projects`، `agent/prompt`، `agent/runtime` و گروه‌های canonical
+  `agent/tools` اشاره می‌کنند. `agent/lib/` حذف شده است.
+- فایل‌های MCP و tool با نام‌های lowercase که فقط facade بودند حذف شده‌اند؛
+  entrypointهای `McpConfig`، `McpConnection`، `McpManager`، `mcp/protocol/`
+  و transportهای named مرجع هستند.
+- Web server فقط از `web/server/WebServer.js` ساخته می‌شود و frontend فقط
+  `web/public/app/main.js` و `web/public/visualizer/main.js` را bootstrap می‌کند.
+  rendererهای canonical در `app/console.js` و `visualizer/renderer.js` هستند.
+- شش rollout setting مرحله‌ای (`PROJECT_CONTEXT_MODE`، `RUN_CONTEXT_MODE`،
+  `PROMPT_BUILDER_MODE`، `SEMANTIC_POOL_MODE`، `RUNTIME_ENGINE_MODE` و
+  `WEB_SERVER_MODE`) از `SettingsSchema` حذف شده‌اند. نبود این settingها
+  contract است؛ flagهای مستقل محصول مانند sandbox و response format حذف نشده‌اند.
+- synthetic default همچنان برای خواندن/مهاجرت دادهٔ قبلی از `<workspace>/.agent`
+  استفاده می‌کند؛ این data compatibility است، نه مسیر اجرایی دوم.
+
+تست `test/contracts/rollout.contract.test.js` نبودن facadeها، canonical بودن
+entrypointها، حذف flagها و نبودن require به مسیرهای قدیمی را بررسی می‌کند.

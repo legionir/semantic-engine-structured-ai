@@ -26,9 +26,6 @@ fs.writeFileSync(path.join(OTHER_ROOT, "b.txt"), "b\n");
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 process.env.STRUCTURED_AI_DATA_HOME = DATA_HOME;
-process.env.PROJECT_CONTEXT_MODE = "modular";
-process.env.RUN_CONTEXT_MODE = "modular";
-process.env.PROMPT_BUILDER_MODE = "modular";
 process.env.MAX_EMPTY_FINAL_NUDGES = "0";
 process.env.AGENT_APPROVAL = "auto";
 process.env.AGENT_VERBOSE = "0";
@@ -129,14 +126,14 @@ async function request(baseUrl, method, url, { token, body } = {}) {
 
 async function main() {
 
-    const consoleAuth = require(path.join(REPO_ROOT, "agent", "lib", "consoleAuth.js"));
-    const mcpConfig = require(path.join(REPO_ROOT, "agent", "mcp", "config.js"));
-    const { manager } = require(path.join(REPO_ROOT, "agent", "mcp", "manager.js"));
+    const consoleAuth = require(path.join(REPO_ROOT, "agent", "config", "ConsoleAuth"));
+    const mcpConfig = require(path.join(REPO_ROOT, "agent", "mcp", "McpConfig"));
+    const { manager } = require(path.join(REPO_ROOT, "agent", "mcp", "McpManager"));
     const {
         PolicyEngine,
         setApprovalHandler,
         resetGatewayApprovals
-    } = require(path.join(REPO_ROOT, "agent", "lib", "policy.js"));
+    } = require(path.join(REPO_ROOT, "agent", "policy"));
 
     /* ------------------------------------------------ unit --- */
 

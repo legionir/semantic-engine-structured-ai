@@ -395,9 +395,6 @@ async function main() {
     /* ------------------------------------------------ API (گام ۲) --- */
 
     const apiEnv = {
-        PROJECT_CONTEXT_MODE: "modular",
-        RUN_CONTEXT_MODE: "modular",
-        PROMPT_BUILDER_MODE: "modular",
         AGENT_BASE_URL: () => `http://127.0.0.1:${stub.port}/v1`
     };
 
@@ -508,34 +505,19 @@ async function main() {
     });
 
 
-    await test("the project route requires the modular modes", async () => {
+    await test("the project route is available without rollout flags", async () => {
 
-        const saved = process.env.PROJECT_CONTEXT_MODE;
+        const response =
+            await postJson(
+                `${baseUrl}/api/projects/prj-a/tasks`,
+                { task: "x" }
+            );
 
-        process.env.PROJECT_CONTEXT_MODE = "legacy";
-
-        try {
-
-            const response =
-
-                await postJson(
-                    `${baseUrl}/api/projects/prj-a/tasks`,
-                    { task: "x" }
-                );
-
-            assert.equal(response.status, 409);
-            assert.match(response.body.error, /PROJECT_CONTEXT_MODE=modular/);
-            assert.equal(response.body.code, "PROJECT_MODE_REQUIRED");
-
-        } finally {
-
-            if (saved === undefined) {
-                delete process.env.PROJECT_CONTEXT_MODE;
-            } else {
-                process.env.PROJECT_CONTEXT_MODE = saved;
-            }
-
-        }
+        assert.equal(response.status, 202);
+        assert.equal(response.body.accepted, true);
+        assert.equal(response.body.project_id, "prj-a");
+        const state = await waitForTerminal(baseUrl);
+        assert.equal(state.status, "done");
 
     });
 

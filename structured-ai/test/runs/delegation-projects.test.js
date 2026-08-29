@@ -15,7 +15,7 @@
 |      the final report attributes findings to their project
 |   5. a write on a project other than the Sub-Agent/run project, and
 |      any write in a multi-project task, issues a separate approval
-|   6. in legacy mode a projectId field is accepted but ignored
+|   6. an explicit projectId is resolved before a child starts
 |
 */
 
@@ -42,7 +42,7 @@ process.env.AGENT_PRINT_FINAL = "0";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const runtime = require(path.join(ROOT, "agent", "agent.js"));
-const events = require(path.join(ROOT, "agent", "lib", "events.js"));
+const events = require(path.join(ROOT, "agent", "events"));
 
 const results = [];
 
@@ -114,34 +114,9 @@ function envelopeOf(structured) {
 }
 
 
-function setModes(run, project, prompt) {
+function setModes() {
 
-    if (run === null) {
-        delete process.env.RUN_CONTEXT_MODE;
-        if (runtime.settings.sourceOf("RUN_CONTEXT_MODE") === "override") {
-            runtime.settings.reset("RUN_CONTEXT_MODE");
-        }
-    } else {
-        process.env.RUN_CONTEXT_MODE = run;
-    }
-
-    if (project === null) {
-        delete process.env.PROJECT_CONTEXT_MODE;
-        if (runtime.settings.sourceOf("PROJECT_CONTEXT_MODE") === "override") {
-            runtime.settings.reset("PROJECT_CONTEXT_MODE");
-        }
-    } else {
-        process.env.PROJECT_CONTEXT_MODE = project;
-    }
-
-    if (prompt === null) {
-        delete process.env.PROMPT_BUILDER_MODE;
-        if (runtime.settings.sourceOf("PROMPT_BUILDER_MODE") === "override") {
-            runtime.settings.reset("PROMPT_BUILDER_MODE");
-        }
-    } else {
-        process.env.PROMPT_BUILDER_MODE = prompt;
-    }
+    /* Phase 30: context, prompt and project routing are always canonical. */
 
 }
 
@@ -1086,159 +1061,53 @@ async function main() {
     });
 
 
-    await test("legacy mode accepts projectId but keeps single-project behaviour", async () => {
+    await test("the canonical runtime validates an explicit delegation project", async () => {
 
-        setModes(null, null, null);
-
-        assert.equal(runtime.runContextMode(), "legacy");
-
-        fs.writeFileSync(
-            path.join(WORKSPACE, "legacy-marker.txt"),
-            "legacy-root\n"
-        );
-
+        setModes();
         stub.requests = [];
-
-        stub.handler = (parsed) => {
-
-            if (isSubAgent(parsed)) {
-
-                if (!hasToolResults(parsed)) {
-
-                    return {
-                        message: {
-                            role: "assistant",
-                            content: JSON.stringify(
-                                action({
-                                    action: "tool_call",
-                                    tool_calls: [
-                                        {
-                                            id: "read_legacy",
-                                            name: "fs_read",
-                                            arguments: {
-                                                path: "legacy-marker.txt"
-                                            },
-                                            depends_on: []
-                                        }
-                                    ]
-                                })
-                            )
-                        }
-                    };
-
-                }
-
-                const tool =
-                    [...parsed.messages]
-                        .reverse()
-                        .find(message => message.role === "tool");
-
-                return {
-                    message: {
-                        role: "assistant",
-                        content: JSON.stringify(
-                            finalAction(
-                                `legacy-sub ${tool ? tool.content : ""}`
-                            )
-                        )
-                    }
-                };
-
-            }
-
-            if (hasSubResults(parsed)) {
-
-                return {
-                    message: {
-                        role: "assistant",
-                        content: JSON.stringify(
-                            finalAction("legacy-done")
-                        )
-                    }
-                };
-
+        stub.handler = parsed => {
+            if (isSubAgent(parsed) || hasSubResults(parsed)) {
+                return { message: { role: "assistant", content: JSON.stringify(finalAction("done")) } };
             }
 
             return {
                 message: {
                     role: "assistant",
-                    content: JSON.stringify(
-                        action({
-                            action: "delegate",
-                            delegations: [
-                                {
-                                    id: "d1",
-                                    agent: "code_analysis",
-                                    persona: null,
-                                    skills: null,
-                                    tools: null,
-                                    task: "read the marker",
-                                    depends_on: [],
-                                    projectId: "prj-ignored-in-legacy"
-                                }
-                            ]
-                        })
-                    )
+                    content: JSON.stringify(action({
+                        action: "delegate",
+                        delegations: [{
+                            id: "d-canonical-project",
+                            agent: "code_analysis",
+                            persona: null,
+                            skills: null,
+                            tools: null,
+                            task: "this must not run",
+                            depends_on: [],
+                            projectId: "prj-removed-mode-test"
+                        }]
+                    }))
                 }
             };
-
         };
 
-        const captured = [];
-        const listen = event => captured.push(event);
-        events.bus.on("event", listen);
+        const output =
+            await runtime.runAgent({ task: "canonical delegation project" });
 
-        let outcome;
-
-        try {
-
-            outcome = await runtime.runAgent({
-                task: "legacy delegation with projectId"
-            });
-
-        } finally {
-
-            events.bus.off("event", listen);
-
-        }
-
-        assert.match(String(outcome.response.content), /legacy-done/);
-
-        /* the unknown projectId was ignored, not treated as a failure */
-        const labeled = subAgentResultsOf(stub.requests);
-
-        assert.ok(labeled);
-        assert.equal(labeled[0].success, true);
-
-        const toolEnd =
-            captured.find(
-                event =>
-                    event.type === "tool:end" &&
-                    event.id === "read_legacy"
-            );
-
-        assert.ok(toolEnd && toolEnd.success);
-        assert.match(JSON.stringify(toolEnd.result), /legacy-root/);
-
-        /* legacy envelopes stay historically shaped */
-        const leaked =
-            captured.filter(
-                event => Object.prototype.hasOwnProperty.call(event, "project_id")
-            );
-
+        assert.match(String(output.response.content), /done/);
+        assert.equal(
+            stub.requests.length,
+            2,
+            "the invalid delegation should be reported to the parent without starting a child"
+        );
         assert.ok(
-            leaked.length === 0,
-            `legacy events gained a project_id: ${
-                leaked
-                    .map(event => `${event.type}=${JSON.stringify(event.project_id)}`)
-                    .join(", ")
-            }`
+            !stub.requests[1].messages.some(message =>
+                typeof message.content === "string" &&
+                message.content.includes("agent_profile")
+            ),
+            "an unknown project must not start a child agent"
         );
 
-        setModes(null, null, null);
-
     });
-
 
     settings.reset("AGENT_BASE_URL");
     settings.reset("AGENT_MODEL");

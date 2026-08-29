@@ -16,8 +16,7 @@ import { IndexPipeline } from '../../pipeline/IndexPipeline';
 import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { VectorIndexer } from '../../vector/VectorIndexer';
 import { IEmbeddingGenerator } from '../../vector/EmbeddingGenerator';
-import { RemoteEmbeddingGenerator } from '../../vector/RemoteEmbeddingGenerator';
-import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { createEmbeddingGenerator } from '../../vector/createEmbeddingGenerator';
 import { ScannerConfig } from '../../core/config/ScannerConfig';
 import { VectorChunk } from '../../core/types/project-index.types';
 import * as path from 'path';
@@ -56,36 +55,20 @@ interface IndexRequestBody {
 function buildEmbeddingGenerator(
   cfg: NonNullable<IndexRequestBody['embedding']>
 ): IEmbeddingGenerator | null {
-  if (!cfg.enabled) return null;
-
-  const provider = cfg.provider ?? 'local';
-
-  if (provider === 'local') {
-    /*
-    | The production-safe local provider is deterministic hashing. The
-    | transformer/native stack is intentionally not bundled because its
-    | transitive audit contained critical/high vulnerabilities and its
-    | model download is not suitable for an unisolated HTTP worker.
-    */
-    return new HashingEmbeddingGenerator();
-  }
-
-  if (!cfg.baseUrl) {
-    throw new Error(`embedding provider "${provider}" needs a baseUrl`);
-  }
-  if (!cfg.model && !cfg.useDefaultModel) {
-    throw new Error(`embedding provider "${provider}" needs a model`);
-  }
-
-  return new RemoteEmbeddingGenerator({
-    provider,
-    baseUrl: cfg.baseUrl,
-    model: cfg.model || '',
-    ...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
-    normalize: cfg.normalize ?? true,
+  /*
+  | تصمیم «کدام provider» در `vector/createEmbeddingGenerator` گرفته می‌شود تا
+  | مسیر HTTP و مسیر CLI واگرا نشوند (فاز ۵).
+  */
+  return createEmbeddingGenerator({
+    enabled: Boolean(cfg.enabled),
+    ...(cfg.provider ? { provider: cfg.provider } : {}),
+    ...(cfg.model !== undefined ? { model: cfg.model } : {}),
+    ...(cfg.baseUrl !== undefined ? { baseUrl: cfg.baseUrl } : {}),
+    ...(cfg.apiKey !== undefined ? { apiKey: cfg.apiKey } : {}),
+    ...(cfg.useDefaultModel !== undefined ? { useDefaultModel: cfg.useDefaultModel } : {}),
+    ...(cfg.normalize !== undefined ? { normalize: cfg.normalize } : {}),
   });
 }
-
 
 type IndexJobData = {
   readonly scan?: IndexRequestBody['scan'];

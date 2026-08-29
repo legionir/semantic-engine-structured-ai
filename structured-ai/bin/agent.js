@@ -3,19 +3,19 @@
 "use strict";
 
 /*
-|--------------------------------------------------------------------------
-| Command Line Interface — Thin Executable Wrapper (Phase 26)
-|--------------------------------------------------------------------------
-|
-| Delegates to the modular agent/cli subsystem. Maintained as a compatibility
-| wrapper until Phase 30.
-|--------------------------------------------------------------------------
+| Legacy executable facade — EXECUTION_PLAN Phase 26.
+| Parsing, command dispatch, output and lifecycle live in agent/cli/.
 */
 
-const { main } = require("../agent/cli");
+const cli = require("../agent/cli");
 
-main().catch(error => {
 
-    process.stderr.write(`agent: ${error.stack || error.message}\n`);
-    process.exit(1);
-});
+if (require.main === module) {
+    cli.main().catch(error => {
+        process.stderr.write(`agent: ${error.stack || error.message}\n`);
+        process.exit(cli.EXIT.FAILED);
+    });
+}
+
+
+module.exports = cli;

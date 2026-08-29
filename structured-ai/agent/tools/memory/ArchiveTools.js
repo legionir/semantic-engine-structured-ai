@@ -6,7 +6,7 @@
 |--------------------------------------------------------------------------
 */
 
-const archive = require("../../lib/archive");
+const archive = require("../../persistence/ArchiveRepository");
 
 const ToolContext = require("../ToolContext");
 

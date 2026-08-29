@@ -47,11 +47,11 @@ jobs:
       - name: Contract guards
         run: npx jest src/core/types --ci
 
-      # Every suite runs as of phase 24: a suite that fails to compile
-      # reports zero tests, so the count alone stays green while a suite
-      # is dead (SE-BUILD-11). The SQLite output that this gate used to
-      # be careful about is gone — the engine has no native module in its
-      # install path any more.
+      # Every suite runs as of phase 24. The SQLiteExporter tests used
+      # to be excluded because they needed a native sqlite3 build; they
+      # now use the driver layer, which prefers the SQLite built into
+      # Node. On Node 20 that built-in does not exist, so the optional
+      # sqlite3 dependency still covers that leg of the matrix.
       - name: Test suite
         # نه `npm test` خالی: سوئیتی که کامپایل نشود صفر تست گزارش می‌کند،
         # پس شمار تست‌ها سبز می‌ماند در حالی که سوئیت مرده است. این گیت

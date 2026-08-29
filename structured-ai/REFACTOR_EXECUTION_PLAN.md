@@ -1,12 +1,14 @@
 # پلن اجرایی ریفکتور Structured AI با حفظ عملکرد فعلی
 
-> **سند حاکم بر اجرا:** پلن نهایی و وضعیت اجرایی همه فازها در [EXECUTION_PLAN.md](EXECUTION_PLAN.md) مستند شده و تمام فازهای آن به وضعیت 🟢 رسیده‌اند.
-
-**وضعیت:** برنامهٔ اجرایی برای refactor داخلی؛ این فایل هنوز خودِ refactor را انجام نمی‌دهد.  
-**تاریخ:** 2026-08-24  
+**وضعیت:** دامنهٔ refactor داخلی؛ اجرای نهایی در `EXECUTION_PLAN.md` ثبت شده است.
+**تاریخ:** 2026-08-24
 **پروژه:** `structured-ai`
 
 ---
+
+> **Execution status and verification:** the implementation is tracked in
+> [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md), including the Phase 30 canonical
+> rollout and final acceptance evidence.
 
 ## ۱. هدف اصلی
 
@@ -1487,3 +1489,15 @@ web/public/app/<feature>.js
 ```
 
 این تفکیک باعث می‌شود توسعهٔ آیندهٔ Structured AI، بدون ریسک شکستن هم‌زمان runtime، prompt، MCP و UI انجام شود.
+
+
+---
+
+## وضعیت اجرای نهایی
+
+تمام گام‌های refactor این سند در Phases 14–30 اجرا و verification شده‌اند. ساختار
+canonical شامل `agent/actions`، `agent/application`، `agent/config`،
+`agent/context`، `agent/events`، `agent/hooks`، `agent/mcp`، `agent/persistence`,
+`agent/policy`، `agent/projects`، `agent/prompt`، `agent/runtime` و گروه‌های
+`agent/tools` است. facadeها و rollout flagهای موقت در Phase 30 حذف شدند؛ برای
+status، mapping و شمارش تست‌ها به [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) مراجعه کنید.

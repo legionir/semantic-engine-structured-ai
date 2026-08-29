@@ -109,10 +109,30 @@ module.exports = {
 
 ### ۲.۶ قرارداد مسیر خروجی
 
-مسیر canonical ایندکس `<workspace>/.semantic-engine/` است؛ این همان مسیری است
-که `index`، `watch`، `query`، UI و هر دو ورودی MCP استفاده می‌کنند. مسیر قدیمی
-`<workspace>/.agent/semantic/` و `<workspace>/semantic/` فقط برای خواندن ایندکس‌های موجود به‌عنوان fallback
-پشتیبانی می‌شود و هیچ اجرای جدیدی در آن خروجی نمی‌نویسد.
+**تغییر قرارداد (نسخهٔ چندپروژه‌ای، ۲۰۲۶-۰۸-۲۶):** خروجی دیگر داخل workspace
+نوشته نمی‌شود. مسیر canonical ایندکس حالا
+
+```text
+<dataRoot>/projects/<projectId>/project-index.json
+```
+
+است که `<dataRoot>` برابر `$XDG_DATA_HOME/semantic-engine` در لینوکس،
+`~/Library/Application Support/SemanticEngine` در macOS و
+`%LOCALAPPDATA%\SemanticEngine` در ویندوز است (با override از
+`SEMANTIC_ENGINE_DATA_DIR`)، و `<projectId>` برابر
+`prj-<slug(نام)>-<sha256(مسیر canonical)[0:8]>`.
+
+سمت structured-ai این قرارداد در `agent/mcp/enginePaths.js` پیاده شده و
+`agent/mcp/semantic.js` همان `projectId` را می‌سازد؛ تست دوطرفه
+(`structured-ai/test/mcp/engine-paths.test.js` و
+`semantic-engine/src/core/config/structuredAiContract.test.ts`) هم‌خوانی دو طرف
+را نگه می‌دارد.
+
+مسیرهای قدیمی `<workspace>/.semantic-engine/`، `<workspace>/.agent/semantic/` و
+`<workspace>/semantic/` فقط برای خواندن ایندکس‌های موجود به‌عنوان fallback
+پشتیبانی می‌شوند و هیچ اجرای جدیدی در آن‌ها خروجی نمی‌نویسد؛ در اولین اجرا به
+data directory **کپی** می‌شوند و اصل فایل دست‌نخورده می‌ماند. برای رفتار قدیمی،
+`--artifact-location in-root` یا `--out <dir>` همچنان کار می‌کند.
 
 `--root` باید ریشهٔ واقعی پروژه باشد. اگر یک integration به‌اشتباه خودِ `.agent`
 یا `.semantic-engine` را فرستاد، CLI آن را به workspace واقعی نرمال می‌کند تا
@@ -187,9 +207,10 @@ module.exports = {
 |---|---|---|
 | INT-00 | استقلال کامل از VS Code | طبق `MIGRATION-STANDALONE.md`. تا وقتی `require('vscode')` وجود دارد، هیچ اجرایی بیرون از ادیتور ممکن نیست |
 | INT-01 | CLI پایدار | `semantic-engine index` و `semantic-engine serve --stdio` کار کنند |
-| INT-02 | قرارداد مسیر خروجی پیش‌فرض | canonical: `<workspace>/.semantic-engine/` با fallback خواندنی برای `.agent/semantic/` (بخش ۲.۶) |
+| INT-02 | قرارداد مسیر خروجی پیش‌فرض | **v2 (۲۰۲۶-۰۸-۲۶):** canonical: `<dataRoot>/projects/<projectId>/` با fallback خواندنی برای `<workspace>/.semantic-engine/` و `.agent/semantic/` (بخش ۲.۶)؛ `--artifact-location in-root` برای رفتار قدیمی |
 | INT-03 | رفع مسدودکننده‌های امنیتی | `SE-SEC-01` و `SE-SEC-02` قبل از هر اتصالی بسته شوند |
 | INT-04 | تصمیم دربارهٔ محل نصب | پیشنهاد بخش ۸ |
+| INT-05 | اندپوینت Gateway به ازای هر پروژه | **جدید (۲۰۲۶-۰۸-۲۶):** `POST /mcp/<projectId>` روی یک Gateway مرکزی (پیش‌فرض پورت ۴۰۰۰). این URL در registry به‌عنوان `semanticEndpoint` همان پروژه ثبت می‌شود. پاسخ `tools/call` علاوه بر `content`، یک `structuredContent` با `projectId` و `indexGeneration` دارد و کلاینت با تغییر `indexGeneration` کش خود را دور می‌ریزد. |
 
 ### فاز ۱ — کلاینت صفر-وابستگی
 

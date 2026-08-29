@@ -139,11 +139,11 @@ process.stdin.on("data", chunk => {
 async function main() {
 
     const mcpDir = path.join(REPO, "agent", "mcp");
-    const settings = require(path.join(REPO, "agent", "lib", "storage.js"));
-    const protocol = require(path.join(mcpDir, "protocol.js"));
-    const config = require(path.join(mcpDir, "config.js"));
-    const managerMod = require(path.join(mcpDir, "manager.js"));
-    const clientMod = require(path.join(mcpDir, "client.js"));
+    const settings = require(path.join(REPO, "agent", "config"));
+    const protocol = require(path.join(mcpDir, "protocol"));
+    const config = require(path.join(mcpDir, "McpConfig.js"));
+    const managerMod = require(path.join(mcpDir, "McpManager.js"));
+    const clientMod = require(path.join(mcpDir, "McpConnection.js"));
 
 
     await test("named Phase 20 modules exist", async () => {
@@ -179,50 +179,23 @@ async function main() {
     });
 
 
-    await test("legacy wrappers stay facades over the extracted modules", async () => {
-
-        assert.equal(
-            require(path.join(mcpDir, "manager.js")),
-            require(path.join(mcpDir, "McpManager.js"))
-        );
-
-        assert.equal(
-            require(path.join(mcpDir, "client.js")),
-            require(path.join(mcpDir, "McpConnection.js"))
-        );
-
-        assert.equal(
-            require(path.join(mcpDir, "protocol.js")),
-            require(path.join(mcpDir, "protocol", "index.js"))
-        );
-
-        assert.equal(
-            require(path.join(mcpDir, "transports", "stdio.js")),
-            require(path.join(mcpDir, "transports", "StdioTransport.js"))
-        );
-
-        assert.equal(
-            require(path.join(mcpDir, "transports", "http.js")),
-            require(path.join(mcpDir, "transports", "HttpTransport.js"))
-        );
-
-        assert.equal(
-            require(path.join(mcpDir, "transports", "sse.js")),
-            require(path.join(mcpDir, "transports", "SseTransport.js"))
-        );
-
-        assert.equal(
-            require(path.join(mcpDir, "transports", "websocket.js")),
-            require(path.join(mcpDir, "transports", "WebSocketTransport.js"))
-        );
+    await test("canonical MCP modules expose one public connection and configuration surface", async () => {
 
         assert.equal(config.load, require(path.join(mcpDir, "McpConfigLoader.js")).load);
         assert.equal(config.normalizeOne, require(path.join(mcpDir, "McpConfigValidator.js")).normalizeOne);
         assert.equal(config.serverVisibleTo, require(path.join(mcpDir, "McpTrustPolicy.js")).serverVisibleTo);
-
         assert.equal(typeof managerMod.McpManager, "function");
         assert.equal(typeof managerMod.manager, "object");
         assert.equal(clientMod.McpClient, clientMod.McpConnection);
+        assert.equal(typeof protocol.MessageDecoder, "function");
+        assert.equal(typeof protocol.EventStreamDecoder, "function");
+        for (const removed of [
+            "client.js", "config.js", "manager.js", "protocol.js",
+            path.join("transports", "stdio.js"), path.join("transports", "http.js"),
+            path.join("transports", "sse.js"), path.join("transports", "websocket.js")
+        ]) {
+            assert.equal(fs.existsSync(path.join(mcpDir, removed)), false, `${removed} is still a wrapper`);
+        }
 
     });
 
@@ -441,20 +414,23 @@ async function main() {
     });
 
 
-    await test("Phase 20 does not invent a MODE flag and schema defaults stay legacy", async () => {
+    await test("Phase 30 removes rollout flags while preserving the MCP surface", async () => {
 
-        assert.equal(settings.definitionOf("PROJECT_CONTEXT_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("RUN_CONTEXT_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("PROMPT_BUILDER_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("SEMANTIC_POOL_MODE").default, "legacy");
-        assert.equal(settings.definitionOf("RUNTIME_ENGINE_MODE").default, "legacy");
+        for (const removed of [
+            "PROJECT_CONTEXT_MODE",
+            "RUN_CONTEXT_MODE",
+            "PROMPT_BUILDER_MODE",
+            "SEMANTIC_POOL_MODE",
+            "RUNTIME_ENGINE_MODE",
+            "WEB_SERVER_MODE",
+            "MCP_LAYER_MODE",
+            "MCP_MODE"
+        ]) {
+            assert.throws(() => settings.definitionOf(removed), /Unknown setting/);
+        }
 
         const keys = settings.definitions.map(item => item.key);
-
-        assert.equal(
-            keys.some(key => key === "MCP_LAYER_MODE" || key === "MCP_MODE"),
-            false
-        );
+        assert.equal(keys.some(key => key.endsWith("_MODE") && key.startsWith("MCP_")), false);
 
         walkJs(mcpDir, full => {
 

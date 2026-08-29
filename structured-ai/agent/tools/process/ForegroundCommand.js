@@ -1,8 +1,8 @@
 "use strict";
 
-const settings = require("../../lib/storage");
+const settings = require("../../config");
 
-const { truncateText } = require("../../lib/workspace");
+const { truncateText } = require("../../context/WorkspaceBoundary");
 
 const ToolContext = require("../ToolContext");
 

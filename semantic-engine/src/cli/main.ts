@@ -16,6 +16,9 @@ import { runQuery } from './commands/query-command';
 import { runDoctor } from './commands/doctor-command';
 import { runServe, runUi, runStart } from './commands/serve-command';
 import { runWatch } from './commands/watch-command';
+import { runWorker } from './commands/worker-command';
+import { runCache } from './commands/cache-command';
+import { runGateway } from './commands/gateway-command';
 import { createLoggerFromEnv } from '../host/Logger';
 
 const COMMANDS: Record<
@@ -27,6 +30,9 @@ const COMMANDS: Record<
   doctor: runDoctor,
   serve: runServe,
   watch: runWatch,
+  worker: runWorker,
+  gateway: runGateway,
+  cache: runCache,
   ui: runUi,
   start: runStart,
 };
@@ -42,8 +48,11 @@ commands:
   start                 index if needed, launch UI/MCP, and keep artifacts updated
   serve                 expose index over MCP or standalone HTTP server
   watch                 index, then keep it up to date until Ctrl+C
+  worker                serve one project (REST + /internal/*) until shutdown
+  gateway               serve many projects on one port, one worker each
   query [tool] [params] run an AI tool against an existing index
   doctor                check this environment
+  cache                 inspect or clean generated data (list|clean|export|import)
 
 ui & serve options:
   --web / --ui          launch full Web Visualizer UI and REST/LoD APIs (default for 'ui')
@@ -59,7 +68,10 @@ ui & serve options:
 
 index options:
   --root <dir>          project to scan            (default: cwd)
-  --out <dir>           output directory           (default: <root>/.semantic-engine)
+  --project-id <id>     stable project id          (default: derived from the root path)
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --artifact-location <m>  external (default) or in-root
+  --out <dir>           output directory           (overrides the two above)
   --no-blueprint        skip blueprint.json
   --vectors             build vector chunks for semantic search (off by default)
   --lsp-diagnostics     collect compiler diagnostics via a language server (off)
@@ -69,7 +81,10 @@ index options:
 
 watch options:
   --root <dir>          project to watch           (default: cwd)
-  --out <dir>           output directory           (default: <root>/.semantic-engine)
+  --project-id <id>     stable project id          (default: derived from the root path)
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --artifact-location <m>  external (default) or in-root
+  --out <dir>           output directory           (overrides the two above)
   --debounce <ms>       batch window               (default: 500)
   --vectors             build/update vector chunks and embeddings
   --lsp-diagnostics     collect language-server diagnostics on the initial index
@@ -82,6 +97,63 @@ query options:
   --index <file>        path to project-index.json (default: <root>/.semantic-engine/…)
   --<name> <value>      passed through to the tool
   (no tool name)        list the available tools
+
+embedding:
+  --embedding-provider implies --vectors. "local" is deterministic hashing with
+  no native dependency; "ollama" and "openai-compatible" need
+  --embedding-base-url and --embedding-model. The API key is read from the
+  environment variable named by --embedding-api-key-env, never from the command
+  line, so it cannot end up in a process listing or a log.
+
+cache options:
+  list                  what is cached, and how big (default subcommand)
+  clean --project <id>  delete one project's artifacts (never the source tree)
+  clean --older-than <n[s|m|h|d]> [--force]   dry run unless --force
+  export --project <id> --to <dir>
+  import --project <id> --from <dir>
+  --data-dir <dir>      data directory to operate on (default: platform data dir)
+
+artifact location:
+  generated data is written to the user data directory
+  ($XDG_DATA_HOME/semantic-engine, ~/Library/Application Support/SemanticEngine,
+  %LOCALAPPDATA%\\SemanticEngine) under projects/<projectId>/, never into the
+  workspace. SEMANTIC_ENGINE_DATA_DIR overrides the location; an index left in
+  <root>/.semantic-engine, <root>/.agent/semantic or <root>/semantic is copied
+  (not moved) on first use.
+
+worker options:
+  --project-id <id>     stable project id          (default: derived from the root path)
+  --root <dir>          the one project this worker serves
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --socket <path>       listen on a Unix socket instead of TCP
+  --port <n>            loopback port              (default: an ephemeral port)
+  --host <addr>         bind address               (default: 127.0.0.1)
+  --token <secret>      internal token             (default: $SEMANTIC_ENGINE_TOKEN or generated)
+  --gateway-managed     worker is only reachable through the Gateway
+  --no-watch            do not start the watch child
+  --skip-initial-index  serve an existing index without indexing first
+
+  internal endpoints (all require the token):
+    GET  /internal/health    GET /internal/ready   GET /internal/metrics
+    GET  /internal/status    POST /internal/reindex
+    POST /internal/reload    POST /internal/shutdown
+
+gateway options:
+  --port <n>            public port                (default: 4000)
+  --host <addr>         bind address               (default: 127.0.0.1)
+  --token <secret>      gateway token              (default: $SEMANTIC_ENGINE_GATEWAY_TOKEN or generated)
+  --data-dir <dir>      data directory             (default: platform data dir)
+  --project <dir>       register one project at startup (others via the API)
+  --project-id <id>     id for --project
+  --name <name>         display name for --project
+  --no-auto-start       register --project without starting its worker
+
+  routes:
+    GET|POST /api/v1/gateway/projects        registry
+    POST     /api/v1/gateway/projects/:id/start|stop|restart|reindex
+    GET      /api/v1/gateway/health|ready|metrics|events
+    ANY      /api/v1/projects/:id/...        proxied to that project's worker
+    POST     /mcp/:id                        MCP for that project
 
 global options:
   --json                machine-readable output on stdout

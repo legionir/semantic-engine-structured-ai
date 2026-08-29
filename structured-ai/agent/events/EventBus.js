@@ -1,119 +1,120 @@
 "use strict";
 
 const { EventEmitter } = require("events");
-const { defaultContext } = require("./EventContext");
+
+const { EventContext } = require("./EventContext");
 const { EventValidator } = require("./EventValidator");
+const { EventProjector } = require("./EventProjector");
+const EventRedactor = require("./EventRedactor");
+
 
 /*
 |--------------------------------------------------------------------------
-| Event Bus — EXECUTION_PLAN Phase 27
+| Event bus — EXECUTION_PLAN Phase 27
 |--------------------------------------------------------------------------
 |
-| Publishes structured events with monotonic sequences and execution
-| correlation envelopes. Dispatches both to type-specific channels and to
-| the unified "event" stream for observation, journal and event store.
+| One bus owns production and correlation. Storage/replay/UI consumers use
+| the same event object; redaction is an explicit projection, never a silent
+| mutation of the durable business event.
 |--------------------------------------------------------------------------
 */
 
 class EventBus {
 
-    constructor({
-        context = defaultContext,
-        validator = EventValidator,
-        maxListeners = 64
-    } = {}) {
-
-        this.rawBus = new EventEmitter();
-        this.rawBus.setMaxListeners(maxListeners);
-
-        this.sequence = 0;
-        this.context = context;
-        this.validator = validator;
-    }
-
-    get bus() {
-
-        return this.rawBus;
-    }
-
-    setMaxListeners(n) {
-
-        this.rawBus.setMaxListeners(n);
-    }
-
-    resetSequence() {
-
+    constructor({ bus, context, validator, projector, clock = Date } = {}) {
+        this.bus = bus || new EventEmitter();
+        this.bus.setMaxListeners(64);
+        this.context = context || new EventContext();
+        this.validator = validator || new EventValidator();
+        this.projector = projector || new EventProjector();
+        this.redactor = EventRedactor;
+        this.clock = clock;
         this.sequence = 0;
     }
 
-    getSequence() {
 
-        return this.sequence;
+    currentScope() {
+        return this.context.current();
     }
+
+
+    runWithScope(initial, fn) {
+        return this.context.runWithScope(initial, fn);
+    }
+
+
+    withProjectId(projectId, fn) {
+        return this.context.withProjectId(projectId, fn);
+    }
+
+
+    setContext(patch) {
+        return this.context.set(patch);
+    }
+
 
     emit(type, payload = {}) {
 
         this.sequence++;
 
-        const scoped = this.context.currentScope();
-
-        const correlation =
-            this.context.resolveCorrelation(payload);
-
+        const scoped = this.currentScope();
         const event = {
             seq: this.sequence,
             type,
-            at: Date.now(),
-            ...correlation,
+            at: this.clock.now(),
+            run_id: this.context.resolve(payload, "run_id"),
+            turn_id: this.context.resolve(payload, "turn_id"),
+            scope: this.context.resolve(payload, "scope"),
+            iteration: this.context.resolve(payload, "iteration"),
             ...payload
         };
 
-        /* Additive: only a scoped (modular) event carries project_id, or if
-           the payload explicitly supplies project_id, so legacy envelopes
-           keep their historical fields bit for bit. */
-        if (scoped || Object.prototype.hasOwnProperty.call(payload, "project_id")) {
-
+        /* Only a scoped event carries project_id, preserving legacy shape. */
+        if (scoped) {
             event.project_id =
                 Object.prototype.hasOwnProperty.call(payload, "project_id")
                     ? payload.project_id
-                    : (scoped ? scoped.project_id : null);
+                    : scoped.project_id;
         }
 
-        this.rawBus.emit("event", event);
-        this.rawBus.emit(type, event);
-
+        this.validator.validate(event);
+        this.bus.emit("event", event);
+        this.bus.emit(type, event);
         return event;
     }
 
-    on(type, listener) {
 
-        return this.rawBus.on(type, listener);
+    resetSequence() {
+        this.sequence = 0;
     }
 
-    once(type, listener) {
 
-        return this.rawBus.once(type, listener);
+    aggregateMetadata(event) {
+        return this.projector.aggregateMetadata(event);
     }
 
-    off(type, listener) {
 
-        return this.rawBus.off(type, listener);
+    visibleOnProjectStream(event, projectId) {
+        return this.projector.visibleOnProjectStream(event, projectId);
     }
 
-    removeListener(type, listener) {
 
-        return this.rawBus.removeListener(type, listener);
+    project(event, options) {
+        return this.projector.project(event, options);
     }
 
-    listeners(type) {
 
-        return this.rawBus.listeners(type);
+    redact(event, options) {
+        return this.redactor.redactEvent(event, options);
+    }
+
+
+    redactForLog(event) {
+        return this.redactor.redactForLog(event);
     }
 }
 
-const defaultEventBus = new EventBus();
 
 module.exports = {
-    EventBus,
-    defaultEventBus
+    EventBus
 };

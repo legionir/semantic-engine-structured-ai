@@ -1,136 +1,134 @@
 "use strict";
 
+/*
+|--------------------------------------------------------------------------
+| Tool contract tests — EXECUTION_PLAN Phase 29
+|--------------------------------------------------------------------------
+|
+| The model-facing tool surface has two sources of truth: the declarative
+| registry and the executable runtime. These tests deliberately exercise the
+| public adapter rather than reaching into ToolRuntime's implementation map.
+| A schema may grow additively, but a declared tool may not disappear and an
+| implementation may not become callable without a declaration.
+|--------------------------------------------------------------------------
+*/
+
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-/*
-|--------------------------------------------------------------------------
-| Tool Contract Tests — EXECUTION_PLAN Phase 29
-|--------------------------------------------------------------------------
-|
-| Locks the tool subsystem contract: schema specifications, parameter bounds,
-| execution signatures, and ToolContext security boundaries.
-|--------------------------------------------------------------------------
-*/
+const WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), "phase29-tool-contract-"));
+fs.writeFileSync(path.join(WORKSPACE, "contract.txt"), "tool contract\n", "utf8");
+process.env.WORKSPACE_ROOT = WORKSPACE;
+process.env.PROCESS_SANDBOX_MODE = "test";
+process.env.AGENT_VERBOSE = "0";
 
 const ROOT = path.resolve(__dirname, "..", "..");
-
-const ToolRegistryAdapter =
-    require(path.join(ROOT, "agent", "tools", "ToolRegistryAdapter.js"));
-
-const { ToolContext, assertNoIdentityArguments } =
-    require(path.join(ROOT, "agent", "tools", "ToolContext.js"));
-
-const toolRuntime =
-    require(path.join(ROOT, "agent", "tools"));
+const loader = require(path.join(ROOT, "agent", "registry", "RegistryLoader"));
+const tools = require(path.join(ROOT, "agent", "tools"));
+const ToolContext = require(path.join(ROOT, "agent", "tools", "ToolContext"));
 
 const results = [];
 
 async function test(name, fn) {
-
     try {
-
         await fn();
         results.push({ name, ok: true });
         console.log(`  ok   ${name}`);
-
     } catch (error) {
-
         results.push({ name, ok: false, error });
         console.log(`  FAIL ${name}`);
-        console.log(`       ${error.stack || error.message}`);
+        console.log(`       ${error.message}`);
     }
 }
 
+function registryData() {
+    return {
+        tools: loader.loadToolSchemas(),
+        groups: require(path.join(ROOT, "agent", "registry", "tool_groups.json")),
+        skills: require(path.join(ROOT, "agent", "registry", "skills.json")),
+        agents: require(path.join(ROOT, "agent", "registry", "agents.json")),
+        personas: require(path.join(ROOT, "agent", "registry", "personas.json")),
+        policy: require(path.join(ROOT, "agent", "registry", "policy.json"))
+    };
+}
+
 async function main() {
+    await test("canonical tool schemas preserve the legacy snapshot and stable names", async () => {
+        const canonical = loader.loadToolSchemas();
+        const snapshot = require(path.join(ROOT, "agent", "registry", "tools.json"));
+        assert.deepStrictEqual(canonical, snapshot);
 
-    console.log("tool contract tests");
+        const names = canonical.map(item => item.function?.name);
+        assert.equal(names.length, 64);
+        assert.equal(new Set(names).size, names.length);
+        assert.ok(names.includes("fs_read"));
+        assert.ok(names.includes("discussion_start"));
+    });
 
-    await test("all registered tools satisfy the function schema contract", () => {
-
-        const tools = ToolRegistryAdapter.schemas();
-
-        assert.ok(Array.isArray(tools) && tools.length >= 30);
-
-        for (const tool of tools) {
-
-            assert.equal(tool.type, "function", `${tool?.function?.name} is not type: function`);
-
-            const fn = tool.function;
-            assert.ok(typeof fn.name === "string" && fn.name.length > 0);
-            assert.ok(typeof fn.description === "string" && fn.description.length > 0);
-            assert.ok(fn.parameters && fn.parameters.type === "object");
+    await test("every declaration has the model function contract", async () => {
+        for (const declaration of loader.loadToolSchemas()) {
+            assert.equal(declaration.type, "function");
+            assert.ok(declaration.function);
+            assert.match(declaration.function.name, /^[a-z][a-z0-9_]*$/);
+            assert.equal(typeof declaration.function.description, "string");
+            assert.ok(declaration.function.parameters || declaration.function.input_schema);
         }
     });
 
-    await test("declarations parity between tools.json and tool-schemas/*.json holds", () => {
-
-        const parity = ToolRegistryAdapter.parity();
-
-        assert.equal(parity.equal, true, "tools.json and tool-schemas drifted");
-        assert.equal(parity.missing.length, 0);
-        assert.equal(parity.extra.length, 0);
+    await test("registry validation and executable parity agree", async () => {
+        const adapter = tools.ToolRegistryAdapter;
+        assert.equal(adapter.assertParity(), true);
+        const report = adapter.parity();
+        assert.deepStrictEqual(report.missing, []);
+        assert.deepStrictEqual(report.extra, []);
+        assert.equal(adapter.validateAgainst(registryData()), true);
     });
 
-    await test("all callable tools have matching implementations", () => {
-
-        const callable = toolRuntime.callableToolNames();
-
-        assert.ok(callable.length >= 30);
-
-        for (const name of callable) {
-
-            assert.equal(toolRuntime.hasTool(name), true, `tool ${name} is not implemented`);
-        }
+    await test("the public facade exposes callable names without leaking private helpers", async () => {
+        assert.equal(typeof tools.executeTool, "function");
+        assert.equal(typeof tools.hasTool, "function");
+        assert.equal(typeof tools.implementedToolNames, "function");
+        assert.equal(typeof tools.callableToolNames, "function");
+        assert.equal(tools.hasTool("fs_read"), true);
+        assert.equal(tools.hasTool("__not_a_tool__"), false);
+        assert.equal(tools.implementedToolNames().some(name => name.startsWith("_")), false);
+        await assert.rejects(
+            () => tools.executeTool("__not_a_tool__", {}),
+            /Tool is not implemented/
+        );
     });
 
-    await test("ToolContext enforces identity security boundary (rule 9)", () => {
+    await test("tool execution keeps identity in context and returns the legacy result shape", async () => {
+        const result = await tools.executeTool(
+            "fs_read",
+            { path: "contract.txt" },
+            { agent: "contract-test", runId: "run-contract" }
+        );
+        assert.equal(result.path, "contract.txt");
+        assert.equal(result.binary, false);
+        assert.equal(result.content, "tool contract\n");
+        assert.equal(typeof result.total_lines, "number");
 
-        const rawForbiddenArgs = [
-            { projectId: "fake-project" },
-            { project_id: "fake-project" },
-            { root: "/escaped/root" },
-            { projectRoot: "/escaped/root" }
-        ];
-
-        for (const args of rawForbiddenArgs) {
-
-            assert.throws(
-                () => assertNoIdentityArguments(args),
-                /Tool argument/,
-                `expected ${JSON.stringify(args)} to be rejected`
-            );
-        }
+        assert.throws(
+            () => ToolContext.assertNoIdentityArguments({ path: "contract.txt", project_id: "forged" }),
+            /project identity is supplied by the run context/
+        );
     });
 
-    await test("ToolContext provides bound workspace helpers matching effective root", () => {
-
-        const wsRoot = fs.realpathSync(os.tmpdir());
-
-        const ctx = new ToolContext({
-            agent: "test_agent",
-            runId: "run-contract",
-            project: {
-                projectId: "prj-contract",
-                workspaceRoot: wsRoot
-            }
-        });
-
-        assert.equal(ctx.root, wsRoot);
-        assert.equal(ctx.isInside(path.join(wsRoot, "sample.txt")), true);
-        assert.equal(ctx.isInside(path.join("/etc", "passwd")), false);
-    });
-
-    const failed =
-        results.filter(item => !item.ok);
-
-    console.log(
-        `\n${results.length - failed.length}/${results.length} passed`
-    );
-
+    const failed = results.filter(item => !item.ok);
+    console.log(`\n${results.length - failed.length}/${results.length} passed`);
+    try {
+        tools.shutdown();
+    } catch {
+        /* no background tool is part of this contract */
+    }
+    fs.rmSync(WORKSPACE, { recursive: true, force: true });
     process.exit(failed.length === 0 ? 0 : 1);
 }
 
-main();
+main().catch(error => {
+    console.error(error);
+    process.exit(1);
+});

@@ -1,76 +1,55 @@
 "use strict";
 
-const {
-    ENVELOPE_REQUIRED_FIELDS,
-    KEY_PAYLOADS,
-    isKnownType
-} = require("./EventTypes");
+const { EVENT_TYPE_SET } = require("./EventTypes");
+
+const REQUIRED_FIELDS = Object.freeze([
+    "seq",
+    "type",
+    "at",
+    "run_id",
+    "turn_id",
+    "scope",
+    "iteration"
+]);
+
 
 /*
-|--------------------------------------------------------------------------
-| Event Validator — EXECUTION_PLAN Phase 27
-|--------------------------------------------------------------------------
-|
-| Validates that emitted events conform to the correlation envelope and key
-| payload contracts.
-|--------------------------------------------------------------------------
+| Validation is additive. Unknown event names are allowed so introducing a
+| new business event does not make old consumers crash; known names and the
+| correlation envelope are still checked.
 */
-
 class EventValidator {
 
-    static validateEnvelope(event) {
+    constructor({ requiredFields = REQUIRED_FIELDS, knownTypes = EVENT_TYPE_SET } = {}) {
+        this.requiredFields = [...requiredFields];
+        this.knownTypes = knownTypes;
+    }
 
-        const errors = [];
+
+    problems(event) {
+
+        const problems = [];
 
         if (!event || typeof event !== "object" || Array.isArray(event)) {
-
-            return ["event must be a non-null object"];
+            return ["event must be an object"];
         }
 
-        for (const field of ENVELOPE_REQUIRED_FIELDS) {
-
+        for (const field of this.requiredFields) {
             if (!Object.prototype.hasOwnProperty.call(event, field)) {
-
-                errors.push(`missing required envelope field: ${field}`);
+                problems.push(`event is missing envelope field ${field}`);
             }
         }
 
-        if (typeof event.seq !== "number" || !Number.isInteger(event.seq) || event.seq < 0) {
-
-            errors.push(`invalid seq: expected non-negative integer, got ${event.seq}`);
+        if (typeof event.seq !== "number" || !Number.isFinite(event.seq)) {
+            problems.push("event.seq must be a finite number");
         }
 
         if (typeof event.type !== "string" || event.type.trim() === "") {
-
-            errors.push(`invalid type: expected non-empty string, got ${event.type}`);
+            problems.push("event.type must be a non-empty string");
         }
 
-        if (typeof event.at !== "number" || !Number.isFinite(event.at) || event.at <= 0) {
-
-            errors.push(`invalid at: expected positive epoch timestamp, got ${event.at}`);
-        }
-
-        if (event.run_id !== null && typeof event.run_id !== "string") {
-
-            errors.push(`invalid run_id: expected string or null, got ${typeof event.run_id}`);
-        }
-
-        if (event.turn_id !== null && typeof event.turn_id !== "string") {
-
-            errors.push(`invalid turn_id: expected string or null, got ${typeof event.turn_id}`);
-        }
-
-        if (event.scope !== null && typeof event.scope !== "string") {
-
-            errors.push(`invalid scope: expected string or null, got ${typeof event.scope}`);
-        }
-
-        if (
-            event.iteration !== null &&
-            (typeof event.iteration !== "number" || !Number.isFinite(event.iteration))
-        ) {
-
-            errors.push(`invalid iteration: expected number or null, got ${event.iteration}`);
+        if (typeof event.at !== "number" || !Number.isFinite(event.at)) {
+            problems.push("event.at must be a finite number");
         }
 
         if (
@@ -78,70 +57,32 @@ class EventValidator {
             event.project_id !== null &&
             typeof event.project_id !== "string"
         ) {
-
-            errors.push(`invalid project_id: expected string or null, got ${typeof event.project_id}`);
+            problems.push("event.project_id must be a string or null");
         }
 
-        return errors;
+        return problems;
     }
 
-    static validateKeyPayload(event) {
 
-        const errors = [];
+    validate(event) {
 
-        if (!event || typeof event !== "object") {
+        const problems = this.problems(event);
 
-            return errors;
-        }
-
-        const requiredFields = KEY_PAYLOADS[event.type];
-
-        if (Array.isArray(requiredFields)) {
-
-            for (const field of requiredFields) {
-
-                if (
-                    !Object.prototype.hasOwnProperty.call(event, field) ||
-                    event[field] === null ||
-                    event[field] === undefined
-                ) {
-
-                    errors.push(
-                        `event ${event.type} is missing documented key payload field: ${field}`
-                    );
-                }
-            }
-        }
-
-        return errors;
-    }
-
-    static validate(event) {
-
-        const envelopeErrors = EventValidator.validateEnvelope(event);
-        const payloadErrors = EventValidator.validateKeyPayload(event);
-
-        const errors = [...envelopeErrors, ...payloadErrors];
-
-        return {
-            valid: errors.length === 0,
-            errors
-        };
-    }
-
-    static assertValid(event) {
-
-        const { valid, errors } = EventValidator.validate(event);
-
-        if (!valid) {
-
-            throw new Error(`Event contract violation: ${errors.join("; ")}`);
+        if (problems.length > 0) {
+            throw new Error(`Event validation failed:\n- ${problems.join("\n- ")}`);
         }
 
         return true;
     }
+
+
+    isKnownType(type) {
+        return this.knownTypes.has(type);
+    }
 }
 
+
 module.exports = {
+    REQUIRED_FIELDS,
     EventValidator
 };

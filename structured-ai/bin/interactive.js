@@ -1,17 +1,11 @@
+#!/usr/bin/env node
+
 "use strict";
 
 /*
-|--------------------------------------------------------------------------
-| Interactive Session — Compatibility Wrapper (Phase 26)
-|--------------------------------------------------------------------------
-|
-| Delegates to the modular agent/interactive subsystem. Maintained as a
-| compatibility wrapper until Phase 30.
-|--------------------------------------------------------------------------
+| Legacy entry point — EXECUTION_PLAN Phase 26.
+| The REPL implementation lives in agent/interactive/; keep this require
+| path for existing callers and the CLI facade.
 */
 
-const { startSession } = require("../agent/interactive");
-
-module.exports = {
-    startSession
-};
+module.exports = require("../agent/interactive");

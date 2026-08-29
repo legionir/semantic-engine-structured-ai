@@ -1,156 +1,117 @@
-/*
-|--------------------------------------------------------------------------
-| Console api (EXECUTION_PLAN Phase 24 گام ۲)
-|--------------------------------------------------------------------------
-| Every network call the console makes, in one place.
-|
-| Each function is the original body, moved: no new retry, no new error shape, no
-| catch that was not already there. An operator reading the console has to be able
-| to read what it asked for. `eventsUrl` is here because the stream is the one
-| endpoint whose URL depends on the project in focus.
-|--------------------------------------------------------------------------
-*/
+/* Relative Web API client — EXECUTION_PLAN Phase 24. */
 
-import { applySession } from "./history-view.js";
-import { renderApprovals } from "./approvals-view.js";
-import { settingsBody } from "./settings-view.js";
-import { renderProjectSwitcher } from "./project-switcher.js";
-import { refreshGatewayHealthChip } from "./project-dashboard.js";
-import { approvalState, historyState, projectState, runtimeState, settingsState } from "./store.js";
-
-/*
-| Opening a conversation replays the events it stored, so the Execution
-| and Events cards are rebuilt by the same code that draws them live.
-| Nothing is summarised for storage, which is why this works at all.
-*/
-
-export async function refreshSession(id) {
-
-    const response =
-        await fetch(`/api/sessions/${encodeURIComponent(id)}`);
-
-    if (!response.ok) {
-        return;
-    }
-
-    const payload =
-        await response.json();
-
-    applySession(payload.session);
+export class ApiError extends Error {
+  constructor(message, status, payload) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+  }
 }
 
-export async function loadSession(id) {
 
-    const response =
-        await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
-            method: "POST"
-        });
-
-    if (!response.ok) {
-        return;
-    }
-
-    const payload =
-        await response.json();
-
-    applySession(payload.session);
-
-    if (historyState.historyModal) {
-        historyState.historyModal.close("loaded");
-    }
+async function decode(response) {
+  const type = response.headers?.get?.("content-type") || "";
+  if (type.includes("application/json")) {
+    return response.json().catch(() => ({}));
+  }
+  return response.text().catch(() => "");
 }
 
-export async function answerApproval(id, approved) {
 
-    approvalState.approvals.delete(id);
+export async function request(url, options = {}) {
+  const headers = {
+    ...(options.body === undefined ? {} : { "content-type": "application/json" }),
+    ...(options.headers || {})
+  };
+  const response = await fetch(url, { ...options, headers });
+  const payload = await decode(response);
 
-    renderApprovals();
+  if (!response.ok) {
+    throw new ApiError(
+      payload?.error || `request failed (${response.status})`,
+      response.status,
+      payload
+    );
+  }
 
-    await fetch(`/api/approvals/${encodeURIComponent(id)}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ approved })
-    });
+  return payload;
 }
 
-export async function approveAll() {
 
-    const ids =
-        [...approvalState.approvals.keys()];
+export const getState = () => request("/api/state");
+export const getProjects = () => request("/api/projects");
+export const getSettings = () => request("/api/settings");
+export const getMcp = refresh =>
+  request(refresh ? "/api/mcp?refresh=1" : "/api/mcp");
+export const getSessions = () => request("/api/sessions");
+export const getHealth = () => request("/api/health");
+export const getProject = id => request(`/api/projects/${encodeURIComponent(id)}`);
+export const getProjectState = id =>
+  request(`/api/projects/${encodeURIComponent(id)}/state`);
+export const getProjectSessions = id =>
+  request(`/api/projects/${encodeURIComponent(id)}/sessions`);
+export const getProjectMetrics = id =>
+  request(`/api/projects/${encodeURIComponent(id)}/metrics`);
+export const getProjectHealth = id =>
+  request(`/api/projects/${encodeURIComponent(id)}/health`);
 
-    approvalState.approvals.clear();
+export const getProjectDiscussions = id =>
+  request(`/api/projects/${encodeURIComponent(id)}/discussions`);
 
-    renderApprovals();
+export const getProjectDiscussion = (projectId, discussionId) =>
+  request(`/api/projects/${encodeURIComponent(projectId)}/discussions/${encodeURIComponent(discussionId)}`);
 
-    for (const id of ids) {
-
-        await fetch(`/api/approvals/${encodeURIComponent(id)}`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ approved: true })
-        });
+export const postDiscussion = (task, personas, maxRounds, projectId = null) =>
+  request(
+    projectId
+      ? `/api/projects/${encodeURIComponent(projectId)}/discussions`
+      : "/api/discussion",
+    {
+      method: "POST",
+      body: JSON.stringify({ task, personas, max_rounds: maxRounds })
     }
-}
+  );
 
-export async function loadSettings() {
 
-    const response =
-        await fetch("/api/settings");
+export const postTask = (task, projectId) =>
+  request(
+    projectId
+      ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
+      : "/api/tasks",
+    { method: "POST", body: JSON.stringify({ task }) }
+  );
 
-    const payload =
-        await response.json();
+export const postChat = (task, projectId) =>
+  request(`/api/projects/${encodeURIComponent(projectId)}/chat`, {
+    method: "POST",
+    body: JSON.stringify({ task })
+  });
 
-    settingsState.settings = payload.settings;
+export const cancel = projectId =>
+  request(
+    projectId
+      ? `/api/projects/${encodeURIComponent(projectId)}/cancel`
+      : "/api/cancel",
+    { method: "POST" }
+  );
 
-    if (settingsState.settingsModal && settingsState.settingsModal.isOpen()) {
+export const clear = () => request("/api/clear", { method: "POST" });
 
-        settingsState.settingsModal.setBody(settingsBody(settingsState.settings));
-    }
-}
+export const setSetting = (key, value) =>
+  request("/api/settings", {
+    method: "POST",
+    body: JSON.stringify({ key, value })
+  });
 
-export async function loadProjects() {
+export const setApprovalMode = mode =>
+  request("/api/approval-mode", {
+    method: "POST",
+    body: JSON.stringify({ mode })
+  });
 
-    try {
-
-        const response = await fetch("/api/projects");
-
-        if (!response.ok) {
-            return;
-        }
-
-        const payload = await response.json();
-        projectState.projects = payload.projects || [];
-        renderProjectSwitcher();
-
-    } catch {
-        projectState.projects = [];
-    }
-}
-
-export async function loadGatewayHealth() {
-
-    try {
-
-        const response = await fetch("/api/health");
-
-        if (!response.ok) {
-            return;
-        }
-
-        runtimeState.gatewayHealth = await response.json();
-        refreshGatewayHealthChip(runtimeState.gatewayHealth);
-
-    } catch {
-        /* health is optional */
-    }
-}
-
-export function eventsUrl() {
-
-    if (projectState.currentProjectId) {
-
-        return `/api/events?projectId=${encodeURIComponent(projectState.currentProjectId)}`;
-    }
-
-    return "/api/events";
-}
+export const answerApproval = (id, approved) =>
+  request(`/api/approvals/${encodeURIComponent(id)}`, {
+    method: "POST",
+    body: JSON.stringify({ approved })
+  });

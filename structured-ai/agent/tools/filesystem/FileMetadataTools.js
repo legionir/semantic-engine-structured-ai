@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const settings = require("../../lib/storage");
+const settings = require("../../config");
 
 const PathBoundary = require("./PathBoundary");
 

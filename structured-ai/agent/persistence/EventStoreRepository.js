@@ -3,8 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const settings = require("../lib/storage");
-const dataRoot = require("../lib/dataRoot");
+const settings = require("../config");
+const dataRoot = require("../persistence/DataRoot");
 const SchemaVersion = require("./SchemaVersion");
 
 
@@ -13,10 +13,8 @@ const SchemaVersion = require("./SchemaVersion");
 | Event-store repository (EXECUTION_PLAN Phase 18)
 |--------------------------------------------------------------------------
 |
-| Moved from agent/lib/eventstore.js. Day files, JSONL lines and
-| routing by project_id are unchanged. A truncated or corrupt line is
-| skipped on read. agent/lib/eventstore.js is the legacy wrapper until
-| Phase 30.
+| Canonical event-store repository. Day files, JSONL lines and routing
+| by project_id remain stable; truncated or corrupt lines are skipped.
 |--------------------------------------------------------------------------
 */
 

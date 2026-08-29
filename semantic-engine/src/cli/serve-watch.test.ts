@@ -365,21 +365,42 @@ describeIfBuilt('SE-UI-01 — دستور ui بدون ایندکس هم بالا 
 
 describeIfBuilt('MIG-52 — پذیرش watch', () => {
   let workspace: string;
+  let dataDir: string;
+  /**
+   * artifactها از فاز ۴ در data directory نوشته می‌شوند، نه داخل workspace.
+   * `--project-id` و `--data-dir` صریح داده می‌شوند تا مسیر در تست قطعی باشد.
+   */
+  const projectId = 'prj-watch-cli-00000000';
+  let artifactRoot: string;
+  const watchArgs = (extra: string[] = []) => [
+    'watch',
+    '--root',
+    workspace,
+    '--no-git',
+    '--project-id',
+    projectId,
+    '--data-dir',
+    dataDir,
+    ...extra,
+  ];
 
   beforeEach(() => {
     workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'se-watch-cli-'));
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'se-watch-data-'));
+    artifactRoot = path.join(dataDir, 'projects', projectId);
     fs.mkdirSync(path.join(workspace, 'src'));
     fs.writeFileSync(path.join(workspace, 'src', 'a.ts'), 'export const a = 1;\n');
   });
 
   afterEach(() => {
     fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
   });
 
   it('ایندکس می‌گیرد، رصد می‌کند، و روی SIGINT تمیز خاموش می‌شود', async () => {
-    const started = await spawnUntil(['watch', '--root', workspace, '--no-git'], /press Ctrl\+C/);
+    const started = await spawnUntil(watchArgs(), /press Ctrl\+C/);
 
-    const pidPath = path.join(workspace, '.semantic-engine', PID_FILE_NAME);
+    const pidPath = path.join(artifactRoot, PID_FILE_NAME);
     expect(fs.existsSync(pidPath)).toBe(true);
     expect(Number(fs.readFileSync(pidPath, 'utf8').trim())).toBe(started.child.pid);
 
@@ -394,24 +415,27 @@ describeIfBuilt('MIG-52 — پذیرش watch', () => {
     expect(fs.existsSync(pidPath)).toBe(false);
 
     const written = JSON.parse(
-      fs.readFileSync(path.join(workspace, '.semantic-engine', 'project-index.json'), 'utf8')
+      fs.readFileSync(path.join(artifactRoot, 'project-index.json'), 'utf8')
     ) as { files: { path: string }[] };
     expect(written.files.map(f => f.path)).toContain('src/b.ts');
+
+    /* watch هیچ چیز داخل source root نمی‌نویسد. */
+    expect(fs.existsSync(path.join(workspace, '.semantic-engine'))).toBe(false);
   }, 120_000);
 
   it('SIGTERM هم خاموشی تمیز می‌دهد', async () => {
-    const started = await spawnUntil(['watch', '--root', workspace, '--no-git'], /press Ctrl\+C/);
+    const started = await spawnUntil(watchArgs(), /press Ctrl\+C/);
     const code = await stop(started.child, 'SIGTERM');
 
     expect(code).toBe(EXIT.ok);
-    expect(fs.existsSync(path.join(workspace, '.semantic-engine', PID_FILE_NAME))).toBe(false);
+    expect(fs.existsSync(path.join(artifactRoot, PID_FILE_NAME))).toBe(false);
   }, 120_000);
 
   it('دو watcher هم‌زمان روی یک کارگاه راه نمی‌افتند', async () => {
-    const started = await spawnUntil(['watch', '--root', workspace, '--no-git'], /press Ctrl\+C/);
+    const started = await spawnUntil(watchArgs(), /press Ctrl\+C/);
 
     try {
-      const second = runOnce(['watch', '--root', workspace, '--no-git']);
+      const second = runOnce(watchArgs());
       expect(second.code).toBe(EXIT.failure);
       expect(second.stderr).toMatch(/already running/i);
     } finally {

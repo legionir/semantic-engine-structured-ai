@@ -1,143 +1,126 @@
 "use strict";
 
+/*
+|--------------------------------------------------------------------------
+| Persistence contract tests — EXECUTION_PLAN Phase 29
+|--------------------------------------------------------------------------
+|
+| JSON documents are replaced atomically; JSONL stores remain append-only
+| and tolerate an incomplete final line. This contract suite checks the
+| extracted repository seams directly while the larger persistence tests
+| continue to verify the historical workspace paths and projections.
+|--------------------------------------------------------------------------
+*/
+
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-/*
-|--------------------------------------------------------------------------
-| Persistence Contract Tests — EXECUTION_PLAN Phase 29
-|--------------------------------------------------------------------------
-|
-| Locks the persistence subsystem contract: atomic writes, fallback reads,
-| safe identifier sanitization, dataRoot resolution order, and scaffolding.
-|--------------------------------------------------------------------------
-*/
-
 const ROOT = path.resolve(__dirname, "..", "..");
+const WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), "phase29-persist-contract-"));
 
-const AtomicFile =
-    require(path.join(ROOT, "agent", "persistence", "AtomicFile.js"));
-
-const JsonRepository =
-    require(path.join(ROOT, "agent", "persistence", "JsonRepository.js"));
-
-const SafeIdentifier =
-    require(path.join(ROOT, "agent", "persistence", "SafeIdentifier.js"));
-
-const SchemaVersion =
-    require(path.join(ROOT, "agent", "persistence", "SchemaVersion.js"));
-
-const dataRoot =
-    require(path.join(ROOT, "agent", "lib", "dataRoot.js"));
+const AtomicFile = require(path.join(ROOT, "agent", "persistence", "AtomicFile"));
+const JsonRepository = require(path.join(ROOT, "agent", "persistence", "JsonRepository"));
+const SafeIdentifier = require(path.join(ROOT, "agent", "persistence", "SafeIdentifier"));
+const SchemaVersion = require(path.join(ROOT, "agent", "persistence", "SchemaVersion"));
+const sessions = require(path.join(ROOT, "agent", "persistence", "SessionRepository"));
+const eventStore = require(path.join(ROOT, "agent", "persistence", "EventStoreRepository"));
+const journal = require(path.join(ROOT, "agent", "persistence", "JournalRepository"));
 
 const results = [];
 
 async function test(name, fn) {
-
     try {
-
         await fn();
         results.push({ name, ok: true });
         console.log(`  ok   ${name}`);
-
     } catch (error) {
-
         results.push({ name, ok: false, error });
         console.log(`  FAIL ${name}`);
-        console.log(`       ${error.stack || error.message}`);
+        console.log(`       ${error.message}`);
     }
 }
 
 async function main() {
-
-    console.log("persistence contract tests");
-
-    await test("AtomicFile writes atomically and leaves no temporary files", () => {
-
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "persist-contract-"));
-
-        try {
-
-            const target = path.join(dir, "atomic.json");
-            AtomicFile.writeFile(target, '{"test":true}\n');
-
-            assert.equal(fs.existsSync(target), true);
-            const content = JSON.parse(fs.readFileSync(target, "utf8"));
-            assert.equal(content.test, true);
-
-            const files = fs.readdirSync(dir);
-            assert.deepEqual(files, ["atomic.json"], "temporary file leaked");
-
-        } finally {
-
-            fs.rmSync(dir, { recursive: true, force: true });
+    await test("the extracted persistence modules expose the documented boundaries", async () => {
+        for (const method of ["writeFile"]) assert.equal(typeof AtomicFile[method], "function");
+        for (const method of ["readJson", "writeJson"]) assert.equal(typeof JsonRepository[method], "function");
+        for (const method of ["safeId", "safeName"]) assert.equal(typeof SafeIdentifier[method], "function");
+        for (const method of ["versionOf", "isCurrent", "migrate"]) assert.equal(typeof SchemaVersion[method], "function");
+        for (const method of ["emptySession", "loadSession", "saveSession", "listSessions"]) {
+            assert.equal(typeof sessions[method], "function", `session.${method} missing`);
+        }
+        for (const method of ["append", "readDay", "query", "flush"]) {
+            assert.equal(typeof eventStore[method], "function", `event store.${method} missing`);
+        }
+        for (const method of ["onEvent", "flush", "fileFor"]) {
+            assert.equal(typeof journal[method], "function", `journal.${method} missing`);
         }
     });
 
-    await test("JsonRepository safely reads existing and fallback documents", () => {
+    await test("JSON repository writes round-trip and corrupt input uses the caller fallback", async () => {
+        const file = path.join(WORKSPACE, "document.json");
+        const document = { version: 1, nested: { value: "kept" }, items: [1, 2] };
+        assert.deepStrictEqual(JsonRepository.writeJson(file, document), document);
+        assert.deepStrictEqual(JsonRepository.readJson(file, null), document);
+        fs.writeFileSync(file, "{broken", "utf8");
+        assert.deepStrictEqual(JsonRepository.readJson(file, { fallback: true }), { fallback: true });
+        assert.deepStrictEqual(JsonRepository.readJson(path.join(WORKSPACE, "missing.json"), []), []);
+    });
 
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "json-repo-contract-"));
-
+    await test("an interrupted atomic replacement leaves the previous JSON document intact", async () => {
+        const file = path.join(WORKSPACE, "atomic.json");
+        JsonRepository.writeJson(file, { revision: "old" });
+        const originalRename = fs.renameSync;
         try {
-
-            const target = path.join(dir, "doc.json");
-            JsonRepository.writeJson(target, { key: "value" });
-
-            const loaded = JsonRepository.readJson(target, { key: "default" });
-            assert.equal(loaded.key, "value");
-
-            const missing = JsonRepository.readJson(path.join(dir, "none.json"), { fallback: true });
-            assert.equal(missing.fallback, true);
-
-            /* corrupt JSON yields fallback instead of throwing */
-            fs.writeFileSync(target, "INVALID JSON CONTENT {{{");
-            const recovered = JsonRepository.readJson(target, { safe: true });
-            assert.equal(recovered.safe, true);
-
+            fs.renameSync = () => { throw new Error("simulated rename failure"); };
+            assert.throws(
+                () => AtomicFile.writeFile(file, JSON.stringify({ revision: "new" }), "utf8"),
+                /simulated rename failure/
+            );
         } finally {
-
-            fs.rmSync(dir, { recursive: true, force: true });
+            fs.renameSync = originalRename;
         }
+        assert.deepStrictEqual(JsonRepository.readJson(file, null), { revision: "old" });
+        assert.equal(fs.readdirSync(WORKSPACE).some(name => name.startsWith("atomic.json.tmp-")), false);
     });
 
-    await test("SafeIdentifier prevents directory traversal characters", () => {
-
-        assert.equal(SafeIdentifier.safeId("../../etc/passwd"), ".._.._etc_passwd");
-        assert.equal(SafeIdentifier.safeId("session:alpha*1"), "session_alpha_1");
-        assert.equal(SafeIdentifier.safeName("user/sub/agent"), "user_sub_agent");
+    await test("safe identifiers and schema versions are stable and additive", async () => {
+        assert.equal(SafeIdentifier.safeId("discussion/a?b"), "discussion_a_b");
+        assert.equal(SafeIdentifier.safeName("main agent"), "main_agent");
+        assert.equal(SchemaVersion.CURRENT.discussion, "1");
+        assert.equal(SchemaVersion.versionOf({ schema_version: "1" }), "1");
+        assert.equal(SchemaVersion.isCurrent("session", "1"), true);
+        const migrated = SchemaVersion.migrate("discussion", { version: "1", id: "d1" });
+        assert.deepStrictEqual(migrated, {
+            kind: "discussion",
+            document: { version: "1", id: "d1" },
+            version: "1",
+            current: true,
+            migrated: false
+        });
     });
 
-    await test("SchemaVersion handles current schemas as identity migrations", () => {
-
-        const doc = { version: "1", payload: "data" };
-        const result = SchemaVersion.migrate("session", doc);
-        assert.equal(result.current, true);
-        assert.equal(result.document, doc);
+    await test("JSONL repositories preserve valid records while skipping a truncated tail", async () => {
+        const day = "2030-01-02";
+        const file = eventStore.fileFor(day, WORKSPACE);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const event = { version: "1", type: "run:start", run_id: "r1", seq: 1 };
+        fs.writeFileSync(file, `${JSON.stringify(event)}\n{"type":"run:end"`, "utf8");
+        assert.deepStrictEqual(eventStore.readDay(day, WORKSPACE), [event]);
+        assert.deepStrictEqual(eventStore.query({ date: day, root: WORKSPACE }), [event]);
+        assert.equal(eventStore.dayOf("2030-01-02T12:00:00Z"), day);
+        assert.match(journal.fileFor("main_agent", day, WORKSPACE), /journal/);
     });
 
-    await test("dataRoot resolution order and scaffold directories are preserved", () => {
-
-        assert.ok(Array.isArray(dataRoot.SCAFFOLD_DIRS));
-        assert.ok(dataRoot.SCAFFOLD_DIRS.includes("sessions"));
-        assert.ok(dataRoot.SCAFFOLD_DIRS.includes("archive"));
-        assert.ok(dataRoot.SCAFFOLD_DIRS.includes("eventstore"));
-        assert.ok(dataRoot.SCAFFOLD_DIRS.includes("journal"));
-        assert.ok(dataRoot.SCAFFOLD_DIRS.includes("discussions"));
-
-        const explicit = "/explicit/path";
-        assert.equal(dataRoot.resolveRoot(explicit), explicit);
-    });
-
-    const failed =
-        results.filter(item => !item.ok);
-
-    console.log(
-        `\n${results.length - failed.length}/${results.length} passed`
-    );
-
+    const failed = results.filter(item => !item.ok);
+    console.log(`\n${results.length - failed.length}/${results.length} passed`);
+    fs.rmSync(WORKSPACE, { recursive: true, force: true });
     process.exit(failed.length === 0 ? 0 : 1);
 }
 
-main();
+main().catch(error => {
+    console.error(error);
+    process.exit(1);
+});

@@ -1,19 +1,14 @@
 "use strict";
 
 /*
-|--------------------------------------------------------------------------
-| Event Projector — EXECUTION_PLAN Phase 27
-|--------------------------------------------------------------------------
-|
-| Handles event projections for project streams, aggregate metadata, UI
-| views, session storage, and deduplication for replay.
-|--------------------------------------------------------------------------
+| Event projection — EXECUTION_PLAN Phase 27.
+| Project streams receive their own events in full and unscoped events as
+| aggregate metadata; another project's event is never projected.
 */
 
 class EventProjector {
 
-    static aggregateMetadata(event) {
-
+    aggregateMetadata(event) {
         return {
             seq: event.seq,
             type: event.type,
@@ -27,71 +22,44 @@ class EventProjector {
         };
     }
 
-    static visibleOnProjectStream(event, projectId) {
 
-        if (event.project_id === projectId) {
-            return event;
-        }
-
-        if (event.project_id) {
-            return null;
-        }
-
-        return EventProjector.aggregateMetadata(event);
+    visibleOnProjectStream(event, projectId) {
+        if (event.project_id === projectId) return event;
+        if (event.project_id) return null;
+        return this.aggregateMetadata(event);
     }
 
-    static toUI(event) {
 
-        /* UI consumes the full correlation envelope and payload,
-           with volatile numbers intact and additive fields available. */
-        return {
-            ...event,
-            project_id: event.project_id ?? null
-        };
-    }
+    project(event, { projectId = null, claims, auth } = {}) {
 
-    static toSession(event) {
-
-        /* Session projection for persistent replay */
-        return {
-            ...event,
-            turn_id: event.turn_id || null,
-            run_id: event.run_id || null,
-            scope: event.scope || null,
-            iteration: event.iteration ?? null
-        };
-    }
-
-    static deduplicate(events) {
-
-        if (!Array.isArray(events)) {
-            return [];
+        if (projectId) {
+            return this.visibleOnProjectStream(event, projectId);
         }
 
-        const seen = new Set();
-        const result = [];
-
-        for (const event of events) {
-
-            if (!event || typeof event !== "object") {
-                continue;
-            }
-
-            const key = `${event.run_id || ""}|${event.seq}`;
-
-            if (!seen.has(key)) {
-
-                seen.add(key);
-                result.push(event);
-            }
+        if (
+            claims &&
+            auth &&
+            !auth.allowsAllProjects(claims)
+        ) {
+            if (
+                event.project_id &&
+                !auth.allowsProject(claims, event.project_id)
+            ) return null;
+            if (!event.project_id) return this.aggregateMetadata(event);
         }
 
-        return result;
+        return event;
+    }
+
+
+    replay(events, options) {
+        return (events || [])
+            .map(event => this.project(event, options))
+            .filter(Boolean);
     }
 }
 
+
 module.exports = {
-    EventProjector,
-    aggregateMetadata: EventProjector.aggregateMetadata,
-    visibleOnProjectStream: EventProjector.visibleOnProjectStream
+    EventProjector
 };

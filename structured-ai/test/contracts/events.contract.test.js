@@ -31,7 +31,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const runtime = require(path.join(ROOT, "agent", "agent.js"));
 const { normalize } = require(path.join(ROOT, "test", "helpers", "normalize.js"));
 
-const events = require(path.join(ROOT, "agent", "lib", "events.js"));
+const events = require(path.join(ROOT, "agent", "events"));
 
 const fixture =
     JSON.parse(
@@ -100,18 +100,23 @@ function eventNamesFromSource() {
 
     const found = new Set();
 
-    const pattern = /emit\(\s*"([a-z:_-]+)"/g;
+    const patterns = [
+        /emit\(\s*"([a-z:_-]+)"/g,
+        /* extracted services may pass their event context first */
+        /emit\([^,]+,\s*"([a-z:_-]+)"/g
+    ];
 
     for (const file of sources) {
 
         const text = fs.readFileSync(file, "utf8");
 
-        let match;
+        for (const pattern of patterns) {
 
-        while ((match = pattern.exec(text)) !== null) {
+            let match;
 
-            found.add(match[1]);
-
+            while ((match = pattern.exec(text)) !== null) {
+                found.add(match[1]);
+            }
         }
     }
 

@@ -5,8 +5,8 @@
 | Config facade — EXECUTION_PLAN Phase 14
 |--------------------------------------------------------------------------
 |
-| The public settings API. agent/lib/storage.js is the legacy wrapper
-| that re-exports this module so existing require() sites stay valid.
+| The canonical public settings API. SettingsSchema and SettingsStore are
+| the only configuration boundary used by the runtime.
 |--------------------------------------------------------------------------
 */
 

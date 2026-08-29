@@ -1,30 +1,50 @@
-/*
-|--------------------------------------------------------------------------
-| Visualizer layout-client (EXECUTION_PLAN Phase 25 گام ۱)
-|--------------------------------------------------------------------------
-| Where positions come from.
-|
-| Today: a deterministic hierarchical grid, computed on the main thread. The page also ships `web/public/workers/layout.worker.js` — a spring-embedder that posts `{positions}` — and **nothing instantiates it**: no `new Worker` exists in this client or anywhere else in the package (measured, and recorded in EXECUTION_PLAN as a gap with its own step). Wiring it is not part of a move: the worker seeds with `Math.random()`, so positions would stop being reproducible, every trace and test would have to be rewritten around that, and "layout behaviour is unchanged" would become false. The module is named for the job so the seam exists when that step is taken deliberately.
-|--------------------------------------------------------------------------
-*/
+/* Worker-backed graph layout with deterministic fallback — Phase 25. */
 
-import { state } from "./graph-store.js";
-import { renderGraph } from "./graph-renderer.js";
-import { fitGraph } from "./viewport.js";
+import { applyPositions, layoutGrid } from "./graph-model.js";
 
-export function layoutAndRender() {
-  // Simple hierarchical grid & layer layout
-  const cols = Math.max(3, Math.ceil(Math.sqrt(state.nodes.length * 1.5)));
-  const spacingX = 220;
-  const spacingY = 120;
+export class LayoutClient {
+  constructor({ WorkerClass = globalThis.Worker, workerUrl = "/workers/layout.worker.js" } = {}) {
+    this.WorkerClass = WorkerClass;
+    this.workerUrl = workerUrl;
+    this.worker = null;
+    this.sequence = 0;
+  }
 
-  state.nodes.forEach((node, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    node.x = 100 + col * spacingX;
-    node.y = 100 + row * spacingY;
-  });
+  fallback(nodes, options) {
+    return applyPositions(nodes, layoutGrid(nodes, options));
+  }
 
-  renderGraph();
-  fitGraph();
+  layout(nodes, edges, options = {}) {
+    if (typeof this.WorkerClass !== "function") {
+      return Promise.resolve(this.fallback(nodes, options));
+    }
+
+    const requestId = ++this.sequence;
+    return new Promise(resolve => {
+      let worker;
+      try {
+        worker = new this.WorkerClass(this.workerUrl);
+      } catch {
+        resolve(this.fallback(nodes, options));
+        return;
+      }
+      this.worker = worker;
+      const finish = positions => {
+        if (this.worker === worker) this.worker = null;
+        worker.terminate?.();
+        resolve(applyPositions(nodes, positions));
+      };
+      worker.onmessage = event => {
+        if (event.data?.requestId && event.data.requestId !== requestId) return;
+        finish(event.data?.positions || {});
+      };
+      worker.onerror = () => finish(layoutGrid(nodes, options));
+      worker.postMessage({ nodes, edges, options, requestId });
+    });
+  }
+
+  dispose() {
+    this.worker?.terminate?.();
+    this.worker = null;
+  }
 }

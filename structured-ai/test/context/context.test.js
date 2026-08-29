@@ -139,7 +139,7 @@ function toolIds(messages) {
 
 function assertPairsIntact(messages) {
 
-    const { findExchanges } = require(path.join(REPO, "agent", "lib", "context.js"));
+    const { findExchanges } = require(path.join(REPO, "agent", "context"));
 
     const exchanges = findExchanges(messages);
     const { calls, results } = toolIds(messages);
@@ -177,9 +177,9 @@ async function main() {
 
     const runtime = require(path.join(REPO, "agent", "agent.js"));
     const contextKit = require(path.join(REPO, "agent", "context"));
-    const contextLib = require(path.join(REPO, "agent", "lib", "context.js"));
-    const memoryLib = require(path.join(REPO, "agent", "lib", "memory.js"));
-    const archiveLib = require(path.join(REPO, "agent", "lib", "archive.js"));
+    const contextLib = require(path.join(REPO, "agent", "context"));
+    const memoryLib = require(path.join(REPO, "agent", "context", "Memory"));
+    const archiveLib = require(path.join(REPO, "agent", "persistence", "ArchiveRepository"));
     const memoryRepository = require(path.join(REPO, "agent", "persistence", "MemoryRepository.js"));
     const archiveRepository = require(path.join(REPO, "agent", "persistence", "ArchiveRepository.js"));
     const tools = require(path.join(REPO, "agent", "tools"));
@@ -567,7 +567,7 @@ async function main() {
 
         assert.equal(body.records[0].body, "the recovered archive body");
 
-        const viaWrapper = require(path.join(REPO, "agent", "lib", "memory.js")).loadMemory();
+        const viaWrapper = require(path.join(REPO, "agent", "context", "Memory")).loadMemory();
 
         assert.deepEqual(viaWrapper.decisions, reloaded.decisions);
 

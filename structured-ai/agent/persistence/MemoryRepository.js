@@ -2,7 +2,7 @@
 
 const path = require("path");
 
-const dataRoot = require("../lib/dataRoot");
+const dataRoot = require("../persistence/DataRoot");
 const JsonRepository = require("./JsonRepository");
 const SchemaVersion = require("./SchemaVersion");
 

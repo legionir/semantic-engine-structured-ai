@@ -1,17 +1,22 @@
+"use strict";
+
 /*
-|--------------------------------------------------------------------------\
-| Hook conditions
-|--------------------------------------------------------------------------\
+|--------------------------------------------------------------------------
+| Hook conditions — EXECUTION_PLAN Phase 22
+|--------------------------------------------------------------------------
 |
-| The closed condition language: `&&`-joined terms, each optionally negated
-| with `!`, resolved against a fixed set of context paths. Nothing is ever
-| evaluated — a hook condition comes from a config file and must not become a
-| code-execution surface.
-|
-| `conditionTerms` is shared with the loader on purpose: validation and
-| evaluation must not disagree about what a condition means, and a term the
-| loader accepts but the evaluator cannot read would silently disable a hook.
-|--------------------------------------------------------------------------*/
+| The condition language is deliberately closed. It can inspect repository
+| dirt, changed files, plan completion and earlier hook results, but it
+| cannot evaluate JavaScript or read process/environment state.
+|--------------------------------------------------------------------------
+*/
+
+const SUPPORTED_CONDITIONS = Object.freeze([
+    "repository.dirty",
+    "files_changed",
+    "plan.complete"
+]);
+
 
 function conditionTerms(expression) {
 
@@ -34,7 +39,9 @@ function conditionTerms(expression) {
         .filter(Boolean)
         .map(term => ({
             negated: term.startsWith("!"),
-            name: term.startsWith("!") ? term.slice(1).trim() : term
+            name: term.startsWith("!")
+                ? term.slice(1).trim()
+                : term
         }));
 }
 
@@ -44,11 +51,7 @@ function assertCondition(expression, where) {
     for (const term of conditionTerms(expression)) {
 
         if (
-            ![
-                "repository.dirty",
-                "files_changed",
-                "plan.complete"
-            ].includes(term.name) &&
+            !SUPPORTED_CONDITIONS.includes(term.name) &&
             !/^hooks\.[A-Za-z0-9_.-]+\.ok$/.test(term.name)
         ) {
 
@@ -64,44 +67,32 @@ function assertCondition(expression, where) {
 function hookReferences(expression) {
 
     return conditionTerms(expression)
-        .map(term => /^hooks\.([A-Za-z0-9_.-]+)\.ok$/.exec(term.name))
+        .map(term =>
+            /^hooks\.([A-Za-z0-9_.-]+)\.ok$/.exec(term.name)
+        )
         .filter(Boolean)
         .map(match => match[1]);
 }
 
 
-function readPath(source, reference) {
-
-    let value = source;
-
-    for (const segment of reference.split(".")) {
-
-        if (value === null || value === undefined || typeof value !== "object") {
-            return undefined;
-        }
-
-        value = value[segment];
-    }
-
-    return value;
-}
-
-
-function conditionValue(name, context) {
+function conditionValue(name, context = {}) {
 
     if (name === "repository.dirty") {
-        return context.repository?.dirty === true || context.repository?.clean === false;
+        return context.repository?.dirty === true ||
+            context.repository?.clean === false;
     }
 
     if (name === "files_changed") {
-        return Array.isArray(context.files_changed) && context.files_changed.length > 0;
+        return Array.isArray(context.files_changed) &&
+            context.files_changed.length > 0;
     }
 
     if (name === "plan.complete") {
         return context.plan?.complete === true;
     }
 
-    const hook = /^hooks\.([A-Za-z0-9_.-]+)\.ok$/.exec(name);
+    const hook =
+        /^hooks\.([A-Za-z0-9_.-]+)\.ok$/.exec(name);
 
     if (hook) {
         return context.hooks?.[hook[1]]?.ok === true;
@@ -111,13 +102,12 @@ function conditionValue(name, context) {
 }
 
 
-function evaluateWhen(expression, context) {
+function evaluateWhen(expression, context = {}) {
 
-    const terms = conditionTerms(expression);
+    return conditionTerms(expression).every(term => {
 
-    return terms.every(term => {
-
-        const value = conditionValue(term.name, context);
+        const value =
+            conditionValue(term.name, context);
 
         return term.negated ? !value : value;
     });
@@ -125,10 +115,10 @@ function evaluateWhen(expression, context) {
 
 
 module.exports = {
+    SUPPORTED_CONDITIONS,
     conditionTerms,
     assertCondition,
     hookReferences,
-    readPath,
     conditionValue,
-    evaluateWhen,
+    evaluateWhen
 };

@@ -27,6 +27,12 @@ COPY --from=build /app/contracts ./contracts
 COPY --from=build /app/bin ./bin
 COPY --from=build /app/tree-sitter-grammars ./tree-sitter-grammars
 
+# Generated data goes here by default; mount a volume at /data (see
+# structured-ai/docker-compose.yml). The directory is created owned by `node`
+# so a named volume inherits usable permissions.
+ENV SEMANTIC_ENGINE_DATA_DIR=/data
+RUN mkdir -p /data && chown node:node /data
+
 USER node
 EXPOSE 4000
 

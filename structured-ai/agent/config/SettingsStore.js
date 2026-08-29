@@ -13,8 +13,7 @@ const { maskSecret } = require("./SecretMasker");
 |--------------------------------------------------------------------------
 |
 | The live map of overrides plus the public get/set/reset/snapshot API.
-| agent/lib/storage.js re-exports this object so every existing require
-| keeps working (legacy wrapper, law 7).
+| All runtime configuration reads go through this canonical store.
 |--------------------------------------------------------------------------
 */
 

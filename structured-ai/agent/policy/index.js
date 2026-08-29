@@ -1,79 +1,72 @@
-/*
-|--------------------------------------------------------------------------\
-| Policy boundary
-|--------------------------------------------------------------------------\
-|
-| Everything the enforcement path needs, behind one require: the rule
-| document and its matching, the approval lifecycle, and the audit/pending
-| state both share. `agent/lib/policy.js` re-exports this for importers that
-| still name the old path.
-|--------------------------------------------------------------------------*/
+"use strict";
 
-const { PolicyEngine } = require("./PolicyEngine");
-const { PolicyRegistry } = require("./PolicyRegistry");
+const settings = require("../config");
 
 const {
+    PolicyEngine,
+    DECISIONS
+} = require("./PolicyEngine");
+const {
+    PolicyMatcher,
     matchesGlob,
     valueAtPath,
     conditionMatches,
-    ruleTargets,
-    mcpServerOf,
-    mcpEscalation
+    ruleTargets
 } = require("./PolicyMatcher");
-
+const {
+    PolicyRegistry,
+    policyProblems,
+    VALID_ACTIONS
+} = require("./PolicyRegistry");
 const {
     ApprovalManager,
-    getApprovalMode,
-    setApprovalMode,
-    setApprovalHandler,
-    getApprovalHandler,
-    globalMcpServer
+    setGlobalApprovalHandler
 } = require("./ApprovalManager");
-
 const {
     ApprovalStore,
-    currentProjectId,
     resetGatewayApprovals
 } = require("./ApprovalStore");
+const PolicyErrors = require("./PolicyErrors");
 
-const {
-    DECISIONS,
-    deniedByPolicy,
-    deniedByOperator,
-    unattendedDenied,
-    noInteractiveApprover
-} = require("./PolicyErrors");
+
+function getApprovalMode() {
+    return settings.get("AGENT_APPROVAL");
+}
+
+
+function setApprovalMode(mode) {
+    return settings.set("AGENT_APPROVAL", mode);
+}
+
+
+function setApprovalHandler(handler) {
+    return setGlobalApprovalHandler(handler);
+}
+
+
+function createPolicyEngine(options) {
+    return new PolicyEngine(options);
+}
 
 
 module.exports = {
     PolicyEngine,
+    PolicyMatcher,
     PolicyRegistry,
     ApprovalManager,
     ApprovalStore,
-
-    /* matching primitives, exported for the tests that pin rule semantics */
+    PolicyErrors,
+    ...PolicyErrors,
+    DECISIONS,
+    VALID_ACTIONS,
+    policyProblems,
     matchesGlob,
     valueAtPath,
     conditionMatches,
     ruleTargets,
-    mcpServerOf,
-    mcpEscalation,
-
-    /* approval lifecycle */
+    createPolicyEngine,
     getApprovalMode,
     setApprovalMode,
     setApprovalHandler,
-    getApprovalHandler,
-    resetGatewayApprovals,
-    globalMcpServer,
-    currentProjectId,
-
-    DECISIONS,
-
-    errors: {
-        deniedByPolicy,
-        deniedByOperator,
-        unattendedDenied,
-        noInteractiveApprover
-    }
+    resetGatewayApprovals
 };

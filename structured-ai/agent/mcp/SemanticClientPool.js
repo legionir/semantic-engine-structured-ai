@@ -1,4 +1,4 @@
-const settings = require("../lib/storage");
+const settings = require("../config");
 
 const SemanticClient = require("./SemanticClient");
 
@@ -14,9 +14,9 @@ const SemanticClient = require("./SemanticClient");
 | project B's client, and a degraded worker surfaces through that
 | project's client alone.
 |
-| The pool is consulted only in SEMANTIC_POOL_MODE=modular; in legacy
-| mode the resolver never reaches for it and the process keeps the
-| single historical client from mcp/semantic.js.
+| The pool is the canonical project-aware route; the workspace-rooted
+| synthetic project may still use the local engine because its index is
+| exactly the active tree.
 |
 | Endpoints come from the project records in the registry
 | (ProjectRegistry record → ProjectContext.semanticEndpoint), so moving
@@ -173,13 +173,11 @@ class SemanticClientPool {
 const pool = new SemanticClientPool();
 
 
-/* Keep the pool in step with the same settings that re-tune the legacy
-   client: a changed timeout/transport/disabled engine must not keep
-   serving through connections negotiated under old settings. */
+/* Keep the pool in step with settings that re-tune transport or engine
+   availability; old connections must not survive those changes. */
 settings.bus.on("change", event => {
 
     if (
-        event.key === "SEMANTIC_POOL_MODE" ||
         event.key === "SEMANTIC_TRANSPORT" ||
         event.key === "SEMANTIC_CALL_TIMEOUT_MS" ||
         event.key === "SEMANTIC_ENABLED"

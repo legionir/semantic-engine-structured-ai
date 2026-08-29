@@ -11,9 +11,8 @@
 | closures are supplied by whoever creates it (the engine wires them to
 | its own live views).
 |
-| Reached through PROMPT_BUILDER_MODE=modular; the legacy code paths
-| stay untouched beside it until the parity evidence of this phase and
-| the final cleanup phase remove them.
+| This is the sole prompt assembly path after the canonical rollout; its
+| dependencies remain injected so the boundary stays independently testable.
 |--------------------------------------------------------------------------
 */
 

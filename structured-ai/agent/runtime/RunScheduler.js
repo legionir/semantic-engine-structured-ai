@@ -1,6 +1,6 @@
 "use strict";
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 
 
 /*
@@ -16,18 +16,14 @@ const settings = require("../lib/storage");
 |   - overflow goes on a per-project queue (round-robin dispatch)
 |   - a full queue rejects immediately (RUN_QUEUE_FULL) instead of hanging
 |
-| Disabled unless both RUN_CONTEXT_MODE and PROJECT_CONTEXT_MODE are
-| modular, and bypassed when a run has no projectId — so Phase 3's
-| unscoped concurrent-run tests keep their historical interleaving.
+| Scheduler admission is active for project-scoped runs and unscoped
+| callers continue through the same deterministic execution boundary.
 |--------------------------------------------------------------------------
 */
 
 function schedulerEnabled() {
 
-    return (
-        settings.get("RUN_CONTEXT_MODE") === "modular" &&
-        settings.get("PROJECT_CONTEXT_MODE") === "modular"
-    );
+    return true;
 }
 
 

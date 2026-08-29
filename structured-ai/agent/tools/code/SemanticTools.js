@@ -2,7 +2,7 @@
 
 const ToolContext = require("../ToolContext");
 const resolver = require("../../mcp/ProjectSemanticResolver");
-const settings = require("../../lib/storage");
+const settings = require("../../config");
 
 
 /*
@@ -62,11 +62,10 @@ function unavailableResult(toolName, engine) {
 }
 
 
-/* The engine a tool talks to is chosen by the run's context, not by the
-   process: in SEMANTIC_POOL_MODE=modular a scoped ToolContext routes to
-   that project's pool client; every other case keeps the historical
-   process-wide client (bit-identical legacy behaviour). ToolContext.from
-   is an identity no-op on the normalized context executeTool hands in. */
+/* The engine a tool talks to is chosen by the run's trusted context, not
+   by model arguments: a scoped ToolContext routes to that project's pool
+   client, while the synthetic workspace context uses the local engine.
+   ToolContext.from is an identity no-op on normalized contexts. */
 function engineFor(context) {
 
     const ctx = ToolContext.from(context);

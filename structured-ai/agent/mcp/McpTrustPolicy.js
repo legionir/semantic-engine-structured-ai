@@ -10,7 +10,7 @@
 |--------------------------------------------------------------------------
 */
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 
 
 /* Phase 9: without a projectId (legacy run) every server stays

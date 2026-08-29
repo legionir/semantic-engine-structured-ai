@@ -93,7 +93,15 @@ describe('فاز ۴۹ — آمادگی و سیگنال', () => {
 
     const context: CommandContext = { cwd: workspace, logger: quietLogger };
     const result = await runWatch(
-      { command: 'watch', options: { root: workspace, git: false }, positionals: [] } as never,
+      {
+        command: 'watch',
+        /*
+        | مسیر artifact صریح داده می‌شود: از فاز ۴ پیش‌فرض `external` است و
+        | این آزمون دربارهٔ سیگنال‌ها و فایل PID است، نه دربارهٔ محل artifact.
+        */
+        options: { root: workspace, git: false, out: path.join(workspace, '.semantic-engine') },
+        positionals: [],
+      } as never,
       context
     );
 
@@ -123,7 +131,15 @@ describe('فاز ۴۹ — آمادگی و سیگنال', () => {
     }) as typeof process.stderr.write;
 
     const result = await runWatch(
-      { command: 'watch', options: { root: workspace, git: false }, positionals: [] } as never,
+      {
+        command: 'watch',
+        /*
+        | مسیر artifact صریح داده می‌شود: از فاز ۴ پیش‌فرض `external` است و
+        | این آزمون دربارهٔ سیگنال‌ها و فایل PID است، نه دربارهٔ محل artifact.
+        */
+        options: { root: workspace, git: false, out: path.join(workspace, '.semantic-engine') },
+        positionals: [],
+      } as never,
       { cwd: workspace, logger: quietLogger }
     );
 

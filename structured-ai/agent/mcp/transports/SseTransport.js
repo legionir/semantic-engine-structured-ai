@@ -2,7 +2,7 @@ const http = require("http");
 const https = require("https");
 
 const protocol = require("../protocol");
-const { normalizeEndpoint } = require("./http");
+const { normalizeEndpoint } = require("./HttpTransport");
 
 
 /*

@@ -2,6 +2,7 @@
  * Platform Core V1 — Server Types & Route Contracts.
  */
 
+import type { ArtifactLocation } from '../core/config/DataRootResolver';
 import * as http from 'http';
 import { AuthContext, PermissionScope } from '../security/rbac/types';
 
@@ -59,6 +60,40 @@ export interface PlatformConfig {
   readonly maxBodyBytes?: number;
   readonly projectsRoot?: string;
   readonly staticDir?: string;
+  /**
+   * data root برای registry دائمی پروژه‌ها (`registry.json` و manifest هر
+   * پروژه). وقتی داده نشود، registry فقط در حافظه نگه داشته می‌شود و چیزی
+   * روی دیسک نوشته نمی‌شود — که برای تست‌ها رفتار درست است.
+   */
+  readonly dataRoot?: string;
+  /**
+   * کجا artifact نوشته/خوانده شود: `in-root` (پیش‌فرض فعلی) یا `external`.
+   * از `SEMANTIC_ENGINE_ARTIFACT_LOCATION` توسط CLI پر می‌شود.
+   */
+  readonly artifactLocation?: ArtifactLocation;
+  /**
+   * Worker پشت Gateway (فاز ۶): هیچ سطح بدون توکن ندارد، روت‌های registry
+   * بسته‌اند، و هیچ `path`/`rootPath` از request پذیرفته نمی‌شود.
+   */
+  readonly gatewayManaged?: boolean;
+  /**
+   * به proxy بودن Gateway اعتماد شود: `Origin` قضاوت نمی‌شود (Gateway آن را
+   * حذف می‌کند) ولی نبودِ `X-Forwarded-*` نشانهٔ درخواست مستقیم است و رد
+   * می‌شود. پیش‌فرض، همان `gatewayManaged` است.
+   */
+  readonly trustedGateway?: boolean;
+  /** مسیر Unix socket؛ وقتی ست باشد سرور روی socket گوش می‌دهد نه TCP. */
+  readonly socketPath?: string;
+  /**
+   * هندلر رویداد `upgrade` برای WebSocket (فاز ۱۱). بدون آن هر upgrade رد
+   * می‌شود، چون handshake نیمه‌انجام‌شده از نبودِ WebSocket بدتر است:
+   * کلاینت منتظر `101` می‌ماند.
+   */
+  readonly upgradeHandler?: (
+    req: http.IncomingMessage,
+    socket: import('stream').Duplex,
+    head: Buffer
+  ) => void;
 }
 
 // ── Graph View Model Types ───────────────────────────────────────────────

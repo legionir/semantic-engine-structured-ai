@@ -17,7 +17,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 
 const validator = require("./McpConfigValidator");
 

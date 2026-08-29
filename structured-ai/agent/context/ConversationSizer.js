@@ -5,8 +5,8 @@
 | Conversation size (EXECUTION_PLAN Phase 17)
 |--------------------------------------------------------------------------
 |
-| Extracted from agent/lib/context.js. Settings are read at the moment
-| of use, never captured at load.
+| Context sizing is a standalone boundary. Settings are read at the
+| moment of use, never captured at load.
 |--------------------------------------------------------------------------
 */
 

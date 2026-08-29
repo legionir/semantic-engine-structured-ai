@@ -3,14 +3,10 @@
 | Runtime (per-run context)
 |--------------------------------------------------------------------------
 |
-| Phase 3 of EXECUTION_PLAN: the per-run context modules, gated by the
-| RUN_CONTEXT_MODE setting ('legacy' default, 'modular' for isolated
-| concurrent runs). Anything above an empty/unknown value behaves as
-| legacy, so a misspelled flag can never silently fork the engine.
+| Phase 3 of EXECUTION_PLAN: per-run context and scheduling are the
+| canonical runtime boundary. Each run is isolated with async-local state.
 |--------------------------------------------------------------------------
 */
-
-const settings = require("../lib/storage");
 
 const AgentRunContext = require("./AgentRunContext");
 const RunCancellation = require("./RunCancellation");
@@ -38,19 +34,6 @@ runScheduler.memoryFor = key => {
 };
 
 
-function runContextMode() {
-
-    return (
-        settings.get("RUN_CONTEXT_MODE") === "modular"
-            ? "modular"
-            : "legacy"
-    );
-
-}
-
-
-const { runtimeEngineMode } = require("./engineContext");
-
 
 module.exports = {
     AgentRunContext,
@@ -64,8 +47,6 @@ module.exports = {
     schedulerEnabled,
     Observability,
     observability,
-    runContextMode,
-    runtimeEngineMode,
     runWithProject,
     overrideActive,
     effectiveProject,

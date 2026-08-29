@@ -1129,6 +1129,13 @@ const DEFINITIONS = [
         description: "Path to semantic-engine binary or script. Empty autodetects."
     },
     {
+        key: "SEMANTIC_ENGINE_DATA_DIR",
+        group: "tools",
+        type: STRING,
+        default: "",
+        description: "Data directory the semantic engine writes its index to. Empty means the platform default: $XDG_DATA_HOME/semantic-engine on Linux, ~/Library/Application Support/SemanticEngine on macOS, %LOCALAPPDATA%/SemanticEngine on Windows."
+    },
+    {
         key: "SEMANTIC_ENGINE_URL",
         group: "tools",
         type: STRING,
@@ -1307,20 +1314,9 @@ const DEFINITIONS = [
         default: null,
         description: "Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai."
     },
-    {
-        key: "PROJECT_CONTEXT_MODE",
-        group: "workspace",
-        type: STRING,
-        default: "legacy",
-        description: "Project scoping mode: 'legacy' keeps single-workspace behavior; 'modular' resolves a ProjectContext per run (EXECUTION_PLAN feature flag)."
-    },
-    {
-        key: "RUN_CONTEXT_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Run state mode: 'legacy' keeps the process-global RUN/AGENT_BUDGET; 'modular' gives every run its own AgentRunContext via the RunManager so runs may execute concurrently (EXECUTION_PLAN phase 3 flag)."
-    },
+
+
+
     {
         key: "RUN_HISTORY_LIMIT",
         group: "runtime",
@@ -1399,34 +1395,9 @@ const DEFINITIONS = [
         min: 0,
         description: "How many memoized query results one SemanticClient pool entry keeps per project (0 disables memoization). Entries are additionally invalidated on an index-generation change reported by the worker."
     },
-    {
-        key: "PROMPT_BUILDER_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Prompt assembly mode: 'legacy' uses the inline builders in agent.js; 'modular' uses the injected agent/prompt builders with project_context support (EXECUTION_PLAN phase 5 flag)."
-    },
-    {
-        key: "SEMANTIC_POOL_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Semantic engine routing mode: 'legacy' uses the single process-wide engine client; 'modular' routes code tools through the per-project SemanticClientPool keyed by projectId (EXECUTION_PLAN phase 6 flag)."
-    },
-    {
-        key: "RUNTIME_ENGINE_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Runtime loop mode: 'legacy' and 'modular' both run the extracted agent/runtime engine (Phase 16). The flag is declared so Phase 30 can drop it after equality is proven; a misspelled value behaves as legacy."
-    },
-    {
-        key: "WEB_SERVER_MODE",
-        group: "runtime",
-        type: STRING,
-        default: "legacy",
-        description: "Web console mode: 'legacy' and 'modular' both compose the extracted web/server modules (Phase 23). The flag is declared so Phase 30 can drop it after equality is proven; a misspelled value behaves as legacy."
-    }
+
+
+
 ];
 
 

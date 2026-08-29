@@ -22,11 +22,11 @@ const WORKSPACE =
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
 const protocol = require("../../agent/mcp/protocol");
-const config = require("../../agent/mcp/config");
-const { McpManager } = require("../../agent/mcp/manager");
-const { McpClient } = require("../../agent/mcp/client");
-const websocket = require("../../agent/mcp/transports/websocket");
-const settings = require("../../agent/lib/storage");
+const config = require("../../agent/mcp/McpConfig");
+const { McpManager } = require("../../agent/mcp/McpManager");
+const { McpClient } = require("../../agent/mcp/McpConnection");
+const websocket = require("../../agent/mcp/transports/WebSocketTransport");
+const settings = require("../../agent/config");
 const tools = require("../../agent/tools");
 
 const results = [];
@@ -1234,7 +1234,7 @@ async function main() {
         | does it: a definition that was never proved reachable.
         */
 
-        const { McpClient: Client } = require("../../agent/mcp/client");
+        const { McpClient: Client } = require("../../agent/mcp/McpConnection");
 
         manager.clients.set(
             "broken",
@@ -1474,7 +1474,7 @@ async function main() {
 
     await test("a restricted server needs approval, a default one does not", async () => {
 
-        const { PolicyEngine } = require("../../agent/lib/policy");
+        const { PolicyEngine } = require("../../agent/policy");
 
         const engine =
             new PolicyEngine({
@@ -1523,7 +1523,7 @@ async function main() {
 
     await test("MCP_APPROVAL can tighten every call, and never loosens a denial", async () => {
 
-        const { PolicyEngine } = require("../../agent/lib/policy");
+        const { PolicyEngine } = require("../../agent/policy");
 
         const engine =
             new PolicyEngine({
@@ -1630,10 +1630,10 @@ async function main() {
         await manager.remove("semantic-engine", { persist: false });
     });
 
-    await test("the old lib path still resolves to the moved module", async () => {
+    await test("the canonical semantic module is shared by the MCP layer", async () => {
 
         assert.equal(
-            require("../../agent/lib/semantic"),
+            require("../../agent/mcp/semantic"),
             require("../../agent/mcp/semantic")
         );
 
@@ -1649,7 +1649,7 @@ async function main() {
         ) {
 
             assert.equal(
-                typeof require("../../agent/lib/semantic")[name],
+                typeof require("../../agent/mcp/semantic")[name],
                 "function",
                 `${name} was lost in the move`
             );

@@ -1,108 +1,67 @@
 /*
-|--------------------------------------------------------------------------
-| Console main (EXECUTION_PLAN Phase 24 گام ۲)
-|--------------------------------------------------------------------------
-| Entry point: the page's wiring, then the three calls that start the console.
-|
-| Every listener here is one line; handler bodies live with the feature they
-| belong to, so reading the wiring does not mean reading the console.
-|
-| index.html loads modal.js as a classic script and this file as a module —
-| module scripts are deferred, so the DOM is complete before the wiring runs.
-|--------------------------------------------------------------------------
-*/
+ * Browser ESM entry point — EXECUTION_PLAN Phase 24.
+ *
+ * The canonical renderer is loaded through an explicit dependency graph;
+ * domain modules remain separately testable and the browser has no build step.
+ */
 
-import { el } from "./dom.js";
-import { openEventsModal, openExecutionModal } from "./modal-manager.js";
-import { openHistory } from "./history-view.js";
-import { openMcp } from "./mcp-view.js";
-import { toggleDiscussionMode } from "./discussion-view.js";
-import { openApprovalModal } from "./approvals-view.js";
-import { applyLogFilter } from "./event-view.js";
-import { loadSettings } from "./api.js";
-import { connect } from "./event-stream.js";
-import { openSettings } from "./settings-view.js";
-import { cancelCurrentRun, clearConversation, setAutoContinue, submitTaskForm } from "./task-runner.js";
-import { initProjects } from "./project-switcher.js";
-import { approvalState, eventState } from "./store.js";
+import { createStore } from "./store.js";
+import { EventStream } from "./event-stream.js";
+import { TaskRunner } from "./task-runner.js";
+import * as api from "./api.js";
+import * as chat from "./chat.js";
+import * as execution from "./execution-view.js";
+import * as events from "./event-view.js";
+import * as settings from "./settings-view.js";
+import * as mcp from "./mcp-view.js";
+import * as history from "./history-view.js";
+import * as plan from "./plan-view.js";
+import * as modal from "./modal-manager.js";
+import * as project from "./project-state.js";
+import * as projectView from "./project-view.js";
+import * as runtimeState from "./runtime-state.js";
+import * as approvalState from "./approval-state.js";
+import * as dom from "./dom.js";
+import * as formatters from "./formatters.js";
+import * as direction from "./direction.js";
+import * as markdown from "./markdown.js";
 
-el("taskForm").addEventListener("submit", submitTaskForm);
+/* The renderer owns browser wiring; this bootstrap owns the dependency
+   graph and exposes the modules for diagnostics and extensions. */
+import "./console.js";
 
-el("cancelButton").addEventListener("click", cancelCurrentRun);
 
-el("clearButton").addEventListener("click", clearConversation);
+export const store = createStore();
+export const eventStream = new EventStream({
+  onSnapshot: snapshot => store.snapshot(snapshot),
+  onEvent: event => store.dispatch(event),
+  onError: () => {}
+});
+export const taskRunner = new TaskRunner({ store });
 
-el("autoContinue").addEventListener("change", setAutoContinue);
-
-el("clearLog").addEventListener("click", () => {
-
-    el("log").innerHTML = "";
-
-    /*
-    | The type list is built from the rows that exist, so emptying the
-    | list has to rebuild it or it would keep offering types that are
-    | no longer there.
-    */
-
-    applyLogFilter();
+export const modules = Object.freeze({
+  api,
+  chat,
+  execution,
+  events,
+  settings,
+  mcp,
+  history,
+  plan,
+  modal,
+  project,
+  projectView,
+  runtimeState,
+  approvalState,
+  dom,
+  formatters,
+  direction,
+  markdown,
+  store,
+  eventStream,
+  taskRunner
 });
 
-el("logFilter").addEventListener("input", event => {
-
-    eventState.logFilter =
-        event.target.value.trim().toLowerCase();
-
-    applyLogFilter();
-});
-
-el("logType").addEventListener("change", event => {
-
-    eventState.logType = event.target.value;
-
-    applyLogFilter();
-});
-
-el("approvalMode").addEventListener("change", event => {
-
-    fetch("/api/approval-mode", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: event.target.value })
-    });
-});
-
-el("settingsButton").addEventListener("click", openSettings);
-
-el("mcpButton").addEventListener("click", openMcp);
-
-el("historyButton").addEventListener("click", openHistory);
-
-el("executionButton").addEventListener("click", openExecutionModal);
-
-el("eventsButton").addEventListener("click", openEventsModal);
-
-el("discussionButton").addEventListener("click", toggleDiscussionMode);
-
-el("approvalsButton").addEventListener("click", () => {
-
-    if (!approvalState.approvalModal) {
-        openApprovalModal();
-    }
-});
-
-el("task").addEventListener("keydown", event => {
-
-    if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key === "Enter"
-    ) {
-
-        el("taskForm").requestSubmit();
-    }
-});
-
-connect();
-
-loadSettings();
-
-initProjects();
+if (typeof globalThis !== "undefined") {
+  globalThis.StructuredAIApp = modules;
+}

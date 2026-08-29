@@ -1,107 +1,74 @@
-/*
-|--------------------------------------------------------------------------
-| Visualizer graph-renderer (EXECUTION_PLAN Phase 25 گام ۱)
-|--------------------------------------------------------------------------
-| Drawing nodes and edges into the SVG.
-|
-| Shapes by node type, `type-<kind>` classes the stylesheet keys on, a dashed edge below 70% confidence, labels truncated for the box — and click/dblclick handlers bound to the node group itself, so selection and drill-down are one gesture away from the data that produced them.
-|--------------------------------------------------------------------------
-*/
+/* SVG graph renderer — EXECUTION_PLAN Phase 25. */
 
-import { svg } from "./page.js";
-import { state } from "./graph-store.js";
-import { drillDown } from "./graph-model.js";
-import { selectNode } from "./selection-state.js";
+import { confidenceOf, visibleEdges } from "./graph-model.js";
 
-export function renderGraph() {
-  svg.innerHTML = "";
+const SVG_NS = "http://www.w3.org/2000/svg";
 
-  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  g.setAttribute("id", "viewport");
-  g.setAttribute("transform", `translate(${state.zoom.panX}, ${state.zoom.panY}) scale(${state.zoom.scale})`);
-
-  // Render Edges
-  state.edges.forEach(edge => {
-    if (state.resolvedOnly && (edge.metadata?.confidence || 100) < 70) {
-      return;
-    }
-
-    const src = state.nodes.find(n => n.id === edge.source);
-    const tgt = state.nodes.find(n => n.id === edge.target);
-    if (!src || !tgt) return;
-
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const isSolid = (edge.metadata?.confidence || 100) >= 70;
-    path.setAttribute("class", `graph-edge ${isSolid ? "solid" : "dashed"}`);
-    path.setAttribute("data-source", edge.source);
-    path.setAttribute("data-target", edge.target);
-
-    const d = `M ${src.x} ${src.y} Q ${(src.x + tgt.x) / 2} ${(src.y + tgt.y) / 2 - 20} ${tgt.x} ${tgt.y}`;
-    path.setAttribute("d", d);
-    g.appendChild(path);
-  });
-
-  // Render Nodes
-  state.nodes.forEach(node => {
-    const nodeG = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    nodeG.setAttribute("class", `graph-node type-${node.type}`);
-    nodeG.setAttribute("id", `node-${node.id}`);
-    nodeG.setAttribute("transform", `translate(${node.x}, ${node.y})`);
-
-    let shape;
-    if (node.type === "module") {
-      shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      shape.setAttribute("x", "-80");
-      shape.setAttribute("y", "-30");
-      shape.setAttribute("width", "160");
-      shape.setAttribute("height", "60");
-      shape.setAttribute("rx", "8");
-      shape.setAttribute("fill", "#1c2128");
-      shape.setAttribute("stroke", "#8957e5");
-    } else if (node.type === "api") {
-      shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      shape.setAttribute("points", "-60,-24 60,-24 75,0 60,24 -60,24 -75,0");
-      shape.setAttribute("fill", "#1c2128");
-      shape.setAttribute("stroke", "#d29922");
-    } else if (node.type === "workflow") {
-      shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      shape.setAttribute("points", "0,-30 70,0 0,30 -70,0");
-      shape.setAttribute("fill", "#1c2128");
-      shape.setAttribute("stroke", "#db6d28");
-    } else {
-      shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      shape.setAttribute("x", "-70");
-      shape.setAttribute("y", "-22");
-      shape.setAttribute("width", "140");
-      shape.setAttribute("height", "44");
-      shape.setAttribute("rx", node.type === "class" ? "12" : "4");
-      shape.setAttribute("fill", "#161b22");
-      shape.setAttribute("stroke", node.type === "class" ? "#2ea043" : "#388bfd");
-    }
-
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.textContent = truncate(node.label, 18);
-
-    nodeG.appendChild(shape);
-    nodeG.appendChild(text);
-
-    nodeG.addEventListener("click", e => {
-      e.stopPropagation();
-      selectNode(node.id);
-    });
-
-    nodeG.addEventListener("dblclick", e => {
-      e.stopPropagation();
-      drillDown(node);
-    });
-
-    g.appendChild(nodeG);
-  });
-
-  svg.appendChild(g);
+function truncate(value, length = 18) {
+  const text = String(value || "");
+  return text.length <= length ? text : `${text.slice(0, length - 1)}…`;
 }
 
-export function truncate(str, len = 20) {
-  if (!str) return "";
-  return str.length <= len ? str : str.slice(0, len - 1) + "…";
+function shapeFor(node) {
+  if (node.type === "module") return ["rect", { x: -80, y: -30, width: 160, height: 60, rx: 8, fill: "#1c2128", stroke: "#8957e5" }];
+  if (node.type === "api") return ["polygon", { points: "-60,-24 60,-24 75,0 60,24 -60,24 -75,0", fill: "#1c2128", stroke: "#d29922" }];
+  if (node.type === "workflow") return ["polygon", { points: "0,-30 70,0 0,30 -70,0", fill: "#1c2128", stroke: "#db6d28" }];
+  return ["rect", { x: -70, y: -22, width: 140, height: 44, rx: node.type === "class" ? 12 : 4, fill: "#161b22", stroke: node.type === "class" ? "#2ea043" : "#388bfd" }];
+}
+
+export class GraphRenderer {
+  constructor({ svg, onSelect, onDrillDown } = {}) {
+    this.svg = svg;
+    this.onSelect = onSelect || (() => {});
+    this.onDrillDown = onDrillDown || (() => {});
+  }
+
+  render(nodes, edges, { resolvedOnly = false, zoom = { scale: 1, panX: 0, panY: 0 } } = {}) {
+    if (!this.svg) return;
+    this.svg.replaceChildren();
+    const viewport = document.createElementNS(SVG_NS, "g");
+    viewport.id = "viewport";
+    viewport.setAttribute("transform", `translate(${zoom.panX}, ${zoom.panY}) scale(${zoom.scale})`);
+
+    visibleEdges(edges, resolvedOnly).forEach(edge => {
+      const source = nodes.find(node => node.id === edge.source);
+      const target = nodes.find(node => node.id === edge.target);
+      if (!source || !target) return;
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("class", `graph-edge ${confidenceOf(edge) >= 70 ? "solid" : "dashed"}`);
+      path.dataset.source = edge.source;
+      path.dataset.target = edge.target;
+      path.setAttribute("d", `M ${source.x || 0} ${source.y || 0} Q ${((source.x || 0) + (target.x || 0)) / 2} ${((source.y || 0) + (target.y || 0)) / 2 - 20} ${target.x || 0} ${target.y || 0}`);
+      viewport.appendChild(path);
+    });
+
+    nodes.forEach(node => {
+      const group = document.createElementNS(SVG_NS, "g");
+      group.setAttribute("class", `graph-node type-${node.type || "symbol"}`);
+      group.id = `node-${node.id}`;
+      group.setAttribute("transform", `translate(${node.x || 0}, ${node.y || 0})`);
+      const [tag, attributes] = shapeFor(node);
+      const shape = document.createElementNS(SVG_NS, tag);
+      Object.entries(attributes).forEach(([key, value]) => shape.setAttribute(key, String(value)));
+      const text = document.createElementNS(SVG_NS, "text");
+      text.textContent = truncate(node.label);
+      group.append(shape, text);
+      group.addEventListener("click", event => {
+        event.stopPropagation();
+        this.onSelect(node.id);
+      });
+      group.addEventListener("dblclick", event => {
+        event.stopPropagation();
+        this.onDrillDown(node);
+      });
+      viewport.appendChild(group);
+    });
+
+    this.svg.appendChild(viewport);
+  }
+
+  transform(zoom) {
+    const viewport = this.svg?.querySelector("#viewport");
+    if (viewport) viewport.setAttribute("transform", `translate(${zoom.panX}, ${zoom.panY}) scale(${zoom.scale})`);
+  }
 }

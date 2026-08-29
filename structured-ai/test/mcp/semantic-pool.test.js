@@ -55,17 +55,17 @@ const resolver =
     require(path.join(ROOT, "agent", "mcp", "ProjectSemanticResolver.js"));
 
 const legacySemantic =
-    require(path.join(ROOT, "agent", "lib", "semantic.js"));
+    require(path.join(ROOT, "agent", "mcp", "semantic"));
 
 const { pool } =
     require(path.join(ROOT, "agent", "mcp", "SemanticClientPool.js"));
 
 const tools = require(path.join(ROOT, "agent", "tools", "index.js"));
-const skills = require(path.join(ROOT, "agent", "tools", "skills.js"));
-const code = require(path.join(ROOT, "agent", "tools", "code.js"));
+const skills = require(path.join(ROOT, "agent", "tools", "skills"));
+const code = require(path.join(ROOT, "agent", "tools", "code"));
 const codeTools = code;
 
-const settings = require(path.join(ROOT, "agent", "lib", "storage.js"));
+const settings = require(path.join(ROOT, "agent", "config"));
 
 const { runManager } =
     require(path.join(ROOT, "agent", "runtime", "index.js"));
@@ -301,53 +301,34 @@ async function main() {
     const endpointDead = "http://127.0.0.1:9/mcp/prj-dead";
 
 
-    await test("SEMANTIC_POOL_MODE defaults to legacy routing", async () => {
+    await test("canonical semantic routing keeps workspace local and isolates foreign projects", async () => {
 
-        assert.equal(settings.get("SEMANTIC_POOL_MODE"), "legacy");
-        assert.equal(resolver.poolMode(), "legacy");
-
-        /* every context shape resolves to THE historical client object */
+        assert.throws(() => settings.definitionOf("SEMANTIC_POOL_MODE"), /Unknown setting/);
 
         const unscoped = ToolContext.from({ agent: "test" });
+        assert.strictEqual(resolver.semanticFor(unscoped), legacySemantic);
 
-        assert.strictEqual(
-            resolver.semanticFor(unscoped),
-            legacySemantic,
-            "unscoped context must keep the process-wide client"
+        const workspaceScoped = ToolContext.from(
+            toolContextFor("default-ws", WORKSPACE, null)
         );
-
-        const workspaceScoped =
-            ToolContext.from(
-                toolContextFor("default-ws", WORKSPACE, endpointA)
-            );
-
         assert.strictEqual(
             resolver.semanticFor(workspaceScoped),
             legacySemantic,
-            "a workspace-rooted project in legacy mode keeps the same client"
+            "a workspace-rooted project without a remote endpoint uses the local index"
         );
 
-        /* a foreign root in legacy mode must stay a loud error, not a
-           silent answer from the wrong index (Phase-4 gate semantics,
-           now owned by the resolver) */
-
-        assert.throws(
-            () =>
-                resolver.semanticFor(
-                    ToolContext.from(
-                        toolContextFor("prj-b", ROOT_B, endpointB)
-                    )
-                ),
-            /not yet project-aware/,
-            "foreign root without SEMANTIC_POOL_MODE=modular"
+        const foreignScoped = ToolContext.from(
+            toolContextFor("prj-b", ROOT_B, endpointB)
         );
+        const foreignClient = resolver.semanticFor(foreignScoped);
+        assert.equal(foreignClient.projectId, "prj-b");
+        assert.notStrictEqual(foreignClient, legacySemantic);
 
     });
 
-
     await test("stub gateway serves the /mcp/:projectId contract distinctly", async () => {
 
-        await withEnv({ SEMANTIC_POOL_MODE: "modular" }, async () => {
+        await withEnv({}, async () => {
 
             const clientA =
                 pool.connect({
@@ -384,7 +365,7 @@ async function main() {
 
     await test("modular pool: code tools route to the context's project only", async () => {
 
-        await withEnv({ SEMANTIC_POOL_MODE: "modular" }, async () => {
+        await withEnv({}, async () => {
 
             const ctxA = toolContextFor("prj-a", ROOT_A, endpointA);
             const ctxB = toolContextFor("prj-b", ROOT_B, endpointB);
@@ -449,7 +430,7 @@ async function main() {
 
     await test("a down worker degrades only its own project", async () => {
 
-        await withEnv({ SEMANTIC_POOL_MODE: "modular" }, async () => {
+        await withEnv({}, async () => {
 
             const ctxDead =
                 toolContextFor("prj-dead", ROOT_MISSING, endpointDead);
@@ -496,7 +477,7 @@ async function main() {
 
     await test("missing endpoint matrix in modular mode", async () => {
 
-        await withEnv({ SEMANTIC_POOL_MODE: "modular" }, async () => {
+        await withEnv({}, async () => {
 
             /* foreign root, no endpoint: per-project controlled
                unavailability, never a detour to another index */
@@ -560,7 +541,7 @@ async function main() {
 
     await test("index sessions and run scope are pinned to their project", async () => {
 
-        await withEnv({ SEMANTIC_POOL_MODE: "modular" }, async () => {
+        await withEnv({}, async () => {
 
             const ctxA = toolContextFor("prj-a", ROOT_A, endpointA);
             const ctxB = toolContextFor("prj-b", ROOT_B, endpointB);
@@ -656,7 +637,7 @@ async function main() {
 
     await test("result caching is keyed by projectId and index generation", async () => {
 
-        await withEnv({ SEMANTIC_POOL_MODE: "modular" }, async () => {
+        await withEnv({}, async () => {
 
             const ctxA = toolContextFor("prj-a", ROOT_A, endpointA);
             const ctxTwin =
@@ -722,7 +703,7 @@ async function main() {
 
     await test("endpoint swap via registry + pool.reload suffices", async () => {
 
-        await withEnv({ SEMANTIC_POOL_MODE: "modular" }, async () => {
+        await withEnv({}, async () => {
 
             const id = "prj-d";
 
@@ -783,7 +764,7 @@ async function main() {
 
         const conditionalSkill = { requires: { mcp_server: "semantic-engine" } };
 
-        /* legacy mode: the historical workspace-wide probe */
+        /* unscoped mode: the workspace-wide local-engine probe */
 
         assert.equal(
             skills._isActiveSkill(conditionalSkill),
@@ -791,10 +772,7 @@ async function main() {
         );
 
         await withEnv(
-            {
-                SEMANTIC_POOL_MODE: "modular",
-                RUN_CONTEXT_MODE: "modular"
-            },
+            {},
             async () => {
 
                 const withEndpoint =

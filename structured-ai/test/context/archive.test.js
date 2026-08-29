@@ -10,11 +10,11 @@ const WORKSPACE =
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
-const settings = require("../../agent/lib/storage");
-const archive = require("../../agent/lib/archive");
+const settings = require("../../agent/config");
+const archive = require("../../agent/persistence/ArchiveRepository");
 const tools = require("../../agent/tools");
 
-const { findExchanges } = require("../../agent/lib/context");
+const { findExchanges } = require("../../agent/context");
 
 const results = [];
 
@@ -583,7 +583,7 @@ async function main() {
         reset();
 
         const { compactConversation } =
-            require("../../agent/lib/context");
+            require("../../agent/context");
 
         const messages =
             buildRun({ count: 6, size: 4000 });
@@ -670,7 +670,7 @@ async function main() {
 
         reset();
 
-        const memoryStore = require("../../agent/lib/memory");
+        const memoryStore = require("../../agent/context/Memory");
 
         const memory = memoryStore.emptyMemory();
 

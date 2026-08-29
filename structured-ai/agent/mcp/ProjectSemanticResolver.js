@@ -1,9 +1,8 @@
 const fs = require("fs");
 
-const settings = require("../lib/storage");
-const { WORKSPACE_ROOT, realpath } = require("../lib/workspace");
+const { WORKSPACE_ROOT, realpath } = require("../context/WorkspaceBoundary");
 
-const legacy = require("./semantic");
+const localEngine = require("./semantic");
 const { pool } = require("./SemanticClientPool");
 
 
@@ -15,41 +14,14 @@ const { pool } = require("./SemanticClientPool");
 | Phase 6 of EXECUTION_PLAN: the one place that answers "which semantic
 | client serves THIS context". Routing rules, in order:
 |
-|   SEMANTIC_POOL_MODE=legacy (default)
-|     → the historical process-wide client from mcp/semantic.js, always.
-|       A scoped context rooted OUTSIDE the workspace still fails loudly
-|       (the Phase-4 pending-gate semantics the code family used to rely
-|       on): silently answering a foreign root's query from the
-|       workspace index is the exact mis-scoping this plan exists to
-|       remove.
-|
-|   SEMANTIC_POOL_MODE=modular, unscoped context
-|     → the legacy client. There is no project, so nothing to route.
-|
-|   SEMANTIC_POOL_MODE=modular, scoped context
-|     → the pool client keyed by the context's projectId, built from the
-|       ProjectContext fields (endpoint from the registry record).
-|     → a scoped project on the workspace root WITHOUT an endpoint keeps
-|       the legacy client: its index IS the workspace index, so the
-|       local engine answers for exactly the right tree (isolation is
-|       vacuous there).
-|     → a scoped foreign-root project WITHOUT an endpoint gets a pool
-|       client in permanent "unavailable" state: controlled, per-project
-|       degradation instead of a silent detour to another index.
+| Unscoped callers use the local engine because no project route is
+| necessary. A scoped workspace project without a remote endpoint also
+| uses that local engine because its index is exactly the active tree.
+| Every other scoped project is routed through a pool client keyed by its
+| project id; a missing endpoint degrades only that project.
 |
 |--------------------------------------------------------------------------
 */
-
-
-function poolMode() {
-
-    return (
-        settings.get("SEMANTIC_POOL_MODE") === "modular"
-            ? "modular"
-            : "legacy"
-    );
-
-}
 
 
 function canonicalRoot(root) {
@@ -89,27 +61,8 @@ function semanticFor(context) {
 
     const scoped = Boolean(context && context.scoped);
 
-    if (poolMode() !== "modular") {
-
-        if (scoped && !context.sharesWorkspaceRoot()) {
-
-            throw new Error(
-                "Semantic code tools are not yet project-aware in legacy " +
-                `pool mode and cannot run on project "${context.projectId}" ` +
-                "rooted outside this process workspace (the workspace-wide " +
-                "engine would answer for the wrong index). Use " +
-                "SEMANTIC_POOL_MODE=modular with a semanticEndpoint per " +
-                "project, or a workspace-rooted project."
-            );
-
-        }
-
-        return legacy;
-
-    }
-
     if (!scoped) {
-        return legacy;
+        return localEngine;
     }
 
     const project = context.project;
@@ -119,9 +72,9 @@ function semanticFor(context) {
         sharesWorkspaceRoot(project.workspaceRoot)
     ) {
 
-        /* The default, workspace-rooted project: the local engine
-           already indexes exactly this tree. */
-        return legacy;
+        /* The workspace-rooted project uses the local engine because its
+           index covers exactly the same tree. */
+        return localEngine;
 
     }
 
@@ -133,18 +86,16 @@ function semanticFor(context) {
 
 }
 
-
 /* Would the semantic capability be active for this project? Set-based,
    never a network call — prompts are built synchronously. Mirrors the
    routing of semanticFor so the skill gate and the tools agree. */
 function isEndpointActiveFor(project) {
 
-    if (poolMode() !== "modular" || !project) {
-        return legacy.isAvailable() === true;
+    if (!project) {
+        return localEngine.isAvailable() === true;
     }
 
     const root =
-
         project.workspaceRoot ??
         project.rootPath ??
         null;
@@ -154,13 +105,12 @@ function isEndpointActiveFor(project) {
     }
 
     if (root && sharesWorkspaceRoot(root)) {
-        return legacy.isAvailable() === true;
+        return localEngine.isAvailable() === true;
     }
 
     return false;
 
 }
-
 
 /* run:started baggage for the owning run's project alone: availability
    and index state as seen by that project, not the process-wide engine
@@ -168,16 +118,14 @@ function isEndpointActiveFor(project) {
    information). */
 function startRunScope(runId) {
 
-    if (poolMode() === "modular" && runId) {
+    if (runId) {
 
         const { runManager } = require("../runtime");
-
         const run = runManager.get(runId);
 
         if (run && run.project) {
 
             const client =
-
                 pool.connect({
                     projectId: run.projectId ?? run.project.projectId,
                     workspaceRoot: run.project.workspaceRoot,
@@ -194,15 +142,14 @@ function startRunScope(runId) {
 
     }
 
-    return legacy.startRunScope();
+    return localEngine.startRunScope();
 
 }
-
 
 /* process shutdown: close the pool alongside the legacy single client. */
 function shutdown() {
 
-    legacy.shutdown();
+    localEngine.shutdown();
 
     void pool.disconnectAll().catch(() => {});
 
@@ -210,7 +157,6 @@ function shutdown() {
 
 
 module.exports = {
-    poolMode,
     semanticFor,
     isEndpointActiveFor,
     startRunScope,

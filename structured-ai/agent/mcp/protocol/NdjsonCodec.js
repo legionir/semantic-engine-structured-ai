@@ -29,7 +29,7 @@ function takeLine(buffer, onDiagnostic) {
         */
 
         const ceiling =
-            require("../../lib/storage").get("MCP_MAX_MESSAGE_BYTES");
+            require("../../config").get("MCP_MAX_MESSAGE_BYTES");
 
         if (buffer.length > ceiling) {
 

@@ -297,7 +297,7 @@ async function main() {
             /text\/html/
         );
 
-        for (const asset of ["/app.css", "/app.js", "/modal.js"]) {
+        for (const asset of ["/app.css", "/app/main.js", "/modal.js"]) {
 
             const response =
                 await fetch(`${baseUrl}${asset}`);
@@ -353,7 +353,7 @@ async function main() {
                             }
                         ]
                     })
-                    : finalAction("one file, app.js")
+                    : finalAction("one file, console renderer")
             );
 
         process.env.AGENT_BASE_URL =

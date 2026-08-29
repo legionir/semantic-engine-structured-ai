@@ -2,7 +2,6 @@
 
 const assert = require("assert");
 const path = require("path");
-const { pathToFileURL } = require("url");
 
 /*
 | The console has no build step and no framework, so its behaviour is
@@ -702,7 +701,7 @@ async function main() {
 
     console.log("\nconsole rendering");
 
-    const console_ = await loadConsole();
+    const console_ = loadConsole();
 
     await test("an agent says who it belongs to and how deep it sits", () => {
 
@@ -2322,11 +2321,11 @@ async function main() {
 
 
 /*
-| Loads the real app.js against the shim, with the ids index.html
+| Loads the canonical console renderer against the shim, with the ids index.html
 | provides and stubs for the two browser APIs it uses.
 */
 
-async function loadConsole() {
+function loadConsole() {
 
     for (const id of [
         "statusDot", "statusText", "workspace", "model", "turns",
@@ -2536,17 +2535,8 @@ async function loadConsole() {
         close() {}
     };
 
-    /*
-    | The console is a native ES module graph now (phase 24). import() is the one
-    | form every supported Node has — require() of an ESM file needs 20.19+, and
-    | engines.node still says >=18 — and pathToFileURL because a bare path is not
-    | a URL on Windows. The assertions below are untouched: the console is loaded
-    | the same way the browser loads it, and nothing here knows or cares which
-    | file the behaviour is defined in.
-    */
-
-    await import(
-        pathToFileURL(path.join(__dirname, "..", "..", "web", "public", "app.js")).href
+    require(
+        path.join(__dirname, "..", "..", "web", "public", "app", "console.js")
     );
 
     return {

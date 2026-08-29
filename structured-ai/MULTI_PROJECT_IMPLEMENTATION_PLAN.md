@@ -1,12 +1,14 @@
 # برنامهٔ پیاده‌سازی Multi-Project در Structured AI
 
-> **سند حاکم بر اجرا:** پلن نهایی و وضعیت اجرایی همه فازها در [EXECUTION_PLAN.md](EXECUTION_PLAN.md) مستند شده و تمام فازهای آن به وضعیت 🟢 رسیده‌اند.
-
 **وضعیت:** برنامهٔ اجرایی  
 **تاریخ:** 2026-08-24  
 **پروژه:** `structured-ai`
 
 ---
+
+> **Execution status and verification:** the implementation is tracked in
+> [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md), including the Phase 30 canonical
+> rollout and final acceptance evidence.
 
 ## ۱. هدف
 

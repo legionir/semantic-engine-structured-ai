@@ -18,7 +18,7 @@
 |--------------------------------------------------------------------------
 */
 
-const settings = require("../lib/storage");
+const settings = require("../config");
 
 const { jsonSystem, joinSections } = require("./PromptMessages");
 

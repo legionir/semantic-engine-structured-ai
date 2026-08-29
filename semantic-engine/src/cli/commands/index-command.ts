@@ -12,11 +12,18 @@ import { createExtractors } from '../../pipeline/ExtractorFactory';
 import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { GitInfoCollector } from '../../core/git';
 import { VectorIndexer } from '../../vector/VectorIndexer';
-import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { HashingEmbeddingGenerator as FallbackHashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
+import { IEmbeddingGenerator } from '../../vector/EmbeddingGenerator';
+import {
+  createEmbeddingGeneratorFromArgs,
+  embeddingRequested,
+} from '../embeddingFromArgs';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
 import { normalizeWorkspaceRoot, PROJECT_OUTPUT_DIR } from '../../core/config/ProjectPaths';
+import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
+import { projectPathsFromArgs } from '../projectPathsFromArgs';
 
 export const DEFAULT_OUTPUT_DIR = PROJECT_OUTPUT_DIR;
 
@@ -31,10 +38,26 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
     };
   }
 
-  const outputDir = path.resolve(
-    root,
-    stringOption(args.options, 'out') ?? DEFAULT_OUTPUT_DIR
-  );
+  /*
+  | مسیر artifact فقط از `resolveProjectPaths` می‌آید. `--out` صریح همان معنای
+  | قبلی را دارد (`path.resolve(root, out)`)، پس یک `--out` مطلق امروز و فردا
+  | یک کار می‌کند؛ فقط پیش‌فرض است که با
+  | `SEMANTIC_ENGINE_ARTIFACT_LOCATION=external` به data directory می‌رود.
+  */
+  const projectPaths = projectPathsFromArgs(args, root);
+  const outputDir = projectPaths.artifactRoot;
+
+  /*
+  | پیش از هر خواندن/نوشتن: اگر artifact قدیمی داخل root باشد و مقصد بیرون،
+  | یک بار کپی می‌شود (بدون حذف legacy). در حالت `in-root` این فراخوانی عمداً
+  | هیچ کاری نمی‌کند.
+  */
+  const migration = migrateLegacyArtifacts({
+    workspaceRoot: root,
+    projectId: projectPaths.projectId,
+    location: projectPaths.location,
+    dataRoot: projectPaths.dataRoot,
+  });
 
   const wantsBlueprint = boolOption(args.options, 'blueprint', true);
   const wantsGit = boolOption(args.options, 'git', true);
@@ -58,11 +81,13 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       previousIndex = null;
     }
   }
-  const wantsVectors = boolOption(
-    args.options,
-    'vectors',
-    Boolean(previousIndex?.vectorChunks)
-  );
+  /*
+  | `--embedding-provider` صریح یعنی کاربر embedding می‌خواهد، پس vectorها هم
+  | روشن می‌شوند؛ در غیر این صورت همان رفتار قبلی (flag یا ایندکس قبلی).
+  */
+  const wantsVectors =
+    boolOption(args.options, 'vectors', Boolean(previousIndex?.vectorChunks)) ||
+    (embeddingRequested(args) && boolOption(args.options, 'vectors', true));
   const pretty = boolOption(args.options, 'pretty', true);
   /*
   | diagnostics زبان‌سرور (فاز ۳۴) — پیش‌فرض خاموش، چون هزینه‌اش واقعی است:
@@ -71,6 +96,14 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
   */
   const wantsLspDiagnostics = boolOption(args.options, 'lspDiagnostics', false);
   const diagnosticsBudget = stringOption(args.options, 'diagnosticsBudget');
+
+  /*
+  | یک بار و پیش از scan ساخته می‌شود تا خطای provider یا کلید API همان‌جا
+  | دیده شود، نه بعد از خواندن کل مخزن.
+  */
+  const embeddingGenerator: IEmbeddingGenerator | undefined = wantsVectors
+    ? createEmbeddingGeneratorFromArgs(args) ?? new FallbackHashingEmbeddingGenerator()
+    : undefined;
 
   const extractors = createExtractors({
     workspaceRoot: root,
@@ -98,7 +131,7 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
       */
       gitCollector: wantsGit ? new GitInfoCollector(root) : null,
       vectorIndexer: wantsVectors
-        ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
+        ? new VectorIndexer({ embeddingGenerator })
         : null,
       ...(previousIndex?.vectorChunks
         ? { previousVectorChunks: previousIndex.vectorChunks }
@@ -128,6 +161,11 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
         durationMs: stats.durationMs,
         indexPath: written.indexPath,
         blueprintPath: written.blueprintPath,
+        artifactRoot: outputDir,
+        artifactLocation: projectPaths.location,
+        ...(migration.migrated
+          ? { migratedFrom: migration.from, migrationMode: 'copy-readonly-legacy' }
+          : {}),
       },
       text:
         `indexed ${stats.files} files, ${stats.symbols} symbols in ${stats.durationMs}ms\n` +

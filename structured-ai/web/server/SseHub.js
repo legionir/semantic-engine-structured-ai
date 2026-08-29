@@ -1,141 +1,103 @@
 "use strict";
 
+const { sendSseHeaders, writeSse } = require("./Response");
+
+
 /*
 |--------------------------------------------------------------------------
-| Web console stream hub (EXECUTION_PLAN Phase 23 گام ۲)
+| SSE hub — EXECUTION_PLAN Phase 23
 |--------------------------------------------------------------------------
-| Who is watching, and what each of them is allowed to see.
 |
-| `broadcast` is the single funnel every runtime event passes on its way to
-| the browser: it stamps the plan onto the events that carry one, records
-| the event for replay, keeps the ring buffer capped, and writes each
-| visible client. `eventForClient` is the boundary the multi-project console
-| depends on: a project stream gets only its project's payload, a scoped
-| token gets aggregate metadata for an event without a project, and a
-| client that may not see an event gets `null` rather than a redacted copy.
-|
-| A write that throws drops the client instead of failing the run — the
-| original does that and a broadcast must not be able to break a task.
+| Keeps client lifecycle and keep-alives out of route/controller code. The
+| event transformer is per client so project authorization/filtering remains
+| enforced for every live event and not only for the initial snapshot.
 |--------------------------------------------------------------------------
 */
 
-const consoleAuth = require("../../agent/lib/consoleAuth");
+class SseHub {
 
-function createSseHub(ctx) {
+    constructor({ clients, keepAliveMs = 15_000 } = {}) {
+        this.clients = clients || new Set();
+        this.keepAliveMs = keepAliveMs;
+        this.timers = new Map();
+    }
 
-    const { runtime, state, clients } = ctx;
 
-    function broadcast(rawEvent) {
+    attach(req, res, client, snapshot) {
 
-        const carriesPlan =
-            rawEvent.type === "run:start" ||
-            rawEvent.type === "run:status" ||
-            rawEvent.type === "run:continue" ||
-            rawEvent.type === "plan:autoroute:end" ||
-            (
-                rawEvent.type === "tool:end" &&
-                rawEvent.success === true &&
-                ["plan_set", "plan_update"].includes(rawEvent.name)
-            );
+        sendSseHeaders(res);
+        writeSse(res, snapshot);
+        this.clients.add(client);
 
-        const event =
-            ctx.forStream(
-                carriesPlan
-                    ? {
-                        ...rawEvent,
-                        plan: runtime.currentPlanView()
-                    }
-                    : rawEvent
-            );
+        const timer = setInterval(
+            () => {
+                try {
+                    res.write(": ping\n\n");
+                } catch {
+                    this.remove(client);
+                }
+            },
+            this.keepAliveMs
+        );
 
-        state.events.push(event);
+        this.timers.set(client, timer);
 
-        /*
-        | Stored in the same shape the browser received, so replaying a
-        | session redraws exactly what the live run drew.
-        */
+        req.on("close", () => this.remove(client));
+        return client;
+    }
 
-        if (
-            ctx.settings.sessionsEnabled() &&
-            event.type !== "session:message" &&
-            event.type !== "session:switched"
-        ) {
 
-            state.session.events.push(event);
+    remove(client) {
+
+        const timer = this.timers.get(client);
+
+        if (timer) {
+            clearInterval(timer);
+            this.timers.delete(client);
         }
 
-        while (state.events.length > ctx.settings.maxConsoleEvents()) {
-            state.events.shift();
-        }
+        this.clients.delete(client);
+    }
 
-        for (const client of [...clients]) {
 
-            const visible =
-                eventForClient(event, client);
+    broadcast(event, transform = value => value) {
+
+        for (const client of [...this.clients]) {
+
+            const visible = transform(event, client);
 
             if (!visible) {
                 continue;
             }
 
-            const payload =
-                `data: ${JSON.stringify(visible)}\n\n`;
-
             try {
-
-                client.res.write(payload);
-
+                writeSse(client.res, visible);
             } catch {
-
-                clients.delete(client);
+                this.remove(client);
             }
         }
     }
 
-    function eventForClient(event, client) {
 
-        if (!client) {
-            return event;
-        }
+    close() {
 
-        const visibleOnProjectStream =
-            runtime.events.visibleOnProjectStream;
-
-        const aggregateMetadata =
-            runtime.events.aggregateMetadata;
-
-        if (client.projectId) {
-
-            return typeof visibleOnProjectStream === "function"
-                ? visibleOnProjectStream(event, client.projectId)
-                : (event.project_id === client.projectId ? event : null);
-        }
-
-        if (
-            client.claims &&
-            !consoleAuth.allowsAllProjects(client.claims)
-        ) {
-
-            if (
-                event.project_id &&
-                !consoleAuth.allowsProject(client.claims, event.project_id)
-            ) {
-                return null;
-            }
-
-            if (!event.project_id && typeof aggregateMetadata === "function") {
-                return aggregateMetadata(event);
+        for (const client of [...this.clients]) {
+            this.remove(client);
+            try {
+                client.res.end();
+            } catch {
+                /* already closed */
             }
         }
-
-        return event;
     }
 
-    return {
-        broadcast,
-        eventForClient
-    };
+
+    size() {
+        return this.clients.size;
+    }
 }
 
+
 module.exports = {
-    createSseHub
+    SseHub
 };

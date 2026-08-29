@@ -1,35 +1,25 @@
 "use strict";
 
 const path = require("path");
-const { REPO_ROOT, fail, EXIT } = require("./ArgParser");
 
-/*
-|--------------------------------------------------------------------------
-| CLI Interactive Command — EXECUTION_PLAN Phase 26
-|--------------------------------------------------------------------------
-|
-| Launches an interactive agent REPL session where history is preserved
-| across multiple tasks and approvals are answered inline.
-|--------------------------------------------------------------------------
-*/
+/* Interactive command — EXECUTION_PLAN Phase 26. */
 
 class InteractiveCommand {
+    constructor({ repoRoot } = {}) {
+        this.repoRoot = repoRoot || path.resolve(__dirname, "../..");
+    }
 
-    static async execute(runtime, options) {
-
+    async execute(runtime, options = {}) {
         if (options.json) {
-            fail("--json cannot be combined with --interactive");
+            const error = new Error("--json cannot be combined with --interactive");
+            error.exitCode = 2;
+            throw error;
         }
-
-        const { startSession } =
-            require(path.join(REPO_ROOT, "agent", "interactive"));
-
-        const code =
-            await startSession(runtime, options);
-
-        return typeof code === "number" ? code : EXIT.SUCCESS;
+        const { startSession } = require(path.join(this.repoRoot, "agent", "interactive"));
+        return startSession(runtime, options);
     }
 }
+
 
 module.exports = {
     InteractiveCommand
