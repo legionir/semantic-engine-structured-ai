@@ -1,7 +1,6 @@
 # ادامهٔ ممیزی forensic — checkpoint 2026-09-15
 
 ## وضعیت
-
 - scope: `semantic-engine/` و `structured-ai/`
 - امنیت: عمداً خارج از scope
 - این فایل findings جدید حاصل از ادامهٔ بررسی پس از F-001 تا F-012 را ثبت می‌کند.
@@ -90,7 +89,7 @@ options.project must be a project record with id and rootPath (get it from proje
 ```js
 fs.writeFileSync(
     planPath(root),
-    `${JSON.stringify(plan, null, 2)}\\n`,
+    `${JSON.stringify(plan, null, 2)}\n`,
     "utf8"
 );
 ```
@@ -277,6 +276,7 @@ if (!job || job.projectId !== ctx.params.id) {
   return { status: 404, json: { error: `Job not found: ${ctx.params.jobId}` } };
 }
 ```
+
 - Problem: cancel فقط `jobId` را به manager می‌دهد و `ctx.params.id` را بررسی نمی‌کند.
 - Impact: route پروژهٔ A می‌تواند job پروژهٔ B را cancel کند؛ job ناشناخته نیز پاسخ `200/cancelled:false` می‌گیرد.
 
@@ -333,7 +333,7 @@ throw new Error('repoUrl must be a valid HTTPS or HTTP URL.');
 ```ts
 this.handleRequest(req, res).catch(error => {
   if (!res.headersSent) {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.writeHead(500, { 'Content-Type': 'application/json' },
 ```
 
 - Problem: validation failure به‌عنوان server failure طبقه‌بندی می‌شود.
