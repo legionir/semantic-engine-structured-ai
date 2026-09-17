@@ -763,3 +763,8 @@ function projectPath() {
 ## Batch checkpoint — 2026-09-17
 
 30 semantic-engine files were fully reviewed and moved from `درانتظار` to `کامل`; two confirmed findings (F-16, F-17) were added to the supplement. Evidence manifest: `semantic-batch-completed.txt`. Tests were not executed.
+
+
+## Batch 2 checkpoint — 2026-09-17
+
+30 additional semantic-engine files and 20 additional structured-ai files were directly reviewed. Findings F-18 and F-015 were recorded. No tests executed; static review only.
