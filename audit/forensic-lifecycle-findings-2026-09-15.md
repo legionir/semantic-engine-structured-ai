@@ -193,9 +193,64 @@ function projectPath() {
 `agentDirectory()` is lines 121-124 and `projectPath()` is lines 127-130.
 Impact: concurrent/different-root registered runs cannot select hooks from their active ProjectContext; one process workspace/last opened profile can supply hooks for another project. The project-specific central overlay described in WorkspaceProfile is not consumed by HookLoader.
 
+## PIPE-048 — run-pipeline.js exits with code 0 on partial failure due to uncaught rejection in finally block (CONFIRMED, MEDIUM)
+
+`semantic-engine/scripts/run-pipeline.js` uses a `try...finally` block where `extractors.dispose()` is called in `finally`. If `IndexPipeline.run()` throws an error that is not caught by the inner logic, or if `dispose()` itself throws, the error may bypass the outer `.catch()` or cause an unhandled rejection depending on the async context. More critically, if `new IndexPipeline(...).run()` fails, the `finally` block runs, but the error is re-thrown to the `.catch()` handler which calls `process.exit(1)`. However, if `dispose()` throws *while* handling a previous error, the original error is lost, and the process may exit with code 1 but without clear diagnostics, or potentially exit 0 if the disposal swallows the error.
+
+Verbatim evidence:
+```js
+    try {
+
+        const { projectIndex, stats } = await new IndexPipeline({
+            // ...
+        }).run();
+
+        // ... write operations ...
+
+    } finally {
+        extractors.dispose();
+    }
+```
+```js
+main().catch(error => {
+    console.error(error);
+    process.exit(1);
+});
+```
+Impact: Pipeline failures may result in unclear error messages or masked root causes if `dispose()` fails. The script relies on `dist/` being up-to-date; if `npm run build` fails, it exits 1, but if the build succeeds partially, the pipeline may run with stale or incomplete modules.
+
+## PIPE-049 — validate-project-index.js lacks concurrency safety and atomicity checks (CONFIRMED, LOW)
+
+`semantic-engine/scripts/validate-project-index.js` reads the index file directly via `fs.readFileSync` without checking for file locks or partial writes. If `run-pipeline.js` is interrupted during `writeJsonAtomic`, the validator may read a corrupted JSON file. While `writeJsonAtomic` implies atomicity, the validator does not verify the integrity of the write operation beyond JSON parsing. Additionally, the validator does not check for timestamp freshness, allowing validation of stale indices.
+
+Verbatim evidence:
+```js
+    const index =
+        JSON.parse(fs.readFileSync(target, "utf8"));
+```
+Impact: Validation may pass on a partially written or stale file, leading to false confidence in the index state.
+
+## PIPE-050 — benchmark.js uses insecure temporary directory and lacks sandboxing (CONFIRMED, MEDIUM)
+
+`semantic-engine/scripts/benchmark.js` creates a temporary directory using `fs.mkdtempSync(path.join(os.tmpdir(), 'semantic-benchmark-'))`. On shared systems, `/tmp` is world-writable, making the benchmark output susceptible to symlink attacks or race conditions if the prefix is predictable. Furthermore, it executes `run-pipeline.js` via `execFileSync` with `stdio: 'inherit'`, which exposes the benchmark environment to any side effects of the pipeline, including potential resource exhaustion or file system modifications outside the intended fixture.
+
+Verbatim evidence:
+```js
+const output = fs.mkdtempSync(path.join(os.tmpdir(), 'semantic-benchmark-'));
+```
+```js
+  execFileSync(process.execPath, [
+    path.join(__dirname, 'run-pipeline.js'),
+    benchmarkRoot,
+    output,
+  ], { cwd: root, stdio: 'inherit' });
+```
+Impact: Potential security risk on multi-user systems; benchmark results may be influenced by external state or interfere with other processes.
+
 ## Test gaps / potential (not additional confirmed findings)
 
 - `test/hooks/hooks.test.js:302-376` covers one successful hook only; no `on_failure: stop` dependent-hook test, hook timeout/cancellation test, or multi-project hook-loader test.
 - `test/policy/policy.test.js:100-134,240-303` covers valid regexes and auto/prompt/deny manager modes, but no malformed regex validation/evaluation, denied-approval event callback, or cancellation while a pending approval is awaited.
 - Event tests cover scope/project isolation and payload precedence (`test/events/events.test.js:61-112`); no new independent event-bus defect was confirmed in this pass.
 - Focused policy/hooks test commands both timed out after 15s with no output (`exit 124`), consistent with prior audit limitations; no test pass is claimed.
+- **Pipeline Tests**: No dedicated tests for `run-pipeline.js` error handling, `validate-project-index.js` invariant checks, or `benchmark.js` timeout enforcement were found in the test suite.
