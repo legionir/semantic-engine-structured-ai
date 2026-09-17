@@ -20,70 +20,32 @@ export class GetConfigUsageTool implements AiTool<GetConfigUsageInput> {
     properties: {
       key: { type: 'string', description: 'Filter by variable/config key (substring match)' },
       path: { type: 'string', description: 'Filter by relative file path' },
-      kind: {
-        type: 'string',
-        enum: ['env', 'config-get', 'dotenv', 'env-file-reference'],
-      },
+      kind: { type: 'string', enum: ['env', 'config-get', 'dotenv', 'env-file-reference'] },
       limit: { type: 'integer', default: 50 },
     },
-    required: ['key'],
+    anyOf: [{ required: ['key'] }, { required: ['path'] }, { required: ['kind'] }],
   };
 
   constructor(private readonly reader: ProjectIndexReader) {}
 
   async execute(input: GetConfigUsageInput): Promise<AiToolOutput> {
     try {
+      if (!input.key && !input.path && !input.kind) return { success: false, error: 'At least one of key, path, or kind is required', items: [] };
       const limit = input.limit ?? 50;
+      if (!Number.isInteger(limit) || limit < 1) return { success: false, error: 'limit must be a positive integer', items: [] };
       const keyFilter = input.key?.toLowerCase();
       const pathFilter = input.path?.toLowerCase();
-
-      const files = pathFilter
-        ? this.reader.getAllFiles().filter(f => f.path.toLowerCase().includes(pathFilter))
-        : this.reader.getAllFiles();
-
-      const items: {
-        id: string;
-        name: string;
-        kind: string;
-        path: string;
-        line: number;
-        source: string;
-        relevanceScore: number;
-        excerpt?: string;
-      }[] = [];
-
+      const files = pathFilter ? this.reader.getAllFiles().filter(f => f.path.toLowerCase().includes(pathFilter)) : this.reader.getAllFiles();
+      const items: { id: string; name: string; kind: string; path: string; line: number; source: string; relevanceScore: number; excerpt?: string }[] = [];
       for (const file of files) {
-        if (!file.configUsages || file.configUsages.length === 0) continue;
-
-        for (const usage of file.configUsages) {
+        for (const usage of file.configUsages ?? []) {
           if (input.kind && usage.kind !== input.kind) continue;
           if (keyFilter && !usage.key.toLowerCase().includes(keyFilter)) continue;
-
-          items.push({
-            id: `${file.id}:${usage.kind}:${usage.key}:${usage.line}`,
-            name: usage.key,
-            kind: usage.kind,
-            path: file.path,
-            line: usage.line,
-            source: `${file.path}:${usage.line}`,
-            relevanceScore: keyFilter && usage.key.toLowerCase() === keyFilter ? 1 : 0.7,
-            excerpt: usage.context,
-          });
+          items.push({ id: `${file.id}:${usage.kind}:${usage.key}:${usage.line}`, name: usage.key, kind: usage.kind, path: file.path, line: usage.line, source: `${file.path}:${usage.line}`, relevanceScore: keyFilter && usage.key.toLowerCase() === keyFilter ? 1 : 0.7, excerpt: usage.context });
         }
       }
-
       items.sort((a, b) => b.relevanceScore - a.relevanceScore);
-
-      return {
-        success: true,
-        items: items.slice(0, limit),
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-        items: [],
-      };
-    }
+      return { success: true, items: items.slice(0, limit) };
+    } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error), items: [] }; }
   }
 }

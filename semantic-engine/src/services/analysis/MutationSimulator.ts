@@ -14,13 +14,7 @@ export interface MutationAction {
 export interface BrokenReference {
   readonly callerId: string;
   readonly callerFile: string;
-  /**
-   * آنچه یک انسان می‌شناسد: مسیر فایل برای فراخوانِ سطح ماژول، یا
-   * «path:line → name» برای یک سمبل. `callerFile` برای نام‌های خارجی
-   * هنوز 'unknown' است و این فیلد همان‌جا هم چیزی برای نشان دادن دارد.
-   */
   readonly callerLabel: string;
-  /** سطر محل فراخوانی، اگر گراف آن را داشته باشد. */
   readonly callerLine?: number | null;
   readonly targetId: string;
   readonly relation: string;
@@ -39,39 +33,28 @@ export class MutationSimulator {
   simulate(graph: AnalysisGraph, action: MutationAction): MutationDiffResult {
     const brokenReferences: BrokenReference[] = [];
     let removedEdgesCount = 0;
-
     const incoming = graph.getIncomingEdges(action.targetSymbolId);
+    const recordBrokenReference = (edge: ReturnType<AnalysisGraph['getIncomingEdges']>[number]) => {
+      const callerNode = graph.getNode(edge.source);
+      brokenReferences.push({
+        callerId: edge.source,
+        callerFile: callerNode?.metadata?.path || 'unknown',
+        callerLabel: callerNode ? (callerNode.metadata?.path ?? callerNode.label) : edge.source,
+        callerLine: typeof edge.metadata?.line === 'number' ? edge.metadata.line : null,
+        targetId: action.targetSymbolId,
+        relation: edge.relation,
+      });
+    };
 
     if (action.type === 'delete_symbol') {
+      for (const edge of incoming) { removedEdgesCount++; recordBrokenReference(edge); }
+    } else if (action.type === 'rename_symbol' || action.type === 'move_symbol') {
+      // A move changes the symbol's qualified path. Every incoming reference
+      // must be re-bound by the eventual refactoring; otherwise it is broken.
       for (const edge of incoming) {
-        removedEdgesCount++;
-        const callerNode = graph.getNode(edge.source);
-        brokenReferences.push({
-          callerId: edge.source,
-          callerFile: callerNode?.metadata?.path || 'unknown',
-          callerLabel: callerNode ? (callerNode.metadata?.path ?? callerNode.label) : edge.source,
-          callerLine: typeof edge.metadata?.line === 'number' ? edge.metadata.line : null,
-          targetId: action.targetSymbolId,
-          relation: edge.relation,
-        });
-      }
-    } else if (action.type === 'rename_symbol') {
-      for (const edge of incoming) {
-        if (edge.relation === 'calls' || edge.relation === 'references') {
-          const callerNode = graph.getNode(edge.source);
-          brokenReferences.push({
-            callerId: edge.source,
-            callerFile: callerNode?.metadata?.path || 'unknown',
-            callerLabel: callerNode ? (callerNode.metadata?.path ?? callerNode.label) : edge.source,
-            callerLine: typeof edge.metadata?.line === 'number' ? edge.metadata.line : null,
-            targetId: action.targetSymbolId,
-            relation: edge.relation,
-          });
-        }
+        if (edge.relation === 'calls' || edge.relation === 'references' || edge.relation === 'imports' || action.type === 'move_symbol') recordBrokenReference(edge);
       }
     }
-
-    const isSafe = brokenReferences.length === 0;
 
     return {
       action,
@@ -79,7 +62,7 @@ export class MutationSimulator {
       brokenReferences,
       addedEdgesCount: 0,
       removedEdgesCount,
-      isSafe,
+      isSafe: brokenReferences.length === 0,
     };
   }
 }

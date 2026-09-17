@@ -15,7 +15,6 @@ export interface GetDependenciesInput extends AiToolInput {
   readonly limit?: number;
 }
 
-/** سقفِ عمق. در schema هم اعلام شده تا درخواستِ بزرگ‌تر رد شود، نه بریده. */
 const MAX_DEPTH = 3;
 
 export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
@@ -27,7 +26,7 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
       id: { type: 'string', description: 'fileId, symbolId, or indexed relative file path' },
       direction: { enum: ['forward', 'backward'], description: 'forward = this depends on others; backward = others depend on this' },
       level: { enum: ['file', 'symbol'], default: 'file', description: 'Resolution level' },
-      depth: { type: 'integer', default: 1, minimum: 1, maximum: 3, description: 'How many hops to traverse. Capped at 3; asking for more is rejected rather than silently reduced.' },
+      depth: { type: 'integer', default: 1, minimum: 1, maximum: 3, description: 'How many hops to traverse' },
       kind: { enum: ['import', 'package', 'dynamic-import', 'called-by', 'all'], default: 'all' },
       limit: { type: 'integer', default: 50 },
     },
@@ -38,88 +37,49 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
 
   async execute(input: GetDependenciesInput): Promise<AiToolOutput> {
     try {
-      const direction = input.direction;
-      /*
-      | SE-AI-06 — `depth` بی‌صدا روی ۳ سقف می‌خورد. کسی که ۱۰
-      | بخواهد، ۳ می‌گیرد و خبردار نمی‌شود. حالا سقف در schema هم
-      | اعلام شده، پس درخواستِ بزرگ‌تر *رد* می‌شود به‌جای اینکه
-      | بی‌صدا کوچک شود.
-      */
-      const depth = Math.min(input.depth ?? 1, MAX_DEPTH);
-      const limit = input.limit ?? 50;
-      const kind = input.kind ?? 'all';
-      /*
-      | SE-AI-06 — `level` در schema و در interface اعلام شده بود و
-      | **هرگز خوانده نمی‌شد**. یک گزینهٔ اعلام‌شده که کاری نمی‌کند،
-      | بدتر از نبودنش است: مصرف‌کننده فکر می‌کند فیلتر کرده.
-      */
-      const level = input.level ?? 'file';
-
-      const resolvedId = resolveFileOrSymbolId(this.reader, input.id);
-      if (!resolvedId) {
-        return {
-          success: false,
-          error: `No file or symbol found for id or path: ${input.id}`,
-          items: [],
-        };
+      const depth = input.depth ?? 1;
+      if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEPTH) {
+        return { success: false, error: `depth must be an integer between 1 and ${MAX_DEPTH}`, items: [] };
       }
+      const limit = input.limit ?? 50;
+      if (!Number.isInteger(limit) || limit < 1) {
+        return { success: false, error: 'limit must be a positive integer', items: [] };
+      }
+      const direction = input.direction;
+      const kind = input.kind ?? 'all';
+      const level = input.level ?? 'file';
+      const resolvedId = resolveFileOrSymbolId(this.reader, input.id);
+      if (!resolvedId) return { success: false, error: `No file or symbol found for id or path: ${input.id}`, items: [] };
 
       const visited = new Set<string>();
       const results: import('./types').AiToolResultItem[] = [];
-
-      const traverse = (currentId: string, currentDepth: number) => {
-        if (currentDepth > depth) return;
-        if (visited.has(currentId)) return;
+      const traverse = (currentId: string, currentDepth: number): void => {
+        if (currentDepth > depth || results.length >= limit || visited.has(currentId)) return;
         visited.add(currentId);
-
         const edges = direction === 'forward'
           ? this.reader.getDependencies(currentId)
           : this.reader.getReverseDependencies(currentId);
-
         for (const edge of edges) {
-          const targetId = edge.to;
           if (kind !== 'all' && !this.matchesKind(edge.kind, kind)) continue;
-
+          const targetId = edge.to;
           const targetFile = this.reader.getFileById(targetId);
           const targetSymbol = this.reader.getSymbolById(targetId);
           const externalPackage = targetId.startsWith('pkg:');
-
-          /* A file can depend on a package that is intentionally not a file
-             node in the index. It is still a useful file-level dependency;
-             only symbol-level queries should exclude it. */
           if (level === 'file' && !targetFile && !externalPackage) continue;
           if (level === 'symbol' && !targetSymbol) continue;
-
-          results.push({
-            id: targetId,
-            name: targetSymbol?.name ?? targetFile?.path ?? targetId.replace(/^pkg:/, ''),
-            kind: edge.kind,
-            path: targetFile?.path,
-            line: targetSymbol?.line,
-            source: 'index',
-          });
-
-          if (results.length >= limit) return;
-
+          results.push({ id: targetId, name: targetSymbol?.name ?? targetFile?.path ?? targetId.replace(/^pkg:/, ''), kind: edge.kind, path: targetFile?.path, line: targetSymbol?.line, source: 'index' });
           traverse(targetId, currentDepth + 1);
           if (results.length >= limit) return;
         }
       };
-
       traverse(resolvedId, 1);
-
       return { success: true, items: results.slice(0, limit) };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-        items: [],
-      };
+      return { success: false, error: error instanceof Error ? error.message : String(error), items: [] };
     }
   }
 
   private matchesKind(edgeKind: string, filterKind: string): boolean {
-    if (filterKind === 'all') return true;
-    return edgeKind === filterKind;
+    return filterKind === 'all' || edgeKind === filterKind;
   }
 }

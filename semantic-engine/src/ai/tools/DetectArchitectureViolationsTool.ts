@@ -22,27 +22,19 @@ export class DetectArchitectureViolationsTool implements AiTool {
 
   constructor(private readonly reader: ProjectIndexReader) {}
 
-  async execute(_input: AiToolInput): Promise<AiToolOutput> {
-    /*
-    | از سازندهٔ مشترک: چرخه‌ها روی گرافِ فایل/سمبل گزارش می‌شوند و برای
-    | خوانا بودن به node های فایل نیاز دارند — پیش از این گراف فقط سمبل داشت
-    | و `dependencyGraph` (که بین فایل‌هاست) به node های بی‌نام می‌رسید.
-    */
+  async execute(input: AiToolInput): Promise<AiToolOutput> {
+    const checkCyclesOnly = input.checkCyclesOnly === true;
     const graph = buildIndexGraph(this.reader);
-
     const engine = new ArchitectureRuleEngine();
     const report = engine.analyzeArchitectureDebt(graph);
+    const layerViolations = checkCyclesOnly ? [] : report.layerViolations;
+    const totalViolations = report.circularDependencies.length + layerViolations.length;
 
     return {
       success: true,
-      metadata: { report },
+      metadata: { report: { ...report, layerViolations, totalViolations } },
       items: [
         ...report.circularDependencies.map(c => {
-          /*
-          | سه هشِ کنار هم برای هیچ مصرف‌کننده‌ای قابل استفاده نبود؛ همان
-          | چرخه با مسیر فایل‌هایش گزارش می‌شود و شناسه‌ها در metadata می‌مانند
-          | (برای اینکه بشود روی‌شان دوباره کوئری زد).
-          */
           const readable = c.nodes.map(node => describeNode(graph, node));
           return {
             id: `cycle_${c.nodes.join('_')}`,
@@ -54,7 +46,7 @@ export class DetectArchitectureViolationsTool implements AiTool {
             metadata: { nodeIds: c.nodes, cycleLength: c.nodes.length },
           };
         }),
-        ...report.layerViolations.map(v => ({
+        ...layerViolations.map(v => ({
           id: v.ruleId,
           name: v.ruleName,
           kind: 'layer_violation',
@@ -62,7 +54,7 @@ export class DetectArchitectureViolationsTool implements AiTool {
           excerpt: `${v.description} (${v.severity})`,
         })),
       ],
-      context: `Found ${report.totalViolations} architectural violation(s) (${report.circularDependencies.length} cycles, ${report.layerViolations.length} layer violations).`,
+      context: `Found ${totalViolations} architectural violation(s) (${report.circularDependencies.length} cycles, ${layerViolations.length} layer violations).`,
     };
   }
 }
