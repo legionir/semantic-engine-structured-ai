@@ -758,3 +758,8 @@ function projectPath() {
 - Two additional structured-ai findings were recorded in `structured-ai-audit-supplement.md` (F-013, F-014).
 - `AUDIT_FILE_STATUS.md` was synchronized. Current repository inventory: 881 files; 540 marked `کامل`; 341 marked `درانتظار`; 0 marked `ناقص` among the fetchable files handled in this pass.
 - Security review remains explicitly excluded. The 341 `درانتظار` files were not reclassified because their contents were not directly reviewed.
+
+
+## Batch checkpoint — 2026-09-17
+
+30 semantic-engine files were fully reviewed and moved from `درانتظار` to `کامل`; two confirmed findings (F-16, F-17) were added to the supplement. Evidence manifest: `semantic-batch-completed.txt`. Tests were not executed.
