@@ -768,3 +768,8 @@ function projectPath() {
 ## Batch 2 checkpoint — 2026-09-17
 
 30 additional semantic-engine files and 20 additional structured-ai files were directly reviewed. Findings F-18 and F-015 were recorded. No tests executed; static review only.
+
+
+## Batch 3 checkpoint — 2026-09-17
+
+20 semantic-engine and 22 structured-ai files were directly reviewed. Findings F-19, F-20, F-016 and F-017 recorded. One persistence test passed 9/9; no broader suite executed. Status table updated for matching paths only; manifest/status mismatches remain explicitly tracked.

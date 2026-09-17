@@ -410,11 +410,11 @@
 | `semantic-engine/src/server/routes/chatRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/codeRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/configRoutes.ts` | کامل |
-| `semantic-engine/src/server/routes/fsRoutes.ts` | درانتظار |
+| `semantic-engine/src/server/routes/fsRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/historyRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/jobRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/projectRoutes.ts` | کامل |
-| `semantic-engine/src/server/routes/providerRoutes.ts` | درانتظار |
+| `semantic-engine/src/server/routes/providerRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/searchRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/sourceRoutes.ts` | کامل |
 | `semantic-engine/src/server/routes/systemRoutes.ts` | درانتظار |
@@ -423,7 +423,7 @@
 | `semantic-engine/src/server/types.ts` | کامل |
 | `semantic-engine/src/server/v2.routes.test.ts` | کامل |
 | `semantic-engine/src/server/wsProjectChannel.ts` | کامل |
-| `semantic-engine/src/services/CodeIntelligenceService.ts` | درانتظار |
+| `semantic-engine/src/services/CodeIntelligenceService.ts` | کامل |
 | `semantic-engine/src/services/ContextService.ts` | کامل |
 | `semantic-engine/src/services/LodService.test.ts` | درانتظار |
 | `semantic-engine/src/services/ProjectService.test.ts` | کامل |
@@ -431,9 +431,9 @@
 | `semantic-engine/src/services/SearchService.ts` | کامل |
 | `semantic-engine/src/services/analysis/AnalysisGraph.ts` | درانتظار |
 | `semantic-engine/src/services/analysis/ArchitectureRuleEngine.test.ts` | درانتظار |
-| `semantic-engine/src/services/analysis/ArchitectureRuleEngine.ts` | درانتظار |
+| `semantic-engine/src/services/analysis/ArchitectureRuleEngine.ts` | کامل |
 | `semantic-engine/src/services/analysis/ImpactAnalysisEngine.test.ts` | درانتظار |
-| `semantic-engine/src/services/analysis/ImpactAnalysisEngine.ts` | درانتظار |
+| `semantic-engine/src/services/analysis/ImpactAnalysisEngine.ts` | کامل |
 | `semantic-engine/src/services/analysis/MutationSimulator.test.ts` | کامل |
 | `semantic-engine/src/services/analysis/MutationSimulator.ts` | کامل |
 | `semantic-engine/src/services/analysis/buildIndexGraph.ts` | کامل |
