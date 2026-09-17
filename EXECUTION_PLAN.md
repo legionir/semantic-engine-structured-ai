@@ -122,25 +122,27 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ---
 
-## [🔴] فاز ۴: AI tools، schema contracts و search در semantic-engine
+## [🟡] فاز ۴: AI tools، schema contracts و search در semantic-engine
 
 هدف هم‌قراردادکردن schema و implementation، اجرای واقعی optionها و جلوگیری از نتایج ظاهراً موفق اما غلط است.
 
-### [🔴] گام ۱: یکسان‌سازی schema و implementation ابزارها
+### [🟡] گام ۱: یکسان‌سازی schema و implementation ابزارها
 
 در `src/ai/tools/DetectArchitectureViolationsTool.ts:16-20,25-63` `checkCyclesOnly` را واقعاً اعمال کن. در `GetDependenciesTool.ts:19,30,48,70-75,109` depth بالاتر از ۳ را طبق schema با validation error رد کن، نه clamp خاموش. در `FindTestsTool.ts:26,33-40` و `GetConfigUsageTool.ts:19-30,34-43,55-79` schemaهای required را با ورودی‌های معتبر `path/fileId/symbolId/key` هم‌راستا کن.
 
-### [🔴] گام ۲: تکمیل mutation simulation و query policy
+### [🟡] گام ۲: تکمیل mutation simulation و query policy
 
 در `SimulateMutationTool.ts:10-22,61-69` و simulator، `move_symbol` با `newPath` و broken-reference analysis را واقعی کن. در `queryPolicy.ts:120-125,203-205` CTE alias را از table واقعی جدا کن تا aliasهایی مانند `recent` به‌اشتباه رد نشوند؛ parser باید comment/string/CTE edge caseهای verified را پوشش دهد.
 
-### [🔴] گام ۳: اصلاح context assembly و token cost
+### [🟡] گام ۳: اصلاح context assembly و token cost
 
 در `src/services/ContextService.ts:8-12,28-44` و `AssembleContextTool.ts:44-52,183-185,321-333` mapping `files → targetFiles` را حفظ کن و `tokenEstimate` را از `metadata.estimatedTokens` بگیر، نه echo کردن `maxTokens`. در `LlmAiMetadataGenerator.ts:281-295` estimator را با content واقعی تغذیه کن.
 
-### [🔴] گام ۴: واقعی‌کردن search mode و score contract
+### [🟡] گام ۴: واقعی‌کردن search mode و score contract
 
 در `src/services/SearchService.ts:8-15,28-46` و `SemanticSearchTool.ts:209-215` مسیرهای `vector`، `keyword` و `hybrid` را از هم جدا کن، `minScore` را اعمال کن و keyword را فقط در mode لازم اجرا کن. handle/result باید project-scoped و قابل تکرار باشد.
+
+> **وضعیت اجرای این checkpoint (2026-09-18):** گام‌های ۱ و ۲ implementation اولیه دارند؛ گام ۳ با اصلاح `targetFiles` و خواندن `metadata.estimatedTokens` پیاده‌سازی شد؛ گام ۴ با modeهای `keyword`/`vector`/`hybrid` و `minScore` پیاده‌سازی شد. همهٔ این گام‌ها فعلاً 🟡 هستند چون focused test و typecheck/runtime در محیط موجود اجرا و تأیید نشده‌اند. گام ۵ و validation نهایی فاز هنوز انجام نشده است. Evidence: commit `89bcb2da9cdeccddc5c88dc01f7ed6adfb751223`; blocker قبلی dependencyهای `jest`/`ts-jest`/`tsc` است و pass ادعا نمی‌شود.
 
 ### [🔴] گام ۵: پایدارکردن embedding و graph query parity
 
