@@ -750,3 +750,26 @@ function projectPath() {
 1. بازبینی مستقیم شواهد line-level برای همهٔ موارد بالا و حذف مواردی که quote کافی ندارند.
 2. ادامهٔ پوشش روی APIهای project، dashboard و workflowهای end-to-end هر دو پروژه.
 3. ساخت coverage matrix تلفیقی و گزارش نهایی؛ تا آن زمان verdict نهایی صادر نمی‌شود.
+
+## Checkpoint — 2026-09-17
+
+- All 83 previously incomplete `semantic-engine` paths present as fetchable (`ok=true`) were directly reviewed in this pass; manifest: `semantic-completed-paths.txt`.
+- All 29 previously incomplete `structured-ai` paths present as fetchable (`ok=true`) were directly reviewed in this pass; manifest: `structured-completed-paths.txt`.
+- Two additional structured-ai findings were recorded in `structured-ai-audit-supplement.md` (F-013, F-014).
+- `AUDIT_FILE_STATUS.md` was synchronized. Current repository inventory: 881 files; 540 marked `کامل`; 341 marked `درانتظار`; 0 marked `ناقص` among the fetchable files handled in this pass.
+- Security review remains explicitly excluded. The 341 `درانتظار` files were not reclassified because their contents were not directly reviewed.
+
+
+## Batch checkpoint — 2026-09-17
+
+30 semantic-engine files were fully reviewed and moved from `درانتظار` to `کامل`; two confirmed findings (F-16, F-17) were added to the supplement. Evidence manifest: `semantic-batch-completed.txt`. Tests were not executed.
+
+
+## Batch 2 checkpoint — 2026-09-17
+
+30 additional semantic-engine files and 20 additional structured-ai files were directly reviewed. Findings F-18 and F-015 were recorded. No tests executed; static review only.
+
+
+## Batch 3 checkpoint — 2026-09-17
+
+20 semantic-engine and 22 structured-ai files were directly reviewed. Findings F-19, F-20, F-016 and F-017 recorded. One persistence test passed 9/9; no broader suite executed. Status table updated for matching paths only; manifest/status mismatches remain explicitly tracked.

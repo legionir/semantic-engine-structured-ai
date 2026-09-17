@@ -7,10 +7,10 @@
 - Audited snapshot: `3a20f3192e43c5cf2723cd524e08e013f941a4ed`
 - Scope: `structured-ai/` only. Security is intentionally out of scope.
 - Complete tree was obtained first: **357 blob files**, **70 directories**, `truncated=false`.
-- The prior audit marked 47 paths reviewed. This supplement directly reviewed/targeted **73 additional paths**, for **120 reviewed paths total**.
-- Current accounting: **120 reviewed / 237 not directly reviewed** (357 total).
+- The prior audit marked 47 paths reviewed. This supplement directly reviewed/targeted **102 additional paths**, for **149 reviewed paths total**.
+- Current accounting: **149 reviewed / 208 not directly reviewed** (357 total).
 - Of the 237 remaining paths, **207 were present in the local repository mirror but not directly read** and **30 were tree-only** at the end of this pass. “Fetched” is not counted as “reviewed”; targeted line reads count as reviewed for this accounting.
-- No repository source files were modified. The full inventory is `audit/structured-ai-tree.txt`; the local mirror is `(local audit workspace; not committed)`.
+- No repository source files were modified. The full inventory is `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/structured-ai-tree.txt`; the local mirror is `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/repo/structured-ai`.
 
 Coverage added in this pass included the remaining web support/controllers/services/serializers that were fetched, the browser app modules that were available, runtime/config/project migration modules, registry/tooling (including filesystem read/path/directory, planning, search, git, archive/memory, skills, code-index/LSP), archive/context/persistence modules, MCP transport modules, deployment/config files, and targeted test sections. The previously reviewed 47 paths and findings F-001–F-008 were not repeated.
 
@@ -244,9 +244,284 @@ Coverage added in this pass included the remaining web support/controllers/servi
 - A broad static scan timed out and `rg` was unavailable in the sandbox (`sh: 1: rg: not found`); grep/Python targeted scans were used instead.
 - The deployment/Docker/CI layout discrepancy was inspected but **not** reported as a new finding because it overlaps the prior F-006 deployment/CI coverage. No security findings are included.
 
+### F-013 — request JSON decoding corrupts UTF-8 split across incoming chunks
+
+- **Classification:** CONFIRMED
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Impact:** `readBody` decodes every `data` chunk independently with `chunk.toString("utf8")`. Node streams may split a multi-byte UTF-8 code point across chunks; each partial sequence is replaced before concatenation, so otherwise-valid JSON containing non-ASCII text can be rejected or persisted with corrupted text. The byte limit accounting remains correct, but parsing is not stream-safe.
+- **Evidence (verbatim):** `web/server/RequestBody.js:37-50`
+  ```js
+        req.on("data", chunk => {
+
+            if (rejected) {
+                return;
+            }
+
+            size += chunk.length;
+
+            if (size > maxBytes) {
+                rejectTooLarge();
+                return;
+            }
+
+            body += chunk.toString("utf8");
+        });
+  ```
+  `web/server/RequestBody.js:64-67`
+  ```js
+            try {
+                resolve(JSON.parse(body));
+            } catch {
+                reject(new Error("request body is not valid JSON"));
+            }
+  ```
+- **Test gap:** No reviewed test covered a valid JSON body whose UTF-8 encoding is split between two `data` events.
+
+### F-014 — visualizer fabricates successful test coverage for every node
+
+- **Classification:** CONFIRMED
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **Impact:** The visualizer inspector claims every selected symbol is covered by a generated `<title>.test.ts` filename, even though the node model has no coverage field and no test lookup occurs. This presents invented coverage as fact and misleads users about test intelligence. The defect exists in both the modular inspector and the legacy renderer.
+- **Evidence (verbatim):** `web/public/visualizer/node-details.js:60-63`
+  ```js
+    elements.tests.replaceChildren();
+    const test = document.createElement("li");
+    test.textContent = `✓ Covered by ${details.title.toLowerCase()}.test.ts`;
+    elements.tests.appendChild(test);
+  ```
+  `web/public/visualizer/renderer.js:405-406` (same behavior in the legacy renderer)
+  ```js
+    // Covering tests
+    inspTests.innerHTML = `<li>✓ Covered by ${node.label.toLowerCase()}.test.ts</li>`;
+  ```
+- **Test gap:** No reviewed test verifies coverage metadata or checks the no-coverage case; the implementation unconditionally emits the positive claim.
+
 ## Feedback for future passes
 
 1. **Mismatches:** The prior audit’s 47-file accounting was accurate for its snapshot, but its “not reviewed” classification became stale after this pass; the current exact accounting is 120/237. Some web files were fetched/read individually but are not present in the local mirror, so mirror presence must not be used as the review count.
 2. **Tools to preload:** GitHub `github_get_tree` and `github_get_file_content` are sufficient for this task; preloading those read-only tools avoids the initial fetch-token retry. `github_download_file` would help persist large source files for local analysis when available.
-3. **Context files to add:** Keep `audit/structured-ai-tree.txt` and the prior audit available on every continuation. A machine-readable reviewed-path manifest would make exact accounting reproducible.
+3. **Context files to add:** Keep `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/structured-ai-tree.txt` and the prior audit available on every continuation. A machine-readable reviewed-path manifest would make exact accounting reproducible.
 4. **Errors/other:** Test scripts in this repository can hang without output, so use per-file timeouts and record exit codes. The local mirror omitted tree-only files after fetch-token limits; targeted direct reads were used where possible. Findings F-009–F-012 are correctness/reliability/persistence/integration issues only; F-001–F-008 and security were intentionally excluded.
+
+
+## Coverage update — 2026-09-17
+
+The directly reviewed paths completed in this pass are recorded one per line in `structured-completed-paths.txt`. These manifests are the authoritative increment for this pass; all other paths remain at their prior status in `AUDIT_FILE_STATUS.md`. No security review was performed.
+
+
+## Batch 2 review — 2026-09-17
+
+# Structured AI audit batch 2
+
+Scope: non-security correctness/reliability review of 20 directly read files from the local mirror at commit `3a20f3192e43c5cf2723cd524e08e013f941a4ed`. No source files modified. No tests are claimed as run in this batch.
+
+## F-015 — modular project settings overlay always reads the process workspace's project file
+
+- **Classification:** CONFIRMED
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Impact:** Opening a registered project whose root differs from `WORKSPACE_ROOT` can apply settings from the wrong project's `.agent/project.json`. The central project layer is selected by project ID, but the legacy/floor layer is always resolved from the process-global workspace. If a setting is absent from the selected project's central cap, it inherits the unrelated process workspace's value; `openProject` therefore produces cross-project configuration contamination. The same global path is returned to callers as the workspace layer.
+- **Execution path:** `openProject(projectId)` calls `loadOverlay(openedProjectId)` (WorkspaceProfile.js:345-360) → `loadOverlay` calls `overlayFor` (WorkspaceProfile.js:175-182) → `overlayFor` obtains `workspaceFile: projectPath()` (WorkspaceProfile.js:92-99) → `projectPath()` uses `agentDirectory()` and the module-level `WORKSPACE_ROOT` imported from `WorkspaceBoundary` (WorkspaceProfile.js:1-6, 121-129). The project-aware filesystem boundary explicitly supports a caller-supplied `project.workspaceRoot` (WorkspaceBoundary.js:332-379), but WorkspaceProfile never uses it for the workspace layer.
+- **Evidence (verbatim):** `agent/projects/WorkspaceProfile.js:1-6`
+  ```js
+  const fs = require("fs");
+  const path = require("path");
+
+  const settings = require("../config");
+
+  const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
+  ```
+  `agent/projects/WorkspaceProfile.js:92-99`
+  ```js
+  function overlayFor(projectId) {
+
+      return {
+          workspaceFile: projectPath(),
+          centralFile: centralProjectPath(projectId)
+      };
+  }
+  ```
+  `agent/projects/WorkspaceProfile.js:121-129`
+  ```js
+  function agentDirectory() {
+
+      return path.join(WORKSPACE_ROOT, ".agent");
+  }
+
+
+  function projectPath() {
+
+      return path.join(agentDirectory(), "project.json");
+  }
+  ```
+  `agent/projects/WorkspaceProfile.js:175-193`
+  ```js
+  function loadOverlay(projectId) {
+
+      const { workspaceFile, centralFile } = overlayFor(projectId);
+
+      const floor = normaliseProject(readProjectFile(workspaceFile));
+      const cap = normaliseProject(readProjectFile(centralFile));
+
+      return {
+          ...floor,
+          ...cap,
+
+          settings: {
+              ...floor.settings,
+              ...cap.settings
+          }
+      };
+  }
+  ```
+  `agent/projects/WorkspaceProfile.js:345-360`
+  ```js
+  function openProject(projectId) {
+  ...
+      openedProjectId = projectId || null;
+
+      const { workspaceFile, centralFile } =
+          overlayFor(openedProjectId);
+
+      const project = loadOverlay(openedProjectId);
+  ```
+  `agent/context/WorkspaceBoundary.js:332-379`
+  ```js
+  | Project-relative Boundary ... anchored at a project root supplied by the
+  | caller's ProjectContext instead of the process-wide WORKSPACE_ROOT.
+  ...
+  function resolveProjectPath(
+      project,
+      inputPath,
+      options = {}
+  ) {
+
+      return resolvePathInRoot(
+          projectRootOf(project),
+          inputPath,
+          options
+      );
+  }
+  ```
+- **Test gap:** `test/projects/projects.test.js` exercises registry and run context for an elsewhere-rooted project, but the reviewed project-profile path has no test that creates two workspace `.agent/project.json` layers and opens a second registered project rooted elsewhere, asserting that the second project's floor is its own root (or that no unrelated floor is inherited).
+- **Multi-project check:** The defect is specifically triggered by two projects with different roots: process `WORKSPACE_ROOT=A`, registered project `B`; `openProject(B.id)` still reports/reads `A/.agent/project.json` as `workspaceFile`. The central cap path is B-specific, so only keys absent in B's cap expose the contamination.
+
+## Reviewed implementation notes (no additional confirmed finding)
+
+The other directly read modules were checked for callers/dependencies, error paths, tests, and project scoping: `ProjectContext`, `ProjectRegistry`, `ProjectStore`, `ProjectResolver`, `projects/index`, `RunManager`, `AgentRunContext`, `ToolGraphExecutor`, `RunScheduler`, `RunState`, `RetryController`, `RunBudget`, `RunCancellation`, `engineContext`, `WriteTools`, `DirectoryTools`, `filesystem/index`, and `PlanModel`. The existing settings bound `MAX_PARALLEL_TOOLS` has minimum 1, so the executor's `slice(0, maxParallel)` does not constitute a finding. Security review was intentionally excluded.
+
+
+## Batch 3 review — 2026-09-17
+
+# Structured AI audit — batch 3
+
+Snapshot: `3a20f3192e43c5cf2723cd524e08e013f941a4ed`. Scope: non-security correctness/reliability, implementation plus callers/dependencies, error paths, related tests, and multi-project behavior. No source files modified. Directly reviewed paths are listed in `structured-batch3-completed.txt` (22 paths), all selected from the inventory and absent from `structured-completed-paths.txt`.
+
+## F-016 — Session persistence is not atomic despite the repository contract
+
+- **Classification:** CONFIRMED
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Impact:** Saving an enabled session writes directly to its final JSON path. A process/filesystem failure after truncation can leave the session document partial or invalid, losing the persisted conversation and making `loadSession` return `null` on the next load. This also contradicts the module's stated atomic-write contract and the existing test's name/intent.
+- **Execution path:** `saveSession(session, root)` trims and then calls `fs.writeFileSync(sessionPath(...))`; unlike `JsonRepository.writeJson`, it never calls `AtomicFile.writeFile`. The load path uses `JsonRepository.readJson(..., null)`, so a torn file is silently treated as absent.
+- **Evidence (verbatim, `agent/persistence/SessionRepository.js:229-248`):**
+  ```js
+  function saveSession(session, root) {
+
+      if (settings.get("SESSIONS_ENABLED") !== true) {
+          return session;
+      }
+
+      fs.mkdirSync(sessionsDirectory(root), { recursive: true });
+
+      session.updated_at = new Date().toISOString();
+
+      session.title =
+          session.title || titleFrom(session);
+
+      trim(session);
+
+      fs.writeFileSync(
+          sessionPath(session.id, root),
+          `${JSON.stringify(session, null, 2)}\n`,
+          "utf8"
+      );
+  ```
+- **Contract evidence:** The file header says whole-file persistence is atomic, while the repository test calls this “atomic session save”; `test/persistence/repositories.test.js` only checks valid output and temp-file absence, not an injected mid-write failure for `saveSession`.
+- **Reproduction:** With a temporary workspace and an existing valid session, monkeypatching `fs.writeFileSync` for the session path to write `{"partial":` and throw `Error("crash")` produced the on-disk content exactly `{"partial":`. The original session was not preserved. The real test command `timeout 30s node test/persistence/repositories.test.js` ran and reported **9/9 passed**, but does not cover this failure mode.
+
+## F-017 — Telemetry file provenance is process-workspace scoped, not project scoped
+
+- **Classification:** CONFIRMED
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Impact:** In modular runs for a registered project rooted outside the process `WORKSPACE_ROOT`, telemetry can omit valid absolute project file mutations (or collapse relative paths from different projects into one name), and `changedFiles()` always compares against the process workspace's Git status. Final `files_changed`/automatic-commit provenance can therefore be incomplete or attributed to the wrong workspace in multi-project runs.
+- **Execution path:** `record()` calls `recordMutation()` for successful file mutations; `recordMutation()` calls `rememberChangedPath()`; `normalisePath()` converts an absolute path relative to the module-level `WORKSPACE_ROOT` and rejects paths that become `../...`. `changedFiles()` then reads `gitStatusMap()`, whose `cwd` is also the process-wide `WORKSPACE_ROOT`; neither function receives a project root or uses the run's `project_id`.
+- **Evidence (verbatim, `agent/runtime/Telemetry.js:32-57`):**
+  ```js
+  function normalisePath(value) {
+
+      if (typeof value !== "string") {
+          return null;
+      }
+
+      const absolute =
+          nodePath.isAbsolute(value)
+              ? nodePath.relative(WORKSPACE_ROOT, value)
+              : value;
+
+      const path = absolute
+          .replace(/\\/g, "/")
+          .replace(/^\.\//, "")
+          .trim();
+
+      if (
+          path === "" ||
+          path === "." ||
+          path === ".." ||
+          path.startsWith("../")
+      ) {
+          return null;
+      }
+
+      return path;
+  }
+  ```
+  **Evidence (verbatim, `agent/runtime/Telemetry.js:61-74`):**
+  ```js
+  function gitStatusMap() {
+
+      try {
+
+          const output =
+              execFileSync(
+                  "git",
+                  ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+                  {
+                      cwd: WORKSPACE_ROOT,
+  ```
+  **Evidence (verbatim, `agent/runtime/Telemetry.js:291-315`):**
+  ```js
+  function changedFiles(runId) {
+
+      const bucket = runId ? RUN_BUCKETS.get(runId) : null;
+      const changed = new Set(bucket ? bucket.changed_files : STATE.changed_files);
+      const baseline = bucket ? bucket.baseline_git : STATE.baseline_git;
+      const current = gitStatusMap();
+
+      for (const [file, code] of current) {
+  ...
+      return [...changed].sort();
+  }
+  ```
+- **Reproduction:** With `WORKSPACE_ROOT=A` and a separate project root `B`, calling `Telemetry.record({name:"fs_write", success:true, arguments:{path:"/tmp/B/p.txt"}, run_id:"run-b", ...})` leaves the run bucket's `changed_files` empty because `path.relative(A,B/p.txt)` starts with `../`; `changedFiles("run-b")` cannot recover it because Git status is executed only with `cwd: A`. Existing reviewed tests cover persistence and parser contracts, but no reviewed test exercises telemetry with two roots or asserts project-specific changed-file provenance.
+
+## Validation
+
+The only test executed in this batch was the real command `timeout 30s node test/persistence/repositories.test.js`; it completed successfully with 9/9 tests. No claim is made for tests not executed. No repository source files were modified.
+
+## Accounting / status mismatch
+
+`structured-completed-paths.txt` contains only the prior 30 listed structured paths; all 22 batch-3 paths were absent from it. The supplied `AUDIT_FILE_STATUS.md` is a broader semantic-engine/structured status table, but it does not list these `structured-ai/...` paths individually, so their “درانتظار/complete” status cannot be reconciled from that table. I therefore did not alter or fabricate its status; the batch manifest above is the authoritative record of this pass.

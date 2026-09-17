@@ -25,7 +25,7 @@ The complete recursive tree contains **524 blobs** under `semantic-engine/`:
 | root files | 11 |
 | **total** | **524** |
 
-The baseline report marked **74 files reviewed**. The deduplicated supplementary review added **58 new files**, so **132 files have now been reviewed in total**. Therefore **392 blobs remain not reviewed**. The remaining set is **385 fetched text/source blobs plus 7 uninspected `.wasm` grammar blobs**. The authoritative path-by-path inventory is `audit/tree-files.tsv`; fetched unreviewed material is under `(local audit workspace; not committed)`.
+The baseline report marked **74 files reviewed**. The deduplicated supplementary review added **58 new files**, so **132 files have now been reviewed in total**. Therefore **392 blobs remain not reviewed**. The remaining set is **385 fetched text/source blobs plus 7 uninspected `.wasm` grammar blobs**. The authoritative path-by-path inventory is `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/tree-files.tsv`; fetched unreviewed material is under `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/repo-unreviewed`.
 
 The supplementary set covered the previously unreviewed runtime queue/worker path, watch/embedding path, visualization route/LoD service, context/search services and their AI tools, SQLite graph export/query path and parity test, provider/vector path, history/provider/server support files, scripts, public UI files, and targeted tests. The five paths newly inspected while validating this supplement were:
 
@@ -450,3 +450,261 @@ These observations were examined but are not promoted to findings because the au
 | F-15 | CONFIRMED | Medium | High |
 
 **Security findings:** intentionally omitted per scope instruction.
+
+
+## Coverage update — 2026-09-17
+
+The directly reviewed paths completed in this pass are recorded one per line in `semantic-completed-paths.txt`. These manifests are the authoritative increment for this pass; all other paths remain at their prior status in `AUDIT_FILE_STATUS.md`. No security review was performed.
+
+
+## Batch review — 2026-09-17
+
+# Forensic batch review — `semantic-engine/`
+
+## Scope and method
+
+Reviewed 30 files that were marked `درانتظار` in `AUDIT_FILE_STATUS.md`, all directly readable in the local mirror under `work/repo/semantic-engine`. Each selected source/config/test file was opened and its relevant execution path, dependencies, error handling, and test coverage were traced. Security was out of scope. No tests were executed.
+
+## Confirmed findings
+
+### F-16 — IndexPipeline ignores the entire top-level directory when output is nested under a source directory
+
+- **Status:** CONFIRMED
+- **Severity:** Medium
+- **Confidence:** High
+- **Trigger:** Run `IndexPipeline` with `outputPath` inside the workspace at a nested path whose first segment is a real source directory, for example `workspace/src/generated/project-index.json`, while `src` is not otherwise ignored.
+
+The implementation computes the output directory and relative path:
+
+```ts
+const outputDir = path.dirname(path.resolve(this.options.outputPath));
+const relative = path.relative(workspaceRoot, outputDir).split(path.sep).join('/');
+```
+
+Evidence: `src/pipeline/IndexPipeline.ts:502-505`.
+
+After confirming the path is inside the workspace, it extracts only the first path segment and adds that segment to `ignoreDirectories`:
+
+```ts
+const existing = base.ignoreDirectories ?? DEFAULT_IGNORE_DIRECTORIES;
+const name = relative.split('/')[0]!;
+if (existing.includes(name)) return base;
+
+return { ...base, ignoreDirectories: [...existing, name] };
+```
+
+Evidence: `src/pipeline/IndexPipeline.ts:510-514`.
+
+`WorkspaceScanner`/`IgnoreMatcher` treat an entry in `ignoreDirectories` as a directory name to skip recursively. Therefore an output directory such as `src/generated` causes `src`—not merely `src/generated`—to be ignored, removing all source files under `src` from the index. The nearby comment claims the fix is to ignore “the path that is actually written” (`IndexPipeline.ts:498-500`), but the actual value passed is only the top-level name. The reviewed `IndexPipeline.test.ts` covers the normal output path under `.semantic-engine` and general indexing, but has no nested-output-under-source test; its output path is `workspace/.semantic-engine/project-index.json`, so the defect is not exercised.
+
+### F-17 — TypeScript dependency extraction collapses multiple exported variables into one invalid export name
+
+- **Status:** CONFIRMED
+- **Severity:** Medium
+- **Confidence:** High
+- **Trigger:** Index a TS/JS file containing a multi-declarator exported variable statement, e.g. `export const first = 1, second = 2;`.
+
+The extractor intentionally advertises one `ExportEntry` per exported name:
+
+```ts
+SE-DATA-02 — یک `ExportEntry` به‌ازای هر نام.
+```
+
+Evidence: `src/dependencies/typescript/TSDependencyExtractor.ts:269-275`. Named export declarations correctly map each AST element separately (`TSDependencyExtractor.ts:280-287`), but declaration-based exports use `parseExportedDeclaration`, which returns only one `ExportEntry`:
+
+```ts
+private parseExportedDeclaration(node: ts.Node): ExportEntry | null {
+  const isDefault = this.hasDefaultModifier(node);
+  const name = this.getDeclarationName(node);
+  ...
+  return {
+    name,
+    kind: isDefault ? 'default' : 'named',
+  };
+}
+```
+
+Evidence: `src/dependencies/typescript/TSDependencyExtractor.ts:313-330`.
+
+For a variable statement, `getDeclarationName` collects every identifier but joins them into one comma-separated string:
+
+```ts
+if (ts.isVariableStatement(node)) {
+  const names: string[] = [];
+  for (const decl of node.declarationList.declarations) {
+    if (ts.isIdentifier(decl.name)) {
+      names.push(decl.name.text);
+    }
+  }
+  return names.length > 0 ? names.join(', ') : null;
+}
+```
+
+Evidence: `src/dependencies/typescript/TSDependencyExtractor.ts:357-371`.
+
+The resulting export is `{ name: 'first, second', kind: 'named' }` rather than two entries (`first` and `second`). Downstream symbol/export linking and API metadata cannot resolve either individual exported symbol by name. The reviewed `TSDependencyExtractor.test.ts` tests named imports, packages/builtins, dynamic imports, single declarations, re-exports, and aliases, but does not test multiple declarators; the defect therefore has no coverage in the selected test.
+
+## No additional confirmed findings
+
+The other reviewed paths did not yield a separate confirmed defect under the stated scope and evidence standard. In particular, graph traversal, incremental store synchronization, watch serialization/disposal, output atomicity/schema validation, path resolution, and job cancellation behavior had targeted tests or coherent error handling in the inspected paths.
+
+
+## Batch 2 review — 2026-09-17
+
+# Forensic batch review — `semantic-engine/`
+
+## Scope and method
+
+Reviewed 30 files marked `درانتظار` in `AUDIT_FILE_STATUS.md`, directly from the local mirror under `work/repo/semantic-engine`. The selected batch covers the CLI launcher, blueprint contract, archived/current public UI assets, build/audit/fixture/pipeline/snapshot/schema-validation scripts, AI metadata and registry tests/implementation, config/test mapping, blueprint/context discovery, and token-cost tests. For each source/implementation file, imports/callers and downstream data shape were traced where present; tests, error paths, and project-root/multi-project implications were checked. Security was out of scope. No repository tests were executed.
+
+## Confirmed finding
+
+### F-18 — `scripts/snapshot.js` normalizer discards all supposedly stable IDs
+
+- **Status:** CONFIRMED
+- **Severity:** Medium (test/snapshot correctness)
+- **Confidence:** High
+- **Area:** regression detection / generated-artifact snapshot gate
+- **Trigger path:** run `node scripts/snapshot.js` (or its snapshot comparison in CI) against a generated project index/blueprint containing IDs, then change a stable file/symbol/module/graph ID while keeping the rest of the normalized artifact equal.
+
+The script explicitly says that IDs under selected collections are stable and should be retained:
+
+```js
+/* Kept even though the name matches: these are stable identifiers. */
+const KEEP_ID_UNDER = new Set([
+    "files", "symbols", "nodes", "edges", "callGraph", "typeGraph",
+    "dependencyGraph", "reverseDependencyGraph", "vectorChunks",
+    "moduleMap", "symbolIndex", "technicalConstraints", "apiMap"
+]);
+```
+
+Evidence: `scripts/snapshot.js:62-67`.
+
+The volatility decision attempts to preserve those IDs only when the current object’s parent key is one of the set:
+
+```js
+const isVolatile =
+    VOLATILE.has(name) &&
+    !(name === "id" && KEEP_ID_UNDER.has(parentKey));
+```
+
+Evidence: `scripts/snapshot.js:80-84`.
+
+However, the recursive call that enters every object overwrites the parent context with the child property name:
+
+```js
+out[name] =
+    isVolatile
+        ? "<volatile>"
+        : normalise(value[name], name, name);
+```
+
+Evidence: `scripts/snapshot.js:86-89`. For an object inside `files` (or `symbols`, `moduleMap`, etc.), the `id` property is therefore evaluated with `parentKey === "id"`, not `parentKey === "files"`/`"symbols"`/the relevant collection. Since `"id"` is in `VOLATILE` at `snapshot.js:57`, every such ID becomes `"<volatile>"`; `KEEP_ID_UNDER` is effectively unreachable for normal collection items. The same propagation error also means nested collection IDs are not protected.
+
+The result is that the snapshot comparison cannot detect a stable-identity regression: changing a file/symbol/module/graph ID alone normalizes both expected and actual values to the same placeholder. This affects every project passed through the shared `run-pipeline.js`/`snapshot.js` path, including multi-project use when snapshots are generated separately per workspace. It is distinct from intentionally volatile blueprint metadata IDs: those should remain volatile, but generated index entity IDs and graph IDs are explicitly listed as stable.
+
+The reviewed script has no test fixture/assertion for preserving IDs, and the selected tests do not cover this normalizer. No repository tests were run during this audit.
+
+## No additional confirmed findings
+
+The other 29 reviewed files did not yield a separate confirmed defect under the requested evidence standard. In particular, the CLI launcher has explicit not-built and rejected-promise handling; benchmark/snapshot/pipeline scripts clean temporary output in `finally`; schema/index validators report malformed input and referential errors; AI metadata and test-mapping code have targeted regression tests; blueprint loading degrades explicitly when absent/invalid; and context discovery has tests for search, blueprint, graph expansion, limits, tokenization, and multi-project-independent project-index inputs.
+
+## Execution limitations
+
+- No repository tests were executed; no usable `node_modules`/build execution was assumed.
+- Security review was intentionally excluded.
+- All 30 paths were directly read from the local mirror; the authoritative manifest is `semantic-batch2-completed.txt`.
+
+
+## Batch 3 review — 2026-09-17
+
+# Batch 3 forensic review — `semantic-engine/`
+
+## Scope and method
+
+20 paths were selected from the complete inventory only when absent from `semantic-completed-paths.txt`, then read directly from `work/repo/semantic-engine`. The selected route/service implementations were traced through their local collaborators, response/error paths, and multi-project parameters. Security was excluded. No repository tests were executed; findings below are static unless the explicitly stated runtime trigger is used.
+
+## Status-table mismatch
+
+The selection rule (absent from `semantic-completed-paths.txt`) does not match the status table. The following selected paths are marked `کامل` in `AUDIT_FILE_STATUS.md`, not `درانتظار`: `src/server/routes/searchRoutes.ts`, `historyRoutes.ts`, `sourceRoutes.ts`, `configRoutes.ts`, `server/types.ts`, `projectRoutes.ts`, `jobRoutes.ts`, `codeRoutes.ts`, `analysisRoutes.ts`, `chatRoutes.ts`, `services/ProjectService.ts`, `services/providers/EmbeddingProviderService.ts`, `services/history/GitHistoryMiner.ts`, `services/source/SourceSyncService.ts`, `services/analysis/MutationSimulator.ts`. They are listed in the completion manifest only because they were absent from the supplied semantic-completed manifest; their status was not changed or fabricated. The remaining selected paths are marked `درانتظار`: `providerRoutes.ts`, `CodeIntelligenceService.ts`, `fsRoutes.ts`, `ImpactAnalysisEngine.ts`, and `ArchitectureRuleEngine.ts`.
+
+## Confirmed findings
+
+### F-19 — Configuration PATCH reports success but never applies the update
+
+- **Status:** CONFIRMED
+- **Severity:** Medium
+- **Confidence:** High
+- **Area:** HTTP API correctness / runtime configuration
+- **Trigger:** authenticated `PATCH /api/v1/config` with a body such as `{ "maxBodyBytes": 123456 }`, then issue `GET /api/v1/config` or observe server behavior.
+
+The route is explicitly a write endpoint and requires `config:write`, but it only reads the body and constructs a response:
+
+```ts
+method: 'PATCH',
+pattern: '/api/v1/config',
+requireAuth: true,
+permission: 'config:write',
+handler: async ctx => {
+  const body = (ctx.body || {}) as Record<string, unknown>;
+  return {
+    status: 200,
+    json: {
+      updated: true,
+      config: {
+        port: platformConfig.port,
+        host: platformConfig.host,
+        allowRemote: platformConfig.allowRemote,
+        maxBodyBytes: body.maxBodyBytes || platformConfig.maxBodyBytes,
+        projectsRoot: platformConfig.projectsRoot,
+      },
+    },
+  };
+},
+```
+
+Evidence: `src/server/routes/configRoutes.ts:35-54`. There is no assignment, config-store call, persistence call, or server restart/reconfiguration. `PlatformConfig` is passed into the route factory as a readonly configuration object (`src/server/types.ts:45-88`), while the GET endpoint reads the same object (`configRoutes.ts:8-32`). Therefore `updated: true` is only an echo; a subsequent GET and all runtime consumers still see the old values. `body.maxBodyBytes || ...` also changes an explicitly supplied zero to the old value, but the larger defect is that every accepted update is non-persistent/non-operative. This applies equally to every project because configuration is platform-wide, not project-local; it is not fixed by the route's project IDs (there are none).
+
+### F-20 — Project PATCH and DELETE are success-only stubs and leave the registry unchanged
+
+- **Status:** CONFIRMED
+- **Severity:** Medium
+- **Confidence:** High
+- **Area:** project lifecycle API / multi-project correctness
+- **Trigger:** register two projects, call authenticated `PATCH /api/v1/projects/:id` with a new name or `DELETE /api/v1/projects/:id`, then call `GET /api/v1/projects` or `GET /api/v1/projects/:id`.
+
+The PATCH handler resolves the project and then returns a new name without calling a mutator:
+
+```ts
+const body = (ctx.body || {}) as { name?: string };
+return {
+  status: 200,
+  json: {
+    updated: true,
+    id: project.id,
+    name: body.name || project.name,
+    status: project.status,
+  },
+};
+```
+
+Evidence: `src/server/routes/projectRoutes.ts:85-103`. The DELETE handler likewise resolves the project and returns success without invoking `ProjectService` or removing anything:
+
+```ts
+return {
+  status: 200,
+  json: { deleted: true, id: ctx.params.id },
+};
+```
+
+Evidence: `src/server/routes/projectRoutes.ts:105-119`. `ProjectService` stores managed projects in private `projects` and `byId` maps (`src/services/ProjectService.ts:53-67`); its registration path is the operation that populates those maps (`ProjectService.ts:76-92`). The route handlers do not call any corresponding update/unregister operation, nor do they alter registry persistence. Consequently PATCH is an ephemeral response fabrication and DELETE is a no-op: subsequent list/get requests continue to expose the old project and its aliases. In a multi-project deployment this can leave deleted projects addressable by all aliases and makes a rename response disagree with the canonical registry/name returned elsewhere. No route-level call path repairs this after the handler returns.
+
+## No additional confirmed findings
+
+The remaining reviewed route/service paths had explicit project existence checks, delegated work to their named services, and coherent failure returns under the static review standard. In particular, source bundle staging/rollback and provider model endpoint fallback were traced; no additional non-security finding was promoted.
+
+## Execution limitations
+
+- No tests were run; conclusions are static source inspection.
+- Security was intentionally excluded, including the network/source-input concerns in provider and source synchronization paths.
+- The completion manifest records 20 paths; it follows the requested “not in semantic-completed” criterion even where the separate status table already says `کامل`.
