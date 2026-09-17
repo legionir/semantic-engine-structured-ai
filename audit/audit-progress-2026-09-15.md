@@ -750,3 +750,11 @@ function projectPath() {
 1. بازبینی مستقیم شواهد line-level برای همهٔ موارد بالا و حذف مواردی که quote کافی ندارند.
 2. ادامهٔ پوشش روی APIهای project، dashboard و workflowهای end-to-end هر دو پروژه.
 3. ساخت coverage matrix تلفیقی و گزارش نهایی؛ تا آن زمان verdict نهایی صادر نمی‌شود.
+
+## Checkpoint — 2026-09-17
+
+- All 83 previously incomplete `semantic-engine` paths present as fetchable (`ok=true`) were directly reviewed in this pass; manifest: `semantic-completed-paths.txt`.
+- All 29 previously incomplete `structured-ai` paths present as fetchable (`ok=true`) were directly reviewed in this pass; manifest: `structured-completed-paths.txt`.
+- Two additional structured-ai findings were recorded in `structured-ai-audit-supplement.md` (F-013, F-014).
+- `AUDIT_FILE_STATUS.md` was synchronized. Current repository inventory: 881 files; 540 marked `کامل`; 341 marked `درانتظار`; 0 marked `ناقص` among the fetchable files handled in this pass.
+- Security review remains explicitly excluded. The 341 `درانتظار` files were not reclassified because their contents were not directly reviewed.
