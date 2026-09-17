@@ -253,4 +253,139 @@ Impact: Potential security risk on multi-user systems; benchmark results may be 
 - `test/policy/policy.test.js:100-134,240-303` covers valid regexes and auto/prompt/deny manager modes, but no malformed regex validation/evaluation, denied-approval event callback, or cancellation while a pending approval is awaited.
 - Event tests cover scope/project isolation and payload precedence (`test/events/events.test.js:61-112`); no new independent event-bus defect was confirmed in this pass.
 - Focused policy/hooks test commands both timed out after 15s with no output (`exit 124`), consistent with prior audit limitations; no test pass is claimed.
+
+## SECURITY AND RELIABILITY FINDINGS FROM SEMANTIC ENGINE MODULES
+
+### SE-MCP-001: MCP Server File System Race Condition
+**File:** `semantic-engine/src/ai/mcp/SemanticEngineMcpServer.ts`
+**Risk:** MEDIUM
+**Description:** The `watchIndexFile` method uses `fs.watch` with a 75ms debounce for file changes. This creates a race condition where multiple rapid file system events could cause multiple reloads or inconsistent state.
+**Evidence:**
+```js
+private scheduleReload(): void {
+  if (this.reloadTimer) clearTimeout(this.reloadTimer);
+  this.reloadTimer = setTimeout(() => {
+    this.reloadTimer = undefined;
+    this.reloadFromDisk();
+  }, 75);
+  this.reloadTimer.unref?.();
+}
+```
+**Recommendation:** Implement atomic file reading with proper file locking, increase debounce time, and add checksum validation before reloading.
+
+### SE-MCP-002: CLI Token Security Issues
+**File:** `semantic-engine/src/ai/mcp/cli.ts`
+**Risk:** HIGH
+**Description:** The CLI generates tokens when not provided via `--token` or `SEMANTIC_ENGINE_TOKEN`. Generated tokens are written to stderr, potentially exposing them in logs. No token rotation or secure storage.
+**Evidence:**
+```js
+const token = args.token ?? generateToken();
+// ...
+process.stderr.write(`token: ${token}...`);
+```
+**Recommendation:** Use secure token storage, implement token rotation, and avoid logging tokens. Consider using environment variables or secure configuration files.
+
+### SE-CONFIG-003: Path Traversal in ProjectPaths
+**File:** `semantic-engine/src/core/config/ProjectPaths.ts`
+**Risk:** HIGH
+**Description:** The `normalizeWorkspaceRoot` function may allow path traversal attacks through crafted input containing `..` sequences or symlinks.
+**Evidence:**
+```js
+export function normalizeWorkspaceRoot(input: string): string {
+  let resolved = path.resolve(input);
+  // ...
+  return resolved;
+}
+```
+**Recommendation:** Implement strict path validation, resolve symlinks, and ensure paths stay within allowed boundaries.
+
+### SE-CONFIG-004: Insecure Environment Variable Handling
+**File:** `semantic-engine/src/core/config/DataRootResolver.ts`
+**Risk:** MEDIUM
+**Description:** Environment variables like `XDG_DATA_HOME` and `SEMANTIC_ENGINE_DATA_DIR` are used without validation, potentially allowing directory traversal or symlink attacks.
+**Evidence:**
+```js
+const xdg = (env['XDG_DATA_HOME'] ?? '').trim();
+const base = xdg !== '' && platformPath.isAbsolute(xdg)
+  ? xdg
+  : platformPath.join(homeDir, '.local', 'share');
+```
+**Recommendation:** Validate environment variable values, resolve symlinks, and implement secure path joining.
+
+### SE-CONFIG-005: Project ID Validation Bypass
+**File:** `semantic-engine/src/core/config/ProjectIdentity.ts`
+**Risk:** MEDIUM
+**Description:** The `isSafeProjectId` and `isPathSafeProjectId` functions may have edge cases that allow invalid characters or path traversal sequences.
+**Evidence:**
+```js
+export const PATH_SAFE_PROJECT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+```
+**Recommendation:** Implement stricter validation, add blacklist of dangerous patterns, and test edge cases.
+
+### SE-PIPELINE-006: Command Injection in Pipeline Runner
+**File:** `semantic-engine/scripts/run-pipeline.js`
+**Risk:** HIGH
+**Description:** The script uses `require()` with dynamic paths and executes external commands without proper validation.
+**Evidence:**
+```js
+const { IndexPipeline } = require(`../dist/pipeline/IndexPipeline`);
+```
+**Recommendation:** Use explicit imports, validate all file paths, and implement command execution with proper escaping.
+
+### SE-VALIDATE-007: JSON Schema Validation Bypass
+**File:** `semantic-engine/scripts/validate-project-index.js`
+**Risk:** MEDIUM
+**Description:** The validator uses `JSON.parse()` without schema validation before referential checks, potentially allowing malformed JSON that could cause memory issues or crashes.
+**Evidence:**
+```js
+const index = JSON.parse(fs.readFileSync(target, "utf8"));
+```
+**Recommendation:** Implement streaming JSON parsing, add size limits, and validate schema before processing.
+
+### SE-DISCOVERY-008: Semantic Search Injection
+**File:** `semantic-engine/src/ai/discovery/ContextDiscoverer.ts`
+**Risk:** MEDIUM
+**Description:** The `queryTerms` function processes user input without sanitization, potentially allowing injection attacks in semantic search.
+**Evidence:**
+```js
+const terms = queryTerms(input.task);
+```
+**Recommendation:** Implement input sanitization, escape special characters, and validate search terms.
+
+### SE-INDEX-009: Index Generation Predictability
+**File:** `semantic-engine/src/core/config/indexGeneration.ts`
+**Risk:** LOW
+**Description:** The index generation uses a simple monotonic counter that is predictable and could be manipulated.
+**Evidence:**
+```js
+export function nextIndexGeneration(previous: number): number {
+  const base = Number.isFinite(previous) && previous > 0 ? Math.trunc(previous) : 0;
+  return base + 1;
+}
+```
+**Recommendation:** Consider using a timestamp-based or random component for generation values.
+
+### SE-MIGRATION-010: Legacy Artifact Migration Security Issues
+**File:** `semantic-engine/src/core/config/migrateLegacyArtifacts.ts`
+**Risk:** MEDIUM
+**Description:** The migration copies files without validation, potentially allowing malicious files to be copied to the new location.
+**Evidence:**
+```js
+fs.copyFileSync(source, path.join(paths.artifactRoot, file));
+```
+**Recommendation:** Validate file contents, check file signatures, and implement virus scanning for migrated files.
+
+### SE-BENCHMARK-011: Temporary File Security Issues
+**File:** `semantic-engine/scripts/benchmark.js`
+**Risk:** LOW
+**Description:** The benchmark script creates temporary files in world-readable directories without proper cleanup.
+**Evidence:**
+```js
+const output = fs.mkdtempSync(path.join(os.tmpdir(), 'semantic-benchmark-'));
+```
+**Recommendation:** Use secure temporary file creation with proper permissions and ensure cleanup even on errors.
+
+## SUMMARY
+
+The semantic engine modules contain several security vulnerabilities ranging from HIGH to LOW severity. The most critical issues involve path traversal, command injection, and insecure token handling. All findings should be addressed in priority order, with HIGH severity issues requiring immediate attention.
 - **Pipeline Tests**: No dedicated tests for `run-pipeline.js` error handling, `validate-project-index.js` invariant checks, or `benchmark.js` timeout enforcement were found in the test suite.
