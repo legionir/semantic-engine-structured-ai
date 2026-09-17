@@ -7,10 +7,10 @@
 - Audited snapshot: `3a20f3192e43c5cf2723cd524e08e013f941a4ed`
 - Scope: `structured-ai/` only. Security is intentionally out of scope.
 - Complete tree was obtained first: **357 blob files**, **70 directories**, `truncated=false`.
-- The prior audit marked 47 paths reviewed. This supplement directly reviewed/targeted **73 additional paths**, for **120 reviewed paths total**.
-- Current accounting: **120 reviewed / 237 not directly reviewed** (357 total).
+- The prior audit marked 47 paths reviewed. This supplement directly reviewed/targeted **102 additional paths**, for **149 reviewed paths total**.
+- Current accounting: **149 reviewed / 208 not directly reviewed** (357 total).
 - Of the 237 remaining paths, **207 were present in the local repository mirror but not directly read** and **30 were tree-only** at the end of this pass. “Fetched” is not counted as “reviewed”; targeted line reads count as reviewed for this accounting.
-- No repository source files were modified. The full inventory is `audit/structured-ai-tree.txt`; the local mirror is `(local audit workspace; not committed)`.
+- No repository source files were modified. The full inventory is `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/structured-ai-tree.txt`; the local mirror is `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/repo/structured-ai`.
 
 Coverage added in this pass included the remaining web support/controllers/services/serializers that were fetched, the browser app modules that were available, runtime/config/project migration modules, registry/tooling (including filesystem read/path/directory, planning, search, git, archive/memory, skills, code-index/LSP), archive/context/persistence modules, MCP transport modules, deployment/config files, and targeted test sections. The previously reviewed 47 paths and findings F-001–F-008 were not repeated.
 
@@ -244,9 +244,68 @@ Coverage added in this pass included the remaining web support/controllers/servi
 - A broad static scan timed out and `rg` was unavailable in the sandbox (`sh: 1: rg: not found`); grep/Python targeted scans were used instead.
 - The deployment/Docker/CI layout discrepancy was inspected but **not** reported as a new finding because it overlaps the prior F-006 deployment/CI coverage. No security findings are included.
 
+### F-013 — request JSON decoding corrupts UTF-8 split across incoming chunks
+
+- **Classification:** CONFIRMED
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Impact:** `readBody` decodes every `data` chunk independently with `chunk.toString("utf8")`. Node streams may split a multi-byte UTF-8 code point across chunks; each partial sequence is replaced before concatenation, so otherwise-valid JSON containing non-ASCII text can be rejected or persisted with corrupted text. The byte limit accounting remains correct, but parsing is not stream-safe.
+- **Evidence (verbatim):** `web/server/RequestBody.js:37-50`
+  ```js
+        req.on("data", chunk => {
+
+            if (rejected) {
+                return;
+            }
+
+            size += chunk.length;
+
+            if (size > maxBytes) {
+                rejectTooLarge();
+                return;
+            }
+
+            body += chunk.toString("utf8");
+        });
+  ```
+  `web/server/RequestBody.js:64-67`
+  ```js
+            try {
+                resolve(JSON.parse(body));
+            } catch {
+                reject(new Error("request body is not valid JSON"));
+            }
+  ```
+- **Test gap:** No reviewed test covered a valid JSON body whose UTF-8 encoding is split between two `data` events.
+
+### F-014 — visualizer fabricates successful test coverage for every node
+
+- **Classification:** CONFIRMED
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **Impact:** The visualizer inspector claims every selected symbol is covered by a generated `<title>.test.ts` filename, even though the node model has no coverage field and no test lookup occurs. This presents invented coverage as fact and misleads users about test intelligence. The defect exists in both the modular inspector and the legacy renderer.
+- **Evidence (verbatim):** `web/public/visualizer/node-details.js:60-63`
+  ```js
+    elements.tests.replaceChildren();
+    const test = document.createElement("li");
+    test.textContent = `✓ Covered by ${details.title.toLowerCase()}.test.ts`;
+    elements.tests.appendChild(test);
+  ```
+  `web/public/visualizer/renderer.js:405-406` (same behavior in the legacy renderer)
+  ```js
+    // Covering tests
+    inspTests.innerHTML = `<li>✓ Covered by ${node.label.toLowerCase()}.test.ts</li>`;
+  ```
+- **Test gap:** No reviewed test verifies coverage metadata or checks the no-coverage case; the implementation unconditionally emits the positive claim.
+
 ## Feedback for future passes
 
 1. **Mismatches:** The prior audit’s 47-file accounting was accurate for its snapshot, but its “not reviewed” classification became stale after this pass; the current exact accounting is 120/237. Some web files were fetched/read individually but are not present in the local mirror, so mirror presence must not be used as the review count.
 2. **Tools to preload:** GitHub `github_get_tree` and `github_get_file_content` are sufficient for this task; preloading those read-only tools avoids the initial fetch-token retry. `github_download_file` would help persist large source files for local analysis when available.
-3. **Context files to add:** Keep `audit/structured-ai-tree.txt` and the prior audit available on every continuation. A machine-readable reviewed-path manifest would make exact accounting reproducible.
+3. **Context files to add:** Keep `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/structured-ai-tree.txt` and the prior audit available on every continuation. A machine-readable reviewed-path manifest would make exact accounting reproducible.
 4. **Errors/other:** Test scripts in this repository can hang without output, so use per-file timeouts and record exit codes. The local mirror omitted tree-only files after fetch-token limits; targeted direct reads were used where possible. Findings F-009–F-012 are correctness/reliability/persistence/integration issues only; F-001–F-008 and security were intentionally excluded.
+
+
+## Coverage update — 2026-09-17
+
+The directly reviewed paths completed in this pass are recorded one per line in `structured-completed-paths.txt`. These manifests are the authoritative increment for this pass; all other paths remain at their prior status in `AUDIT_FILE_STATUS.md`. No security review was performed.

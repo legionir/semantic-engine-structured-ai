@@ -25,7 +25,7 @@ The complete recursive tree contains **524 blobs** under `semantic-engine/`:
 | root files | 11 |
 | **total** | **524** |
 
-The baseline report marked **74 files reviewed**. The deduplicated supplementary review added **58 new files**, so **132 files have now been reviewed in total**. Therefore **392 blobs remain not reviewed**. The remaining set is **385 fetched text/source blobs plus 7 uninspected `.wasm` grammar blobs**. The authoritative path-by-path inventory is `audit/tree-files.tsv`; fetched unreviewed material is under `(local audit workspace; not committed)`.
+The baseline report marked **74 files reviewed**. The deduplicated supplementary review added **58 new files**, so **132 files have now been reviewed in total**. Therefore **392 blobs remain not reviewed**. The remaining set is **385 fetched text/source blobs plus 7 uninspected `.wasm` grammar blobs**. The authoritative path-by-path inventory is `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/tree-files.tsv`; fetched unreviewed material is under `/tasklet/threads/a_pjgnxp3j2201gp81brsm/work/repo-unreviewed`.
 
 The supplementary set covered the previously unreviewed runtime queue/worker path, watch/embedding path, visualization route/LoD service, context/search services and their AI tools, SQLite graph export/query path and parity test, provider/vector path, history/provider/server support files, scripts, public UI files, and targeted tests. The five paths newly inspected while validating this supplement were:
 
@@ -450,3 +450,8 @@ These observations were examined but are not promoted to findings because the au
 | F-15 | CONFIRMED | Medium | High |
 
 **Security findings:** intentionally omitted per scope instruction.
+
+
+## Coverage update — 2026-09-17
+
+The directly reviewed paths completed in this pass are recorded one per line in `semantic-completed-paths.txt`. These manifests are the authoritative increment for this pass; all other paths remain at their prior status in `AUDIT_FILE_STATUS.md`. No security review was performed.
