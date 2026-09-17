@@ -27,7 +27,8 @@ export class ContextService {
 
     const result = await tool.execute({
       task: options.task,
-      files: options.files,
+      // AssembleContextTool contract uses targetFiles.
+      targetFiles: options.files,
       maxTokens: options.maxTokens,
     });
 
@@ -36,9 +37,11 @@ export class ContextService {
     }
 
     const firstItem = result.items[0];
+    // maxTokens is a budget, not an estimate; use measured tool metadata.
+    const tokenEstimate = result.metadata?.estimatedTokens ?? 0;
     return {
       task: options.task,
-      tokenEstimate: options.maxTokens || 2000,
+      tokenEstimate,
       summary: firstItem?.excerpt || `Assembled context with ${result.items.length} items`,
       items: [...result.items],
     };

@@ -107,6 +107,27 @@ function createProjectIndex(): ProjectIndex {
 }
 
 describe('SemanticSearchTool', () => {
+  it('separates keyword, vector, and hybrid modes and applies minScore', async () => {
+    const reader = new ProjectIndexReader(createProjectIndex());
+    const tool = new SemanticSearchTool(reader, new MockEmbeddingGenerator());
+
+    const keyword = await tool.execute({ query: 'authenticate', mode: 'keyword' });
+    expect(keyword.items.map(i => i.id)).toContain('s1');
+    expect(keyword.items.map(i => i.id)).not.toContain('s2');
+    expect(keyword.metadata?.usedEmbeddings).toBe(false);
+
+    const vector = await tool.execute({ query: 'database', mode: 'vector' });
+    expect(vector.items.map(i => i.id)).toContain('s2');
+    expect(vector.items.map(i => i.id)).not.toContain('s1');
+
+    const hybrid = await tool.execute({ query: 'authenticate', mode: 'hybrid' });
+    expect(hybrid.metadata?.usedEmbeddings).toBe(true);
+    expect(hybrid.items.map(i => i.id)).toContain('s1');
+
+    const filtered = await tool.execute({ query: 'authenticate', mode: 'hybrid', minScore: 2 });
+    expect(filtered.items).toEqual([]);
+  });
+
   it('should search by keyword', async () => {
     const reader = new ProjectIndexReader(createProjectIndex());
     const tool = new SemanticSearchTool(reader);

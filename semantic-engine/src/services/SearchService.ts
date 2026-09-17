@@ -27,8 +27,9 @@ export class SearchService {
 
     const result = await tool.execute({
       query: options.query,
-      limit: options.limit || 20,
-      useEmbeddings: options.mode !== 'keyword',
+      limit: options.limit ?? 20,
+      mode: options.mode ?? 'hybrid',
+      minScore: options.minScore,
       filters: {
         path: options.pathFilter,
         kind: options.kindFilter,

@@ -36,6 +36,11 @@ export interface SemanticSearchInput extends AiToolInput {
     readonly exportedOnly?: boolean;
   };
   readonly limit?: number;
+  /** Candidate source(s) to search. Defaults to hybrid. */
+  readonly mode?: 'keyword' | 'vector' | 'hybrid';
+  /** Minimum final ranked score (not the vector-store threshold). */
+  readonly minScore?: number;
+  /** @deprecated Prefer mode. */
   readonly useEmbeddings?: boolean;
 }
 
@@ -75,6 +80,8 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
         },
       },
       limit: { type: 'integer', default: 20 },
+      mode: { type: 'string', enum: ['keyword', 'vector', 'hybrid'], default: 'hybrid' },
+      minScore: { type: 'number', description: 'Minimum final ranked score' },
       useEmbeddings: { type: 'boolean', default: true },
     },
     required: ['query'],
@@ -201,18 +208,21 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
       const terms = queryTerms(input.query);
       const limit = input.limit ?? 20;
       const filters = input.filters ?? {};
-      const useEmbeddings = input.useEmbeddings ?? true;
+      // mode is authoritative; preserve the legacy boolean for old callers.
+      const mode = input.mode ?? (input.useEmbeddings === false ? 'keyword' : 'hybrid');
 
       const kinds = filters.kind ? (Array.isArray(filters.kind) ? filters.kind : [filters.kind]) : [];
       const languages = filters.language ? (Array.isArray(filters.language) ? filters.language : [filters.language]) : [];
 
       // Step 1: keyword-based candidates
-      const keywordCandidates = this.getKeywordCandidates(terms, kinds, languages, filters);
+      const keywordCandidates = mode === 'vector'
+        ? []
+        : this.getKeywordCandidates(terms, kinds, languages, filters);
 
       // Step 2: embedding-based candidates
       let embeddingCandidates: ScoredEntity[] = [];
       let embeddingGenerator: IEmbeddingGenerator | undefined;
-      if (useEmbeddings && this.vectorStore) {
+      if (mode !== 'keyword' && this.vectorStore) {
         // SE-VEC-02 — تلاش برای ساختنِ generator *پیش* از استفاده،
         // نه داخلِ شاخه‌ای که فقط با داشتنش به آن می‌رسیم.
         embeddingGenerator = await this.ensureEmbeddingGenerator();
@@ -290,6 +300,7 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
         .rank<ScoredEntity>(candidates, {
           ...(churnRanks.length > 0 ? { churnRankOutOf: Math.max(...churnRanks) } : {}),
         })
+        .filter(r => input.minScore == null || r.score >= input.minScore)
         .slice(0, limit);
 
       const items = ranked.map(r => {
@@ -324,10 +335,10 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
           */
           usedEmbeddings: embeddingGenerator !== undefined && embeddingCandidates.length > 0,
           embeddingModel: embeddingGenerator?.modelName ?? null,
-          ...(useEmbeddings && this.vectorStore && !embeddingGenerator
+          ...(mode !== 'keyword' && this.vectorStore && !embeddingGenerator
             ? { embeddingNote: 'no usable embedding generator for the model these chunks were built with' }
             : {}),
-          ...(useEmbeddings && !this.vectorStore
+          ...(mode !== 'keyword' && !this.vectorStore
             ? { embeddingNote: 'index has no vector chunks with embeddings' }
             : {}),
         },
