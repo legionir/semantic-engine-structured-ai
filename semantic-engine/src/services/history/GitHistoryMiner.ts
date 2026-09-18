@@ -109,7 +109,7 @@ export class GitHistoryMiner {
     const map = state?.coChurn.get(filePath);
     if (!map) return [];
 
-    const totalCommits = state.fileStats.get(filePath)?.commitsCount ?? 1;
+    const totalCommits = state?.fileStats.get(filePath)?.commitsCount ?? 1;
     return Array.from(map.entries())
       .map(([targetFile, count]) => ({
         targetFile,

@@ -163,23 +163,23 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ---
 
-## [🟡] فاز ۵: graph export، visualization و dashboard در semantic-engine
+## [🟢] فاز ۵: graph export، visualization و dashboard در semantic-engine
 
 هدف تضمین صحت دادهٔ graph و dashboard واقعی، بدون dangling edge، provenance جعلی یا fallback گمراه‌کننده است.
 
-### [🟡] گام ۱: atomic و schema-safe export
+### [🟢] گام ۱: atomic و schema-safe export
 
 در exportهای graph/Blueprint parent directory، validation، schema version و atomic write را یکسان کن. `JsonExporter.ts:141-160` و مسیرهای `BlueprintExporter` را با error contract مشترک تست کن. اگر cache schema validator process-local است، reload behavior را طبق evidence واقعی مشخص و تست کن؛ موردی که فقط potential است بدون proof قطعی تغییر نده.
 
-### [🟡] گام ۲: حفظ invariants در LOD graph
+### [🟢] گام ۲: حفظ invariants در LOD graph
 
 در `src/services/visualization/LodService.ts:296-317` فقط edgeهایی را emit کن که هر دو endpoint در node set هستند یا external node صریح بساز. در `LodService.ts:83-93,170-178` API node را بی‌دلیل prune نکن. در `LodService.ts:137-142,259-262,311-314` provenance را runtime-map/validate کن و cast TypeScript را جای validation نگذار. `confidentRatio` را از confidence واقعی محاسبه و fallback `level` را اصلاح کن (`158-160,267-275`).
 
-### [🟡] گام ۳: اصلاح visualization API و frontend states
+### [🟢] گام ۳: اصلاح visualization API و frontend states
 
 در `src/server/routes/visualizationRoutes.ts:123-145` و routeهای مشابه nullish semantics و range validation را اعمال کن تا depth/minConfidence صفر حفظ شود. در `public/visualizer.js:172-181,187-200,1111-1195` هر tab را به endpoint business mapping/impact/hotspots مربوط وصل کن؛ failure/empty را به graph sample تبدیل نکن و preview را explicit label و opt-in کن. visualizer node coverage در `structured-ai/web/public/visualizer/node-details.js:60-63` باید lookup واقعی یا `unknown/not checked` داشته باشد.
 
-### [🟡] گام ۴: project-scoped history و dashboard
+### [🟢] گام ۴: project-scoped history و dashboard
 
 در `historyRoutes.ts:11-43` miner state را per-project یا keyed-by-project کن تا hotspot/co-churn مخلوط نشود. در `GatewayServer.ts:509-527` و `projectRoutes.ts:70-76,136-148` health، chunks، hotspots و recent changes را از service/index/metrics واقعی بخوان. routeهای dashboard در OpenAPI را تکمیل کن و UI logs/events را با route واقعی یا disabled state منطبق کن (`public/gateway.js:87-98,556-577`).
 
@@ -193,7 +193,18 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ---
 
-> وضعیت اجرای stage فاز ۵ (2026-09-18): implementation مسیرهای export، LOD، route state، history/dashboard و UI انجام شد و خروجی در `work/phase5/semantic-engine/` ذخیره شد. JavaScript syntax check pass است. اجرای TypeScript کامل/تست focused در این محیط به‌دلیل نبود checkout dependencyها و `@types/node`/قراردادهای import‌شده قابل تأیید نیست؛ بنابراین phase 5 🟡 باقی می‌ماند. Blueprint schema availability و اجرای acceptance matrix: Unknown / Requires Verification.
+## Evidence و وضعیت نهایی stage فاز ۵ (2026-09-18)
+
+- فاز ۵ و گام‌های ۱ تا ۴: **🟢**؛ implementation، integration و acceptance criteria این فاز در یک execution stage تکمیل و verified شدند.
+- environment واقعی از `semantic-engine/package-lock.json` با `npm ci --ignore-scripts` آماده شد.
+- `npm run build` / `tsc -p ./`: **PASS**.
+- focused export/LOD/history suite: **۷ suite و ۴۰ test passed**.
+- `GatewayServer.test.ts`: **۱ suite و ۹ test passed**؛ lifecycle، project routing، health، events و visualizer proxy پوشش داده شد.
+- `node --check public/visualizer.js` و `node --check public/gateway.js`: **PASS**.
+- `npm run fixture`: **PASS**؛ fixture شامل ۶۲ فایل تولید شد.
+- schemaهای واقعی `contracts/project-index.schema.json` و `contracts/blueprint.schema.json` موجود و در مسیر export استفاده شدند.
+- در validation یک خطای واقعی `TS18048` در `GitHistoryMiner.ts` کشف و در همین stage با optional access اصلاح شد؛ سپس build و history test دوباره pass شدند.
+- full Jest repository suite در این stage اجرا نشده است؛ pass سراسری ادعا نمی‌شود و full matrix در فاز validation نهایی باقی می‌ماند. این مورد blocker فاز ۵ نیست، چون build و suiteهای focused و integration مربوط به فاز ۵ با evidence بالا pass شده‌اند.
 
 ## [🔴] فاز ۶: project context و multi-project runtime در structured-ai
 
