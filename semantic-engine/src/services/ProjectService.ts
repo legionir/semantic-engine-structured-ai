@@ -420,12 +420,21 @@ export class ProjectService {
   }
 
   /**
-   * اجرای ایندکس پروژه به صورت همگام یا ناهمگام.
+   * قرارداد صریح: این متد ایندکس را دوباره «نمی‌سازد»؛ artifactهای ایندکس
+   * موجود را از دیسک دوباره می‌خواند (`mode: 'reload'`) و شمارش‌های واقعی
+   * آن را برمی‌گرداند. ایندکس‌سازی واقعی توسط `IndexPipeline` انجام می‌شود
+   * و به این سرویس وصل نشده است؛ `mode` تا آن زمان این را به caller می‌گوید.
    */
   async indexProject(
     id: string,
     _options?: { incremental?: boolean }
-  ): Promise<{ filesCount: number; symbolsCount: number; edgesCount: number }> {
+  ): Promise<{
+    filesCount: number;
+    symbolsCount: number;
+    edgesCount: number;
+    mode: 'reload';
+    reindexed: false;
+  }> {
     const project = this.byId.get(id);
     if (!project) {
       throw new Error(`Project '${id}' not found`);
@@ -436,6 +445,8 @@ export class ProjectService {
       filesCount: reloaded?.stats.filesCount || 0,
       symbolsCount: reloaded?.stats.symbolsCount || 0,
       edgesCount: reloaded?.stats.dependenciesCount || 0,
+      mode: 'reload',
+      reindexed: false,
     };
   }
 

@@ -101,7 +101,8 @@ export class IndexingWorker extends EventEmitter {
         symbolsExtracted: indexResult.symbolsCount || 0,
         edgesCreated: indexResult.edgesCount || 0,
         durationMs,
-        shadowSwapped: true,
+        // indexProject() only reloads existing artifacts; no shadow index was built or swapped.
+        shadowSwapped: false,
       };
 
       this.emit('task:complete', { jobId: job.id, result });
