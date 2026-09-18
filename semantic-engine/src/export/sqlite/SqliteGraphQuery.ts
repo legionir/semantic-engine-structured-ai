@@ -62,11 +62,16 @@
  */
 
 import { SqliteDriver } from './SqliteDriver';
-import { GraphRelation, Direction, GraphEdge } from '../../graphs/GraphQueryEngine';
+import {
+  GraphRelation,
+  Direction,
+  GraphEdge,
+  DEFAULT_GRAPH_DEPTH,
+  DEFAULT_GRAPH_DIRECTION,
+  DEFAULT_GRAPH_MAX_NODES,
+  DEFAULT_GRAPH_MIN_CONFIDENCE,
+} from '../../graphs/GraphQueryEngine';
 import { HIGH_CONFIDENCE_THRESHOLD } from '../../graphs/EdgeProvenance';
-
-const DEFAULT_MAX_NODES = 5_000;
-const DEFAULT_DEPTH = 2;
 
 /**
  * `layers` عمداً نیست: یال‌های بین‌لایه‌ای فاز ۴۷ از blueprint ساخته
@@ -143,6 +148,12 @@ function branchesFor(relations: readonly GraphRelation[] | undefined): readonly 
  * `both` یعنی دو شاخه — یکی رو به جلو و یکی برعکس. تولید هر دو
  * این‌جا انجام می‌شود تا `SELECT`ها هیچ‌وقت روی جهت شرط نگذارند.
  */
+function validateTraversalBound(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+}
+
 function directed(branch: Branch, direction: Direction): readonly { from: string; to: string; table: string; filter?: string }[] {
   const forward = { table: branch.table, from: branch.from, to: branch.to, filter: branch.filter };
   const backward = { table: branch.table, from: branch.to, to: branch.from, filter: branch.filter };
@@ -240,10 +251,12 @@ export class SqliteGraphQuery {
     nodeId: string,
     options: SqliteTraversalOptions = {}
   ): Promise<SqliteTraversalResult> {
-    const depth = options.depth ?? DEFAULT_DEPTH;
-    const minConfidence = options.minConfidence ?? HIGH_CONFIDENCE_THRESHOLD;
-    const maxNodes = options.maxNodes ?? DEFAULT_MAX_NODES;
-    const direction = options.direction ?? 'both';
+    const depth = options.depth ?? DEFAULT_GRAPH_DEPTH;
+    const minConfidence = options.minConfidence ?? DEFAULT_GRAPH_MIN_CONFIDENCE;
+    const maxNodes = options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES;
+    const direction = options.direction ?? DEFAULT_GRAPH_DIRECTION;
+    validateTraversalBound('depth', depth);
+    validateTraversalBound('maxNodes', maxNodes);
 
     const legs = branchesFor(options.relations).flatMap(branch => directed(branch, direction));
 
@@ -345,8 +358,9 @@ export class SqliteGraphQuery {
     options: SqliteTraversalOptions,
     minConfidence: number
   ): Promise<{ path: string[]; weakest: number } | null> {
-    const depth = options.depth ?? DEFAULT_DEPTH;
-    const direction = options.direction ?? 'both';
+    const depth = options.depth ?? DEFAULT_GRAPH_DEPTH;
+    const direction = options.direction ?? DEFAULT_GRAPH_DIRECTION;
+    validateTraversalBound('depth', depth);
     const legs = branchesFor(options.relations).flatMap(branch => directed(branch, direction));
 
     const steps = legs.map(leg => {

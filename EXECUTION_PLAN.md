@@ -142,13 +142,11 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 در `src/services/SearchService.ts:8-15,28-46` و `SemanticSearchTool.ts:209-215` مسیرهای `vector`، `keyword` و `hybrid` را از هم جدا کن، `minScore` را اعمال کن و keyword را فقط در mode لازم اجرا کن. handle/result باید project-scoped و قابل تکرار باشد.
 
-> **وضعیت اجرای این checkpoint (2026-09-18):** گام‌های ۱ و ۲ implementation اولیه دارند؛ گام ۳ با اصلاح `targetFiles` و خواندن `metadata.estimatedTokens` پیاده‌سازی شد؛ گام ۴ با modeهای `keyword`/`vector`/`hybrid` و `minScore` پیاده‌سازی شد. همهٔ این گام‌ها فعلاً 🟡 هستند چون focused test و typecheck/runtime در محیط موجود اجرا و تأیید نشده‌اند. گام ۵ و validation نهایی فاز هنوز انجام نشده است. Evidence: commit `89bcb2da9cdeccddc5c88dc01f7ed6adfb751223`; blocker قبلی dependencyهای `jest`/`ts-jest`/`tsc` است و pass ادعا نمی‌شود.
+> **وضعیت اجرای این checkpoint (2026-09-18):** گام‌های ۱ و ۲ implementation اولیه دارند؛ گام ۳ با اصلاح `targetFiles` و خواندن `metadata.estimatedTokens` پیاده‌سازی شد؛ گام ۴ با modeهای `keyword`/`vector`/`hybrid` و `minScore` پیاده‌سازی شد؛ گام ۵ با validation cardinality embedding، اشتراک defaultهای graph بین SQLite و حافظه، و enforcement صریح `maxNodes` پیاده‌سازی شد. برای گام ۵ focused regression به `SqliteGraphQuery.phase4.test.ts` اضافه شده است. همهٔ گام‌ها فعلاً 🟡 هستند چون در checkout کامل dependencyها نصب و focused test/typecheck/runtime اجرا و تأیید نشده‌اند؛ فاز هنوز 🟡 است و pass ادعا نمی‌شود. Evidence: `semantic-engine/src/export/sqlite/SqliteGraphQuery.ts`, `semantic-engine/src/graphs/GraphQueryEngine.ts`, `semantic-engine/src/export/sqlite/SqliteGraphQuery.phase4.test.ts`; blocker dependencyهای `jest`/`ts-jest`/`tsc` است.
 
 ### [🟡] گام ۵: پایدارکردن embedding و graph query parity
 
 در `RemoteEmbeddingGenerator.ts:55-68` و `VectorIndexer.ts:176-182` cardinality پاسخ 200 را validate کن و missing embedding را silent skip نکن؛ retry/fallback/fail contract را مشخص کن. در `SqliteGraphQuery.ts:68-69,194-199,238-247,342-350` و `GraphQueryEngine.ts:389-405,482-485` defaultهای direction/depth/threshold/path را مشترک کن. `maxNodes` در `SqliteGraphQuery.ts:79-87,342-376` را enforce و `truncated` result تعریف کن.
-
-> **وضعیت اجرای checkpoint (2026-09-18):** در `RemoteEmbeddingGenerator` cardinality پاسخ‌های OpenAI-compatible و Ollama، وجود vector غیرخالی، finite و هم‌ابعاد validate می‌شود. در `VectorIndexer` تعداد و ابعاد نتایج قبل از mutation بررسی می‌شود و نتیجهٔ ناقص دیگر silent skip نمی‌شود. در `GraphQueryEngine` default عمق `shortestPath` با `DEFAULT_DEPTH` مشترک شد و literal مستقل حذف شد. Commit: `321c7b8b555c1e2aa995428adc1d1f324d6fba2e`. تست runtime/typecheck در محیط dependency-complete هنوز اجرا نشده، بنابراین گام 🟡 باقی می‌ماند؛ parity کامل SQLite/in-memory و acceptance نهایی هنوز نیازمند validation است.
 
 **معیار پذیرش:**
 

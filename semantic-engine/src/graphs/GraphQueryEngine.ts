@@ -165,8 +165,10 @@ export interface SubgraphResult {
   readonly seeds: readonly string[];
 }
 
-const DEFAULT_MAX_NODES = 5_000;
-const DEFAULT_DEPTH = 2;
+export const DEFAULT_GRAPH_MAX_NODES = 5_000;
+export const DEFAULT_GRAPH_DEPTH = 2;
+export const DEFAULT_GRAPH_DIRECTION: Direction = 'out';
+export const DEFAULT_GRAPH_MIN_CONFIDENCE = HIGH_CONFIDENCE_THRESHOLD;
 const ALL_RELATIONS: readonly GraphRelation[] = ['imports', 'calls', 'types', 'layers'];
 
 export class GraphQueryEngine {
@@ -308,7 +310,7 @@ export class GraphQueryEngine {
    * روی حدسِ نام».
    */
   path(fromId: string, toId: string, options: TraversalOptions = {}): PathResult {
-    const threshold = options.minConfidence ?? HIGH_CONFIDENCE_THRESHOLD;
+    const threshold = options.minConfidence ?? DEFAULT_GRAPH_MIN_CONFIDENCE;
 
     const strong = this.shortestPath(fromId, toId, { ...options, minConfidence: threshold });
     if (strong.path) return strong;
@@ -336,8 +338,8 @@ export class GraphQueryEngine {
     const explorer = new SubgraphExplorer(this);
 
     const result = explorer.explore(seeds, {
-      maxNodes: options.maxNodes ?? DEFAULT_MAX_NODES,
-      maxDepth: options.depth ?? DEFAULT_DEPTH,
+      maxNodes: options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES,
+      maxDepth: options.depth ?? DEFAULT_GRAPH_DEPTH,
       direction: options.direction ?? 'both',
       relations: options.relations,
       minConfidence: options.minConfidence,
@@ -389,7 +391,7 @@ export class GraphQueryEngine {
   private passes(edge: GraphEdge, options: TraversalOptions): boolean {
     const relations = options.relations ?? ALL_RELATIONS;
     if (!relations.includes(edge.relation)) return false;
-    const threshold = options.minConfidence ?? HIGH_CONFIDENCE_THRESHOLD;
+    const threshold = options.minConfidence ?? DEFAULT_GRAPH_MIN_CONFIDENCE;
     return edge.confidence >= threshold;
   }
 
@@ -400,8 +402,8 @@ export class GraphQueryEngine {
    * می‌رسد — همان چیزی که در DFS باگ SE-AI-03 را می‌ساخت.
    */
   private bfs(starts: readonly string[], options: TraversalOptions): TraversalResult {
-    const depthLimit = options.depth ?? DEFAULT_DEPTH;
-    const maxNodes = options.maxNodes ?? DEFAULT_MAX_NODES;
+    const depthLimit = options.depth ?? DEFAULT_GRAPH_DEPTH;
+    const maxNodes = options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES;
     const direction = options.direction ?? 'out';
 
     const visited = new Set<string>(starts);
@@ -480,8 +482,8 @@ export class GraphQueryEngine {
   }
 
   private shortestPath(fromId: string, toId: string, options: TraversalOptions): PathResult {
-    const maxNodes = options.maxNodes ?? DEFAULT_MAX_NODES;
-    const depthLimit = options.depth ?? DEFAULT_DEPTH;
+    const maxNodes = options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES;
+    const depthLimit = options.depth ?? DEFAULT_GRAPH_DEPTH;
     const direction = options.direction ?? 'out';
 
     if (fromId === toId) {
