@@ -481,7 +481,7 @@ export class GraphQueryEngine {
 
   private shortestPath(fromId: string, toId: string, options: TraversalOptions): PathResult {
     const maxNodes = options.maxNodes ?? DEFAULT_MAX_NODES;
-    const depthLimit = options.depth ?? 8;
+    const depthLimit = options.depth ?? DEFAULT_DEPTH;
     const direction = options.direction ?? 'out';
 
     if (fromId === toId) {

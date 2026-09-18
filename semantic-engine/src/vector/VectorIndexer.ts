@@ -174,11 +174,18 @@ export class VectorIndexer {
     if (pending.length === 0) return;
 
     const results = await generator.generateBatch(pending.map(c => c.content));
+    if (results.length !== pending.length) {
+      throw new Error(`Embedding cardinality mismatch: expected ${pending.length}, received ${results.length}`);
+    }
+    const dimensions = results[0]?.embedding.length ?? 0;
+    if (dimensions === 0 || results.some(result => result.embedding.length !== dimensions || result.embedding.some(value => !Number.isFinite(value)))) {
+      throw new Error('Embedding provider returned an empty, non-finite, or inconsistent vector');
+    }
 
     for (let i = 0; i < pending.length; i++) {
       const chunk = pending[i]!;
       const result = results[i];
-      if (!result) continue;
+      if (!result) throw new Error(`Embedding result missing at index ${i}`);
 
       const writable = chunk as VectorChunk & { embedding?: number[]; embeddingModel?: string };
       writable.embedding = [...result.embedding];

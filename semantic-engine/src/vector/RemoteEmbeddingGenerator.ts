@@ -64,7 +64,7 @@ export class RemoteEmbeddingGenerator implements IEmbeddingGenerator {
       data?: Array<{ embedding?: number[] }>;
     };
     const rows = Array.isArray(data.data) ? data.data : [];
-    return rows.map(row => this.toResult(row.embedding ?? []));
+    return this.validateBatch(rows.map(row => row.embedding ?? []), texts.length, 'OpenAI-compatible');
   }
 
   private async batchOllama(texts: readonly string[]): Promise<EmbeddingResult[]> {
@@ -79,7 +79,7 @@ export class RemoteEmbeddingGenerator implements IEmbeddingGenerator {
         JSON.stringify({ model: this.options.model, input: texts })
       )) as { embeddings?: number[][] };
       if (Array.isArray(data.embeddings) && data.embeddings.length === texts.length) {
-        return data.embeddings.map(e => this.toResult(e));
+        return this.validateBatch(data.embeddings, texts.length, 'Ollama');
       }
     } catch {
       /* عقب‌گرد به اندپوینت تکی. */
@@ -93,9 +93,20 @@ export class RemoteEmbeddingGenerator implements IEmbeddingGenerator {
         headers,
         JSON.stringify({ model: this.options.model, prompt: text })
       )) as { embedding?: number[] };
-      results.push(this.toResult(data.embedding ?? []));
+      results.push(this.validateBatch([data.embedding ?? []], 1, 'Ollama legacy')[0]!);
     }
     return results;
+  }
+
+  private validateBatch(rawVectors: readonly number[][], expected: number, provider: string): EmbeddingResult[] {
+    if (rawVectors.length !== expected) {
+      throw new Error(`${provider} embedding cardinality mismatch: expected ${expected}, received ${rawVectors.length}`);
+    }
+    const dimensions = rawVectors[0]?.length ?? 0;
+    if (dimensions === 0 || rawVectors.some(vector => vector.length !== dimensions || vector.some(value => !Number.isFinite(value)))) {
+      throw new Error(`${provider} returned an empty, non-finite, or inconsistent embedding vector`);
+    }
+    return rawVectors.map(vector => this.toResult(vector));
   }
 
   private toResult(raw: readonly number[]): EmbeddingResult {
