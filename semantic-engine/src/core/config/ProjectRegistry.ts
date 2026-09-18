@@ -234,6 +234,34 @@ export class ProjectRegistry {
   }
 
   /**
+   * به‌روزرسانی فیلدهای قابل‌تغییر یک پروژه (name / enabled / autoStart)
+   * با یک نوشتن atomic. `id` و `rootPath` هرگز از اینجا عوض نمی‌شوند.
+   */
+  update(
+    id: string,
+    patch: { name?: string; enabled?: boolean; autoStart?: boolean }
+  ): ProjectRecord {
+    const record = this.get(id);
+    if (!record) throw new Error(`Unknown project id: ${id}`);
+
+    let name = record.name;
+    if (patch.name !== undefined) {
+      name = patch.name.trim();
+      if (name === '') throw new Error('Project name must not be empty.');
+    }
+
+    const updated: ProjectRecord = {
+      ...record,
+      name,
+      enabled: patch.enabled ?? record.enabled,
+      autoStart: patch.autoStart ?? record.autoStart,
+      lastSeenAt: this.now().toISOString(),
+    };
+    this.replace(updated);
+    return updated;
+  }
+
+  /**
    * جابه‌جایی کنترل‌شدهٔ ریشه. id حفظ می‌شود؛ فقط canonicalRoot عوض می‌شود
    * و اگر ریشهٔ مقصد از قبل ثبت شده باشد خطا می‌دهد تا دو رکورد یکی نشوند.
    */

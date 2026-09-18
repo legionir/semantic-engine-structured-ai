@@ -24,19 +24,19 @@
 
 # پلن اجرایی
 
-## [🔴] فاز ۱: تثبیت baseline، قراردادها و محیط قابل‌راستی‌آزمایی
+## [🟡] فاز ۱: تثبیت baseline، قراردادها و محیط قابل‌راستی‌آزمایی
 
 هدف این فاز ایجاد مبنای reproducible برای تمام اصلاحات است؛ تا وقتی dependency، build، fixture، contract و inventory روشن نشده، هیچ finding به‌عنوان fix‌شده پذیرفته نمی‌شود.
 
-### [🔴] گام ۱: قفل‌کردن baseline و traceability ممیزی
+### [🟡] گام ۱: قفل‌کردن baseline و traceability ممیزی
 
 در ریشهٔ repository revision جاری، branch و تغییرات local را ثبت کن. `AUDIT_FILE_STATUS.md` و تمام فایل‌های `audit/` را به‌عنوان source map نگه دار. برای هر finding یک شناسهٔ یکتا با فرمت `SE-<domain>-<number>` یا `SA-<domain>-<number>` بساز و شناسه‌های تکراری batchها را با `path:line` تفکیک کن. برای هر مورد status فعلی، severity، evidence، اثر، اصلاح، تست و dependency فاز را ثبت کن.
 
-### [🔴] گام ۲: آماده‌سازی environment و fixtureهای واقعی
+### [🟡] گام ۲: آماده‌سازی environment و fixtureهای واقعی
 
 manifestها و scriptهای package هر دو پروژه را بخوان و dependencyهای واقعی را نصب/قفل کن؛ از جایگزین‌کردن dependency با mock خودداری کن. `semantic-engine` را برای `jest`، `ts-jest`، `tsc` و fixtureهایی مانند `test-fixture/node_modules/left-pad` آماده کن. artifactهای `dist/cli/main.js`، grammar/WASM و executableهای لازم را طبق repository بساز. اگر نسخهٔ Node با قرارداد package ناسازگار است، **Unknown / Requires Verification** را به تصمیم صریح compatibility تبدیل کن.
 
-### [🔴] گام ۳: ثبت baseline تست، build و contract
+### [🟡] گام ۳: ثبت baseline تست، build و contract
 
 قبل از تغییر، suiteهای موجود، suiteهای skipped، تست‌های timeout‌شده، `npm test`، build، audit checker و contract validation را اجرا کن. خطاهای شناخته‌شده شامل `Preset ts-jest not found`، `tsc: not found`، نبود `AUDIT-2026-08.md` و fixture ناقص است؛ پس از آماده‌سازی environment معلوم کن کدام خطا واقعی باقی مانده است. pass/fail/skip را با command، زمان، revision و خروجی ثبت کن.
 
@@ -54,7 +54,7 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ---
 
-## [🔴] فاز ۲: persistence، migration و project isolation در semantic-engine
+## [🟡] فاز ۲: persistence، migration و project isolation در semantic-engine
 
 هدف این فاز تضمین استقلال و دوام دادهٔ هر project در registry، export، SQLite، indexing و restart است.
 
@@ -62,7 +62,7 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 در `semantic-engine/src/gateway/ProjectRegistry.ts:203-216` و `src/gateway/GatewayServer.ts:90-92,560-575`، `autoStart` و تمام تنظیمات لازم را به‌صورت durable ذخیره کن. هنگام `start()` registry را load، validate و hydrate کن؛ برای هر project worker/index state را با root مستقل restore کن. register/update/delete/list/get باید map، persistence و worker/runtime را هم‌زمان و سازگار mutate کنند. regression برای restart، autoStart، update و delete اضافه کن.
 
-### [🔴] گام ۲: واقعی‌کردن project API و config mutation
+### [🟡] گام ۲: واقعی‌کردن project API و config mutation
 
 در `src/server/routes/projectRoutes.ts:85-119`، PATCH و DELETE را به service/registry واقعی وصل کن و stale state را پاک کن. در `src/server/routes/configRoutes.ts:35-53` mutation، persistence و runtime reconfigure واقعی پیاده کن و `0` را با nullish semantics حفظ کن. در `src/services/ProjectService.ts:371-389` قرارداد `indexProject()` را با رفتار واقعی هم‌راستا کن؛ اگر indexing async است job و result contract را صریح کن. dashboard routeهای غایب را با `contracts/platform-v1.openapi.json:294-323` همگام کن.
 
@@ -386,3 +386,11 @@ migrationهای persistence را روی copy و dataset واقعی/fixture versi
 - docs، OpenAPI، schema، CI، runtime و implementation یک قرارداد واحد نشان می‌دهند.
 - build، test، smoke، concurrency، isolation، performance و failure checks در revision نهایی pass هستند.
 - همهٔ فازها و گام‌ها طبق پروتکل وضعیت به‌روز شده‌اند و فقط در صورت Definition of Done واقعی 🟢 اعلام می‌شوند.
+
+---
+
+# یادداشت اجرا (living log)
+
+- **2026-09-19 — کار روی branch `work/execution-plan` (مشتق از `docs/audit-file-status`):** این branch ۱۲ commit جلوتر از `main` است و فازهای ۴، ۵ و گام ۱ فاز ۶ را 🟢 علامت زده است. این 🟢ها در این جلسه دوباره اجرا/راستی‌آزمایی نشده‌اند (**Unknown / Requires Verification**)؛ در فاز ۹ باید با regression matrix تأیید شوند. فازهای ۱–۳ و ۷–۱۰ در این branch 🔴 بودند.
+- **فاز ۱ 🟡:** baseline روی `main@94955bc` ثبت شد (`audit/BASELINE.md`، `audit/FINDING_INDEX.tsv`): semantic-engine ۲۲ از ۲۰۸ suite fail (۶۶ از ۲۷۹۷ تست)، structured-ai ۱۴ از ۵۱ suite fail؛ علل Unknown. گام ۴ (قراردادهای مشترک) شروع نشده. baseline روی نوک این branch دوباره گرفته نشده است.
+- **فاز ۲ گام ۲ 🟡:** `PATCH/DELETE /api/v1/projects/:id` (که در این branch 501 بودند) واقعاً به `ProjectRegistry.update`/`remove` و `ProjectService.updateProject`/`removeProject` وصل شد؛ تست regression در `projectRegistryRoutes.test.ts` pass است (۵/۵). باقی‌مانده: config PATCH runtime، قرارداد `indexProject()`، همگام‌سازی OpenAPI برای dashboard.

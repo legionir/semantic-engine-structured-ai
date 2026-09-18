@@ -305,6 +305,57 @@ export class ProjectService {
     return this.byId.get(id);
   }
 
+  /**
+   * تغییر واقعی name/enabled/autoStart: اول registry (durable)، بعد map
+   * درون‌حافظه‌ای، تا PATCH دیگر فقط یک پاسخ ساختگی نباشد.
+   */
+  updateProject(
+    id: string,
+    patch: { name?: string; enabled?: boolean; autoStart?: boolean }
+  ): ManagedProject | undefined {
+    const current = this.byId.get(id);
+    if (!current) return undefined;
+
+    const registry = this.options.registry;
+    let name = current.name;
+    if (registry) {
+      name = registry.update(current.id, patch).name;
+    } else if (patch.name !== undefined) {
+      name = patch.name.trim();
+      if (name === '') throw new Error('Project name must not be empty.');
+    }
+
+    const updated: ManagedProject = { ...current, name };
+    this.projects.set(current.rootPath, updated);
+    for (const key of [current.id, ...current.aliases]) {
+      if (this.byId.get(key) === current) this.byId.set(key, updated);
+    }
+    return updated;
+  }
+
+  /**
+   * حذف واقعی: watcher/timer، هر دو map و رکورد registry پاک می‌شوند تا
+   * پروژهٔ حذف‌شده پس از restart برنگردد. فایل‌های ایندکس دست‌نخورده می‌مانند.
+   */
+  removeProject(id: string): boolean {
+    const current = this.byId.get(id);
+    if (!current) return false;
+
+    this.options.registry?.remove(current.id);
+
+    const timer = this.reloadTimers.get(current.id);
+    if (timer) clearTimeout(timer);
+    this.reloadTimers.delete(current.id);
+    this.artifactWatchers.get(current.id)?.close();
+    this.artifactWatchers.delete(current.id);
+
+    this.projects.delete(current.rootPath);
+    for (const [key, value] of [...this.byId]) {
+      if (value === current) this.byId.delete(key);
+    }
+    return true;
+  }
+
   listProjects(): ManagedProject[] {
     return Array.from(this.projects.values());
   }
