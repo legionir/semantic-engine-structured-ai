@@ -5,6 +5,23 @@
 import { NodeType, EdgeRelation, GraphNode, GraphEdge } from '../../server/types';
 import { SymbolEntry, FileEntry } from '../../core/types/project-index.types';
 
+const EDGE_BASES = new Set<GraphEdge['metadata']['basis']>([
+  'resolved',
+  'name-match',
+  'transitive',
+  'blueprint',
+]);
+const EDGE_SOURCE_KINDS = new Set<GraphEdge['metadata']['sourceKind']>([
+  'compiler',
+  'tree-sitter',
+  'heuristic',
+  'inferred',
+]);
+
+export function isGraphEdgeBasis(value: unknown): value is GraphEdge['metadata']['basis'] {
+  return typeof value === 'string' && EDGE_BASES.has(value as GraphEdge['metadata']['basis']);
+}
+
 export class GraphViewModelMapper {
   static createNode(
     id: string,
@@ -33,6 +50,15 @@ export class GraphViewModelMapper {
       sourceKind: 'compiler',
     }
   ): GraphEdge {
+    if (!Number.isFinite(metadata.confidence) || metadata.confidence < 0) {
+      throw new Error('Graph edge confidence must be a finite non-negative number');
+    }
+    if (!isGraphEdgeBasis(metadata.basis)) {
+      throw new Error(`Unsupported graph edge provenance basis: ${String(metadata.basis)}`);
+    }
+    if (!EDGE_SOURCE_KINDS.has(metadata.sourceKind)) {
+      throw new Error(`Unsupported graph edge source kind: ${String(metadata.sourceKind)}`);
+    }
     return {
       id,
       source,

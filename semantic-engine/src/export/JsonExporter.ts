@@ -8,7 +8,6 @@
 
 import { classifyFileRole, isEntryPointPath } from '../core/fileRole';
 import { describeLanguageSupport } from '../symbols/tree-sitter/languageSupport';
-import * as fs from 'fs';
 import * as path from 'path';
 import {
   ProjectIndex,
@@ -29,7 +28,7 @@ import {
   AiMetadata,
 } from '../core/types/project-index.types';
 import { ScanResult } from '../scanner/WorkspaceScanner';
-import { validateAgainstSchema } from './schemaValidation';
+import { validateAgainstSchema, writeJsonAtomic } from './schemaValidation';
 import { SymbolIndex } from '../graphs/SymbolIndex';
 import { ReverseDependencyIndex } from '../graphs/ReverseDependencyIndex';
 import { SymbolMetricsCalculator } from '../core/metrics/SymbolMetricsCalculator';
@@ -120,19 +119,13 @@ export class JsonExporter {
    * می‌خواندش و به‌طور نامعلومی شکست می‌خورد.
    */
   async writeProjectIndex(index: ProjectIndex, options: ExportOptions): Promise<void> {
-    if (options.validate) {
-      const errors = this.validate(index);
-      if (errors.length > 0) {
-        throw new Error(
-          `project-index does not match its schema (${errors.length} violation(s)):\n  ` +
-            errors.slice(0, 10).join('\n  ')
-        );
-      }
-    }
-
-    const json = JSON.stringify(index, null, options.pretty !== false ? 2 : undefined);
-    await fs.promises.mkdir(path.dirname(options.outputPath), { recursive: true });
-    await fs.promises.writeFile(options.outputPath, json, 'utf8');
+    await writeJsonAtomic({
+      outputPath: options.outputPath,
+      value: index,
+      schema: 'project-index',
+      validate: options.validate === true,
+      pretty: options.pretty,
+    });
   }
 
   /**
@@ -152,12 +145,13 @@ export class JsonExporter {
     const projectIndex = await this.buildProjectIndex(
       scanResult, allSymbols, options, dependencies, graphs, vectorChunks, llmClient, gitInfo, enrichment
     );
-    const json = JSON.stringify(
-      projectIndex,
-      null,
-      options.pretty !== false ? 2 : undefined
-    );
-    await fs.promises.writeFile(options.outputPath, json, 'utf8');
+    await writeJsonAtomic({
+      outputPath: options.outputPath,
+      value: projectIndex,
+      schema: 'project-index',
+      validate: options.validate === true,
+      pretty: options.pretty,
+    });
   }
 
   /**

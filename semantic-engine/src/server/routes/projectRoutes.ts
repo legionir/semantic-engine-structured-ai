@@ -1,11 +1,13 @@
-/**
- * ProjectRoutes — Project registration, retrieval, status, and dashboard overview endpoints (Domain 04 & 13).
- */
+/** Project and dashboard routes backed only by ProjectService data. */
 
 import { RouteDefinition } from '../types';
 import { ProjectService } from '../../services/ProjectService';
 
+const unavailable = (reason: string) => ({ state: 'unavailable' as const, reason });
+
 export function createProjectRoutes(projectService: ProjectService): RouteDefinition[] {
+  const find = (id: string) => projectService.getProject(id);
+
   return [
     {
       method: 'GET',
@@ -16,13 +18,7 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
           status: 200,
           json: {
             total: projects.length,
-            projects: projects.map(p => ({
-              id: p.id,
-              name: p.name,
-              rootPath: p.rootPath,
-              status: p.status,
-              stats: p.stats,
-            })),
+            projects: projects.map(p => ({ id: p.id, name: p.name, rootPath: p.rootPath, status: p.status, stats: p.stats })),
           },
         };
       },
@@ -32,11 +28,7 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
       pattern: '/api/v1/projects',
       schema: {
         type: 'object',
-        properties: {
-          path: { type: 'string' },
-          name: { type: 'string' },
-          id: { type: 'string' },
-        },
+        properties: { path: { type: 'string' }, name: { type: 'string' }, id: { type: 'string' } },
         required: ['path'],
       },
       handler: async ctx => {
@@ -44,13 +36,7 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
         const project = projectService.registerProject(body.path, body.id, body.name);
         return {
           status: 201,
-          json: {
-            id: project.id,
-            name: project.name,
-            rootPath: project.rootPath,
-            status: project.status,
-            stats: project.stats,
-          },
+          json: { id: project.id, name: project.name, rootPath: project.rootPath, status: project.status, stats: project.stats },
         };
       },
     },
@@ -58,10 +44,9 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
       method: 'GET',
       pattern: '/api/v1/projects/:id',
       handler: async ctx => {
-        const project = projectService.getProject(ctx.params.id);
-        if (!project) {
-          return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
-        }
+        const project = find(ctx.params.id);
+        if (!project) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
+        const files = project.reader?.getAllFiles() ?? [];
         return {
           status: 200,
           json: {
@@ -69,11 +54,11 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
             name: project.name,
             status: project.status,
             indexStatus: project.status,
-            languages: project.reader ? Array.from(new Set(project.reader.getAllFiles().map(f => f.language))) : ['typescript'],
+            languages: Array.from(new Set(files.map(f => f.language).filter((language): language is string => Boolean(language)))),
             files: project.stats.filesCount,
             symbols: project.stats.symbolsCount,
             dependencies: project.stats.dependenciesCount,
-            chunks: 0,
+            chunks: Array.isArray(project.index?.vectorChunks) ? project.index.vectorChunks.length : unavailable('vector chunk index is not available'),
             rootPath: project.rootPath,
             indexPath: project.indexPath,
             stats: project.stats,
@@ -86,20 +71,9 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
       pattern: '/api/v1/projects/:id',
       requireAuth: true,
       handler: async ctx => {
-        const project = projectService.getProject(ctx.params.id);
-        if (!project) {
-          return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
-        }
-        const body = (ctx.body || {}) as { name?: string };
-        return {
-          status: 200,
-          json: {
-            updated: true,
-            id: project.id,
-            name: body.name || project.name,
-            status: project.status,
-          },
-        };
+        if (!find(ctx.params.id)) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
+        // ProjectService has no update API; claiming success would leave stale registry/runtime state.
+        return { status: 501, json: { error: 'Project update is unavailable', ...unavailable('ProjectService exposes no project update method') } };
       },
     },
     {
@@ -107,49 +81,41 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
       pattern: '/api/v1/projects/:id',
       requireAuth: true,
       handler: async ctx => {
-        const project = projectService.getProject(ctx.params.id);
-        if (!project) {
-          return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
-        }
-        return {
-          status: 200,
-          json: { deleted: true, id: ctx.params.id },
-        };
+        if (!find(ctx.params.id)) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
+        return { status: 501, json: { error: 'Project deletion is unavailable', ...unavailable('ProjectService exposes no project deletion method') } };
       },
     },
-    // Domain 13: Dashboard Overview & Visualization Data
     {
       method: 'GET',
       pattern: '/api/v1/projects/:id/dashboard/overview',
       handler: async ctx => {
-        const project = projectService.getProject(ctx.params.id);
-        if (!project) {
-          return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
-        }
-
+        const project = find(ctx.params.id);
+        if (!project) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
         const files = project.reader?.getAllFiles() ?? [];
-        const languages = Array.from(new Set(files.map(f => f.language)));
+        const languages = Array.from(new Set(files.map(f => f.language).filter((language): language is string => Boolean(language))));
+        const dependencyGraph = project.index?.graphs?.dependencyGraph ?? [];
+        const chunks = Array.isArray(project.index?.vectorChunks)
+          ? project.index.vectorChunks.length
+          : unavailable('vector chunk index is not available');
 
         return {
           status: 200,
           json: {
             project: { id: project.id, name: project.name, rootPath: project.rootPath },
-            health: { status: 'healthy', indexState: project.status },
+            // Index state is real; no health service is attached to this route.
+            health: { ...unavailable('ProjectService does not expose runtime health metrics'), indexState: project.status },
             statistics: {
               files: project.stats.filesCount,
               symbols: project.stats.symbolsCount,
               dependencies: project.stats.dependenciesCount,
-              chunks: 0,
+              chunks,
             },
             languages,
             topFiles: files.slice(0, 5).map(f => ({ path: f.path, size: f.size })),
-            hotspots: [],
-            recentChanges: [],
+            hotspots: unavailable('history service is not attached to dashboard routes'),
+            recentChanges: unavailable('recent-change service is not attached to dashboard routes'),
             indexStatus: { state: project.status, lastIndexedAt: project.stats.lastIndexedAt },
-            graphStats: {
-              nodesCount: project.stats.symbolsCount + project.stats.filesCount,
-              edgesCount: project.stats.dependenciesCount,
-            },
+            graphStats: { nodesCount: project.stats.symbolsCount + project.stats.filesCount, edgesCount: dependencyGraph.length },
           },
         };
       },
@@ -158,24 +124,18 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
       method: 'GET',
       pattern: '/api/v1/projects/:id/dashboard/dependencies',
       handler: async ctx => {
-        const project = projectService.getProject(ctx.params.id);
-        if (!project) return { status: 404, json: { error: `Project not found` } };
-        return {
-          status: 200,
-          json: { dependencies: project.index?.graphs?.dependencyGraph ?? [] },
-        };
+        const project = find(ctx.params.id);
+        if (!project) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
+        return { status: 200, json: { projectId: project.id, dependencies: project.index?.graphs?.dependencyGraph ?? [] } };
       },
     },
     {
       method: 'GET',
       pattern: '/api/v1/projects/:id/dashboard/metrics',
       handler: async ctx => {
-        const project = projectService.getProject(ctx.params.id);
-        if (!project) return { status: 404, json: { error: `Project not found` } };
-        return {
-          status: 200,
-          json: { stats: project.stats },
-        };
+        const project = find(ctx.params.id);
+        if (!project) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
+        return { status: 200, json: { projectId: project.id, stats: project.stats } };
       },
     },
   ];

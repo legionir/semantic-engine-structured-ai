@@ -84,6 +84,10 @@ const GatewayUi = (function () {
         { key: "degraded", label: "Degraded" }
     ];
 
+    // No logs/events route is part of the Gateway route inventory. Keep these
+    // controls visibly disabled instead of issuing guaranteed 404 requests.
+    const UNSUPPORTED_ACTIONS = new Set(["logs", "events"]);
+
     const WORKER_ACTIONS = [
         { id: "open", label: "Open dashboard" },
         { id: "start", label: "Start" },
@@ -309,8 +313,11 @@ const GatewayUi = (function () {
         }).join("");
 
         const actions = WORKER_ACTIONS.map(function (action) {
+            const unavailable = UNSUPPORTED_ACTIONS.has(action.id);
             return '<button class="action" data-action="' + escape(action.id) +
-                '" data-project="' + escape(worker.projectId) + '">' + escape(action.label) + "</button>";
+                '" data-project="' + escape(worker.projectId) + '"' +
+                (unavailable ? ' disabled title="Unavailable: no Gateway route"' : '') + '>' +
+                escape(action.label) + "</button>";
         }).join("");
 
         return '<tr class="' + stateClass(worker) + '" data-project="' + escape(worker.projectId) + '">' +
@@ -439,6 +446,7 @@ const GatewayUi = (function () {
         WORKER_FORM_FIELDS,
         WORKER_TABLE_COLUMNS,
         WORKER_ACTIONS,
+        UNSUPPORTED_ACTIONS,
         escape,
         getPath,
         setPath,

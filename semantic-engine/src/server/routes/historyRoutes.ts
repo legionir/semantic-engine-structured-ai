@@ -1,6 +1,4 @@
-/**
- * historyRoutes — REST Endpoints for Git History Mining, Hotspots, and Co-Churn (Domain 12).
- */
+/** REST endpoints for project-scoped Git history mining. */
 
 import { RouteDefinition, HttpRequestContext } from '../types';
 import { ProjectService } from '../../services/ProjectService';
@@ -12,35 +10,26 @@ export function createHistoryRoutes(
 ): RouteDefinition[] {
   const hotspotsHandler = async (ctx: HttpRequestContext) => {
     const projectId = ctx.params.id;
-    const project = projectService.getProject(projectId);
-    if (!project) return { status: 404, json: { error: `Project '${projectId}' not found` } };
-
-    const hotspots = historyMiner.getHotspots(10);
-    return { status: 200, json: { projectId, hotspots } };
+    if (!projectService.getProject(projectId)) return { status: 404, json: { error: `Project '${projectId}' not found` } };
+    return { status: 200, json: { projectId, hotspots: historyMiner.getHotspots(projectId, 10) } };
   };
 
   const coChurnHandler = async (ctx: HttpRequestContext) => {
     const projectId = ctx.params.id;
-    const project = projectService.getProject(projectId);
-    if (!project) return { status: 404, json: { error: `Project '${projectId}' not found` } };
-
+    if (!projectService.getProject(projectId)) return { status: 404, json: { error: `Project '${projectId}' not found` } };
     const filePath = ctx.params.filePath;
-    const coChurn = historyMiner.getCoChurn(filePath, 10);
-    return { status: 200, json: { projectId, filePath, coChurn } };
+    return { status: 200, json: { projectId, filePath, coChurn: historyMiner.getCoChurn(projectId, filePath, 10) } };
   };
 
   const recordCommitHandler = async (ctx: HttpRequestContext) => {
     const projectId = ctx.params.id;
-    const project = projectService.getProject(projectId);
-    if (!project) return { status: 404, json: { error: `Project '${projectId}' not found` } };
-
+    if (!projectService.getProject(projectId)) return { status: 404, json: { error: `Project '${projectId}' not found` } };
     const body = (ctx.body || {}) as { filesChanged?: string[]; linesDiff?: Record<string, { added: number; deleted: number }> };
     if (!body.filesChanged || !Array.isArray(body.filesChanged)) {
       return { status: 400, json: { error: 'filesChanged array is required' } };
     }
-
-    historyMiner.recordCommit(body.filesChanged, body.linesDiff);
-    return { status: 200, json: { success: true, filesRecorded: body.filesChanged.length } };
+    historyMiner.recordCommit(projectId, body.filesChanged, body.linesDiff);
+    return { status: 200, json: { success: true, projectId, filesRecorded: body.filesChanged.length } };
   };
 
   return [

@@ -33,6 +33,9 @@ const state = {
   isDragging: false,
   dragStart: { x: 0, y: 0 },
   chatHistory: [],
+  viewState: "empty",
+  viewReason: "",
+  previewEnabled: params.get("preview") === "1",
 };
 
 // وقتی true باشد، auto-arrange مختصات ذخیره‌شدهٔ نودها را نادیده می‌گیرد و از نو می‌چیند.
@@ -184,19 +187,35 @@ async function loadView(viewType) {
   projectTitleEl.textContent = `Loading ${viewType} view…`;
   updateBreadcrumb(viewType);
 
+  // Preview data is deliberately opt-in and visibly labelled; it is never a
+  // fallback for an empty or failed project request.
+  if (state.previewEnabled) {
+    generateFallbackData(viewType);
+    state.viewState = "preview";
+    state.viewReason = "Preview only — this is not project data.";
+    projectTitleEl.textContent = `${state.projectId} · ${viewType} · PREVIEW ONLY`;
+    return;
+  }
+
   const build = VIEW_ENDPOINTS[viewType] || VIEW_ENDPOINTS.architecture;
   try {
     const res = await fetch(withToken(build(state.projectId)), { headers: seHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.state === "failed") throw new Error(data.reason || `HTTP ${res.status}`);
     setGraphData(data.nodes || [], data.edges || []);
     const total = (data.nodes || []).length;
-    projectTitleEl.textContent = total > 0 ? `${state.projectId} · ${viewType}` : `${state.projectId} — no data (is the project indexed?)`;
-    if (total === 0) generateFallbackData(viewType);
+    state.viewState = data.state || (total > 0 ? "ready" : "empty");
+    state.viewReason = data.reason || (total > 0 ? "" : "No indexed graph data is available.");
+    projectTitleEl.textContent = total > 0
+      ? `${state.projectId} · ${viewType}`
+      : `${state.projectId} — no data (is the project indexed?)`;
+    showViewState(state.viewState, state.viewReason);
   } catch (err) {
-    // Fallback: Generate structured visualization data from client tools
-    generateFallbackData(viewType);
-    projectTitleEl.textContent = `${state.projectId} — preview (index unavailable)`;
+    setGraphData([], []);
+    state.viewState = "failed";
+    state.viewReason = err instanceof Error ? err.message : String(err);
+    projectTitleEl.textContent = `${state.projectId} — visualization unavailable`;
+    showViewState("failed", state.viewReason);
   }
 }
 
@@ -207,12 +226,14 @@ async function loadNeighborhood(nodeId) {
       headers: Object.assign({ "Content-Type": "application/json" }, seHeaders()),
       body: JSON.stringify({ seedId: nodeId, depth: state.focusDepth }),
     });
-    if (!res.ok) throw new Error();
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.state === "failed") throw new Error(data.reason || `HTTP ${res.status}`);
     setGraphData(data.nodes || [], data.edges || []);
+    showViewState(data.state || (data.nodes?.length ? "ready" : "empty"), data.reason);
     selectNode(nodeId);
-  } catch {
-    applyFocusMode(nodeId);
+  } catch (error) {
+    setGraphData([], []);
+    showViewState("failed", error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -223,12 +244,25 @@ async function loadImpact(nodeId) {
       headers: Object.assign({ "Content-Type": "application/json" }, seHeaders()),
       body: JSON.stringify({ symbolId: nodeId }),
     });
-    if (!res.ok) throw new Error();
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.state === "failed") throw new Error(data.reason || `HTTP ${res.status}`);
     setGraphData(data.nodes || [], data.edges || []);
+    showViewState(data.state || (data.nodes?.length ? "ready" : "empty"), data.reason);
     selectNode(nodeId);
-  } catch {
-    applyFocusMode(nodeId);
+  } catch (error) {
+    setGraphData([], []);
+    showViewState("failed", error instanceof Error ? error.message : String(error));
+  }
+}
+
+function showViewState(viewState, reason) {
+  state.viewState = viewState;
+  state.viewReason = reason || "";
+  const message = reason ? `${viewState}: ${reason}` : viewState;
+  // The existing title is the least surprising status surface and works with
+  // the current HTML without inventing a graph sample.
+  if (viewState !== "ready" && viewState !== "preview") {
+    projectTitleEl.textContent = message;
   }
 }
 

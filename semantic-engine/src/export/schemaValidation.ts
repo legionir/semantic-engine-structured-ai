@@ -1,14 +1,10 @@
 /**
- * اعتبارسنجی خروجی با قرارداد — SE-EXP-06.
+ * Schema validation and atomic JSON persistence shared by all exporters.
  *
- * `ajv` و `contracts/` از اول در مخزن بودند و `scripts/validate-schema.js`
- * هم وجود داشت، ولی هیچ‌کدام در مسیر *نوشتن* نبودند. یعنی هر نقض
- * قرارداد فقط وقتی دیده می‌شد که کسی دستی اسکریپت را اجرا کند — و
- * مصرف‌کنندهٔ خروجی (سرور MCP، ابزارهای AI) هیچ تضمینی نداشت.
- *
- * هزینهٔ کامپایل schema یک‌بار است و بعد به ازای هر ایندکس چند
- * میلی‌ثانیه. کامپایل تنبل است تا وقتی اعتبارسنجی خاموش باشد،
- * `ajv` اصلاً بار نشود.
+ * The validator intentionally uses only repository-owned contract files.  In
+ * particular, it does not invent a structural fallback for blueprint.json:
+ * if contracts/blueprint.schema.json is absent, validation is explicitly
+ * unavailable and the caller must report that verification blocker.
  */
 
 import * as fs from 'fs';
@@ -28,54 +24,57 @@ type ValidateFunction = ((data: unknown) => boolean) & {
 const compiled = new Map<SchemaName, ValidateFunction>();
 
 /**
- * محل `contracts/`.
- *
- * `__dirname` هنگام اجرا `dist/export` است و هنگام تست `src/export`؛
- * هر دو دو سطح پایین‌تر از ریشهٔ پکیج‌اند.
+ * `__dirname` is `dist/export` in a build and `src/export` in tests; both are
+ * two levels below the package root.
  */
 export function contractsDir(): string {
   return path.join(__dirname, '..', '..', 'contracts');
+}
+
+export function schemaPath(schema: SchemaName): string {
+  return path.join(contractsDir(), SCHEMA_FILES[schema]);
+}
+
+export function hasSchema(schema: SchemaName): boolean {
+  return fs.existsSync(schemaPath(schema));
+}
+
+export class SchemaUnavailableError extends Error {
+  readonly schema: SchemaName;
+  readonly filePath: string;
+
+  constructor(schema: SchemaName, filePath = schemaPath(schema)) {
+    super(`Schema '${schema}' is unavailable: expected contract at ${filePath}`);
+    this.name = 'SchemaUnavailableError';
+    this.schema = schema;
+    this.filePath = filePath;
+  }
 }
 
 function compile(schema: SchemaName): ValidateFunction {
   const cached = compiled.get(schema);
   if (cached) return cached;
 
-  /*
-  | require تنبل — همان دلیل بارهای native: کسی که اعتبارسنجی نمی‌خواهد،
-  | نباید هزینهٔ بارگذاری ajv را بدهد.
-  */
+  const file = schemaPath(schema);
+  if (!fs.existsSync(file)) throw new SchemaUnavailableError(schema, file);
 
+  // Lazy loading keeps ajv out of non-validation export paths.
   const Ajv = require('ajv/dist/2020');
-
   const addFormats = require('ajv-formats');
-
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
-
-  const file = path.join(contractsDir(), SCHEMA_FILES[schema]);
   const validator = ajv.compile(JSON.parse(fs.readFileSync(file, 'utf8'))) as ValidateFunction;
   compiled.set(schema, validator);
   return validator;
 }
 
-/**
- * خطاهای قرارداد، هر کدام با مسیر JSON Pointer. آرایهٔ خالی = معتبر.
- *
- * پیام‌ها عمداً مسیر را اول می‌آورند: روی یک ایندکس با هزاران فایل،
- * «باید عدد باشد» بدون مسیر بی‌فایده است.
- */
+/** Empty means valid; a missing contract throws SchemaUnavailableError. */
 export function validateAgainstSchema(schema: SchemaName, data: unknown): string[] {
   const validator = compile(schema);
   if (validator(data)) return [];
 
   return (validator.errors ?? []).map(error => {
     const where = error.instancePath && error.instancePath.length > 0 ? error.instancePath : '/';
-    /*
-    | «must NOT have additional properties» بدون نام آن ویژگی عملاً
-    | بی‌فایده است — روی یک ایندکس بزرگ باید دستی دنبالش گشت. ajv
-    | نامش را در `params` می‌گذارد.
-    */
     const params = (error.params ?? {}) as Record<string, unknown>;
     const extra =
       typeof params['additionalProperty'] === 'string'
@@ -85,4 +84,46 @@ export function validateAgainstSchema(schema: SchemaName, data: unknown): string
           : '';
     return `${where}: ${error.message ?? 'invalid'}${extra}`;
   });
+}
+
+export interface AtomicJsonWriteOptions {
+  readonly outputPath: string;
+  readonly value: unknown;
+  readonly schema?: SchemaName;
+  /** Defaults to true when a schema is supplied. */
+  readonly validate?: boolean;
+  readonly pretty?: boolean;
+}
+
+/**
+ * Validate and serialize before creating a temp file, then replace atomically.
+ * The temp file is in the destination directory, so rename is atomic on the
+ * same filesystem and a failed write leaves the previous destination intact.
+ */
+export async function writeJsonAtomic(options: AtomicJsonWriteOptions): Promise<void> {
+  if (options.schema && options.validate !== false) {
+    const errors = validateAgainstSchema(options.schema, options.value);
+    if (errors.length > 0) {
+      throw new Error(
+        `${options.schema} does not match its schema (${errors.length} violation(s)):\n  ` +
+        errors.slice(0, 10).join('\n  ')
+      );
+    }
+  }
+
+  const json = JSON.stringify(options.value, null, options.pretty !== false ? 2 : undefined);
+  const parent = path.dirname(options.outputPath);
+  await fs.promises.mkdir(parent, { recursive: true });
+  const temporary = path.join(
+    parent,
+    `.${path.basename(options.outputPath)}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+
+  try {
+    await fs.promises.writeFile(temporary, json, 'utf8');
+    await fs.promises.rename(temporary, options.outputPath);
+  } catch (error) {
+    await fs.promises.rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }

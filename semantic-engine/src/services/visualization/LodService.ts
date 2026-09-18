@@ -5,8 +5,46 @@
 import { ManagedProject } from '../ProjectService';
 import { SubgraphResponse, GraphNode, GraphEdge } from '../../server/types';
 import { GraphViewModelMapper } from './GraphViewModelMapper';
-import { GraphQueryEngine } from '../../graphs/GraphQueryEngine';
+import {
+  GraphQueryEngine,
+  DEFAULT_GRAPH_DEPTH,
+  DEFAULT_GRAPH_MIN_CONFIDENCE,
+} from '../../graphs/GraphQueryEngine';
 import { WorkflowStep } from '../../core/types/blueprint.types';
+
+const GRAPH_BASES = new Set<GraphEdge['metadata']['basis']>([
+  'resolved',
+  'name-match',
+  'transitive',
+  'blueprint',
+]);
+
+function edgeMetadata(provenance: unknown):
+  | { confidence: number; basis: GraphEdge['metadata']['basis'] }
+  | undefined {
+  if (!provenance || typeof provenance !== 'object') return undefined;
+  const value = provenance as { confidence?: unknown; basis?: unknown };
+  if (typeof value.confidence !== 'number' || !Number.isFinite(value.confidence)) return undefined;
+  if (typeof value.basis !== 'string' || !GRAPH_BASES.has(value.basis as GraphEdge['metadata']['basis'])) {
+    return undefined;
+  }
+  return {
+    confidence: value.confidence,
+    basis: value.basis as GraphEdge['metadata']['basis'],
+  };
+}
+
+function summaryForGraph(
+  nodes: readonly GraphNode[],
+  edges: readonly GraphEdge[]
+): SubgraphResponse['summary'] {
+  const confident = edges.filter(e => e.metadata.confidence >= DEFAULT_GRAPH_MIN_CONFIDENCE).length;
+  return {
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
+    confidentRatio: edges.length > 0 ? confident / edges.length : 1,
+  };
+}
 
 export class LodService {
   /**
@@ -121,7 +159,9 @@ export class LodService {
       if (!fromMod) continue; // from همیشه fileId است؛ اگر نگاشت نشد رد کن
 
       const target = String(dep.to);
-      const confidence = dep.provenance?.confidence ?? 90;
+      const metadata = edgeMetadata(dep.provenance);
+      // Never replace invalid or missing provenance with a guessed value.
+      if (!metadata) continue;
 
       if (target.startsWith('pkg:')) {
         // وابستگی خارجی → یک نود package بساز و وصل کن
@@ -134,12 +174,12 @@ export class LodService {
             })
           );
         }
-        pushEdge(fromMod, target, 'blueprint', confidence);
+        pushEdge(fromMod, target, metadata.basis, metadata.confidence);
         usedModuleIds.add(fromMod);
       } else {
         const toMod = fileToModule.get(target);
         if (!toMod || toMod === fromMod) continue; // یال داخل یک ماژول را نشان نده
-        pushEdge(fromMod, toMod, 'resolved', confidence);
+        pushEdge(fromMod, toMod, metadata.basis, metadata.confidence);
         usedModuleIds.add(fromMod);
         usedModuleIds.add(toMod);
       }
@@ -156,11 +196,10 @@ export class LodService {
     | گراف خالی می‌ماند. در این حالت به نمای **فایل‌محور** برمی‌گردیم.
     */
     const hasInternalEdges = edges.some(e => !String(e.target).startsWith('pkg:'));
-    if (!hasInternalEdges) {
+    const hasContextNodes = nodes.some(n => n.type === 'api' || n.metadata.role === 'layer');
+    if (!hasInternalEdges && !hasContextNodes) {
       return this.fileLevelDependencyView(project);
     }
-
-    const confidentEdges = edges.filter(e => e.metadata.confidence >= 70).length;
 
     /*
     | هر نودی که هیچ یالی به آن وصل نیست حذف می‌شود تا «نودهای کنار هم
@@ -173,7 +212,7 @@ export class LodService {
       connected.add(e.target);
     }
     const prunedNodes = nodes.filter(n => {
-      if (n.metadata.role === 'layer') return true;
+      if (n.metadata.role === 'layer' || n.type === 'api') return true;
       return connected.has(n.id);
     });
 
@@ -181,11 +220,7 @@ export class LodService {
       level: 'architecture',
       nodes: prunedNodes,
       edges,
-      summary: {
-        totalNodes: prunedNodes.length,
-        totalEdges: edges.length,
-        confidentRatio: edges.length > 0 ? confidentEdges / edges.length : 1.0,
-      },
+      summary: summaryForGraph(prunedNodes, edges),
     };
   }
 
@@ -204,7 +239,7 @@ export class LodService {
   private fileLevelDependencyView(project: ManagedProject): SubgraphResponse {
     const index = project.index;
     if (!index) {
-      return { level: 'architecture', nodes: [], edges: [], summary: { totalNodes: 0, totalEdges: 0, confidentRatio: 1 } };
+      return { level: 'file', nodes: [], edges: [], summary: { totalNodes: 0, totalEdges: 0, confidentRatio: 1 } };
     }
 
     const files = index.files ?? [];
@@ -244,7 +279,8 @@ export class LodService {
     for (const dep of index.graphs?.dependencyGraph ?? []) {
       if (!ensureFileNode(dep.from)) continue;
       const target = String(dep.to);
-      const confidence = dep.provenance?.confidence ?? 90;
+      const metadata = edgeMetadata(dep.provenance);
+      if (!metadata) continue;
 
       if (target.startsWith('pkg:')) {
         ensurePkgNode(target);
@@ -257,23 +293,18 @@ export class LodService {
       seenEdges.add(key);
       edges.push(
         GraphViewModelMapper.createEdge(`edge-${edges.length}`, dep.from, target, 'depends_on', {
-          confidence,
-          basis: target.startsWith('pkg:') ? 'blueprint' : 'resolved',
+          confidence: metadata.confidence,
+          basis: metadata.basis,
           sourceKind: 'compiler',
         })
       );
     }
 
-    const confidentEdges = edges.filter(e => e.metadata.confidence >= 70).length;
     return {
-      level: 'architecture',
+      level: 'file',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: edges.length > 0 ? confidentEdges / edges.length : 1.0,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 
@@ -301,32 +332,38 @@ export class LodService {
     const depEdges = project.index?.graphs?.dependencyGraph ?? [];
 
     for (const dep of depEdges) {
-      if (fileIds.has(dep.from) || fileIds.has(dep.to)) {
-        edges.push(
-          GraphViewModelMapper.createEdge(
-            `edge-mod-${edges.length}`,
-            dep.from,
-            dep.to,
-            'imports',
-            {
-              confidence: dep.provenance?.confidence ?? 95,
-              basis: (dep.provenance?.basis as 'resolved' | 'name-match' | 'transitive' | 'blueprint') ?? 'resolved',
-              sourceKind: 'compiler',
-            }
-          )
-        );
+      // Only emit edges whose source is represented in this view. A local
+      // target outside the selection would otherwise be dangling.
+      if (!fileIds.has(dep.from)) continue;
+      const target = String(dep.to);
+      const metadata = edgeMetadata(dep.provenance);
+      if (!metadata) continue;
+      if (target.startsWith('pkg:')) {
+        if (!nodes.some(node => node.id === target)) {
+          nodes.push(GraphViewModelMapper.createNode(target, 'module', target.replace(/^pkg:/, ''), {
+            role: 'external-package',
+            importance: 40,
+          }));
+        }
+      } else if (!fileIds.has(target)) {
+        continue;
       }
+      edges.push(
+        GraphViewModelMapper.createEdge(
+          `edge-mod-${edges.length}`,
+          dep.from,
+          target,
+          'imports',
+          { confidence: metadata.confidence, basis: metadata.basis, sourceKind: 'compiler' }
+        )
+      );
     }
 
     return {
       level: 'module',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: 1.0,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 
@@ -366,11 +403,7 @@ export class LodService {
       level: 'file',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: 1.0,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 
@@ -380,8 +413,8 @@ export class LodService {
   getNeighborhoodView(
     project: ManagedProject,
     seedId: string,
-    depth = 1,
-    minConfidence = 70
+    depth = DEFAULT_GRAPH_DEPTH,
+    minConfidence = DEFAULT_GRAPH_MIN_CONFIDENCE
   ): SubgraphResponse {
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
@@ -414,34 +447,32 @@ export class LodService {
       }
     }
 
+    const nodeIdsForEdges = new Set(nodes.map(node => node.id));
     for (const [idx, visitedNode] of result.nodes.entries()) {
-      if (visitedNode.via) {
-        const edge = visitedNode.via;
-        edges.push(
-          GraphViewModelMapper.createEdge(
-            `edge-nh-${idx}`,
-            edge.from,
-            edge.to,
-            edge.relation === 'calls' ? 'calls' : (edge.relation === 'types' ? 'references' : 'depends_on'),
-            {
-              confidence: edge.confidence,
-              basis: edge.basis as 'resolved' | 'name-match' | 'transitive' | 'blueprint',
-              sourceKind: 'compiler',
-            }
-          )
-        );
-      }
+      if (!visitedNode.via) continue;
+      const edge = visitedNode.via;
+      if (!nodeIdsForEdges.has(edge.from) || !nodeIdsForEdges.has(edge.to)) continue;
+      if (!GRAPH_BASES.has(edge.basis as GraphEdge['metadata']['basis'])) continue;
+      edges.push(
+        GraphViewModelMapper.createEdge(
+          `edge-nh-${idx}`,
+          edge.from,
+          edge.to,
+          edge.relation === 'calls' ? 'calls' : (edge.relation === 'types' ? 'references' : 'depends_on'),
+          {
+            confidence: edge.confidence,
+            basis: edge.basis as GraphEdge['metadata']['basis'],
+            sourceKind: 'compiler',
+          }
+        )
+      );
     }
 
     return {
       level: 'neighborhood',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: edges.length > 0 ? edges.filter(e => e.metadata.confidence >= 70).length / edges.length : 1.0,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 
@@ -469,7 +500,7 @@ export class LodService {
           nodes.push(GraphViewModelMapper.createNode(step.node, 'function', step.node));
         }
 
-        if (step.via) {
+        if (step.via && GRAPH_BASES.has(step.via.basis as GraphEdge['metadata']['basis'])) {
           edges.push(
             GraphViewModelMapper.createEdge(
               `edge-path-${edges.length}`,
@@ -478,7 +509,7 @@ export class LodService {
               'calls',
               {
                 confidence: step.via.confidence,
-                basis: step.via.basis as 'resolved' | 'name-match' | 'transitive' | 'blueprint',
+                basis: step.via.basis as GraphEdge['metadata']['basis'],
                 sourceKind: 'compiler',
               }
             )
@@ -491,11 +522,7 @@ export class LodService {
       level: 'neighborhood',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: pathResult.confident ? 1.0 : 0.5,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 
@@ -550,11 +577,7 @@ export class LodService {
       level: 'workflow',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: 1.0,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 
@@ -602,11 +625,7 @@ export class LodService {
       level: 'architecture',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: 1.0,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 
@@ -654,11 +673,7 @@ export class LodService {
       level: 'file',
       nodes,
       edges,
-      summary: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        confidentRatio: 1.0,
-      },
+      summary: summaryForGraph(nodes, edges),
     };
   }
 }

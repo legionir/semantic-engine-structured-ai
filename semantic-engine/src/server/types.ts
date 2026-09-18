@@ -154,8 +154,12 @@ export interface GraphEdge {
   };
 }
 
+export type VisualizationState = 'ready' | 'empty' | 'failed' | 'unavailable';
+
 export interface SubgraphResponse {
   readonly level: 'architecture' | 'module' | 'file' | 'symbol' | 'neighborhood' | 'workflow';
+  readonly state?: VisualizationState;
+  readonly reason?: string;
   readonly nodes: readonly GraphNode[];
   readonly edges: readonly GraphEdge[];
   readonly summary: {

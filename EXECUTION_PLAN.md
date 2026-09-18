@@ -122,29 +122,27 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ---
 
-## [🟢] فاز ۴: AI tools، schema contracts و search در semantic-engine
+## [🔴] فاز ۴: AI tools، schema contracts و search در semantic-engine
 
 هدف هم‌قراردادکردن schema و implementation، اجرای واقعی optionها و جلوگیری از نتایج ظاهراً موفق اما غلط است.
 
-### [🟢] گام ۱: یکسان‌سازی schema و implementation ابزارها
+### [🔴] گام ۱: یکسان‌سازی schema و implementation ابزارها
 
 در `src/ai/tools/DetectArchitectureViolationsTool.ts:16-20,25-63` `checkCyclesOnly` را واقعاً اعمال کن. در `GetDependenciesTool.ts:19,30,48,70-75,109` depth بالاتر از ۳ را طبق schema با validation error رد کن، نه clamp خاموش. در `FindTestsTool.ts:26,33-40` و `GetConfigUsageTool.ts:19-30,34-43,55-79` schemaهای required را با ورودی‌های معتبر `path/fileId/symbolId/key` هم‌راستا کن.
 
-### [🟢] گام ۲: تکمیل mutation simulation و query policy
+### [🔴] گام ۲: تکمیل mutation simulation و query policy
 
 در `SimulateMutationTool.ts:10-22,61-69` و simulator، `move_symbol` با `newPath` و broken-reference analysis را واقعی کن. در `queryPolicy.ts:120-125,203-205` CTE alias را از table واقعی جدا کن تا aliasهایی مانند `recent` به‌اشتباه رد نشوند؛ parser باید comment/string/CTE edge caseهای verified را پوشش دهد.
 
-### [🟢] گام ۳: اصلاح context assembly و token cost
+### [🔴] گام ۳: اصلاح context assembly و token cost
 
 در `src/services/ContextService.ts:8-12,28-44` و `AssembleContextTool.ts:44-52,183-185,321-333` mapping `files → targetFiles` را حفظ کن و `tokenEstimate` را از `metadata.estimatedTokens` بگیر، نه echo کردن `maxTokens`. در `LlmAiMetadataGenerator.ts:281-295` estimator را با content واقعی تغذیه کن.
 
-### [🟢] گام ۴: واقعی‌کردن search mode و score contract
+### [🔴] گام ۴: واقعی‌کردن search mode و score contract
 
 در `src/services/SearchService.ts:8-15,28-46` و `SemanticSearchTool.ts:209-215` مسیرهای `vector`، `keyword` و `hybrid` را از هم جدا کن، `minScore` را اعمال کن و keyword را فقط در mode لازم اجرا کن. handle/result باید project-scoped و قابل تکرار باشد.
 
-> **وضعیت اجرای کامل فاز (2026-09-18):** تمام گام‌های ۱ تا ۵ در یک execution stage تکمیل و با implementation و focused regression پوشش داده شدند. schema/runtime optionها، `move_symbol` و broken-reference analysis، CTE alias policy، `targetFiles` و token estimate، modeهای search و `minScore`، score contract، embedding cardinality/vector validation، graph defaults، bounds و `truncated` پیاده‌سازی شدند. Evidence تفصیلی و command/result در `audit/audit-phase4-completion-2026-09-18.md` ثبت شده است. `npm run build` و focused suites با نتایج ثبت‌شده pass شدند؛ اجرای full Jest suite در محیط validation به timeout رسید و pass سراسری ادعا نمی‌شود. این مورد برای فاز ۹ باقی است و blocker فاز ۴ نیست. فاز ۴ اکنون 🟢 است.
-
-### [🟢] گام ۵: پایدارکردن embedding و graph query parity
+### [🔴] گام ۵: پایدارکردن embedding و graph query parity
 
 در `RemoteEmbeddingGenerator.ts:55-68` و `VectorIndexer.ts:176-182` cardinality پاسخ 200 را validate کن و missing embedding را silent skip نکن؛ retry/fallback/fail contract را مشخص کن. در `SqliteGraphQuery.ts:68-69,194-199,238-247,342-350` و `GraphQueryEngine.ts:389-405,482-485` defaultهای direction/depth/threshold/path را مشترک کن. `maxNodes` در `SqliteGraphQuery.ts:79-87,342-376` را enforce و `truncated` result تعریف کن.
 
@@ -158,23 +156,23 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ---
 
-## [🔴] فاز ۵: graph export، visualization و dashboard در semantic-engine
+## [🟡] فاز ۵: graph export، visualization و dashboard در semantic-engine
 
 هدف تضمین صحت دادهٔ graph و dashboard واقعی، بدون dangling edge، provenance جعلی یا fallback گمراه‌کننده است.
 
-### [🔴] گام ۱: atomic و schema-safe export
+### [🟡] گام ۱: atomic و schema-safe export
 
 در exportهای graph/Blueprint parent directory، validation، schema version و atomic write را یکسان کن. `JsonExporter.ts:141-160` و مسیرهای `BlueprintExporter` را با error contract مشترک تست کن. اگر cache schema validator process-local است، reload behavior را طبق evidence واقعی مشخص و تست کن؛ موردی که فقط potential است بدون proof قطعی تغییر نده.
 
-### [🔴] گام ۲: حفظ invariants در LOD graph
+### [🟡] گام ۲: حفظ invariants در LOD graph
 
 در `src/services/visualization/LodService.ts:296-317` فقط edgeهایی را emit کن که هر دو endpoint در node set هستند یا external node صریح بساز. در `LodService.ts:83-93,170-178` API node را بی‌دلیل prune نکن. در `LodService.ts:137-142,259-262,311-314` provenance را runtime-map/validate کن و cast TypeScript را جای validation نگذار. `confidentRatio` را از confidence واقعی محاسبه و fallback `level` را اصلاح کن (`158-160,267-275`).
 
-### [🔴] گام ۳: اصلاح visualization API و frontend states
+### [🟡] گام ۳: اصلاح visualization API و frontend states
 
 در `src/server/routes/visualizationRoutes.ts:123-145` و routeهای مشابه nullish semantics و range validation را اعمال کن تا depth/minConfidence صفر حفظ شود. در `public/visualizer.js:172-181,187-200,1111-1195` هر tab را به endpoint business mapping/impact/hotspots مربوط وصل کن؛ failure/empty را به graph sample تبدیل نکن و preview را explicit label و opt-in کن. visualizer node coverage در `structured-ai/web/public/visualizer/node-details.js:60-63` باید lookup واقعی یا `unknown/not checked` داشته باشد.
 
-### [🔴] گام ۴: project-scoped history و dashboard
+### [🟡] گام ۴: project-scoped history و dashboard
 
 در `historyRoutes.ts:11-43` miner state را per-project یا keyed-by-project کن تا hotspot/co-churn مخلوط نشود. در `GatewayServer.ts:509-527` و `projectRoutes.ts:70-76,136-148` health، chunks، hotspots و recent changes را از service/index/metrics واقعی بخوان. routeهای dashboard در OpenAPI را تکمیل کن و UI logs/events را با route واقعی یا disabled state منطبق کن (`public/gateway.js:87-98,556-577`).
 
@@ -187,6 +185,8 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 - OpenAPI، route inventory و frontend calls یکسان‌اند و تست payload واقعی، نه فقط status code، pass است.
 
 ---
+
+> وضعیت اجرای stage فاز ۵ (2026-09-18): implementation مسیرهای export، LOD، route state، history/dashboard و UI انجام شد و خروجی در `work/phase5/semantic-engine/` ذخیره شد. JavaScript syntax check pass است. اجرای TypeScript کامل/تست focused در این محیط به‌دلیل نبود checkout dependencyها و `@types/node`/قراردادهای import‌شده قابل تأیید نیست؛ بنابراین phase 5 🟡 باقی می‌ماند. Blueprint schema availability و اجرای acceptance matrix: Unknown / Requires Verification.
 
 ## [🔴] فاز ۶: project context و multi-project runtime در structured-ai
 

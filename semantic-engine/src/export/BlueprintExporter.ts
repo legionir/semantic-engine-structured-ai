@@ -7,10 +7,13 @@ import * as path from 'path';
 import { ProjectIndex } from '../core/types/project-index.types';
 import { Blueprint } from '../core/types/blueprint.types';
 import { BlueprintGenerator, BlueprintGeneratorOptions } from '../blueprint/BlueprintGenerator';
+import { writeJsonAtomic } from './schemaValidation';
 
 export interface BlueprintExportOptions {
   readonly outputPath: string;
   readonly pretty?: boolean;
+  /** Validate against the repository blueprint schema before writing. */
+  readonly validate?: boolean;
   readonly generatorOptions?: BlueprintGeneratorOptions;
 }
 
@@ -41,18 +44,6 @@ function diskSourceReader(rootPath: string | undefined) {
   };
 }
 
-
-async function writeAtomic(outputPath: string, data: string): Promise<void> {
-  const tempPath = `${outputPath}.tmp-${process.pid}-${Date.now()}`;
-  try {
-    await fs.promises.writeFile(tempPath, data, 'utf8');
-    await fs.promises.rename(tempPath, outputPath);
-  } catch (error) {
-    await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
 export class BlueprintExporter {
   async export(
     projectIndex: ProjectIndex,
@@ -62,12 +53,13 @@ export class BlueprintExporter {
       this.withSourceReader(projectIndex, options.generatorOptions)
     );
     const blueprint = generator.generate(projectIndex);
-    const json = JSON.stringify(
-      blueprint,
-      null,
-      options.pretty !== false ? 2 : undefined
-    );
-    await writeAtomic(options.outputPath, json);
+    await writeJsonAtomic({
+      outputPath: options.outputPath,
+      value: blueprint,
+      schema: 'blueprint',
+      validate: options.validate !== false,
+      pretty: options.pretty,
+    });
   }
 
   /**
@@ -88,10 +80,15 @@ export class BlueprintExporter {
   /** نوشتنِ یک blueprintِ از پیش ساخته‌شده. */
   async write(
     blueprint: Blueprint,
-    options: { outputPath: string; pretty?: boolean }
+    options: { outputPath: string; pretty?: boolean; validate?: boolean }
   ): Promise<void> {
-    const json = JSON.stringify(blueprint, null, options.pretty !== false ? 2 : undefined);
-    await writeAtomic(options.outputPath, json);
+    await writeJsonAtomic({
+      outputPath: options.outputPath,
+      value: blueprint,
+      schema: 'blueprint',
+      validate: options.validate !== false,
+      pretty: options.pretty,
+    });
   }
 
   buildBlueprint(projectIndex: ProjectIndex, options?: BlueprintGeneratorOptions): Blueprint {
