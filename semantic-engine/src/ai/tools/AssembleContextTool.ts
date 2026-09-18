@@ -175,10 +175,18 @@ export class AssembleContextTool implements AiTool<AssembleContextInput> {
 
   async execute(input: AssembleContextInput): Promise<AiToolOutput> {
     try {
+      if (typeof input.task !== 'string' || input.task.trim().length === 0) return { success: false, error: 'task is required and must be a non-empty string', items: [] };
+      if (input.targetFiles !== undefined && (!Array.isArray(input.targetFiles) || input.targetFiles.some(file => typeof file !== 'string'))) return { success: false, error: 'targetFiles must be an array of strings', items: [] };
+      if (input.targetSymbols !== undefined && (!Array.isArray(input.targetSymbols) || input.targetSymbols.some(symbol => typeof symbol !== 'string'))) return { success: false, error: 'targetSymbols must be an array of strings', items: [] };
+      if (input.maxTokens !== undefined && (!Number.isInteger(input.maxTokens) || input.maxTokens < 1)) return { success: false, error: 'maxTokens must be a positive integer', items: [] };
+      if (input.dependencyDepth !== undefined && (!Number.isInteger(input.dependencyDepth) || input.dependencyDepth < 1)) return { success: false, error: 'dependencyDepth must be a positive integer', items: [] };
+      if (input.includeTests !== undefined && typeof input.includeTests !== 'boolean') return { success: false, error: 'includeTests must be a boolean', items: [] };
+      if (input.includeRecentChanges !== undefined && typeof input.includeRecentChanges !== 'boolean') return { success: false, error: 'includeRecentChanges must be a boolean', items: [] };
+
       const maxTokens = input.maxTokens ?? 4000;
       const includeTests = input.includeTests ?? true;
       const includeRecentChanges = input.includeRecentChanges ?? false;
-      const dependencyDepth = Math.max(1, input.dependencyDepth ?? 1);
+      const dependencyDepth = input.dependencyDepth ?? 1;
 
       const targetFiles = (input.targetFiles ?? [])
         .map(p => this.reader.getFileByPath(p))

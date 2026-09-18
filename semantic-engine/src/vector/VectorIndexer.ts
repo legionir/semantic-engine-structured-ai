@@ -32,7 +32,7 @@ import {
   VectorChunk,
 } from '../core/types/project-index.types';
 import { sha256 } from '../core/utils/hash';
-import { IEmbeddingGenerator } from './EmbeddingGenerator';
+import { IEmbeddingGenerator, EmbeddingResult } from './EmbeddingGenerator';
 
 export interface VectorIndexerOptions {
   readonly embeddingGenerator?: IEmbeddingGenerator;
@@ -147,11 +147,19 @@ export class VectorIndexer {
     if (!ready) return;
 
     const reusable = new Map<string, VectorChunk>();
+    let reusableDimensions: number | undefined;
     for (const chunk of previous ?? []) {
-      if (!chunk.embedding || chunk.embedding.length === 0) continue;
+      if (!chunk.embedding) continue;
+      // An explicitly present empty vector is malformed; only an absent
+      // vector means that this chunk still needs embedding.
+      if (chunk.embedding.length === 0) {
+        throw new Error('previous embedding returned an empty vector');
+      }
       // تعویض مدل، بردارهای قبلی را بی‌اعتبار می‌کند: دو مدل، دو
       // فضای برداریِ ناهم‌سنجه‌اند.
       if (chunk.embeddingModel && chunk.embeddingModel !== generator.modelName) continue;
+      const dimensions = this.validateEmbeddingVector(chunk.embedding, reusableDimensions, 'previous embedding');
+      reusableDimensions ??= dimensions;
       reusable.set(chunk.id, chunk);
     }
 
@@ -174,13 +182,7 @@ export class VectorIndexer {
     if (pending.length === 0) return;
 
     const results = await generator.generateBatch(pending.map(c => c.content));
-    if (results.length !== pending.length) {
-      throw new Error(`Embedding cardinality mismatch: expected ${pending.length}, received ${results.length}`);
-    }
-    const dimensions = results[0]?.embedding.length ?? 0;
-    if (dimensions === 0 || results.some(result => result.embedding.length !== dimensions || result.embedding.some(value => !Number.isFinite(value)))) {
-      throw new Error('Embedding provider returned an empty, non-finite, or inconsistent vector');
-    }
+    this.validateEmbeddingResults(results, pending.length);
 
     for (let i = 0; i < pending.length; i++) {
       const chunk = pending[i]!;
@@ -191,6 +193,37 @@ export class VectorIndexer {
       writable.embedding = [...result.embedding];
       writable.embeddingModel = result.model ?? generator.modelName;
     }
+  }
+
+  private validateEmbeddingResults(
+    results: readonly EmbeddingResult[],
+    expected: number
+  ): number {
+    if (results.length !== expected) {
+      throw new Error(`Embedding cardinality mismatch: expected ${expected}, received ${results.length}`);
+    }
+    let dimensions: number | undefined;
+    for (const result of results) {
+      dimensions = this.validateEmbeddingVector(result.embedding, dimensions, 'embedding provider');
+    }
+    // expected is positive whenever this helper is called from pending, but
+    // retaining a deterministic failure makes the invariant explicit.
+    if (dimensions === undefined) throw new Error('Embedding provider returned no vectors');
+    return dimensions;
+  }
+
+  private validateEmbeddingVector(
+    vector: readonly number[] | undefined,
+    expectedDimensions: number | undefined,
+    source: string
+  ): number {
+    if (!Array.isArray(vector) || vector.length === 0 || vector.some(value => !Number.isFinite(value))) {
+      throw new Error(`${source} returned an empty, non-finite, or invalid vector`);
+    }
+    if (expectedDimensions !== undefined && vector.length !== expectedDimensions) {
+      throw new Error(`${source} returned inconsistent vector dimensions: expected ${expectedDimensions}, received ${vector.length}`);
+    }
+    return vector.length;
   }
 
   private createFileChunk(file: FileEntry, source?: string): VectorChunk | null {

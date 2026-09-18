@@ -28,8 +28,9 @@ export class SimulateMutationTool implements AiTool {
     const actionType = input.actionType as MutationAction['type'];
     const requestedTarget = input.targetSymbolId as string;
     if (!['rename_symbol', 'delete_symbol', 'move_symbol'].includes(actionType)) return { success: false, error: `Unsupported mutation action: ${String(input.actionType)}`, items: [] };
-    if (actionType === 'rename_symbol' && typeof input.newName !== 'string') return { success: false, error: 'newName is required for rename_symbol', items: [] };
-    if (actionType === 'move_symbol' && typeof input.newPath !== 'string') return { success: false, error: 'newPath is required for move_symbol', items: [] };
+    if (typeof input.targetSymbolId !== 'string' || input.targetSymbolId.trim().length === 0) return { success: false, error: 'targetSymbolId is required and must be a non-empty string', items: [] };
+    if (actionType === 'rename_symbol' && (typeof input.newName !== 'string' || input.newName.trim().length === 0)) return { success: false, error: 'newName is required and must be a non-empty string for rename_symbol', items: [] };
+    if (actionType === 'move_symbol' && (typeof input.newPath !== 'string' || input.newPath.trim().length === 0)) return { success: false, error: 'newPath is required and must be a non-empty string for move_symbol', items: [] };
     const targetSymbolId = resolveSymbolId(this.reader, requestedTarget);
     if (!targetSymbolId) return { success: false, error: `No symbol found for id or fully-qualified name: ${requestedTarget}`, items: [] };
     const graph = buildIndexGraph(this.reader, { callEdges: true });

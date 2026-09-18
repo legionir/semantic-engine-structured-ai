@@ -72,17 +72,22 @@ export class RemoteEmbeddingGenerator implements IEmbeddingGenerator {
     // جدید /api/embed با input آرایه‌ای دارند. اول آرایه‌ای، بعد تکی.
     const embedUrl = joinUrl(this.options.baseUrl, '/api/embed');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    let data: { embeddings?: number[][] };
     try {
-      const data = (await this.postJson(
+      data = (await this.postJson(
         [embedUrl],
         headers,
         JSON.stringify({ model: this.options.model, input: texts })
       )) as { embeddings?: number[][] };
-      if (Array.isArray(data.embeddings) && data.embeddings.length === texts.length) {
-        return this.validateBatch(data.embeddings, texts.length, 'Ollama');
-      }
     } catch {
-      /* عقب‌گرد به اندپوینت تکی. */
+      /* فقط خطای transport به اندپوینت قدیمی fallback می‌کند. */
+      data = {};
+    }
+    const batch = data && typeof data === 'object' ? data.embeddings : undefined;
+    if (Array.isArray(batch)) {
+      // A present batch response with the wrong shape is a provider error,
+      // not a signal to silently retry one item at a time.
+      return this.validateBatch(batch, texts.length, 'Ollama');
     }
 
     const legacyUrl = joinUrl(this.options.baseUrl, '/api/embeddings');

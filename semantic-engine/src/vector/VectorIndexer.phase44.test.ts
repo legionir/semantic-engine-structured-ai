@@ -159,6 +159,21 @@ class CountingGenerator implements IEmbeddingGenerator {
   async dispose(): Promise<void> {}
 }
 
+class InvalidGenerator implements IEmbeddingGenerator {
+  readonly modelName = 'invalid';
+  constructor(private readonly shape: 'cardinality' | 'non-finite' | 'dimensions') {}
+  async generate(_text: string): Promise<EmbeddingResult> {
+    return { embedding: [1, 2], model: 'invalid', dimensions: 2 };
+  }
+  async generateBatch(texts: readonly string[]): Promise<EmbeddingResult[]> {
+    if (this.shape === 'cardinality') return texts.slice(0, -1).map(() => ({ embedding: [1, 2], model: 'invalid', dimensions: 2 }));
+    if (this.shape === 'non-finite') return texts.map(() => ({ embedding: [1, Number.NaN], model: 'invalid', dimensions: 2 }));
+    return texts.map((_, i) => ({ embedding: i === 0 ? [1, 2] : [1, 2, 3], model: 'invalid', dimensions: i === 0 ? 2 : 3 }));
+  }
+  async isReady(): Promise<boolean> { return true; }
+  async dispose(): Promise<void> {}
+}
+
 describe('VectorIndexer — سورس واقعی، نه فقط برچسب (SE-VEC-01)', () => {
   it('بدنهٔ نماد را داخل chunk می‌گذارد', async () => {
     const chunks = await new VectorIndexer().index(index(), { contents });
@@ -217,6 +232,17 @@ describe('VectorIndexer — سورس واقعی، نه فقط برچسب (SE-VEC
     for (const c of chunks) {
       expect(c.tokenEstimate).toBe(Math.max(1, Math.ceil(c.content.length / 4)));
     }
+  });
+});
+
+describe('VectorIndexer — اعتبارسنجی خروجی embedding', () => {
+  it.each([
+    ['cardinality', /cardinality mismatch/],
+    ['non-finite', /empty, non-finite/],
+    ['dimensions', /inconsistent vector dimensions/],
+  ] as const)('fails fast on %s provider output', async (shape, error) => {
+    await expect(new VectorIndexer({ embeddingGenerator: new InvalidGenerator(shape) }).index(index(), { contents }))
+      .rejects.toThrow(error);
   });
 });
 

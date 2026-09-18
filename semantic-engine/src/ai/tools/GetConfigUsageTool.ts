@@ -30,7 +30,17 @@ export class GetConfigUsageTool implements AiTool<GetConfigUsageInput> {
 
   async execute(input: GetConfigUsageInput): Promise<AiToolOutput> {
     try {
-      if (!input.key && !input.path && !input.kind) return { success: false, error: 'At least one of key, path, or kind is required', items: [] };
+      const selectors = [input.key, input.path, input.kind];
+      if (selectors.every(value => value === undefined)) return { success: false, error: 'At least one of key, path, or kind is required', items: [] };
+      if (selectors.some(value => value !== undefined && (typeof value !== 'string' || value.trim().length === 0))) {
+        return { success: false, error: 'key, path, and kind must be non-empty strings', items: [] };
+      }
+      if (input.kind !== undefined && !['env', 'config-get', 'dotenv', 'env-file-reference'].includes(input.kind)) {
+        return { success: false, error: 'kind is invalid', items: [] };
+      }
+      if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1)) {
+        return { success: false, error: 'limit must be a positive integer', items: [] };
+      }
       const limit = input.limit ?? 50;
       if (!Number.isInteger(limit) || limit < 1) return { success: false, error: 'limit must be a positive integer', items: [] };
       const keyFilter = input.key?.toLowerCase();

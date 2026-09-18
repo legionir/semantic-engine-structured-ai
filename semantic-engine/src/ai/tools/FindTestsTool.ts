@@ -30,7 +30,14 @@ export class FindTestsTool implements AiTool<FindTestsInput> {
 
   async execute(input: FindTestsInput): Promise<AiToolOutput> {
     try {
-      if (!input.path && !input.fileId && !input.symbolId) return { success: false, error: 'One of path, fileId, or symbolId is required', items: [] };
+      const selectors = [input.path, input.fileId, input.symbolId];
+      if (selectors.every(value => value === undefined)) return { success: false, error: 'One of path, fileId, or symbolId is required', items: [] };
+      if (selectors.some(value => value !== undefined && (typeof value !== 'string' || value.trim().length === 0))) {
+        return { success: false, error: 'path, fileId, and symbolId must be non-empty strings', items: [] };
+      }
+      if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1)) {
+        return { success: false, error: 'limit must be a positive integer', items: [] };
+      }
       const file = input.fileId ? this.reader.getFileById(input.fileId) : input.path ? this.reader.getFileByPath(input.path) : undefined;
       const symbol = input.symbolId ? this.reader.getSymbolById(input.symbolId) : undefined;
       const symbolFile = symbol ? this.reader.getFileById(symbol.fileId) : undefined;

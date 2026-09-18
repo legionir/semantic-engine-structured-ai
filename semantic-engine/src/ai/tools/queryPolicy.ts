@@ -113,15 +113,124 @@ function stripLiterals(sql: string): string {
 
 /**
  * جدول‌هایی که پرس‌وجو به آن‌ها اشاره می‌کند.
- * زیرپرس‌وجو (`FROM (`) و CTE نام جدول نیستند و رد می‌شوند.
+ *
+ * این کار عمداً با tokenهای سبک انجام می‌شود، نه regex روی SQL خام:
+ * `FROM recent` در یک CTE باید alias باشد، در حالی که `FROM files`
+ * واقعاً به جدول ایندکس اشاره می‌کند. tokenها روی SQLای ساخته می‌شوند
+ * که رشته/کامنت از آن حذف شده، بنابراین پرانتزهای تو در تو و عبارت‌های
+ * چندخطی هم بدون اجرای SQL قابل تحلیل‌اند.
  */
-function referencedTables(strippedSql: string): string[] {
-  const tables: string[] = [];
-  const pattern = /\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_.]*)/gi;
+interface SqlToken {
+  readonly value: string;
+  readonly lower: string;
+}
 
+function sqlTokens(sql: string): SqlToken[] {
+  const tokens: SqlToken[] = [];
+  const pattern = /[A-Za-z_][A-Za-z0-9_$]*|[0-9]+|[(),.]/g;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(strippedSql)) !== null) {
-    tables.push(match[1]!);
+  while ((match = pattern.exec(sql)) !== null) {
+    const value = match[0]!;
+    tokens.push({ value, lower: value.toLowerCase() });
+  }
+  return tokens;
+}
+
+function matchingParen(tokens: readonly SqlToken[], opening: number): number {
+  let depth = 0;
+  for (let i = opening; i < tokens.length; i++) {
+    if (tokens[i]!.value === '(') depth++;
+    else if (tokens[i]!.value === ')' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** همه aliasهای CTE را جمع می‌کند؛ nested WITHها هم با scan سراسری دیده می‌شوند. */
+function cteAliases(tokens: readonly SqlToken[]): ReadonlySet<string> {
+  const aliases = new Set<string>();
+
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i]!.lower !== 'with') continue;
+    let cursor = i + 1;
+    if (tokens[cursor]?.lower === 'recursive') cursor++;
+
+    for (;;) {
+      const alias = tokens[cursor];
+      if (!alias || !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(alias.value)) break;
+      aliases.add(alias.lower);
+      cursor++;
+
+      // ستون‌های alias: `name (a, b) AS (...)`
+      if (tokens[cursor]?.value === '(') {
+        const close = matchingParen(tokens, cursor);
+        if (close < 0) break;
+        cursor = close + 1;
+      }
+      if (tokens[cursor]?.lower !== 'as' || tokens[cursor + 1]?.value !== '(') break;
+      const close = matchingParen(tokens, cursor + 1);
+      if (close < 0) break;
+      cursor = close + 1;
+      if (tokens[cursor]?.value !== ',') break;
+      cursor++;
+    }
+  }
+
+  return aliases;
+}
+
+function referencedTables(strippedSql: string): string[] {
+  const tokens = sqlTokens(strippedSql);
+  const aliases = cteAliases(tokens);
+  const tables: string[] = [];
+  const clauseEnd = new Set(['where', 'group', 'order', 'having', 'limit', 'union', 'except', 'intersect', 'window', 'returning']);
+  let expectSource = false;
+  let inFromClause = false;
+  let fromDepth = 0;
+  let depth = 0;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.value === '(') { depth++; continue; }
+    if (token.value === ')') { depth = Math.max(0, depth - 1); continue; }
+
+    if (token.lower === 'from' || token.lower === 'join') {
+      expectSource = true;
+      inFromClause = true;
+      fromDepth = depth;
+      continue;
+    }
+    if (inFromClause && depth === fromDepth && clauseEnd.has(token.lower)) {
+      inFromClause = false;
+      expectSource = false;
+      continue;
+    }
+    if (inFromClause && depth === fromDepth && token.lower === 'on') {
+      expectSource = false;
+      continue;
+    }
+    if (inFromClause && depth === fromDepth && token.value === ',') {
+      expectSource = true;
+      continue;
+    }
+    if (!expectSource) continue;
+
+    // `FROM (...)` is a subquery, not a table. Its inner FROM/JOIN tokens
+    // are still scanned by this loop.
+    if (token.value === '(') { expectSource = false; continue; }
+    if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(token.value)) {
+      expectSource = false;
+      continue;
+    }
+
+    let name = token.value;
+    let next = i + 1;
+    while (tokens[next]?.value === '.' && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(tokens[next + 1]?.value ?? '')) {
+      name += `.${tokens[next + 1]!.value}`;
+      next += 2;
+      i = next - 1;
+    }
+    if (!aliases.has(name.toLowerCase())) tables.push(name);
+    expectSource = false;
   }
 
   return tables;

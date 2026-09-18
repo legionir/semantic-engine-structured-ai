@@ -205,14 +205,22 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
 
   async execute(input: SemanticSearchInput): Promise<AiToolOutput> {
     try {
-      const terms = queryTerms(input.query);
-      const limit = input.limit ?? 20;
-      const filters = input.filters ?? {};
-      // mode is authoritative; preserve the legacy boolean for old callers.
+      if (typeof input.query !== 'string') return { success: false, error: 'query must be a string', items: [] };
+      if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1)) return { success: false, error: 'limit must be a positive integer', items: [] };
+      if (input.minScore !== undefined && (typeof input.minScore !== 'number' || !Number.isFinite(input.minScore))) return { success: false, error: 'minScore must be a finite number', items: [] };
+      if (input.useEmbeddings !== undefined && typeof input.useEmbeddings !== 'boolean') return { success: false, error: 'useEmbeddings must be a boolean', items: [] };
+      if (input.mode !== undefined && input.mode !== 'keyword' && input.mode !== 'vector' && input.mode !== 'hybrid') return { success: false, error: 'mode must be keyword, vector, or hybrid', items: [] };
       const mode = input.mode ?? (input.useEmbeddings === false ? 'keyword' : 'hybrid');
+      if (input.filters !== undefined && (typeof input.filters !== 'object' || input.filters === null || Array.isArray(input.filters))) return { success: false, error: 'filters must be an object', items: [] };
+      const filters = input.filters ?? {};
+      const limit = input.limit ?? 20;
+      const terms = queryTerms(input.query);
 
       const kinds = filters.kind ? (Array.isArray(filters.kind) ? filters.kind : [filters.kind]) : [];
       const languages = filters.language ? (Array.isArray(filters.language) ? filters.language : [filters.language]) : [];
+      if (kinds.some(kind => typeof kind !== 'string') || languages.some(language => typeof language !== 'string') || (filters.path !== undefined && typeof filters.path !== 'string') || (filters.exportedOnly !== undefined && typeof filters.exportedOnly !== 'boolean')) {
+        return { success: false, error: 'filters contain an invalid value', items: [] };
+      }
 
       // Step 1: keyword-based candidates
       const keywordCandidates = mode === 'vector'
@@ -422,7 +430,7 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
       let keywordScore = 0;
       for (const term of terms) {
         if (matchesSegments(term, nameSegments)) keywordScore += 3;
-        else if (matchesSegments(term, contextSegments)) keywordScore += 1;
+        else if (this.matchesContextTerm(term, contextSegments)) keywordScore += 1;
       }
 
       /*
@@ -442,6 +450,11 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
         score: keywordScore,
       };
     }).filter(c => c.score > 0);
+  }
+
+  private matchesContextTerm(term: string, segments: readonly string[]): boolean {
+    const latin = /^[a-z0-9_]+$/.test(term);
+    return segments.some(segment => segment === term || segment.startsWith(term) || (!latin && segment.includes(term)));
   }
 
   private async getEmbeddingCandidates(

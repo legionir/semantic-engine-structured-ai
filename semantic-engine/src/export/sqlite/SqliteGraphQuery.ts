@@ -70,6 +70,7 @@ import {
   DEFAULT_GRAPH_DIRECTION,
   DEFAULT_GRAPH_MAX_NODES,
   DEFAULT_GRAPH_MIN_CONFIDENCE,
+  validateGraphTraversalOptions,
 } from '../../graphs/GraphQueryEngine';
 import { HIGH_CONFIDENCE_THRESHOLD } from '../../graphs/EdgeProvenance';
 
@@ -206,8 +207,9 @@ export class SqliteGraphQuery {
     nodeId: string,
     direction: Direction = 'out',
     relations?: readonly GraphRelation[],
-    minConfidence = 0
+    minConfidence = DEFAULT_GRAPH_MIN_CONFIDENCE
   ): Promise<readonly GraphEdge[]> {
+    validateGraphTraversalOptions({ direction, relations, minConfidence });
     const edges: GraphEdge[] = [];
 
     for (const branch of branchesFor(relations)) {
@@ -251,6 +253,7 @@ export class SqliteGraphQuery {
     nodeId: string,
     options: SqliteTraversalOptions = {}
   ): Promise<SqliteTraversalResult> {
+    validateGraphTraversalOptions(options);
     const depth = options.depth ?? DEFAULT_GRAPH_DEPTH;
     const minConfidence = options.minConfidence ?? DEFAULT_GRAPH_MIN_CONFIDENCE;
     const maxNodes = options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES;
@@ -269,9 +272,10 @@ export class SqliteGraphQuery {
     */
     const steps = legs.map(leg => {
       const filter = leg.filter ? ` AND e.${leg.filter}` : '';
-      return `SELECT e.${leg.to}, r.depth + 1
+      return `SELECT e.${leg.to}, r.depth + 1, r.trail || '>' || e.${leg.to} || '>'
                 FROM ${leg.table} e JOIN reach r ON e.${leg.from} = r.id
-               WHERE r.depth < ? AND e.confidence >= ? AND e.${leg.to} <> ?${filter}`;
+               WHERE r.depth < ? AND e.confidence >= ? AND e.${leg.to} <> ?${filter}
+                 AND instr(r.trail, '>' || e.${leg.to} || '>') = 0`;
     });
 
     /*
@@ -283,15 +287,15 @@ export class SqliteGraphQuery {
     | یکی بیشتر می‌خواهیم تا بشود فهمید بریده شده یا نه.
     */
     const sql = `
-      WITH RECURSIVE reach(id, depth) AS (
-        SELECT ?, 0
+      WITH RECURSIVE reach(id, depth, trail) AS (
+        SELECT ?, 0, '>' || ? || '>'
         UNION
         ${steps.join('\n        UNION\n        ')}
         LIMIT ?
       )
       SELECT id, MIN(depth) AS depth FROM reach WHERE depth > 0 GROUP BY id ORDER BY depth, id`;
 
-    const params: unknown[] = [nodeId];
+    const params: unknown[] = [nodeId, nodeId];
     for (const _leg of legs) params.push(depth, minConfidence, nodeId);
     params.push(maxNodes + 2);
 
@@ -358,6 +362,7 @@ export class SqliteGraphQuery {
     options: SqliteTraversalOptions,
     minConfidence: number
   ): Promise<{ path: string[]; weakest: number } | null> {
+    validateGraphTraversalOptions(options);
     const depth = options.depth ?? DEFAULT_GRAPH_DEPTH;
     const direction = options.direction ?? DEFAULT_GRAPH_DIRECTION;
     validateTraversalBound('depth', depth);
@@ -377,12 +382,13 @@ export class SqliteGraphQuery {
         SELECT ?, 0, ?, 100
         UNION ALL
         ${steps.join('\n        UNION ALL\n        ')}
+        LIMIT ?
       )
       SELECT trail, weakest FROM reach WHERE id = ? ORDER BY depth, weakest DESC LIMIT 1`;
 
     const params: unknown[] = [fromId, fromId];
     for (const _leg of legs) params.push(depth, minConfidence);
-    params.push(toId);
+    params.push((options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES) + 1, toId);
 
     const rows = await this.db.all<{ trail: string; weakest: number }>(sql, params);
     if (rows.length === 0) return null;

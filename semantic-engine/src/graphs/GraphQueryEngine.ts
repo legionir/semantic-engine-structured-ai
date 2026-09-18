@@ -171,6 +171,25 @@ export const DEFAULT_GRAPH_DIRECTION: Direction = 'out';
 export const DEFAULT_GRAPH_MIN_CONFIDENCE = HIGH_CONFIDENCE_THRESHOLD;
 const ALL_RELATIONS: readonly GraphRelation[] = ['imports', 'calls', 'types', 'layers'];
 
+/** Shared runtime validation for in-memory and SQLite traversals. */
+export function validateGraphTraversalOptions(options: Partial<TraversalOptions>): void {
+  if (options.depth !== undefined && (!Number.isInteger(options.depth) || options.depth < 0)) {
+    throw new Error('depth must be a non-negative integer');
+  }
+  if (options.maxNodes !== undefined && (!Number.isInteger(options.maxNodes) || options.maxNodes < 0)) {
+    throw new Error('maxNodes must be a non-negative integer');
+  }
+  if (options.minConfidence !== undefined && (!Number.isFinite(options.minConfidence) || options.minConfidence < 0)) {
+    throw new Error('minConfidence must be a finite non-negative number');
+  }
+  if (options.direction !== undefined && !['out', 'in', 'both'].includes(options.direction)) {
+    throw new Error('direction must be out, in, or both');
+  }
+  if (options.relations !== undefined && options.relations.some(relation => !ALL_RELATIONS.includes(relation))) {
+    throw new Error('relations contains an unsupported graph relation');
+  }
+}
+
 export class GraphQueryEngine {
   /** یال‌های بیرون‌رونده، به‌ازای هر گره. */
   private readonly outgoing = new Map<string, GraphEdge[]>();
@@ -254,6 +273,7 @@ export class GraphQueryEngine {
     relations?: readonly GraphRelation[],
     minConfidence?: number
   ): readonly GraphEdge[] {
+    validateGraphTraversalOptions({ direction, relations, minConfidence });
     return this.edgesOf(nodeId, direction, relations ?? ALL_RELATIONS, minConfidence);
   }
 
@@ -293,11 +313,13 @@ export class GraphQueryEngine {
 
   /** فراخوانندگان مستقیم. */
   callers(symbolId: string, options: TraversalOptions = {}): readonly GraphEdge[] {
+    validateGraphTraversalOptions(options);
     return this.edgesOf(symbolId, 'in', ['calls'], options.minConfidence);
   }
 
   /** فراخوانده‌شده‌های مستقیم. */
   callees(symbolId: string, options: TraversalOptions = {}): readonly GraphEdge[] {
+    validateGraphTraversalOptions(options);
     return this.edgesOf(symbolId, 'out', ['calls'], options.minConfidence);
   }
 
@@ -329,6 +351,7 @@ export class GraphQueryEngine {
    * که با امتیاز — همان چیزی است که فاز ۳۹ برای پیمایش از بین برد.
    */
   subgraph(seeds: readonly string[], options: TraversalOptions = {}): SubgraphResult {
+    validateGraphTraversalOptions(options);
     /*
     | require تنبل و درون‌متدی: `SubgraphExplorer` خودش این کلاس را
     | import می‌کند و import ایستای دوطرفه در CommonJS یکی از دو
@@ -340,7 +363,7 @@ export class GraphQueryEngine {
     const result = explorer.explore(seeds, {
       maxNodes: options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES,
       maxDepth: options.depth ?? DEFAULT_GRAPH_DEPTH,
-      direction: options.direction ?? 'both',
+      direction: options.direction ?? DEFAULT_GRAPH_DIRECTION,
       relations: options.relations,
       minConfidence: options.minConfidence,
     });
@@ -402,6 +425,7 @@ export class GraphQueryEngine {
    * می‌رسد — همان چیزی که در DFS باگ SE-AI-03 را می‌ساخت.
    */
   private bfs(starts: readonly string[], options: TraversalOptions): TraversalResult {
+    validateGraphTraversalOptions(options);
     const depthLimit = options.depth ?? DEFAULT_GRAPH_DEPTH;
     const maxNodes = options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES;
     const direction = options.direction ?? 'out';
@@ -482,6 +506,7 @@ export class GraphQueryEngine {
   }
 
   private shortestPath(fromId: string, toId: string, options: TraversalOptions): PathResult {
+    validateGraphTraversalOptions(options);
     const maxNodes = options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES;
     const depthLimit = options.depth ?? DEFAULT_GRAPH_DEPTH;
     const direction = options.direction ?? 'out';
@@ -511,14 +536,16 @@ export class GraphQueryEngine {
           visited.add(neighbour);
           cameFrom.set(neighbour, { previous: current, edge });
 
+          // maxNodes bounds discovered nodes (the start is not an output
+          // node), matching bfs()/SQLite neighbors().
+          if (visited.size - 1 > maxNodes) {
+            truncated = true;
+            break;
+          }
           if (neighbour === toId) {
             return this.buildPath(fromId, toId, cameFrom, truncated);
           }
 
-          if (visited.size > maxNodes) {
-            truncated = true;
-            break;
-          }
           next.push(neighbour);
         }
         if (truncated) break;

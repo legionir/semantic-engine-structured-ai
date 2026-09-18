@@ -37,11 +37,21 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
 
   async execute(input: GetDependenciesInput): Promise<AiToolOutput> {
     try {
+      if (typeof input.id !== 'string' || input.id.trim().length === 0) return { success: false, error: 'id is required and must be a non-empty string', items: [] };
+      if (input.direction !== 'forward' && input.direction !== 'backward') return { success: false, error: 'direction must be forward or backward', items: [] };
+      if (input.level !== undefined && input.level !== 'file' && input.level !== 'symbol') return { success: false, error: 'level must be file or symbol', items: [] };
+      if (input.kind !== undefined && !['import', 'package', 'dynamic-import', 'called-by', 'all'].includes(input.kind)) return { success: false, error: 'kind is invalid', items: [] };
       const depth = input.depth ?? 1;
+      if (input.depth !== undefined && (!Number.isInteger(input.depth) || input.depth < 1 || input.depth > MAX_DEPTH)) {
+        return { success: false, error: `depth must be an integer between 1 and ${MAX_DEPTH}`, items: [] };
+      }
       if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEPTH) {
         return { success: false, error: `depth must be an integer between 1 and ${MAX_DEPTH}`, items: [] };
       }
       const limit = input.limit ?? 50;
+      if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1)) {
+        return { success: false, error: 'limit must be a positive integer', items: [] };
+      }
       if (!Number.isInteger(limit) || limit < 1) {
         return { success: false, error: 'limit must be a positive integer', items: [] };
       }

@@ -23,6 +23,9 @@ export class DetectArchitectureViolationsTool implements AiTool {
   constructor(private readonly reader: ProjectIndexReader) {}
 
   async execute(input: AiToolInput): Promise<AiToolOutput> {
+    if (input.checkCyclesOnly !== undefined && typeof input.checkCyclesOnly !== 'boolean') {
+      return { success: false, error: 'checkCyclesOnly must be a boolean', items: [] };
+    }
     const checkCyclesOnly = input.checkCyclesOnly === true;
     const graph = buildIndexGraph(this.reader);
     const engine = new ArchitectureRuleEngine();

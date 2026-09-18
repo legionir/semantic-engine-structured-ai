@@ -43,14 +43,16 @@ export class SearchService {
     const items = [...result.items];
     return {
       query: options.query,
-      mode: options.mode || 'hybrid',
+      mode: options.mode ?? 'hybrid',
       total: items.length,
       items: items.map(item => ({
         id: item.id,
         name: item.name,
         kind: item.kind,
         path: item.path,
-        score: (item as unknown as { score?: number }).score,
+        // SemanticSearchTool's public score is relevanceScore; preserve it
+        // under the service-level `score` contract.
+        score: item.relevanceScore,
         excerpt: item.excerpt,
         line: item.line,
       })),

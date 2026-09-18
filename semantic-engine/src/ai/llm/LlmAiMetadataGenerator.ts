@@ -291,7 +291,9 @@ Rules:
       designPatterns: [],
       frameworks: [],
       relatedFileIds: this.findRelatedFileIds(file),
-      estimatedTokenCost: this.estimateTokens(file.path),
+      // A fallback still describes the file; charge for that content, not
+      // merely for the pathname (which made large files look nearly free).
+      estimatedTokenCost: this.estimateTokens(this.redactor.redact(this.buildFileContext(file, symbols))),
       aiScore: this.computeAiScore(file, symbols),
     };
   }

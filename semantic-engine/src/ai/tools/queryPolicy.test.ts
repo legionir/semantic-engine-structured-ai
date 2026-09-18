@@ -62,8 +62,22 @@ describe('query policy', () => {
       accept('SELECT id FROM symbols');
     });
 
-    it('accepts a common table expression', () => {
-      accept('WITH recent AS (SELECT id FROM files) SELECT * FROM symbols');
+    it('accepts a common table expression and its real source tables', () => {
+      accept('WITH recent AS (SELECT id FROM files) SELECT * FROM recent');
+      accept('WITH recent AS (SELECT id FROM files) SELECT * FROM recent JOIN symbols ON recent.id = symbols.id');
+    });
+
+    it('handles recursive, nested, and column-list CTEs', () => {
+      accept(`WITH RECURSIVE chain(id) AS (
+        SELECT id FROM files
+        UNION ALL
+        SELECT id FROM chain JOIN files ON chain.id = files.id
+      ) SELECT * FROM chain`);
+      accept('WITH outer_cte AS (WITH inner_cte AS (SELECT id FROM files) SELECT id FROM inner_cte) SELECT * FROM outer_cte');
+    });
+
+    it('rejects a forbidden table hidden behind a CTE alias', () => {
+      expect(reject('WITH recent AS (SELECT id FROM secrets) SELECT * FROM recent').error).toMatch(/not allowed/);
     });
 
     it('rejects anything that is not a read', () => {
