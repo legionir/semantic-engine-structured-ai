@@ -49,16 +49,26 @@ function slugify(name) {
 }
 
 
+/*
+| The identity-bearing half of a project id: a short hash of the CANONICAL
+| root. The slug in front of it is display text and may drift with a
+| rename; this suffix may not, which is what lets an explicit project
+| record be checked against the root it claims (ProjectResolver).
+*/
+function projectRootHash(canonicalRoot) {
+
+    return crypto
+        .createHash("sha256")
+        .update(canonicalRoot)
+        .digest("hex")
+        .slice(0, 8);
+
+}
+
+
 function projectIdFor(name, canonicalRoot) {
 
-    const hash =
-        crypto
-            .createHash("sha256")
-            .update(canonicalRoot)
-            .digest("hex")
-            .slice(0, 8);
-
-    return `prj-${slugify(name)}-${hash}`;
+    return `prj-${slugify(name)}-${projectRootHash(canonicalRoot)}`;
 
 }
 
@@ -372,5 +382,6 @@ module.exports = {
     ProjectRegistry,
     canonicalizeRoot,
     projectIdFor,
+    projectRootHash,
     DEFAULT_PERMISSIONS
 };

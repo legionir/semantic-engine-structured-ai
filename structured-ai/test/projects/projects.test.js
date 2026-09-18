@@ -430,6 +430,177 @@ async function main() {
 
     });
 
+    /* -------------- normalized project contract (Phase 6, گام ۱) -------------- */
+
+    await test("resolveProjectForRun accepts a record AND an already-built context", async () => {
+
+        /* API-016: the documented contract names both shapes; before the
+           Phase-6 normalization only { id, rootPath } was accepted. */
+
+        const registry = freshRegistry();
+
+        const record =
+            registry.register({ name: "Normalized", rootPath: OTHER_ROOT });
+
+        const fromRecord =
+            runtime.projects.resolveProjectForRun({ project: record }, { registry });
+
+        const fromContext =
+            runtime.projects.resolveProjectForRun({ project: fromRecord }, { registry });
+
+        assert.deepEqual(fromContext, fromRecord);
+        assert.equal(fromContext.projectId, record.id);
+        assert.equal(fromContext.workspaceRoot, record.rootPath);
+
+    });
+
+    await test("createProjectContext is idempotent on a context", async () => {
+
+        const registry = freshRegistry();
+
+        const record =
+            registry.register({ name: "Idempotent", rootPath: OTHER_ROOT });
+
+        const once = runtime.projects.createProjectContext(record);
+        const twice = runtime.projects.createProjectContext(once);
+
+        assert.deepEqual(twice, once);
+
+        /* A synthetic context keeps its legacy .agent dataRoot on a round
+           trip instead of being relocated into the central store. */
+
+        const synthetic =
+            runtime.projects.createProjectContext(
+                registry.resolveDefault(WORKSPACE)
+            );
+
+        assert.equal(synthetic.synthetic, true);
+        assert.equal(
+            runtime.projects.createProjectContext(synthetic).dataRoot,
+            path.join(canonicalizeRoot(WORKSPACE), ".agent")
+        );
+
+    });
+
+    await test("normalizeProjectInput maps both shapes and rejects anything else", async () => {
+
+        const fromRecord =
+            runtime.projects.normalizeProjectInput({ id: "prj-a", rootPath: "/tmp" });
+
+        const fromContext =
+            runtime.projects.normalizeProjectInput({
+                projectId: "prj-a",
+                workspaceRoot: "/tmp"
+            });
+
+        assert.equal(fromRecord.id, "prj-a");
+        assert.equal(fromRecord.rootPath, "/tmp");
+        assert.equal(fromContext.id, "prj-a");
+        assert.equal(fromContext.rootPath, "/tmp");
+
+        for (const bad of [null, undefined, "prj-a", 7, {}, { id: "prj-a" }]) {
+
+            assert.equal(
+                runtime.projects.normalizeProjectInput(bad),
+                null,
+                `expected ${JSON.stringify(bad)} to normalize to null`
+            );
+
+        }
+
+    });
+
+    await test("an explicit project is ownership-validated, not taken on faith", async () => {
+
+        /* F-008: the explicit project option used to skip every check. */
+
+        const registry = freshRegistry();
+
+        const record =
+            registry.register({ name: "Owned", rootPath: OTHER_ROOT });
+
+        /* a registered id may not re-point itself at another root */
+
+        assert.throws(
+            () =>
+                runtime.projects.resolveProjectForRun(
+                    { project: { id: record.id, rootPath: WORKSPACE } },
+                    { registry }
+                ),
+            /is registered at .* but the supplied project claims/
+        );
+
+        /* a root that does not exist fails loudly */
+
+        assert.throws(
+            () =>
+                runtime.projects.resolveProjectForRun(
+                    { project: { id: "prj-ghost-00000000", rootPath: path.join(WORKSPACE, "no-such-dir") } },
+                    { registry }
+                ),
+            /Project root does not exist/
+        );
+
+        /* a hand-assembled synthetic default may not claim a foreign root */
+
+        assert.throws(
+            () =>
+                runtime.projects.resolveProjectForRun(
+                    {
+                        project: {
+                            id: "prj-forged-deadbeef",
+                            rootPath: WORKSPACE,
+                            synthetic: true
+                        }
+                    },
+                    { registry }
+                ),
+            /was not derived from/
+        );
+
+        /* the genuine synthetic default for that root still resolves */
+
+        const genuine = registry.resolveDefault(WORKSPACE);
+
+        const resolved =
+            runtime.projects.resolveProjectForRun(
+                { project: genuine },
+                { registry }
+            );
+
+        assert.equal(resolved.projectId, genuine.id);
+        assert.equal(resolved.synthetic, true);
+
+        /* the registry stays authoritative for a registered record's
+           mutable fields, even when the caller passes a stale copy */
+
+        registry.update(record.id, { name: "Renamed" });
+
+        const authoritative =
+            runtime.projects.resolveProjectForRun(
+                { project: { ...record, name: "Stale" } },
+                { registry }
+            );
+
+        assert.equal(authoritative.projectName, "Renamed");
+
+    });
+
+    await test("a project option of the wrong shape names both accepted shapes", async () => {
+
+        const registry = freshRegistry();
+
+        assert.throws(
+            () =>
+                runtime.projects.resolveProjectForRun(
+                    { project: { name: "no identity" } },
+                    { registry }
+                ),
+            /projectId and workspaceRoot/
+        );
+
+    });
+
     /* ----------------------- canonical run integration ----------------------- */
 
     await test("the canonical runtime validates an explicit project id", async () => {

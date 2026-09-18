@@ -1,7 +1,11 @@
 "use strict";
 
-const { ProjectRegistry, canonicalizeRoot } = require("./ProjectRegistry");
-const { createProjectContext } = require("./ProjectContext");
+const {
+    ProjectRegistry,
+    canonicalizeRoot,
+    projectRootHash
+} = require("./ProjectRegistry");
+const { createProjectContext, normalizeProjectInput } = require("./ProjectContext");
 
 /*
 |--------------------------------------------------------------------------
@@ -19,17 +23,112 @@ const { createProjectContext } = require("./ProjectContext");
 | synthetic default project, while explicit project options are validated
 | against the registry before execution.
 |
+| EXECUTION_PLAN Phase 6, گام ۱ (findings API-016 / F-008):
+|
+|   - both the record shape ({ id, rootPath }) and the context shape
+|     ({ projectId, workspaceRoot }) are accepted, normalized through
+|     `normalizeProjectInput`, so the documented contract and the
+|     implementation agree;
+|   - an explicit project no longer bypasses validation: its root is
+|     canonicalized (a non-existent root fails loudly) and checked for
+|     ownership against the registry.
+|
+| **Unknown / Requires Verification:** an explicit project whose id is NOT
+| in the registry is still accepted, because the public caller inventory
+| for `runAgent({ project })` has not been proven to be registry-only.
+| Ownership checks that ARE provable run today (see
+| `validateProjectOwnership`): the claimed root must exist, a registered
+| id must keep its registered root, and a synthetic id must carry the hash
+| of the root it claims. Tightening this to registry-only membership needs
+| caller evidence.
+|
 */
 
 
-function looksLikeProjectRecord(value) {
+/*
+| Validate that an explicitly supplied project really owns the root it
+| claims, and return the authoritative record to build the context from.
+|
+| Throws plain Errors whose messages name the failure:
+|   Project root does not exist: /x               (bad root)
+|   Project "prj-a" is registered at /a, ...      (id/root mismatch)
+|   Synthetic project "prj-a" was not derived ... (fabricated default)
+*/
+function validateProjectOwnership(record, registry) {
 
-    return (
-        value &&
-        typeof value === "object" &&
-        typeof value.id === "string" &&
-        typeof value.rootPath === "string"
-    );
+    const canonicalRoot = canonicalizeRoot(record.rootPath);
+
+    let registered = null;
+
+    try {
+
+        registered = registry.get(record.id);
+
+    } catch (error) {
+
+        if (!/^Unknown project:/.test(error.message)) {
+
+            throw error;
+
+        }
+
+    }
+
+    if (registered) {
+
+        if (registered.rootPath !== canonicalRoot) {
+
+            throw new Error(
+                `Project "${record.id}" is registered at ${registered.rootPath}, ` +
+                `but the supplied project claims ${canonicalRoot}. ` +
+                `A project root is immutable; register the new root as its ` +
+                `own project instead of re-pointing an existing id.`
+            );
+
+        }
+
+        /* The registry is authoritative for name, permissions and endpoint;
+           only the caller's dataRoot (a context round trip) is kept. */
+
+        return {
+            ...registered,
+            synthetic: false,
+            dataRoot: record.dataRoot || null
+        };
+
+    }
+
+    /*
+    | Unregistered id. A synthetic default is legitimate here — it is
+    | derived from the root itself and keeps the legacy `.agent` layout,
+    | and it stays addressable even once a project registers the same
+    | root (see test/runs/run-context.test.js, "two concurrent runs on
+    | two projects share nothing"). What it may NOT do is name a root it
+    | was not derived from: the id's trailing hash binds it to exactly
+    | one canonical root, so that binding is checked here.
+    */
+
+    if (record.synthetic === true) {
+
+        const expectedHash = projectRootHash(canonicalRoot);
+
+        if (!String(record.id).endsWith(`-${expectedHash}`)) {
+
+            throw new Error(
+                `Synthetic project "${record.id}" was not derived from ` +
+                `${canonicalRoot} (expected an id ending in -${expectedHash}). ` +
+                `Build it with projectRegistry.resolveDefault(root) instead of ` +
+                `assembling one by hand.`
+            );
+
+        }
+
+    }
+
+    return {
+        ...record,
+        rootPath: canonicalRoot
+    };
 
 }
 
@@ -39,24 +138,29 @@ function looksLikeProjectRecord(value) {
 |
 | Throws plain Errors whose messages name the failure:
 |   Unknown project: prj-x            (registry miss)
-|   project must be a registry record (bad shape)
+|   options.project must be ...       (bad shape)
 */
 function resolveProjectForRun(options = {}, { registry, workspaceRoot } = {}) {
 
     const activeRegistry =
         registry || new ProjectRegistry();
 
-    if (looksLikeProjectRecord(options.project)) {
+    if (options.project !== undefined && options.project !== null) {
 
-        return createProjectContext(options.project);
+        const normalized = normalizeProjectInput(options.project);
 
-    }
+        if (!normalized) {
 
-    if (options.project) {
+            throw new Error(
+                "options.project must be a project record with id and rootPath " +
+                "or a project context with projectId and workspaceRoot " +
+                "(get it from projectRegistry.get(...) or register one first)."
+            );
 
-        throw new Error(
-            "options.project must be a project record with id and rootPath " +
-            "(get it from projectRegistry.get(...) or register one first)."
+        }
+
+        return createProjectContext(
+            validateProjectOwnership(normalized, activeRegistry)
         );
 
     }
@@ -110,5 +214,6 @@ function assertWorkspaceMatch(context, workspaceRoot) {
 
 module.exports = {
     resolveProjectForRun,
-    assertWorkspaceMatch
+    assertWorkspaceMatch,
+    validateProjectOwnership
 };

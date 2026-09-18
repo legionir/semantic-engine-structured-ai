@@ -23,37 +23,132 @@ const ProjectStore = require("./ProjectStore");
 | The legacy mapping is what lets the CLI keep working byte-for-byte while
 | the multi-project machinery lands in phases 3–8.
 |
+| Two shapes name a project in this codebase (EXECUTION_PLAN Phase 6,
+| finding API-016 / F-008):
+|
+|   registry record  ->  { id, rootPath, ... }
+|   project context  ->  { projectId, workspaceRoot, dataRoot, ... }
+|
+| `normalizeProjectInput` is the single place that maps either one onto the
+| record field names, so callers may hand a record OR an already-built
+| context to any project-aware entry point and get the same context back.
+| Building a context from a context is idempotent.
+|
 */
+
+function isProjectRecordShape(value) {
+
+    return (
+        !!value &&
+        typeof value === "object" &&
+        typeof value.id === "string" &&
+        value.id !== "" &&
+        typeof value.rootPath === "string" &&
+        value.rootPath !== ""
+    );
+
+}
+
+
+function isProjectContextShape(value) {
+
+    return (
+        !!value &&
+        typeof value === "object" &&
+        typeof value.projectId === "string" &&
+        value.projectId !== "" &&
+        typeof value.workspaceRoot === "string" &&
+        value.workspaceRoot !== ""
+    );
+
+}
+
+
+/*
+| Map a registry record OR a project context onto the record field names.
+| Returns null when the value is neither shape, so callers can produce
+| their own error text.
+|
+| A context carries a `dataRoot` that was already derived (and, for a
+| synthetic default, points at the legacy `.agent` layout). It is carried
+| through verbatim so a round trip never silently relocates a project's
+| data.
+*/
+function normalizeProjectInput(value) {
+
+    if (isProjectRecordShape(value)) {
+
+        return {
+            id: value.id,
+            name: value.name,
+            rootPath: value.rootPath,
+            semanticEndpoint: value.semanticEndpoint ?? null,
+            permissions: { ...(value.permissions || {}) },
+            synthetic: value.synthetic === true,
+            dataRoot:
+                typeof value.dataRoot === "string" && value.dataRoot !== ""
+                    ? value.dataRoot
+                    : null
+        };
+
+    }
+
+    if (isProjectContextShape(value)) {
+
+        return {
+            id: value.projectId,
+            name: value.projectName,
+            rootPath: value.workspaceRoot,
+            semanticEndpoint: value.semanticEndpoint ?? null,
+            permissions: { ...(value.permissions || {}) },
+            synthetic: value.synthetic === true,
+            dataRoot:
+                typeof value.dataRoot === "string" && value.dataRoot !== ""
+                    ? value.dataRoot
+                    : null
+        };
+
+    }
+
+    return null;
+
+}
+
 
 function createProjectContext(project, { syntheticDefault = false } = {}) {
 
-    if (!project || typeof project !== "object") {
+    const record = normalizeProjectInput(project);
+
+    if (!record) {
 
         throw new Error(
-            "Cannot build a project context without a project record."
+            "Cannot build a project context without a project record " +
+            "({ id, rootPath }) or an existing project context " +
+            "({ projectId, workspaceRoot })."
         );
 
     }
 
     const synthetic =
-        syntheticDefault || project.synthetic === true;
+        syntheticDefault || record.synthetic === true;
 
     const dataRoot =
-        synthetic
-            ? path.join(project.rootPath, ".agent")
+        record.dataRoot ||
+        (synthetic
+            ? path.join(record.rootPath, ".agent")
             : path.join(
                   ProjectStore.resolveDataHome(),
                   "projects",
-                  project.id
-              );
+                  record.id
+              ));
 
     return {
-        projectId: project.id,
-        projectName: project.name,
-        workspaceRoot: project.rootPath,
+        projectId: record.id,
+        projectName: record.name,
+        workspaceRoot: record.rootPath,
         dataRoot,
-        semanticEndpoint: project.semanticEndpoint ?? null,
-        permissions: { ...(project.permissions || {}) },
+        semanticEndpoint: record.semanticEndpoint ?? null,
+        permissions: { ...(record.permissions || {}) },
         synthetic
     };
 
@@ -61,5 +156,8 @@ function createProjectContext(project, { syntheticDefault = false } = {}) {
 
 
 module.exports = {
-    createProjectContext
+    createProjectContext,
+    normalizeProjectInput,
+    isProjectRecordShape,
+    isProjectContextShape
 };

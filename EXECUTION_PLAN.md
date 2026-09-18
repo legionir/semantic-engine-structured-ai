@@ -206,13 +206,25 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 - در validation یک خطای واقعی `TS18048` در `GitHistoryMiner.ts` کشف و در همین stage با optional access اصلاح شد؛ سپس build و history test دوباره pass شدند.
 - full Jest repository suite در این stage اجرا نشده است؛ pass سراسری ادعا نمی‌شود و full matrix در فاز validation نهایی باقی می‌ماند. این مورد blocker فاز ۵ نیست، چون build و suiteهای focused و integration مربوط به فاز ۵ با evidence بالا pass شده‌اند.
 
-## [🔴] فاز ۶: project context و multi-project runtime در structured-ai
+## [🟡] فاز ۶: project context و multi-project runtime در structured-ai
 
 هدف جلوگیری از نشت context پروژه در delegation، MCP، filesystem، search، hooks، history و continuation است.
 
-### [🔴] گام ۱: اصلاح ProjectResolver و normalized context
+**وضعیت جاری:** فقط گام ۱ اجرا و verified شده است؛ گام‌های ۲ تا ۵ هنوز 🔴 هستند، بنابراین فاز 🟡 است و معیارهای پذیرش آن هنوز ارزیابی نشده‌اند.
+
+### [🟢] گام ۱: اصلاح ProjectResolver و normalized context
 
 در `ProjectResolver.js:11-15,25-33,49-61` و `ProjectContext.js:50-58` recordهای `{id, rootPath}` و contextهای `{projectId, workspaceRoot}` را یک contract normalized کن. resolver باید هر ورودی مجاز را normalize و ownership را validate کند؛ explicit project object که bypass validation می‌کند در **Unknown / Requires Verification** بماند تا caller evidence فراهم شود.
+
+**Evidence گام ۱ (2026-09-18):**
+
+- گزارش مرجع: `audit/audit-phase6-step1-2026-09-18.md`.
+- `normalizeProjectInput` در `ProjectContext.js` تنها نقطهٔ نگاشت هر دو shape است؛ `createProjectContext` روی context ادامه‌پذیر (idempotent) است و `dataRoot` قدیمی `.agent` را در round trip جابه‌جا نمی‌کند.
+- `validateProjectOwnership` در `ProjectResolver.js` root ادعاشده را canonicalize می‌کند، mismatch بین id ثبت‌شده و root را رد می‌کند و synthetic دست‌ساز را با `projectRootHash` به root خودش مقید می‌کند. findingهای `API-016` و `F-008` پوشش یافتند.
+- **Unknown / Requires Verification باقی‌مانده:** explicit project با id ثبت‌نشده و غیر synthetic همچنان پذیرفته می‌شود؛ محدودکردن آن به عضویت registry نیازمند caller inventory برای `runAgent({ project })` است. همچنین `assertWorkspaceMatch` هنوز از `resolveProjectForRun` فراخوانی نمی‌شود و به گام‌های بعدی این فاز وابسته است.
+- regression: پنج تست جدید در `test/projects/projects.test.js` (record/context، idempotency، normalize، ownership، پیام shape).
+- `node test/projects/projects.test.js`: **PASS — ۲۲/۲۲**. `npm run test:runs`: **PASS — ۵ + ۱۱ + ۵ + ۸**. `npm test` کل `structured-ai`: **PASS — exit 0، ۷۰۵ تست ok، ۰ FAIL**.
+- skip باقی‌مانده و از پیش موجود: `test/mcp/gateway.integration.test.js` چون `semantic-engine` build نشده است؛ این pass محسوب نمی‌شود و blocker محیطی فاز ۹ است.
 
 ### [🔴] گام ۲: propagation در delegation و continuation
 

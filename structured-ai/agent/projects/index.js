@@ -13,10 +13,14 @@
 
 const { ProjectRegistry } = require("./ProjectRegistry");
 const ProjectStore = require("./ProjectStore");
-const { createProjectContext } = require("./ProjectContext");
+const {
+    createProjectContext,
+    normalizeProjectInput
+} = require("./ProjectContext");
 const {
     resolveProjectForRun,
-    assertWorkspaceMatch
+    assertWorkspaceMatch,
+    validateProjectOwnership
 } = require("./ProjectResolver");
 const ProjectMigration = require("./ProjectMigration");
 
@@ -40,7 +44,9 @@ module.exports = {
     ProjectStore,
     ProjectMigration,
     createProjectContext,
+    normalizeProjectInput,
     resolveProjectForRun,
     assertWorkspaceMatch,
+    validateProjectOwnership,
     registry
 };
