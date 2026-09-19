@@ -1,3 +1,14 @@
 
 # Runtime state of any demo/test workspace, never source
 **/.agent/
+
+# Ruflo local secrets and runtime data
+.env
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+# ruflo/claude-flow tool state
+**/.claude-flow/

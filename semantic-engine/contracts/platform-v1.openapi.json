@@ -55,13 +55,56 @@
     "/api/v1/config": {
       "get": {
         "summary": "Get current runtime platform configuration (secrets masked)",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Configuration object"
           },
           "401": {
             "description": "Unauthorized"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update runtime configuration (maxBodyBytes only; other keys are startup-only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "maxBodyBytes": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied to the running server; `persisted` is false"
+          },
+          "400": {
+            "description": "Invalid value or unknown key"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Key can only change at startup (port, host, allowRemote, projectsRoot, token, staticDir, dataRoot)"
           }
         }
       }
@@ -84,11 +127,19 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "path": { "type": "string" },
-                  "name": { "type": "string" },
-                  "id": { "type": "string" }
+                  "path": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
                 },
-                "required": ["path"]
+                "required": [
+                  "path"
+                ]
               }
             }
           }
@@ -107,11 +158,102 @@
       "get": {
         "summary": "Get details of a specific project",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Project details"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update project name, enabled and autoStart",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "autoStart": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated and persisted"
+          },
+          "400": {
+            "description": "Invalid field type"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a project from the registry",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed from map and registry"
+          },
+          "401": {
+            "description": "Unauthorized"
           },
           "404": {
             "description": "Project not found"
@@ -123,7 +265,14 @@
       "post": {
         "summary": "Trigger asynchronous background indexing job",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "202": {
@@ -133,10 +282,18 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "jobId": { "type": "string" },
-                    "projectId": { "type": "string" },
-                    "status": { "type": "string" },
-                    "progress": { "type": "integer" }
+                    "jobId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "progress": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
@@ -149,8 +306,22 @@
       "get": {
         "summary": "Get progress and status of an async job",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -166,7 +337,14 @@
       "get": {
         "summary": "Subscribe to real-time Server-Sent Events (SSE) for project updates and job progress",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -179,7 +357,14 @@
       "post": {
         "summary": "Perform hybrid semantic and keyword search across codebase",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -188,11 +373,25 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "query": { "type": "string" },
-                  "limit": { "type": "integer", "default": 20 },
-                  "mode": { "type": "string", "enum": ["hybrid", "keyword", "vector"] }
+                  "query": {
+                    "type": "string"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "default": 20
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "hybrid",
+                      "keyword",
+                      "vector"
+                    ]
+                  }
                 },
-                "required": ["query"]
+                "required": [
+                  "query"
+                ]
               }
             }
           }
@@ -208,8 +407,22 @@
       "get": {
         "summary": "Get 360-degree explanation of a symbol (signature, callers, callees, tests, git, diagnostics)",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "symbolId", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "symbolId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -225,7 +438,14 @@
       "post": {
         "summary": "Assemble a token-budgeted, relevance-ranked context bundle for an AI agent task",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -234,11 +454,23 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "task": { "type": "string" },
-                  "files": { "type": "array", "items": { "type": "string" } },
-                  "maxTokens": { "type": "integer", "default": 2000 }
+                  "task": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "maxTokens": {
+                    "type": "integer",
+                    "default": 2000
+                  }
                 },
-                "required": ["task"]
+                "required": [
+                  "task"
+                ]
               }
             }
           }
@@ -254,7 +486,14 @@
       "get": {
         "summary": "Level 1 LoD: Architecture overview graph with modules, layers, and entry points",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -267,8 +506,22 @@
       "get": {
         "summary": "Level 2 LoD: Module view with files and dependency edges",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "moduleId", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -281,8 +534,22 @@
       "get": {
         "summary": "Level 3 LoD: File view with classes, interfaces, and methods",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "fileId", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -295,7 +562,14 @@
       "post": {
         "summary": "Level 4 LoD: Neighborhood focus subgraph around a seed symbol or file",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -304,11 +578,21 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "seedId": { "type": "string" },
-                  "depth": { "type": "integer", "default": 1 },
-                  "minConfidence": { "type": "number", "default": 70 }
+                  "seedId": {
+                    "type": "string"
+                  },
+                  "depth": {
+                    "type": "integer",
+                    "default": 1
+                  },
+                  "minConfidence": {
+                    "type": "number",
+                    "default": 70
+                  }
                 },
-                "required": ["seedId"]
+                "required": [
+                  "seedId"
+                ]
               }
             }
           }
@@ -316,6 +600,709 @@
         "responses": {
           "200": {
             "description": "Neighborhood focus subgraph"
+          }
+        }
+      }
+    },
+    "/api/v1/users": {
+      "post": {
+        "summary": "Create a user",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/roles": {
+      "post": {
+        "summary": "Create a role",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/permissions": {
+      "post": {
+        "summary": "Create a permission",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/api-keys/{keyId}": {
+      "delete": {
+        "summary": "Revoke an API key",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "keyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v2/auth/keys/{keyId}": {
+      "delete": {
+        "summary": "Revoke an API key (v2)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "keyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/chat/llm": {
+      "get": {
+        "summary": "Read the chat LLM configuration",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update the chat LLM configuration",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/chat/llm/test": {
+      "post": {
+        "summary": "Test the chat LLM configuration",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/chat": {
+      "post": {
+        "summary": "Ask a question about a project",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/impact": {
+      "post": {
+        "summary": "Impact analysis for a set of changes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/diagnostics": {
+      "get": {
+        "summary": "Project diagnostics",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/fs/browse": {
+      "get": {
+        "summary": "Browse directories under the projects root",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/jobs/{jobId}/cancel": {
+      "post": {
+        "summary": "Cancel a job of this project",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/dashboard/overview": {
+      "get": {
+        "summary": "Dashboard overview (files, languages, dependencies, health)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/dashboard/dependencies": {
+      "get": {
+        "summary": "Dashboard dependency summary",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/dashboard/metrics": {
+      "get": {
+        "summary": "Dashboard metrics",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/providers": {
+      "get": {
+        "summary": "List embedding/LLM providers",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/providers/models": {
+      "post": {
+        "summary": "List models of a provider",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/files/{filePath}": {
+      "put": {
+        "summary": "Write a file inside the project",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filePath",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/import-bundle": {
+      "post": {
+        "summary": "Import a project bundle",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/import-bundle": {
+      "post": {
+        "summary": "Import a project bundle (v2)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/visualization/dependencies": {
+      "get": {
+        "summary": "File-level dependency graph",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/visualization/workflow/{workflowId}": {
+      "get": {
+        "summary": "Workflow graph",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflowId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/visualization/business-mapping": {
+      "get": {
+        "summary": "Business mapping graph",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/visualization/test-map": {
+      "get": {
+        "summary": "Test intelligence map",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/visualization/path": {
+      "post": {
+        "summary": "Shortest path between two nodes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Not found (JSON body with string `error`)"
           }
         }
       }
