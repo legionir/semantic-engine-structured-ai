@@ -30,6 +30,7 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { ProjectIndex } from '../core/types/project-index.types';
 import { openSqlite, SqliteDriver, SqliteStatement } from './sqlite/SqliteDriver';
 
@@ -55,6 +56,32 @@ const TABLES = [
 
 export interface SQLiteExportOptions {
   readonly outputPath: string;
+  /**
+   * The database records which project it belongs to (`meta.root_path`).
+   * Exporting a different project into it would delete that project's rows
+   * (`deleteDeadRows`), so it is refused unless the caller explicitly says the
+   * root was moved.
+   */
+  readonly allowRootChange?: boolean;
+}
+
+/** Thrown when an export would overwrite/delete another project's data. */
+export class SqliteOwnershipError extends Error {
+  constructor(readonly databasePath: string, readonly owner: string, readonly requested: string) {
+    super(
+      `Refusing to export into ${databasePath}: it belongs to project root "${owner}", not "${requested}". ` +
+        'Use a separate database per project, or pass allowRootChange when the root was moved.'
+    );
+    this.name = 'SqliteOwnershipError';
+  }
+}
+
+function sameRoot(a: string, b: string): boolean {
+  const norm = (value: string): string => {
+    const resolved = path.resolve(value);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  return norm(a) === norm(b);
 }
 
 export class SQLiteExporter {
@@ -62,6 +89,7 @@ export class SQLiteExporter {
     const db = await openSqlite(options.outputPath);
     try {
       await this.optimizeForBulkInsert(db);
+      await this.assertOwnership(db, projectIndex, options);
       await this.ensureSchema(db, options.outputPath);
       await this.runInTransaction(db, async () => {
         await this.insertFiles(db, projectIndex.files);
@@ -81,6 +109,26 @@ export class SQLiteExporter {
       });
     } finally {
       await db.close();
+    }
+  }
+
+  private async assertOwnership(
+    db: SqliteDriver,
+    projectIndex: ProjectIndex,
+    options: SQLiteExportOptions
+  ): Promise<void> {
+    if (options.allowRootChange) return;
+    const requested = projectIndex.rootPath ?? '';
+    if (requested === '') return;
+    let owner = '';
+    try {
+      const rows = await db.all<{ value: string }>("SELECT value FROM meta WHERE key = 'root_path'");
+      owner = rows[0]?.value ?? '';
+    } catch {
+      return; // no meta table: fresh or legacy database, nothing to protect yet
+    }
+    if (owner !== '' && !sameRoot(owner, requested)) {
+      throw new SqliteOwnershipError(options.outputPath, owner, requested);
     }
   }
 

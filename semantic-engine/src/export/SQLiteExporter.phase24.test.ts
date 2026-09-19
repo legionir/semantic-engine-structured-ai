@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SQLiteExporter } from './SQLiteExporter';
+import { SQLiteExporter, SqliteOwnershipError } from './SQLiteExporter';
 import { openSqlite, hasNativeSqlite, SqliteDriver } from './sqlite/SqliteDriver';
 import { ProjectIndex, FileEntry, SymbolEntry } from '../core/types/project-index.types';
 
@@ -79,15 +79,43 @@ async function query<T = Record<string, unknown>>(sql: string): Promise<T[]> {
   }
 }
 
-describe('درایور SQLite', () => {
-  it('SQLite داخلی Node در این محیط موجود است', () => {
-    expect(hasNativeSqlite()).toBe(true);
+describe('درایور SQLite — compatibility matrix', () => {
+  const [major = 0, minor = 0] = process.versions.node.split('.').map(Number);
+  // Measured: Node 22.12 still needs --experimental-sqlite; unflagged from 22.13 / 23.4 / 24.
+  const builtIn =
+    major >= 24 || (major === 23 && minor >= 4) || (major === 22 && minor >= 13);
+
+  afterEach(() => {
+    delete process.env['SEMANTIC_ENGINE_SQLITE_DRIVER'];
   });
 
-  it('درایور بازشده همان داخلی است', async () => {
+  it('the built-in driver exists exactly on Node >= 22.13 (unflagged)', () => {
+    expect(hasNativeSqlite()).toBe(builtIn);
+  });
+
+  it('default selection: node:sqlite when built in, otherwise the optional sqlite3', async () => {
     const db = await openSqlite(':memory:');
-    expect(db.name).toBe('node:sqlite');
+    expect(db.name).toBe(builtIn ? 'node:sqlite' : 'sqlite3');
     await db.close();
+  });
+
+  it('the sqlite3 fallback runs the whole exporter and produces the same rows', async () => {
+    process.env['SEMANTIC_ENGINE_SQLITE_DRIVER'] = 'sqlite3';
+    const db = await openSqlite(':memory:');
+    expect(db.name).toBe('sqlite3');
+    await db.close();
+
+    await new SQLiteExporter().export(
+      index([file('f1', 'a.ts')], [symbol('s1', 'f1', 'alpha')]),
+      { outputPath: dbPath }
+    );
+    expect((await query('SELECT id FROM files')).map(r => r['id'])).toEqual(['f1']);
+    expect((await query('SELECT id FROM symbols')).map(r => r['id'])).toEqual(['s1']);
+  });
+
+  it('forcing an unknown driver is an error, not a silent switch', async () => {
+    process.env['SEMANTIC_ENGINE_SQLITE_DRIVER'] = 'nope';
+    await expect(openSqlite(':memory:')).rejects.toThrow(/Unknown SEMANTIC_ENGINE_SQLITE_DRIVER/);
   });
 });
 
@@ -244,6 +272,31 @@ describe('legacy database without meta — real migration, backup and idempotenc
   it('a fresh database is not treated as legacy and gets no backup', async () => {
     await new SQLiteExporter().export(index([file('f1', 'a.ts')], []), { outputPath: dbPath });
     expect(fs.readdirSync(directory).filter(n => n.endsWith('.bak'))).toEqual([]);
+  });
+});
+
+describe('cross-project ownership guard', () => {
+  it('refuses to export project B into the database of project A and leaves A intact', async () => {
+    const exporter = new SQLiteExporter();
+    await exporter.export({ ...index([file('a1', 'a.ts')], []), rootPath: path.join(directory, 'proj-a') }, { outputPath: dbPath });
+
+    await expect(
+      exporter.export({ ...index([file('b1', 'b.ts')], []), rootPath: path.join(directory, 'proj-b') }, { outputPath: dbPath })
+    ).rejects.toBeInstanceOf(SqliteOwnershipError);
+
+    expect((await query('SELECT id FROM files')).map(r => r['id'])).toEqual(['a1']);
+  });
+
+  it('allows re-export of the same project and an explicit root move', async () => {
+    const exporter = new SQLiteExporter();
+    const rootA = path.join(directory, 'proj-a');
+    await exporter.export({ ...index([file('a1', 'a.ts')], []), rootPath: rootA }, { outputPath: dbPath });
+    await exporter.export({ ...index([file('a2', 'a2.ts')], []), rootPath: rootA }, { outputPath: dbPath });
+    expect((await query('SELECT id FROM files')).map(r => r['id'])).toEqual(['a2']);
+
+    const moved = path.join(directory, 'proj-a-moved');
+    await exporter.export({ ...index([file('a3', 'a3.ts')], []), rootPath: moved }, { outputPath: dbPath, allowRootChange: true });
+    expect((await query('SELECT id FROM files')).map(r => r['id'])).toEqual(['a3']);
   });
 });
 
