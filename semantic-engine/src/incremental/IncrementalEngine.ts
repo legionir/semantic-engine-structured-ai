@@ -551,8 +551,16 @@ export class IncrementalEngine {
         path: event.path,
         modified: new Date().toISOString(),
       };
+      /*
+      | SE-INC (audit F-01): `removeFile` also drops the file's symbols. The id is
+      | kept, so the very same symbols still belong to it — carry them over,
+      | otherwise a content-identical rename silently deletes every symbol (and
+      | with them their call/type edges) from the index.
+      */
+      const carriedSymbols = [...this.store.getSymbolsForFile(oldFile.id)];
       this.store.removeFile(oldFile.id);
       this.store.upsertFile(updatedFile);
+      this.store.setSymbolsForFile(oldFile.id, carriedSymbols);
       this.idGenerator.invalidate(oldFile.path);
       /*
       | SE-INC-01: `getId` این‌جا بود، با کامنتِ «cache new path → old
