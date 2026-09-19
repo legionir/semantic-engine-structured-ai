@@ -201,6 +201,14 @@ function appendOutput(session, stream, chunk) {
         session.buffered_chars -= removed.text.length;
 
         session.dropped_chunks++;
+
+        /* The read cursor is an index into `output`: dropping the oldest
+           chunk shifts every index down by one. Without this the cursor
+           pointed past unread chunks and the next read silently skipped
+           them (audit REL-024). Clamped so it never goes negative. */
+        if (session.read_cursor > 0) {
+            session.read_cursor--;
+        }
     }
 }
 

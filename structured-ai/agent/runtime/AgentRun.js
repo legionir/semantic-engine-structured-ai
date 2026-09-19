@@ -107,6 +107,11 @@ async function runAgentCore(options = {}) {
             options.history.length > 0
     });
 
+    /* Exactly one terminal event (run:end or run:error) must follow a
+       run:start; `run_open` is what lets the error path know whether one
+       is still owed. */
+    h.currentRun().run_open = true;
+
     const messages =
         Array.isArray(options.history)
             ? options.history

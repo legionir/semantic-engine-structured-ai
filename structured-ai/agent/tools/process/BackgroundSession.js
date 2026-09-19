@@ -185,6 +185,7 @@ async function processStart(args, context) {
             );
 
             session.status = "failed";
+            session.error = error.message;
             session.finished_at = Date.now();
         }
     );
@@ -192,6 +193,20 @@ async function processStart(args, context) {
     child.on(
         "close",
         (code, signal) => {
+
+            /* A spawn error already made this session "failed". Node still
+               emits "close" afterwards; it must not turn the failure into an
+               ordinary "exited" (audit REL-023). */
+            if (session.status === "failed") {
+
+                if (session.exit_code == null) {
+                    session.exit_code = code;
+                }
+
+                session.signal = signal;
+
+                return;
+            }
 
             session.status = "exited";
             session.exit_code = code;

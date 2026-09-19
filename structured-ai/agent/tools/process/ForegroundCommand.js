@@ -133,10 +133,12 @@ function terminalExec(args, context) {
                 timeout
             );
 
+        /* stdout is bounded exactly like stderr (audit F-004): an unbounded
+           `stdout +=` let a chatty command grow the buffer without limit */
         child.stdout.on(
             "data",
             chunk => {
-                stdout += chunk.toString();
+                stdout = capture(stdout, chunk);
             }
         );
 

@@ -151,7 +151,7 @@ class RunScheduler {
     }
 
 
-    async schedule(projectId, fn) {
+    async schedule(projectId, fn, meta = {}) {
 
         if (!schedulerEnabled() || !projectId) {
             return fn();
@@ -174,7 +174,14 @@ class RunScheduler {
 
         return new Promise((resolve, reject) => {
 
-            const job = { fn, resolve, reject, projectId, enqueuedAt: Date.now() };
+            const job = {
+                fn,
+                resolve,
+                reject,
+                projectId,
+                runId: meta.runId || null,
+                enqueuedAt: Date.now()
+            };
 
             if (this.canStart(key)) {
 
@@ -278,6 +285,48 @@ class RunScheduler {
 
             this.dispatching = false;
         }
+    }
+
+
+    /* Cancel ONE waiting run by its id: it is removed from its queue and its
+       schedule() promise rejects with RUN_CANCELLED, so the caller settles it. */
+    cancelQueuedRun(runId, reason) {
+
+        if (!runId) {
+            return false;
+        }
+
+        for (const [key, queue] of this.queues) {
+
+            const index = queue.findIndex(job => job.runId === runId);
+
+            if (index === -1) {
+                continue;
+            }
+
+            const [job] = queue.splice(index, 1);
+
+            const error = new Error(
+                reason
+                    ? `queued run ${runId} was cancelled (${reason})`
+                    : `queued run ${runId} was cancelled`
+            );
+
+            error.code = "RUN_CANCELLED";
+            error.status = 409;
+            error.project_id = job.projectId;
+            error.run_id = runId;
+
+            if (queue.length === 0) {
+                this.queues.delete(key);
+            }
+
+            job.reject(error);
+
+            return true;
+        }
+
+        return false;
     }
 
 
