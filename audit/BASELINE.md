@@ -58,3 +58,7 @@ The three are Windows-only assumptions, proven by the assertions: POSIX paths su
 - `node scripts/check-audit-coverage.js`: fails, `AUDIT-2026-08.md` does not exist (known blocker, plan rule 12). Decision required in Phase 9 (restore the file or change the checker).
 - `node scripts/check-tests.js`: re-runs jest and reports "the test run failed"; not independent evidence.
 - Fixtures/artifacts: `test-fixture/node_modules/left-pad` present; 7 tree-sitter WASM grammars present; `dist/` built with `tsc -p ./` (28 s).
+
+## CORRECTION (2026-09-19, decision D-9)
+The "Node 20.18.0 / 22.12.0 (local)" rows above were recorded from runs that actually executed on **Node 24.15.0**: the PATH override did not take effect. They are void. Real runs use the explicit `node.exe` path; see `docs/compatibility.md` for the measured matrix (Node 20.18, 22.12, 24.15: only the same 3 Windows-only suites fail).
+Additionally, two jest processes started concurrently in one checkout collided on shared temp dirs (`EBUSY`) and produced false failures; results must be taken from sequential runs.

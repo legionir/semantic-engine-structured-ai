@@ -14,8 +14,12 @@ concurrency:
 
 jobs:
   semantic-engine:
-    name: semantic-engine (Node 20)
+    name: semantic-engine (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
     defaults:
       run:
         working-directory: semantic-engine
@@ -23,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: semantic-engine/package-lock.json
       - run: npm ci
