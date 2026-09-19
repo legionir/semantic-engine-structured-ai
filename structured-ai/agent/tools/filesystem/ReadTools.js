@@ -154,16 +154,21 @@ async function fsReadMany(args, context) {
 
                     try {
 
+                        /* the caller's context MUST be passed on: without it every item
+                           was read in the default project (audit F-009) */
                         const result =
-                            await fsRead({
-                                path: item,
+                            await fsRead(
+                                {
+                                    path: item,
 
-                                offset:
-                                    args.offset,
+                                    offset:
+                                        args.offset,
 
-                                limit:
-                                    args.limit
-                            });
+                                    limit:
+                                        args.limit
+                                },
+                                context
+                            );
 
                         return {
                             ...result,

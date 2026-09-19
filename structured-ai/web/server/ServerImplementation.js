@@ -896,6 +896,30 @@ function createServer(runtime, options = {}) {
     | whole run is scoped to that project (the project context is resolved before accepting). Legacy callers pass nothing
     | and the historical single-run behaviour is untouched.
     */
+    /*
+    | The plan lives in the run's PROJECT data root. Outside the run (before it
+    | starts and in the finally block that decides on auto-continue) there is no
+    | run context, so plan lookups must be made inside that project's frame;
+    | otherwise a project run is judged by the default project's plan and never
+    | continues (or continues on the wrong plan).
+    */
+    function inRunProject(runOptions, fn) {
+
+        if (
+            !runOptions.projectId ||
+            typeof runtime.runWithProject !== "function" ||
+            typeof runtime.resolveRunProjectContext !== "function"
+        ) {
+            return fn();
+        }
+
+        const context =
+            runtime.resolveRunProjectContext({ projectId: runOptions.projectId });
+
+        return runtime.runWithProject(context, fn);
+    }
+
+
     async function startTask(task, runOptions = {}) {
 
         if (state.status === "running") {
@@ -913,7 +937,7 @@ function createServer(runtime, options = {}) {
         if (state.lastPlanSignature === null) {
 
             const before =
-                runtime.currentPlanSummary();
+                inRunProject(runOptions, () => runtime.currentPlanSummary());
 
             state.lastPlanSignature =
                 before.exists
@@ -1037,7 +1061,7 @@ function createServer(runtime, options = {}) {
             */
 
             const plan =
-                runtime.currentPlanSummary();
+                inRunProject(runOptions, () => runtime.currentPlanSummary());
 
             /*
             | Progress is any movement of the plan: a step finished, a
@@ -1105,10 +1129,17 @@ function createServer(runtime, options = {}) {
                     next_step: plan.next_step
                 });
 
+                /*
+                | The continuation is the SAME run for the same project: it
+                | inherits the options (projectId, ...) of the run that just
+                | ended. Without them the next cycle silently fell back to the
+                | default project (audit F-002 / AUTO_CONTINUE drops project scope).
+                */
                 setTimeout(
                     () =>
                         startTask(
-                            "Continue the plan: read it, take the next open step, verify it, and record the result."
+                            "Continue the plan: read it, take the next open step, verify it, and record the result.",
+                            { ...runOptions }
                         ).catch(() => {}),
                     50
                 );

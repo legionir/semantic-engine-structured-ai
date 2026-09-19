@@ -3890,6 +3890,7 @@ module.exports = {
     effectiveProject,
     effectiveProjectId,
     runWithProject,
+    resolveRunProjectContext,
     isMultiProjectTask,
 
     settings,

@@ -30,7 +30,34 @@ const { McpClient, TRANSPORT_KINDS } = require("./McpConnection");
 |--------------------------------------------------------------------------
 */
 
+/*
+| The project a call acts for: the delegation frame's project when a
+| Sub-Agent runs for another project, otherwise the run's own. Reading only
+| the run's projectId (the previous behaviour) made a child delegated to
+| project B use project A's servers and trust scope.
+*/
+function currentProject() {
+
+    try {
+
+        const { effectiveProject } = require("../runtime/ProjectOverride");
+
+        return effectiveProject() || null;
+
+    } catch {
+
+        return null;
+    }
+}
+
+
 function currentProjectId() {
+
+    const project = currentProject();
+
+    if (project) {
+        return project.projectId ?? project.id ?? null;
+    }
 
     try {
 
@@ -52,7 +79,14 @@ function currentProjectId() {
 
 class McpManager {
 
-    constructor() {
+    /*
+    | `boundRoot`: the workspace this manager belongs to. A manager created
+    | for a project never reads another workspace's .mcp.json or caches its
+    | catalogue; McpManagerRegistry keeps one instance per root.
+    */
+    constructor(boundRoot = null) {
+
+        this.boundRoot = boundRoot;
 
         this.clients = new Map();
 
@@ -96,6 +130,7 @@ class McpManager {
 
         const root =
             workspaceRoot ||
+            this.boundRoot ||
             this.workspaceRoot ||
             settings.get("WORKSPACE_ROOT") ||
             process.cwd();
@@ -530,7 +565,7 @@ class McpManager {
             try {
 
                 persistedTo =
-                    loader.persist(this.workspaceRoot, normalized);
+                    loader.persist(this.workspaceRoot || this.boundRoot, normalized);
 
             } catch (error) {
 
@@ -579,7 +614,7 @@ class McpManager {
             try {
 
                 forgotten =
-                    loader.forget(this.workspaceRoot, name);
+                    loader.forget(this.workspaceRoot || this.boundRoot, name);
 
             } catch {
                 /* the file is not writable; the server is still gone for this run */
@@ -718,11 +753,134 @@ class McpManager {
 }
 
 
-const manager = new McpManager();
+/*
+|--------------------------------------------------------------------------
+| Project-scoped managers
+|--------------------------------------------------------------------------
+|
+| One McpManager per workspace root. `manager` (exported below) is a facade
+| that forwards every call to the manager of the ACTIVE project - the
+| delegation frame's project if there is one, otherwise the run's project,
+| otherwise the process workspace (the synthetic default project's root, the
+| one documented fallback). A project without a workspace root is a loud
+| error: guessing "the first workspace" is what mixed two projects' servers.
+|--------------------------------------------------------------------------
+*/
+
+function canonicalRoot(root) {
+
+    const path = require("path");
+
+    return path.resolve(String(root));
+}
+
+
+class McpManagerRegistry {
+
+    constructor() {
+
+        this.instances = new Map();
+    }
+
+
+    rootForActiveProject() {
+
+        const project = currentProject();
+
+        if (!project) {
+
+            return settings.get("WORKSPACE_ROOT") || process.cwd();
+        }
+
+        const root = project.workspaceRoot || project.rootPath;
+
+        if (!root) {
+
+            throw new Error(
+                `MCP: project ${project.projectId ?? project.id ?? "(unknown)"} has no workspaceRoot; refusing to fall back to another workspace.`
+            );
+        }
+
+        return root;
+    }
+
+
+    forRoot(root) {
+
+        const key = canonicalRoot(root);
+
+        let instance = this.instances.get(key);
+
+        if (!instance) {
+
+            instance = new McpManager(key);
+
+            this.instances.set(key, instance);
+        }
+
+        return instance;
+    }
+
+
+    current() {
+
+        return this.forRoot(this.rootForActiveProject());
+    }
+
+
+    /* All projects' servers are closed together on process shutdown. */
+    async shutdown() {
+
+        await Promise.all(
+            [...this.instances.values()].map(instance => instance.shutdown())
+        );
+
+        this.instances.clear();
+    }
+}
+
+
+const registry = new McpManagerRegistry();
+
+
+const manager = new Proxy(registry, {
+
+    get(target, property) {
+
+        if (property in target) {
+
+            const own = target[property];
+
+            return typeof own === "function" ? own.bind(target) : own;
+        }
+
+        const instance = target.current();
+
+        const value = instance[property];
+
+        return typeof value === "function" ? value.bind(instance) : value;
+    },
+
+    set(target, property, value) {
+
+        if (property in target) {
+
+            target[property] = value;
+
+            return true;
+        }
+
+        target.current()[property] = value;
+
+        return true;
+    }
+});
 
 
 module.exports = {
     manager,
+    McpManagerRegistry,
+    managerRegistry: registry,
     McpManager,
     toolName: catalogue.toolName,
     parseToolName: catalogue.parseToolName,

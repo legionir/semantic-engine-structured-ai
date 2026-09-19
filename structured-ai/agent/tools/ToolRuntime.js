@@ -131,14 +131,10 @@ function mcpToolDeclarations() {
 
     try {
 
-        const { runManager } = require("../runtime");
+        /* delegation frame first, then the run's own project */
+        const { effectiveProjectId } = require("../runtime/ProjectOverride");
 
-        const run =
-            runManager && typeof runManager.current === "function"
-                ? runManager.current()
-                : null;
-
-        projectId = run && run.projectId ? run.projectId : null;
+        projectId = effectiveProjectId() || null;
 
     } catch {
         /* outside a run the catalogue is unfiltered (legacy) */
@@ -230,6 +226,9 @@ async function executeTool(
                       : {}),
                   ...(toolContext.projectId
                       ? { project_id: toolContext.projectId }
+                      : {}),
+                  ...(toolContext.scoped && toolContext.root
+                      ? { project_root: toolContext.root }
                       : {})
               }
             : {};

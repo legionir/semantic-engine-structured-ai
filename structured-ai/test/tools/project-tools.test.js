@@ -154,6 +154,73 @@ async function main() {
     fs.writeFileSync(path.join(ROOT_B, "secret.txt"), "beta secret");
 
 
+    await test("fs_read_many reads every item inside the caller's project (not the default project)", async () => {
+
+        const ctxB = contextFor(projectB);
+        const ctxA = contextFor(projectA);
+
+        /* ROOT_A is the process/default workspace; secret.txt only exists in B */
+
+        const many =
+            await tools.executeTool("fs_read_many", { paths: ["secret.txt"] }, ctxB);
+
+        assert.equal(many.succeeded, 1);
+        assert.equal(many.files[0].content, "beta secret");
+        assert.equal(many.files[0].path, "secret.txt");
+
+        /* the same item is NOT visible from project A, and an absolute path into B is refused */
+
+        const fromA =
+            await tools.executeTool(
+                "fs_read_many",
+                { paths: ["secret.txt", path.join(ROOT_B, "secret.txt")] },
+                ctxA
+            );
+
+        assert.equal(fromA.succeeded, 0);
+        assert.ok(fromA.files.every(file => file.success === false));
+        assert.match(fromA.files[1].error, /outside workspace/i);
+    });
+
+
+    await test("search handles belong to their project: get / list / stop never cross projects", async () => {
+
+        const ctxA = contextFor(projectA);
+        const ctxB = contextFor(projectB);
+
+        const started =
+            await tools.executeTool("search_start", { query: "alpha", mode: "content" }, ctxA);
+
+        const id = started.search_id || started.id;
+
+        assert.ok(id, "search_start returned no handle");
+
+        const own =
+            await tools.executeTool("search_get", { search_id: id, wait_ms: 500 }, ctxA);
+
+        assert.ok(own, "the owner can read its own search");
+
+        await expectThrow(
+            tools.executeTool("search_get", { search_id: id }, ctxB),
+            /Unknown search/,
+            "foreign search_get"
+        );
+
+        await expectThrow(
+            tools.executeTool("search_stop", { search_id: id }, ctxB),
+            /Unknown search/,
+            "foreign search_stop"
+        );
+
+        const listB = await tools.executeTool("search_list", {}, ctxB);
+        const listA = await tools.executeTool("search_list", {}, ctxA);
+
+        assert.ok(!listB.searches.some(item => item.id === id || item.search_id === id));
+        assert.ok(listA.count >= 1);
+        assert.equal(listB.count, 0);
+    });
+
+
     await test("fs tools act in the caller's project and refuse foreign paths", async () => {
 
         /* unscoped layer probes use the implicit default
@@ -349,6 +416,43 @@ async function main() {
 
         assert.match(log.stdout, /seed/);
 
+    });
+
+
+    await test("file provenance and git status are computed in each project's own root", async () => {
+
+        /* project B (ROOT_B) is rooted OUTSIDE the process workspace and is a git repo */
+
+        const ctxB = { ...contextFor(projectB), runId: "run-prov-b" };
+        const ctxA = { ...contextFor(projectA), runId: "run-prov-a" };
+
+        tools.telemetry.reset(ctxB.runId, ROOT_B);
+        tools.telemetry.reset(ctxA.runId, ROOT_A);
+
+        await tools.executeTool("fs_write", { path: "prov-b.txt", content: "b" }, ctxB);
+        await tools.executeTool("fs_write", { path: "prov-a.txt", content: "a" }, ctxA);
+
+        const changedB = tools.telemetry.changedFiles(ctxB.runId);
+        const changedA = tools.telemetry.changedFiles(ctxA.runId);
+
+        assert.ok(changedB.includes("prov-b.txt"), `B lost its own change: ${JSON.stringify(changedB)}`);
+        assert.ok(!changedB.includes("prov-a.txt"), "A's change leaked into B");
+        assert.ok(changedA.includes("prov-a.txt"), `A lost its own change: ${JSON.stringify(changedA)}`);
+        assert.ok(!changedA.includes("prov-b.txt"), "B's change leaked into A");
+
+        /* an ABSOLUTE path inside the project root is normalised against that project's root */
+
+        await tools.executeTool(
+            "fs_write",
+            { path: path.join(ROOT_B, "prov-abs.txt"), content: "x" },
+            ctxB
+        );
+
+        assert.ok(tools.telemetry.changedFiles(ctxB.runId).includes("prov-abs.txt"));
+
+        /* B's repository status is read from ROOT_B, not from the process workspace */
+
+        assert.ok(tools.telemetry.dirtyFiles(ctxB.runId).includes("prov-b.txt"));
     });
 
 
