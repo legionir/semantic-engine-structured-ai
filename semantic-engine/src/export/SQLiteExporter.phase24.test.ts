@@ -196,6 +196,57 @@ describe('SE-EXP-08 — جدول meta و نسخهٔ schema', () => {
   });
 });
 
+describe('legacy database without meta — real migration, backup and idempotence', () => {
+  async function seedLegacy(): Promise<void> {
+    // The pre-phase-24 shape: tables exist, but with fewer columns and no meta table.
+    const db = await openSqlite(dbPath);
+    await db.exec(`
+      CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL);
+      CREATE TABLE symbols (id TEXT PRIMARY KEY, file_id TEXT, name TEXT);
+      INSERT INTO files (id, path) VALUES ('old', 'old.ts');
+    `);
+    await db.close();
+  }
+
+  it('rebuilds a legacy database instead of failing on the old columns', async () => {
+    await seedLegacy();
+
+    await new SQLiteExporter().export(
+      index([file('f1', 'a.ts')], [symbol('s1', 'f1', 'alpha')]),
+      { outputPath: dbPath }
+    );
+
+    expect((await query('SELECT id FROM files')).map(r => r['id'])).toEqual(['f1']);
+    expect((await query('SELECT id FROM symbols')).map(r => r['id'])).toEqual(['s1']);
+    const meta = await query<{ key: string; value: string }>("SELECT key, value FROM meta WHERE key = 'schema_version'");
+    expect(meta).toHaveLength(1);
+  });
+
+  it('keeps a rollback copy of the legacy file and never grows more backups', async () => {
+    await seedLegacy();
+    const exporter = new SQLiteExporter();
+    await exporter.export(index([file('f1', 'a.ts')], []), { outputPath: dbPath });
+
+    const backup = `${dbPath}.schema-legacy.bak`;
+    expect(fs.existsSync(backup)).toBe(true);
+
+    const restored = await openSqlite(backup);
+    const rows = await restored.all<{ id: string }>('SELECT id FROM files');
+    await restored.close();
+    expect(rows.map(r => r.id)).toEqual(['old']);
+
+    // Idempotent: a second export sees a current schema and rebuilds nothing.
+    await exporter.export(index([file('f2', 'b.ts')], []), { outputPath: dbPath });
+    expect(fs.readdirSync(directory).filter(n => n.endsWith('.bak'))).toEqual(['index.sqlite.schema-legacy.bak']);
+    expect((await query('SELECT id FROM files')).map(r => r['id'])).toEqual(['f2']);
+  });
+
+  it('a fresh database is not treated as legacy and gets no backup', async () => {
+    await new SQLiteExporter().export(index([file('f1', 'a.ts')], []), { outputPath: dbPath });
+    expect(fs.readdirSync(directory).filter(n => n.endsWith('.bak'))).toEqual([]);
+  });
+});
+
 describe('SE-EXP-09 — کلید خارجی واقعی', () => {
   it('symbols به files ارجاع دارد و آبشاری حذف می‌شود', async () => {
     await new SQLiteExporter().export(

@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const dataRoot = require("../../persistence/DataRoot");
+const AtomicFile = require("../../persistence/AtomicFile");
 
 const { toWorkspaceRelative } = require("../../context/WorkspaceBoundary");
 
@@ -87,7 +88,7 @@ function savePlan(plan, root) {
     plan.updated_at =
         new Date().toISOString();
 
-    fs.writeFileSync(
+    AtomicFile.writeFile(
         planPath(root),
         `${JSON.stringify(plan, null, 2)}\n`,
         "utf8"

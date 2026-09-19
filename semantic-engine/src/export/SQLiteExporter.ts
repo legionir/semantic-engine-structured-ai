@@ -29,6 +29,7 @@
  * دارند و آبشاری حذف می‌شوند.
  */
 
+import * as fs from 'fs';
 import { ProjectIndex } from '../core/types/project-index.types';
 import { openSqlite, SqliteDriver, SqliteStatement } from './sqlite/SqliteDriver';
 
@@ -61,7 +62,7 @@ export class SQLiteExporter {
     const db = await openSqlite(options.outputPath);
     try {
       await this.optimizeForBulkInsert(db);
-      await this.ensureSchema(db);
+      await this.ensureSchema(db, options.outputPath);
       await this.runInTransaction(db, async () => {
         await this.insertFiles(db, projectIndex.files);
         await this.insertSymbols(db, projectIndex.symbols);
@@ -111,14 +112,54 @@ export class SQLiteExporter {
    * دیتابیس قدیمی هیچ کاری نمی‌کند و ستون جدید هرگز اضافه نمی‌شود —
    * بی‌صدا، تا وقتی یک `INSERT` با تعداد ستون اشتباه بترکد.
    */
-  private async ensureSchema(db: SqliteDriver): Promise<void> {
+  private async ensureSchema(db: SqliteDriver, databasePath: string): Promise<void> {
     const existing = await this.readSchemaVersion(db);
 
-    if (existing !== null && existing !== SQLITE_SCHEMA_VERSION) {
-      await this.dropAll(db);
+    /*
+    | دیتابیس قدیمی (پیش از جدول `meta`) نسخه‌ای اعلام نمی‌کند ولی جدول‌های
+    | با ستون‌های قدیمی دارد؛ `CREATE TABLE IF NOT EXISTS` رویشان بی‌اثر است
+    | و INSERT بعدی با تعداد ستون اشتباه می‌ترکد. پس «نسخهٔ نامعلوم + جدول
+    | موجود» همان «نسخهٔ ناسازگار» است و باید بازسازی شود.
+    */
+    const legacy = existing === null && (await this.hasOwnedTables(db));
+    const mismatched = existing !== null && existing !== SQLITE_SCHEMA_VERSION;
+
+    if (legacy || mismatched) {
+      await this.backupBeforeRebuild(db, databasePath, existing);
+      await this.runInTransaction(db, async () => {
+        await this.dropAll(db);
+        await this.createTables(db);
+      });
+      return;
     }
 
     await this.createTables(db);
+  }
+
+  private async hasOwnedTables(db: SqliteDriver): Promise<boolean> {
+    const rows = await db.all<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table'"
+    );
+    const owned = new Set<string>(TABLES);
+    return rows.some(row => owned.has(row.name));
+  }
+
+  /**
+   * مسیر rollback: پیش از هر بازسازی، فایل قبلی کنار خودش نگه داشته می‌شود
+   * (`<db>.schema-<نسخه|legacy>.bak`). نام ثابت است، پس اجرای دوباره
+   * فایل جدید نمی‌سازد و رشد نمی‌کند (idempotent).
+   */
+  private async backupBeforeRebuild(
+    db: SqliteDriver,
+    databasePath: string,
+    existing: number | null
+  ): Promise<void> {
+    try {
+      await db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+      fs.copyFileSync(databasePath, `${databasePath}.schema-${existing ?? 'legacy'}.bak`);
+    } catch {
+      /* :memory: یا مسیر غیرفایلی — چیزی برای پشتیبان‌گیری نیست. */
+    }
   }
 
   private async readSchemaVersion(db: SqliteDriver): Promise<number | null> {
