@@ -24,23 +24,23 @@
 
 # پلن اجرایی
 
-## [🟡] فاز ۱: تثبیت baseline، قراردادها و محیط قابل‌راستی‌آزمایی
+## [🟢] فاز ۱: تثبیت baseline، قراردادها و محیط قابل‌راستی‌آزمایی
 
 هدف این فاز ایجاد مبنای reproducible برای تمام اصلاحات است؛ تا وقتی dependency، build، fixture، contract و inventory روشن نشده، هیچ finding به‌عنوان fix‌شده پذیرفته نمی‌شود.
 
-### [🟡] گام ۱: قفل‌کردن baseline و traceability ممیزی
+### [🟢] گام ۱: قفل‌کردن baseline و traceability ممیزی
 
 در ریشهٔ repository revision جاری، branch و تغییرات local را ثبت کن. `AUDIT_FILE_STATUS.md` و تمام فایل‌های `audit/` را به‌عنوان source map نگه دار. برای هر finding یک شناسهٔ یکتا با فرمت `SE-<domain>-<number>` یا `SA-<domain>-<number>` بساز و شناسه‌های تکراری batchها را با `path:line` تفکیک کن. برای هر مورد status فعلی، severity، evidence، اثر، اصلاح، تست و dependency فاز را ثبت کن.
 
-### [🟡] گام ۲: آماده‌سازی environment و fixtureهای واقعی
+### [🟢] گام ۲: آماده‌سازی environment و fixtureهای واقعی
 
 manifestها و scriptهای package هر دو پروژه را بخوان و dependencyهای واقعی را نصب/قفل کن؛ از جایگزین‌کردن dependency با mock خودداری کن. `semantic-engine` را برای `jest`، `ts-jest`، `tsc` و fixtureهایی مانند `test-fixture/node_modules/left-pad` آماده کن. artifactهای `dist/cli/main.js`، grammar/WASM و executableهای لازم را طبق repository بساز. اگر نسخهٔ Node با قرارداد package ناسازگار است، **Unknown / Requires Verification** را به تصمیم صریح compatibility تبدیل کن.
 
-### [🟡] گام ۳: ثبت baseline تست، build و contract
+### [🟢] گام ۳: ثبت baseline تست، build و contract
 
 قبل از تغییر، suiteهای موجود، suiteهای skipped، تست‌های timeout‌شده، `npm test`، build، audit checker و contract validation را اجرا کن. خطاهای شناخته‌شده شامل `Preset ts-jest not found`، `tsc: not found`، نبود `AUDIT-2026-08.md` و fixture ناقص است؛ پس از آماده‌سازی environment معلوم کن کدام خطا واقعی باقی مانده است. pass/fail/skip را با command، زمان، revision و خروجی ثبت کن.
 
-### [🔴] گام ۴: تعریف invariantها و قراردادهای مشترک
+### [🟢] گام ۴: تعریف invariantها و قراردادهای مشترک
 
 قراردادهای مشترک زیر را به‌صورت type/schema/test ثبت کن: project identity (`projectId`, `workspaceRoot`)، context propagation، ownership validation، cancellation state، error terminal state، graph node/edge/provenance/level، search mode/threshold، config mutation، persistence atomicity، و API error format. این قراردادها باید مرجع semantic-engine و structured-ai باشند و defaultهای in-memory/SQLite از آن‌ها مشتق شوند.
 
@@ -395,3 +395,4 @@ migrationهای persistence را روی copy و dataset واقعی/fixture versi
 - **فاز ۱ 🟡:** baseline روی `main@94955bc` ثبت شد (`audit/BASELINE.md`، `audit/FINDING_INDEX.tsv`): semantic-engine ۲۲ از ۲۰۸ suite fail (۶۶ از ۲۷۹۷ تست)، structured-ai ۱۴ از ۵۱ suite fail؛ علل Unknown. گام ۴ (قراردادهای مشترک) شروع نشده. baseline روی نوک این branch دوباره گرفته نشده است.
 - **فاز ۲ گام ۲ 🟡:** `PATCH/DELETE /api/v1/projects/:id` (که در این branch 501 بودند) واقعاً به `ProjectRegistry.update`/`remove` و `ProjectService.updateProject`/`removeProject` وصل شد؛ تست regression در `projectRegistryRoutes.test.ts` pass است (۵/۵). باقی‌مانده: config PATCH runtime، قرارداد `indexProject()`، همگام‌سازی OpenAPI برای dashboard.
 - **فاز ۲ گام ۲ 🟡 (به‌روزرسانی):** `PATCH /api/v1/config` اکنون `maxBodyBytes` را واقعاً در runtime اعمال می‌کند (`HttpServer` آن را هر درخواست می‌خواند)؛ `0`/غیرعدد → 400؛ کلیدهای startup-only (`port`, `host`, …) → 409؛ کلید ناشناخته → 400؛ `persisted:false` صریح است چون فایل config پایدار در repo وجود ندارد (**Unknown / Requires Verification:** آیا persist لازم است). `indexProject()` قرارداد صریح `mode:'reload', reindexed:false` گرفت و `IndexingWorker` دیگر `shadowSwapped:true` جعلی نمی‌دهد؛ اتصال واقعی `IndexPipeline` به `ProjectService` هنوز انجام نشده (باقی‌مانده). همگام‌سازی OpenAPI dashboard بررسی نشده. تست‌ها: `configRoutes.test.ts` (3)، `projectRegistryRoutes.test.ts` (5)، `ProjectService.test.ts` (8) همگی pass.
+- **2026-09-19 — فاز ۱ 🟢:** گام‌های ۱–۴ کامل شدند. شواهد: `audit/FINDING_INDEX.tsv` (۱۵۹ finding واقعی؛ ۳۰ مورد «Unscoped» و ۷ مورد امنیتی خارج از scope صریح برچسب خورده‌اند)، `audit/BASELINE.md` (نتایج CI لینوکس روی `94955bc` دست‌نخورده و `d7569d3`، ماتریس Node 20.18/22.12/24.15، triage همهٔ suiteهای fail)، `docs/contracts/shared-invariants.md` و ۱۱ تست `sharedContracts.test.ts`. انحراف افشاشده: ویرایش production (PATCH/DELETE، config) وسط اجرای اولین baseline محلی شروع شد؛ baseline مرجع = CI روی نسخهٔ دست‌نخورده. نتایج مهم baseline: (الف) ۱۴ شکست محلی structured-ai فقط Windows است؛ (ب) `sqlite3` در package.json اعلام نشده و روی Node 20 تست‌های SQLite fail می‌شوند → فاز ۲ گام ۵؛ (ج) دو regression شاخه (عمق مسیر graph و تست LoD) در این جلسه اصلاح شد؛ (د) `MIG-51 in-root` و شکست Node 18 در structured-ai علت Unknown دارند → فاز ۹؛ (هـ) ۳۰ finding بدون فاز در فاز ۹ گام ۲ باید triage شوند.

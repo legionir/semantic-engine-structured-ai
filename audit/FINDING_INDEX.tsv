@@ -1,254 +1,160 @@
-id	original_id	status	source(path:line)	duplicate_of	title
-SE-F-001	F-51	confirmed	audit/audit-batch-51-1.md:11		1 — `JsonExporter.export` گزینهٔ validation را نادیده می‌گیرد و parent directory را نمی‌سازد
-SE-F-002	F-51	confirmed	audit/audit-batch-51-1.md:21		2 — مهاجرت database قدیمیِ بدون `meta` واقعاً انجام نمی‌شود
-SE-F-003	F-51	confirmed	audit/audit-batch-51-1.md:31		3 — ادعای engines `>=20` با fallback ناقص SQLite ناسازگار است
-SE-GEN-001	1	confirmed	audit/audit-batch-51-1.md:44		) `src/dependencies/heuristic/index.ts`
-SE-GEN-002	2	confirmed	audit/audit-batch-51-1.md:50		) `src/dependencies/index.ts`
-SE-GEN-003	3	confirmed	audit/audit-batch-51-1.md:56		) `src/dependencies/typescript/ReExportResolver.test.ts`
-SE-GEN-004	4	confirmed	audit/audit-batch-51-1.md:63		) `src/dependencies/typescript/TSDependencyExtractor.phase18.test.ts`
-SE-GEN-005	5	confirmed	audit/audit-batch-51-1.md:70		) `src/dependencies/typescript/TSPathResolver.phase18.test.ts`
-SE-GEN-006	6	confirmed	audit/audit-batch-51-1.md:77		) `src/export/BlueprintExporter.ts`
-SE-GEN-007	7	confirmed	audit/audit-batch-51-1.md:84		) `src/export/JsonExporter.e2e.test.ts`
-SE-GEN-008	8	confirmed	audit/audit-batch-51-1.md:91		) `src/export/JsonExporter.phase24.test.ts`
-SE-GEN-009	9	confirmed	audit/audit-batch-51-1.md:98		) `src/export/JsonExporter.phase4.test.ts`
-SE-GEN-010	10	confirmed	audit/audit-batch-51-1.md:105		) `src/export/JsonExporter.schema.test.ts`
-SE-GEN-011	11	confirmed	audit/audit-batch-51-1.md:112		) `src/export/JsonExporter.test.ts`
-SE-GEN-012	12	confirmed	audit/audit-batch-51-1.md:119		) `src/export/JsonExporter.ts`
-SE-GEN-013	13	confirmed	audit/audit-batch-51-1.md:126		) `src/export/SQLiteExporter.phase24.test.ts`
-SE-GEN-014	14	confirmed	audit/audit-batch-51-1.md:133		) `src/export/SQLiteExporter.test.ts`
-SE-GEN-015	15	confirmed	audit/audit-batch-51-1.md:140		) `src/export/SQLiteExporter.ts`
-SE-GEN-016	16	confirmed	audit/audit-batch-51-1.md:148		) `src/export/fileRoleExport.phase46.test.ts`
-SE-GEN-017	17	confirmed	audit/audit-batch-51-1.md:155		) `src/export/schemaValidation.ts`
-SE-GEN-018	1	confirmed	audit/audit-batch-51-2.md:29		) `semantic-engine/src/export/sqlite/SqliteDriver.ts`
-SE-GEN-019	2	confirmed	audit/audit-batch-51-2.md:39		) `semantic-engine/src/facts/FactStore.test.ts`
-SE-GEN-020	3	confirmed	audit/audit-batch-51-2.md:48		) `semantic-engine/src/facts/FactStore.ts`
-SE-GEN-021	4	confirmed	audit/audit-batch-51-2.md:58		) `semantic-engine/src/facts/index.ts`
-SE-GEN-022	5	confirmed	audit/audit-batch-51-2.md:67		) `semantic-engine/src/gateway/GatewayProxy.ts`
-SE-GEN-023	6	confirmed	audit/audit-batch-51-2.md:77		) `semantic-engine/src/gateway/ProjectLock.test.ts`
-SE-GEN-024	7	confirmed	audit/audit-batch-51-2.md:87		) `semantic-engine/src/gateway/WorkerConfigSchema.test.ts`
-SE-GEN-025	8	confirmed	audit/audit-batch-51-2.md:97		) `semantic-engine/src/gateway/WorkerHealthMonitor.ts`
-SE-GEN-026	9	confirmed	audit/audit-batch-51-2.md:107		) `semantic-engine/src/gateway/WorkerSupervisor.test.ts`
-SE-GEN-027	10	confirmed	audit/audit-batch-51-2.md:117		) `semantic-engine/src/gateway/gatewayConsole.test.ts`
-SE-GEN-028	11	confirmed	audit/audit-batch-51-2.md:127		) `semantic-engine/src/gateway/lspIsolation.test.ts`
-SE-GEN-029	12	confirmed	audit/audit-batch-51-2.md:137		) `semantic-engine/src/gateway/metrics.test.ts`
-SE-GEN-030	13	confirmed	audit/audit-batch-51-2.md:147		) `semantic-engine/src/gateway/metrics.ts`
-SE-GEN-031	14	confirmed	audit/audit-batch-51-2.md:157		) `semantic-engine/src/gateway/webSocketProxy.test.ts`
-SE-GEN-032	15	confirmed	audit/audit-batch-51-2.md:167		) `semantic-engine/src/gateway/workerArgv.test.ts`
-SE-GEN-033	16	confirmed	audit/audit-batch-51-2.md:177		) `semantic-engine/src/gateway/wsProtocol.test.ts`
-SE-GEN-034	17	confirmed	audit/audit-batch-51-2.md:187		) `semantic-engine/src/graphs/CallGraphBuilder.ts`
-SE-P-001	P-1	potential/unverified	audit/audit-batch-51-3.md:33		resolveImportPath در build مصرف نمی‌شود
-SE-P-002	P-2	potential/unverified	audit/audit-batch-51-3.md:39		`makeEdgeId` مقدار occurrence برابر صفر را مانند مقدارِ غایب encode می‌کند
-SE-P-003	P-3	potential/unverified	audit/audit-batch-51-3.md:45		تبدیل token به AbortSignal، registration را قابل dispose به caller نمی‌دهد
-SE-F-004	F-21	confirmed	audit/audit-batch-continuation-2.md:32		`checkCyclesOnly` در DetectArchitectureViolationsTool نادیده گرفته می‌شود
-SE-F-005	F-22	confirmed	audit/audit-batch-continuation-2.md:60		GetDependenciesTool عمق بیش از سقف را clamp می‌کند، برخلاف قرارداد اعلام‌شده
-SE-F-006	F-23	confirmed	audit/audit-batch-continuation-2.md:83		دو schema ورودی معتبر implementation را به‌اشتباه رد می‌کنند
-SE-F-007	F-1	confirmed	audit/audit-batch-continuation-3.md:32		`move_symbol` در `SimulateMutationTool` شبیه‌سازی نمی‌شود
-SE-F-008	F-2	confirmed	audit/audit-batch-continuation-3.md:38		CTE معتبر در `queryPolicy` به‌خاطر alias رد می‌شود
-SE-GEN-035	1	confirmed	audit/audit-batch-continuation-6.md:15		. `src/core/id/SymbolIdentity.ts`
-SE-GEN-036	2	confirmed	audit/audit-batch-continuation-6.md:23		. `src/core/id/index.ts`
-SE-GEN-037	3	confirmed	audit/audit-batch-continuation-6.md:30		. `src/core/metrics/BashComplexityCalculator.ts`
-SE-GEN-038	4	confirmed	audit/audit-batch-continuation-6.md:37		. `src/core/metrics/CSharpComplexityCalculator.ts`
-SE-GEN-039	5	confirmed	audit/audit-batch-continuation-6.md:44		. `src/core/metrics/CppComplexityCalculator.ts`
-SE-GEN-040	6	confirmed	audit/audit-batch-continuation-6.md:51		. `src/core/metrics/CyclomaticComplexityCalculator.ts`
-SE-GEN-041	7	confirmed	audit/audit-batch-continuation-6.md:58		. `src/core/metrics/GoComplexityCalculator.ts`
-SE-GEN-042	8	confirmed	audit/audit-batch-continuation-6.md:65		. `src/core/metrics/JavaComplexityCalculator.ts`
-SE-GEN-043	9	confirmed	audit/audit-batch-continuation-6.md:72		. `src/core/metrics/KotlinComplexityCalculator.ts`
-SE-GEN-044	10	confirmed	audit/audit-batch-continuation-6.md:79		. `src/core/metrics/PatternComplexityCalculator.test.ts`
-SE-GEN-045	11	confirmed	audit/audit-batch-continuation-6.md:86		. `src/core/metrics/PatternComplexityCalculator.ts`
-SE-GEN-046	12	confirmed	audit/audit-batch-continuation-6.md:94		. `src/core/metrics/PhpComplexityCalculator.ts`
-SE-GEN-047	13	confirmed	audit/audit-batch-continuation-6.md:101		. `src/core/metrics/PythonComplexityCalculator.ts`
-SE-GEN-048	14	confirmed	audit/audit-batch-continuation-6.md:108		. `src/core/metrics/RubyComplexityCalculator.ts`
-SE-GEN-049	15	confirmed	audit/audit-batch-continuation-6.md:115		. `src/core/metrics/RustComplexityCalculator.ts`
-SE-GEN-050	16	confirmed	audit/audit-batch-continuation-6.md:122		. `src/core/metrics/SwiftComplexityCalculator.ts`
-SE-GEN-051	17	confirmed	audit/audit-batch-continuation-6.md:129		. `src/core/metrics/SymbolMetrics.phase23.test.ts`
-SE-GEN-052	18	confirmed	audit/audit-batch-continuation-6.md:136		. `src/core/metrics/SymbolMetricsCalculator.multi-lang.test.ts`
-SE-GEN-053	19	confirmed	audit/audit-batch-continuation-6.md:143		. `src/core/metrics/SymbolMetricsCalculator.test.ts`
-SE-GEN-054	20	confirmed	audit/audit-batch-continuation-6.md:150		. `src/core/metrics/SymbolMetricsCalculator.ts`
-SE-F-009	F-01	confirmed	audit/audit-batch-continuation-7.md:18		export barrel ناقص برای typeهای Blueprint
-SE-F-010	F-02	confirmed	audit/audit-batch-continuation-7.md:30		`sliceSymbolBody` فقط subset محدودی از symbolها را executable می‌داند
-SE-F-011	F-03	confirmed	audit/audit-batch-continuation-7.md:41		root type `Blueprint` با schemaVersion literal و قراردادهای دارای optional field مدل شده است
-SE-F-012	F-04	confirmed	audit/audit-batch-continuation-7.md:52		`common.types.ts` اعتبار Confidence را runtime enforce می‌کند ولی برند فقط compile-time است
-SE-F-013	F-05	confirmed	audit/audit-batch-continuation-7.md:62		`project-index.types.ts` بخش بزرگی از قرارداد ProjectIndex را فقط به‌صورت TypeScript تعریف می‌کند و validation ندارد
-SE-F-014	F-06	confirmed	audit/audit-batch-continuation-7.md:72		`schemaSync.test.ts` فقط حضور property و optionality را می‌سنجد، نه type/enum/nesting/value constraints
-SE-F-015	F-07	confirmed	audit/audit-batch-continuation-7.md:83		`openapiSync.test.ts` فقط وجود مسیرها را چک می‌کند و operation/response/parameter schema را verify نمی‌کند
-SE-F-016	F-08	confirmed	audit/audit-batch-continuation-7.md:94		export barrel utility ناقص است
-SE-F-017	F-09	confirmed	audit/audit-batch-continuation-7.md:105		تشخیص binary فقط ۸۱۹۲ بایت اول را inspect می‌کند
-SE-F-018	F-10	confirmed	audit/audit-batch-continuation-7.md:116		`decodeBuffer` در ورودی encoding صریح، encoding را validate نمی‌کند
-SE-F-019	F-11	confirmed	audit/audit-batch-continuation-7.md:127		`normalizeLineEndings` و `decodeBuffer` در utility barrel قابل دسترسی نیستند
-SE-F-020	F-12	confirmed	audit/audit-batch-continuation-7.md:134		`LineIndex.lineAt` offset بزرگ‌تر از متن را به آخرین line index clamp می‌کند، بدون اعلام invalid offset
-SE-F-021	F-13	confirmed	audit/audit-batch-continuation-7.md:144		cache `getLineNumber` فقط آخرین content را نگه می‌دارد و bounded multi-project cache نیست
-SE-F-022	F-14	confirmed	audit/audit-batch-continuation-7.md:154		`sortSymbolsDeterministically` kindهایی که در `KIND_ORDER` نیستند را به 999 می‌فرستد
-SE-F-023	F-15	confirmed	audit/audit-batch-continuation-7.md:164		`DependencyExtractorManager.extract` exceptionهای extractor را به Result تبدیل نمی‌کند
-SE-F-024	F-16	confirmed	audit/audit-batch-continuation-7.md:175		manager partial نتیجهٔ آخر را برمی‌گرداند و خطاهای جمع‌شده را دور می‌ریزد
-SE-F-025	F-17	confirmed	audit/audit-batch-continuation-7.md:185		interface extraction عمداً resolvedFileId را به مرحلهٔ بعد واگذار می‌کند
-SE-F-026	F-18	confirmed	audit/audit-batch-continuation-7.md:196		heuristic `filePath` را عملاً نادیده می‌گیرد
-XX-F-001	F-19	project=Unknown/Requires Verification;confirmed	audit/audit-batch-continuation-7.md:207		comment پشتیبانی heuristic با implementation ناقص/قدیمی است
-XX-F-002	F-20	project=Unknown/Requires Verification;confirmed	audit/audit-batch-continuation-7.md:217		الگوهای heuristic با regex و بدون parser هستند و comment/string context را به‌طور عمومی نمی‌فهمند
-SE-SE-001	SE-AI-09	confirmed	audit/audit-batch-continuation.md:9		FB — هزینهٔ fallback از طول مسیر فایل محاسبه می‌شود
-SE-F-027	F-01	confirmed	audit/audit-continuation-10.md:9		override آرگومان‌های سرور بدون `command` در Registry اعمال نمی‌شود
-SE-F-028	F-01	confirmed	audit/audit-continuation-8.md:7		rename هم‌محتوا همهٔ symbolهای فایل را حذف می‌کند
-SE-F-029	F-02	confirmed	audit/audit-continuation-8.md:16		watcher برای فایل‌های هم‌محتوا با یک hash، رویداد rename را overwrite می‌کند
-SE-F-030	F-03	confirmed	audit/audit-continuation-8.md:25		خطای asynchronous stream وقتی write مقدار true می‌دهد listener ندارد
-SE-F-031	F-1	confirmed	audit/audit-continuation-9.md:7		`CapabilityProbe.forget(serverId)` اجرای درحال‌پرواز را invalidate نمی‌کند
-SE-F-032	F-2	confirmed	audit/audit-continuation-9.md:37		timeout مسیر push در `DiagnosticsProvider` waiter اشتباه را حذف می‌کند
-SE-F-033	F-3	confirmed	audit/audit-continuation-9.md:63		شناسهٔ یال برای چند call-site هم‌خط در `LspEnrichmentService` تکراری است
-SE-P-004	P-1	potential/unverified	audit/audit-continuation-9.md:85		scope چندزبان/چندپروژه‌ای در enrichment یک client و یک languageId را برای همهٔ فایل‌ها استفاده می‌کند
-SE-P-005	P-2	potential/unverified	audit/audit-continuation-9.md:88		سقف wall-clock enrichment درخواست‌های درحال انتظار را قطع نمی‌کند
-SE-P-006	P-3	potential/unverified	audit/audit-continuation-9.md:91		محاسبهٔ `budgetExhausted` فقط سقف references را صریحاً علامت می‌زند
-SE-F-034	F-01	potential/unverified	audit/audit-final-batch-1.md:9		`OpenTelemetryTracer.parseTraceparent` ورودی malformed را اعتبارسنجی نمی‌کند
-SE-F-035	F-02	potential/unverified	audit/audit-final-batch-1.md:22		شمارندهٔ `errorCount` برای skip ناشی از `FileProcessor` افزایش نمی‌یابد
-SE-F-036	F-03	potential/unverified	audit/audit-final-batch-1.md:34		diagnostic مربوط به exception پردازش فایل مسیر فایل را ندارد
-SE-GEN-055	1	confirmed	audit/audit-final-batch-2.md:14		. `src/server/SecurityPipeline.test.ts`
-SE-GEN-056	2	confirmed	audit/audit-final-batch-2.md:23		. `src/server/SecurityPipeline.ts`
-SE-GEN-057	3	confirmed	audit/audit-final-batch-2.md:32		. `src/server/SseManager.ts`
-SE-GEN-058	4	confirmed	audit/audit-final-batch-2.md:41		. `src/server/WebSocketManager.ts`
-SE-GEN-059	5	confirmed	audit/audit-final-batch-2.md:50		. `src/server/gatewayManagedSecurity.test.ts`
-SE-GEN-060	6	confirmed	audit/audit-final-batch-2.md:59		. `src/server/requestPathBlocking.test.ts`
-SE-GEN-061	7	confirmed	audit/audit-final-batch-2.md:68		. `src/server/routes/authRoutes.ts`
-SE-GEN-062	8	confirmed	audit/audit-final-batch-2.md:77		. `src/server/routes/systemRoutes.ts`
-SE-GEN-063	9	confirmed	audit/audit-final-batch-2.md:86		. `src/server/runtimeArtifacts.test.ts`
-SE-GEN-064	10	confirmed	audit/audit-final-batch-2.md:95		. `src/services/LodService.test.ts`
-SE-GEN-065	11	confirmed	audit/audit-final-batch-2.md:104		. `src/services/analysis/AnalysisGraph.ts`
-SE-GEN-066	12	confirmed	audit/audit-final-batch-2.md:113		. `src/services/analysis/ArchitectureRuleEngine.test.ts`
-SE-GEN-067	13	confirmed	audit/audit-final-batch-2.md:122		. `src/services/analysis/ImpactAnalysisEngine.test.ts`
-XX-GEN-001	14	project=Unknown/Requires Verification;confirmed	audit/audit-final-batch-2.md:131		. `tree-sitter-grammars/tree-sitter-go.wasm`
-XX-GEN-002	15	project=Unknown/Requires Verification;confirmed	audit/audit-final-batch-2.md:140		. `tree-sitter-grammars/tree-sitter-java.wasm`
-SE-GEN-068	16	confirmed	audit/audit-final-batch-2.md:149		. `tree-sitter-grammars/tree-sitter-javascript.wasm`
-SE-GEN-069	17	confirmed	audit/audit-final-batch-2.md:158		. `tree-sitter-grammars/tree-sitter-python.wasm`
-SE-GEN-070	18	confirmed	audit/audit-final-batch-2.md:167		. `tree-sitter-grammars/tree-sitter-rust.wasm`
-SE-GEN-071	19	confirmed	audit/audit-final-batch-2.md:176		. `tree-sitter-grammars/tree-sitter-tsx.wasm`
-XX-GEN-003	20	project=Unknown/Requires Verification;confirmed	audit/audit-final-batch-2.md:185		. `tree-sitter-grammars/tree-sitter-typescript.wasm`
-SA-REL-001	REL-013	confirmed	audit/audit-progress-2026-09-15.md:12		خطاهای run رویداد `run:error` تولید نمی‌کنند
-SA-ARCH-001	ARCH-014	confirmed	audit/audit-progress-2026-09-15.md:28		delegation به پروژهٔ دیگر در MCP از projectId والد استفاده می‌کند
-SA-ARCH-002	ARCH-015	confirmed	audit/audit-progress-2026-09-15.md:37		پیکربندی `.mcp.json` به workspace اول pin می‌شود
-SA-API-001	API-016	confirmed	audit/audit-progress-2026-09-15.md:54		`runAgent({ project })` با `ProjectContext` نرمال‌شده ناسازگار است
-SA-REL-002	REL-017	confirmed	audit/audit-progress-2026-09-15.md:66		signal handler runهای modular فعال را cancel نمی‌کند
-SA-REL-003	REL-018	confirmed	audit/audit-progress-2026-09-15.md:74		runهای queued در RunManager ثبت و قابل cancellation نیستند
-SA-DB-001	DB-019	confirmed	audit/audit-progress-2026-09-15.md:82		plan با write مستقیم و غیراتمی ذخیره می‌شود
-SA-DB-002	DB-020	confirmed	audit/audit-progress-2026-09-15.md:100		migration دایرکتوری durable مربوط به discussion را منتقل نمی‌کند
-SA-REL-004	REL-021	confirmed	audit/audit-progress-2026-09-15.md:126		compaction در failure آرشیو، exchange را حذف می‌کند
-SA-API-002	API-022	confirmed	audit/audit-progress-2026-09-15.md:151		search handleها هنگام retrieval project-scoped نیستند
-SA-REL-005	REL-023	confirmed	audit/audit-progress-2026-09-15.md:172		خطای spawn به‌اشتباه `exited` گزارش می‌شود
-SA-REL-006	REL-024	confirmed	audit/audit-progress-2026-09-15.md:198		حذف chunkهای قدیمی cursor خروجی unread را اصلاح نمی‌کند
-SE-DASH-001	DASH-025	confirmed	audit/audit-progress-2026-09-15.md:231		dashboard مستقل وضعیت سلامت و چند آمار را ساختگی/ناقص گزارش می‌کند
-SE-API-001	API-026	confirmed	audit/audit-progress-2026-09-15.md:254		endpoint لغو job، project binding مسیر را بررسی نمی‌کند
-SE-UI-001	UI-027	confirmed	audit/audit-progress-2026-09-15.md:283		شکست یا تغییر project switch، state و لینک پروژهٔ قبلی را پاک نمی‌کند
-SE-API-002	API-028	confirmed	audit/audit-progress-2026-09-15.md:309		خطاهای validation در Source Sync به HTTP 500 تبدیل می‌شوند
-SE-CONF-001	CONF-029	confirmed	audit/audit-progress-2026-09-15.md:342		PATCH config موفقیت را اعلام می‌کند ولی runtime config را تغییر نمی‌دهد
-SE-API-003	API-030	confirmed	audit/audit-progress-2026-09-15.md:368		OpenAPI قرارداد endpointهای dashboard موجود را ندارد
-SE-P-007	P-031	potential/unverified	audit/audit-progress-2026-09-15.md:385		تست visualizer payload را بررسی نمی‌کند
-SE-VIZ-001	VIZ-032	confirmed	audit/audit-progress-2026-09-15.md:404		نمای Module یال‌های معلق تولید می‌کند
-SE-VIZ-002	VIZ-033	confirmed	audit/audit-progress-2026-09-15.md:425		API nodeها در Architecture View حذف می‌شوند
-SE-VIZ-003	VIZ-034	confirmed	audit/audit-progress-2026-09-15.md:449		provenance/basis گراف یا جعل می‌شود یا خارج از contract برمی‌گردد
-SE-VIZ-004	VIZ-035	confirmed	audit/audit-progress-2026-09-15.md:469		`confidentRatio` در Module View همیشه `1.0` است
-SE-VIZ-005	VIZ-036	confirmed	audit/audit-progress-2026-09-15.md:489		fallback معماری با level اشتباه برمی‌گردد
-SE-VIZ-006	VIZ-037	confirmed	audit/audit-progress-2026-09-15.md:514		مقدار صفر در Neighborhood API به‌صورت silent به default تبدیل می‌شود
-SE-DASH-002	DASH-038	confirmed	audit/audit-progress-2026-09-15.md:533		Git hotspot/co-churn به projectId bind نشده است
-SE-P-008	P-VIZ-039	potential/unverified	audit/audit-progress-2026-09-15.md:559		تب‌های Impact و Git Hotspots احتمالاً backend متناظر ندارند
-SE-VIZ-007	VIZ-040	confirmed	audit/audit-progress-2026-09-15.md:570		چند تب visualizer به endpoint نمای اشتباه متصل‌اند
-SA-UI-001	UI-041	confirmed	audit/audit-progress-2026-09-15.md:587		در failure یا خالی‌بودن API، visualizer دادهٔ نمونهٔ ساختگی نمایش می‌دهد
-SA-HOOK-001	HOOK-042	confirmed	audit/audit-progress-2026-09-15.md:614		`on_failure: stop` اجرای graph را متوقف نمی‌کند
-SA-POL-001	POL-043	confirmed	audit/audit-progress-2026-09-15.md:641		regex نامعتبر در policy پذیرفته و در evaluation منفجر می‌شود
-SA-POL-002	POL-044	confirmed	audit/audit-progress-2026-09-15.md:661		pending approval به cancellation متصل نیست
-SA-POL-003	POL-045	confirmed	audit/audit-progress-2026-09-15.md:678		approval history بدون سقف رشد می‌کند
-SA-POL-004	POL-046	confirmed	audit/audit-progress-2026-09-15.md:693		approval ردشده event/audit policy تولید نمی‌کند
-SA-PRJ-001	PRJ-047	confirmed	audit/audit-progress-2026-09-15.md:717		hook registry به active project run متصل نیست
-SA-HOOK-002	HOOK-042	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:5		on_failure=stop does not short-circuit dependency graph
-SA-POL-005	POL-043	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:54		malformed argument regex is accepted by registry validation and crashes policy evaluation
-SA-POL-006	POL-044	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:77		pending approval promise is not cancellation-aware
-SA-POL-007	POL-045	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:106		approval history is unbounded despite the stated bounded-history contract
-SA-POL-008	POL-046	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:131		rejected approval is stored but omitted from policy decision event/audit callback
-SA-PRJ-002	PRJ-047	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:164		hook registry loads global workspace profile, not active run project
-SE-PIPE-001	PIPE-048	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:196		run-pipeline.js exits with code 0 on partial failure due to uncaught rejection in finally block
-SE-PIPE-002	PIPE-049	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:222		validate-project-index.js lacks concurrency safety and atomicity checks
-SE-PIPE-003	PIPE-050	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:233		benchmark.js uses insecure temporary directory and lacks sandboxing
-SE-SE-002	SE-MCP-001	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:259		MCP Server File System Race Condition
-SE-SE-003	SE-MCP-002	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:276		CLI Token Security Issues
-SE-SE-004	SE-CONFIG-003	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:288		Path Traversal in ProjectPaths
-SE-SE-005	SE-CONFIG-004	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:302		Insecure Environment Variable Handling
-SE-SE-006	SE-CONFIG-005	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:315		Project ID Validation Bypass
-SE-SE-007	SE-PIPELINE-006	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:325		Command Injection in Pipeline Runner
-SE-SE-008	SE-VALIDATE-007	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:335		JSON Schema Validation Bypass
-SE-SE-009	SE-DISCOVERY-008	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:345		Semantic Search Injection
-SE-SE-010	SE-INDEX-009	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:355		Index Generation Predictability
-SE-SE-011	SE-MIGRATION-010	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:368		Legacy Artifact Migration Security Issues
-SE-SE-012	SE-BENCHMARK-011	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:378		Temporary File Security Issues
-SE-F-037	F-16	confirmed	audit/semantic-batch-2026-09-17.md:9		IndexPipeline ignores the entire top-level directory when output is nested under a source directory
-SE-F-038	F-17	confirmed	audit/semantic-batch-2026-09-17.md:39		TypeScript dependency extraction collapses multiple exported variables into one invalid export name
-SE-GEN-072	1	confirmed	audit/semantic-batch-next.md:30		. bin/semantic-engine.js
-SE-GEN-073	2	confirmed	audit/semantic-batch-next.md:33		. contracts/blueprint.schema.json
-SE-GEN-074	3	confirmed	audit/semantic-batch-next.md:36		. docs/panel-archive.html
-SE-GEN-075	4	confirmed	audit/semantic-batch-next.md:39		. eslint.config.mjs
-SE-GEN-076	5	confirmed	audit/semantic-batch-next.md:42		. public/gateway.css
-SE-GEN-077	6	confirmed	audit/semantic-batch-next.md:45		. public/open.css
-SE-GEN-078	7	confirmed	audit/semantic-batch-next.md:48		. public/open.html
-SE-GEN-079	8	confirmed	audit/semantic-batch-next.md:51		. scripts/benchmark.js
-SE-GEN-080	9	confirmed	audit/semantic-batch-next.md:54		. scripts/check-artifact-location.js
-SE-GEN-081	10	confirmed	audit/semantic-batch-next.md:57		. scripts/check-audit-coverage.js
-SE-GEN-082	11	confirmed	audit/semantic-batch-next.md:60		. scripts/gen-fixture.js
-SE-GEN-083	12	confirmed	audit/semantic-batch-next.md:63		. scripts/run-pipeline.js
-SE-GEN-084	13	confirmed	audit/semantic-batch-next.md:66		. scripts/snapshot.js
-SE-GEN-085	14	confirmed	audit/semantic-batch-next.md:69		. scripts/validate-project-index.js
-SE-GEN-086	15	confirmed	audit/semantic-batch-next.md:72		. scripts/validate-schema.js
-SE-GEN-087	16	confirmed	audit/semantic-batch-next.md:75		. src/ai/AiMetadataGenerator.test.ts
-SE-GEN-088	17	confirmed	audit/semantic-batch-next.md:78		. src/ai/AiMetadataGenerator.ts
-SE-GEN-089	18	confirmed	audit/semantic-batch-next.md:81		. src/ai/AiToolCommandHandler.phase45.test.ts
-SE-GEN-090	19	confirmed	audit/semantic-batch-next.md:84		. src/ai/AiToolRegistry.phase45.test.ts
-SE-GEN-091	20	confirmed	audit/semantic-batch-next.md:87		. src/ai/AiToolRegistry.test.ts
-SE-F-039	F-18	confirmed	audit/semantic-batch2.md:9		`scripts/snapshot.js` normalizer discards all supposedly stable IDs
-SE-F-040	F-19	confirmed	audit/semantic-batch3.md:13		Configuration PATCH reports success but never applies the update
-SE-F-041	F-20	confirmed	audit/semantic-batch3.md:48		Project PATCH and DELETE are success-only stubs and leave the registry unchanged
-SE-F-042	F-07	confirmed	audit/semantic-engine-audit-supplement.md:44		`watch` silently ignores the requested embedding provider
-SE-F-043	F-08	confirmed	audit/semantic-engine-audit-supplement.md:80		cancelling an active queue job does not cancel the worker task
-SE-F-044	F-09	confirmed	audit/semantic-engine-audit-supplement.md:129		neighborhood visualization replaces valid zero-valued options with defaults
-SE-F-045	F-10	confirmed	audit/semantic-engine-audit-supplement.md:157		`ContextService` drops target-file selection and returns a fabricated token estimate
-SE-F-046	F-11	confirmed	audit/semantic-engine-audit-supplement.md:218		OpenAI-compatible embedding batches silently accept short responses
-SE-F-047	F-12	confirmed	audit/semantic-engine-audit-supplement.md:251		SQLite graph traversal defaults are observably inconsistent with the in-memory graph API
-SE-F-048	F-13	confirmed	audit/semantic-engine-audit-supplement.md:309		SQLite shortest-path traversal ignores its public `maxNodes` limit
-SE-F-049	F-14	confirmed	audit/semantic-engine-audit-supplement.md:336		`check-tests.js` claims that all suites ran while allowing skipped suites
-SE-F-050	F-15	confirmed	audit/semantic-engine-audit-supplement.md:375		`SearchService` does not honor its declared `mode` and `minScore` contract
-SE-F-051	F-16	confirmed	audit/semantic-engine-audit-supplement.md:470	SE-F-037	IndexPipeline ignores the entire top-level directory when output is nested under a source directory
-SE-F-052	F-17	confirmed	audit/semantic-engine-audit-supplement.md:500	SE-F-038	TypeScript dependency extraction collapses multiple exported variables into one invalid export name
-SE-F-053	F-18	confirmed	audit/semantic-engine-audit-supplement.md:562	SE-F-039	`scripts/snapshot.js` normalizer discards all supposedly stable IDs
-SE-F-054	F-19	confirmed	audit/semantic-engine-audit-supplement.md:633	SE-F-040	Configuration PATCH reports success but never applies the update
-SE-F-055	F-20	confirmed	audit/semantic-engine-audit-supplement.md:668	SE-F-041	Project PATCH and DELETE are success-only stubs and leave the registry unchanged
-SE-F-056	F-01	confirmed	audit/semantic-engine-audit.md:142		Standalone project PATCH/DELETE report success without mutating project state
-SE-F-057	F-02	confirmed	audit/semantic-engine-audit.md:182		Gateway dashboard configuration editing drops almost all form fields and cannot update an existing worker
-SE-F-058	F-03	confirmed	audit/semantic-engine-audit.md:207		Gateway project-list/dashboard statistics are hard-coded to zero
-SE-F-059	F-04	confirmed	audit/semantic-engine-audit.md:224		Persisted `autoStart` intent is discarded, and Gateway restart does not restore persisted projects into workers
-SE-F-060	F-05	confirmed	audit/semantic-engine-audit.md:282		`ProjectService.indexProject()` is a reload-only no-op indexing API
-SE-F-061	F-06	confirmed	audit/semantic-engine-audit.md:314		Gateway UI advertises logs/events actions with no corresponding Gateway route
-SE-P-009	P-01	potential/unverified	audit/semantic-engine-audit.md:360		Structured-AI consumer-side project/generation integration is unverified within scope
-SE-P-010	P-02	potential/unverified	audit/semantic-engine-audit.md:377		Gateway E2E verification is conditionally skipped without a build artifact
-SE-ARCH-001	ARCH-021	confirmed	audit/step-s6-findings.md:34		
-SE-SEC-001	SEC-022	confirmed	audit/step-s6-findings.md:142	SE-ARCH-001	
-SE-ARCH-002	ARCH-023	confirmed	audit/step-s6-findings.md:213	SE-ARCH-001	
-SE-PERF-001	PERF-024	confirmed	audit/step-s6-findings.md:284	SE-ARCH-001	
-SE-REL-001	REL-025	confirmed	audit/step-s6-findings.md:367	SE-ARCH-001	
-SE-DEBT-001	DEBT-026	confirmed	audit/step-s6-findings.md:448	SE-ARCH-001	
-SE-DEBT-002	DEBT-027	confirmed	audit/step-s6-findings.md:521	SE-ARCH-001	
-SE-DEBT-003	DEBT-028	confirmed	audit/step-s6-findings.md:589	SE-ARCH-001	
-SE-SEC-002	POTENTIAL-SEC-029	potential/unverified	audit/step-s6-findings.md:643	SE-ARCH-001	
-SE-PERF-002	POTENTIAL-PERF-030	potential/unverified	audit/step-s6-findings.md:717	SE-ARCH-001	
-SE-ARCH-003	POTENTIAL-ARCH-031	potential/unverified	audit/step-s6-findings.md:771	SE-ARCH-001	
-SE-SEC-003	UNVERIFIED-SEC-032	potential/unverified	audit/step-s6-findings.md:818	SE-ARCH-001	
-SA-F-001	F-009	confirmed	audit/structured-ai-audit-supplement.md:19		`fs_read_many` drops the active project context
-SA-F-002	F-010	confirmed	audit/structured-ai-audit-supplement.md:85		graduated context compression has no immutable original payload
-SA-F-003	F-011	confirmed	audit/structured-ai-audit-supplement.md:140		archive compaction rewrites fully-dead segments to empty files
-SA-F-004	F-012	confirmed	audit/structured-ai-audit-supplement.md:195		`code_rename` does not apply edits by their designated range
-SA-F-005	F-013	confirmed	audit/structured-ai-audit-supplement.md:247		request JSON decoding corrupts UTF-8 split across incoming chunks
-SA-F-006	F-014	confirmed	audit/structured-ai-audit-supplement.md:281		visualizer fabricates successful test coverage for every node
-SA-F-007	F-015	confirmed	audit/structured-ai-audit-supplement.md:320		modular project settings overlay always reads the process workspace's project file
-SA-F-008	F-016	confirmed	audit/structured-ai-audit-supplement.md:422		Session persistence is not atomic despite the repository contract
-SA-F-009	F-017	confirmed	audit/structured-ai-audit-supplement.md:455		Telemetry file provenance is process-workspace scoped, not project scoped
-SA-F-010	F-001	confirmed	audit/structured-ai-audit.md:393		Web API global busy gate defeats intended multi-project scheduler concurrency
-SA-F-011	F-002	confirmed	audit/structured-ai-audit.md:439		AUTO_CONTINUE drops project scope
-SA-F-012	F-003	confirmed	audit/structured-ai-audit.md:476		Cancelling a queued run leaves an untracked run context
-SA-F-013	F-004	confirmed	audit/structured-ai-audit.md:540		Foreground terminal stdout is buffered without the configured cap
-SA-F-014	F-005	confirmed	audit/structured-ai-audit.md:597		Session document save is non-atomic despite the repository atomic-write contract
-SA-F-015	F-006	confirmed	audit/structured-ai-audit.md:664		CI omits project/concurrency/persistence/semantic suites
-SA-F-016	F-007	confirmed	audit/structured-ai-audit.md:706		Project registry read-modify-write can lose concurrent updates
-SA-F-017	F-008	confirmed	audit/structured-ai-audit.md:776		Explicit project object can bypass the documented registry/workspace validation
-SA-F-018	F-015	confirmed	audit/structured-batch2.md:5	SA-F-007	modular project settings overlay always reads the process workspace's project file
-SA-F-019	F-016	confirmed	audit/structured-batch3.md:5	SA-F-008	Session persistence is not atomic despite the repository contract
-SA-F-020	F-017	confirmed	audit/structured-batch3.md:38	SA-F-009	Telemetry file provenance is process-workspace scoped, not project scoped
+id	original_id	status	source(path:line)	duplicate_of	title	severity	plan_phase	test	fix_status
+SE-F-001	F-51	confirmed	audit/audit-batch-51-1.md:11		1 — `JsonExporter.export` گزینهٔ validation را نادیده می‌گیرد و parent directory را نمی‌سازد	Unknown	2	(assigned when fixed)	open — not verified fixed
+SE-F-002	F-51	confirmed	audit/audit-batch-51-1.md:21		2 — مهاجرت database قدیمیِ بدون `meta` واقعاً انجام نمی‌شود	Unknown	2	(assigned when fixed)	open — not verified fixed
+SE-F-003	F-51	confirmed	audit/audit-batch-51-1.md:31		3 — ادعای engines `>=20` با fallback ناقص SQLite ناسازگار است	Unknown	2	(assigned when fixed)	open — not verified fixed
+SE-P-001	P-1	potential/unverified	audit/audit-batch-51-3.md:33		resolveImportPath در build مصرف نمی‌شود	Unknown	5 (verify first)	(assigned when fixed)	open — not verified fixed
+SE-P-002	P-2	potential/unverified	audit/audit-batch-51-3.md:39		`makeEdgeId` مقدار occurrence برابر صفر را مانند مقدارِ غایب encode می‌کند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-P-003	P-3	potential/unverified	audit/audit-batch-51-3.md:45		تبدیل token به AbortSignal، registration را قابل dispose به caller نمی‌دهد	Unknown	4 (verify first)	(assigned when fixed)	open — not verified fixed
+SE-F-004	F-21	confirmed	audit/audit-batch-continuation-2.md:32		`checkCyclesOnly` در DetectArchitectureViolationsTool نادیده گرفته می‌شود	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SE-F-005	F-22	confirmed	audit/audit-batch-continuation-2.md:60		GetDependenciesTool عمق بیش از سقف را clamp می‌کند، برخلاف قرارداد اعلام‌شده	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SE-F-006	F-23	confirmed	audit/audit-batch-continuation-2.md:83		دو schema ورودی معتبر implementation را به‌اشتباه رد می‌کنند	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SE-F-007	F-1	confirmed	audit/audit-batch-continuation-3.md:32		`move_symbol` در `SimulateMutationTool` شبیه‌سازی نمی‌شود	Unknown	4	(assigned when fixed)	open — not verified fixed
+SE-F-008	F-2	confirmed	audit/audit-batch-continuation-3.md:38		CTE معتبر در `queryPolicy` به‌خاطر alias رد می‌شود	Unknown	4	(assigned when fixed)	open — not verified fixed
+SE-F-009	F-01	confirmed	audit/audit-batch-continuation-7.md:18		export barrel ناقص برای typeهای Blueprint	Unknown	9	(assigned when fixed)	open — not verified fixed
+SE-F-010	F-02	confirmed	audit/audit-batch-continuation-7.md:30		`sliceSymbolBody` فقط subset محدودی از symbolها را executable می‌داند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-011	F-03	confirmed	audit/audit-batch-continuation-7.md:41		root type `Blueprint` با schemaVersion literal و قراردادهای دارای optional field مدل شده است	Unknown	4	(assigned when fixed)	open — not verified fixed
+SE-F-012	F-04	confirmed	audit/audit-batch-continuation-7.md:52		`common.types.ts` اعتبار Confidence را runtime enforce می‌کند ولی برند فقط compile-time است	Unknown	1	(assigned when fixed)	open — not verified fixed
+SE-F-013	F-05	confirmed	audit/audit-batch-continuation-7.md:62		`project-index.types.ts` بخش بزرگی از قرارداد ProjectIndex را فقط به‌صورت TypeScript تعریف می‌کند و validation ندارد	Unknown	1	(assigned when fixed)	open — not verified fixed
+SE-F-014	F-06	confirmed	audit/audit-batch-continuation-7.md:72		`schemaSync.test.ts` فقط حضور property و optionality را می‌سنجد، نه type/enum/nesting/value constraints	Unknown	4	(assigned when fixed)	open — not verified fixed
+SE-F-015	F-07	confirmed	audit/audit-batch-continuation-7.md:83		`openapiSync.test.ts` فقط وجود مسیرها را چک می‌کند و operation/response/parameter schema را verify نمی‌کند	Unknown	4	(assigned when fixed)	open — not verified fixed
+SE-F-016	F-08	confirmed	audit/audit-batch-continuation-7.md:94		export barrel utility ناقص است	Unknown	9	(assigned when fixed)	open — not verified fixed
+SE-F-017	F-09	confirmed	audit/audit-batch-continuation-7.md:105		تشخیص binary فقط ۸۱۹۲ بایت اول را inspect می‌کند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-018	F-10	confirmed	audit/audit-batch-continuation-7.md:116		`decodeBuffer` در ورودی encoding صریح، encoding را validate نمی‌کند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-019	F-11	confirmed	audit/audit-batch-continuation-7.md:127		`normalizeLineEndings` و `decodeBuffer` در utility barrel قابل دسترسی نیستند	LOW	9	(assigned when fixed)	open — not verified fixed
+SE-F-020	F-12	confirmed	audit/audit-batch-continuation-7.md:134		`LineIndex.lineAt` offset بزرگ‌تر از متن را به آخرین line index clamp می‌کند، بدون اعلام invalid offset	LOW	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-021	F-13	confirmed	audit/audit-batch-continuation-7.md:144		cache `getLineNumber` فقط آخرین content را نگه می‌دارد و bounded multi-project cache نیست	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-022	F-14	confirmed	audit/audit-batch-continuation-7.md:154		`sortSymbolsDeterministically` kindهایی که در `KIND_ORDER` نیستند را به 999 می‌فرستد	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-023	F-15	confirmed	audit/audit-batch-continuation-7.md:164		`DependencyExtractorManager.extract` exceptionهای extractor را به Result تبدیل نمی‌کند	Unknown	3	(assigned when fixed)	open — not verified fixed
+SE-F-024	F-16	confirmed	audit/audit-batch-continuation-7.md:175		manager partial نتیجهٔ آخر را برمی‌گرداند و خطاهای جمع‌شده را دور می‌ریزد	Unknown	3	(assigned when fixed)	open — not verified fixed
+SE-F-025	F-17	confirmed	audit/audit-batch-continuation-7.md:185		interface extraction عمداً resolvedFileId را به مرحلهٔ بعد واگذار می‌کند	Unknown	3	(assigned when fixed)	open — not verified fixed
+SE-F-026	F-18	confirmed	audit/audit-batch-continuation-7.md:196		heuristic `filePath` را عملاً نادیده می‌گیرد	Unknown	3	(assigned when fixed)	open — not verified fixed
+XX-F-001	F-19	project=Unknown/Requires Verification;confirmed	audit/audit-batch-continuation-7.md:207		comment پشتیبانی heuristic با implementation ناقص/قدیمی است	Unknown	3	(assigned when fixed)	open — not verified fixed
+XX-F-002	F-20	project=Unknown/Requires Verification;confirmed	audit/audit-batch-continuation-7.md:217		الگوهای heuristic با regex و بدون parser هستند و comment/string context را به‌طور عمومی نمی‌فهمند	Unknown	3	(assigned when fixed)	open — not verified fixed
+SE-SE-001	SE-AI-09	confirmed	audit/audit-batch-continuation.md:9		FB — هزینهٔ fallback از طول مسیر فایل محاسبه می‌شود	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-027	F-01	confirmed	audit/audit-continuation-10.md:9		override آرگومان‌های سرور بدون `command` در Registry اعمال نمی‌شود	متوسط	2	(assigned when fixed)	open — not verified fixed
+SE-F-028	F-01	confirmed	audit/audit-continuation-8.md:7		rename هم‌محتوا همهٔ symbolهای فایل را حذف می‌کند	HIGH	3	(assigned when fixed)	open — not verified fixed
+SE-F-029	F-02	confirmed	audit/audit-continuation-8.md:16		watcher برای فایل‌های هم‌محتوا با یک hash، رویداد rename را overwrite می‌کند	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-030	F-03	confirmed	audit/audit-continuation-8.md:25		خطای asynchronous stream وقتی write مقدار true می‌دهد listener ندارد	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-031	F-1	confirmed	audit/audit-continuation-9.md:7		`CapabilityProbe.forget(serverId)` اجرای درحال‌پرواز را invalidate نمی‌کند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-032	F-2	confirmed	audit/audit-continuation-9.md:37		timeout مسیر push در `DiagnosticsProvider` waiter اشتباه را حذف می‌کند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-033	F-3	confirmed	audit/audit-continuation-9.md:63		شناسهٔ یال برای چند call-site هم‌خط در `LspEnrichmentService` تکراری است	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-P-004	P-1	potential/unverified	audit/audit-continuation-9.md:85		scope چندزبان/چندپروژه‌ای در enrichment یک client و یک languageId را برای همهٔ فایل‌ها استفاده می‌کند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-P-005	P-2	potential/unverified	audit/audit-continuation-9.md:88		سقف wall-clock enrichment درخواست‌های درحال انتظار را قطع نمی‌کند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-P-006	P-3	potential/unverified	audit/audit-continuation-9.md:91		محاسبهٔ `budgetExhausted` فقط سقف references را صریحاً علامت می‌زند	Unknown	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-F-034	F-01	potential/unverified	audit/audit-final-batch-1.md:9		`OpenTelemetryTracer.parseTraceparent` ورودی malformed را اعتبارسنجی نمی‌کند	Unknown	6 (verify first)	(assigned when fixed)	open — not verified fixed
+SE-F-035	F-02	potential/unverified	audit/audit-final-batch-1.md:22		شمارندهٔ `errorCount` برای skip ناشی از `FileProcessor` افزایش نمی‌یابد	Unknown	3 (verify first)	(assigned when fixed)	open — not verified fixed
+SE-F-036	F-03	potential/unverified	audit/audit-final-batch-1.md:34		diagnostic مربوط به exception پردازش فایل مسیر فایل را ندارد	Unknown	3 (verify first)	(assigned when fixed)	open — not verified fixed
+SA-REL-001	REL-013	confirmed	audit/audit-progress-2026-09-15.md:12		خطاهای run رویداد `run:error` تولید نمی‌کنند	MEDIUM	7	(assigned when fixed)	open — not verified fixed
+SA-ARCH-001	ARCH-014	confirmed	audit/audit-progress-2026-09-15.md:28		delegation به پروژهٔ دیگر در MCP از projectId والد استفاده می‌کند	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SA-ARCH-002	ARCH-015	confirmed	audit/audit-progress-2026-09-15.md:37		پیکربندی `.mcp.json` به workspace اول pin می‌شود	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SA-API-001	API-016	confirmed	audit/audit-progress-2026-09-15.md:54		`runAgent({ project })` با `ProjectContext` نرمال‌شده ناسازگار است	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SA-REL-002	REL-017	confirmed	audit/audit-progress-2026-09-15.md:66		signal handler runهای modular فعال را cancel نمی‌کند	MEDIUM	7	(assigned when fixed)	open — not verified fixed
+SA-REL-003	REL-018	confirmed	audit/audit-progress-2026-09-15.md:74		runهای queued در RunManager ثبت و قابل cancellation نیستند	MEDIUM	7	(assigned when fixed)	open — not verified fixed
+SA-DB-001	DB-019	confirmed	audit/audit-progress-2026-09-15.md:82		plan با write مستقیم و غیراتمی ذخیره می‌شود	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-DB-002	DB-020	confirmed	audit/audit-progress-2026-09-15.md:100		migration دایرکتوری durable مربوط به discussion را منتقل نمی‌کند	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-REL-004	REL-021	confirmed	audit/audit-progress-2026-09-15.md:126		compaction در failure آرشیو، exchange را حذف می‌کند	HIGH	7	(assigned when fixed)	open — not verified fixed
+SA-API-002	API-022	confirmed	audit/audit-progress-2026-09-15.md:151		search handleها هنگام retrieval project-scoped نیستند	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SA-REL-005	REL-023	confirmed	audit/audit-progress-2026-09-15.md:172		خطای spawn به‌اشتباه `exited` گزارش می‌شود	MEDIUM	7	(assigned when fixed)	open — not verified fixed
+SA-REL-006	REL-024	confirmed	audit/audit-progress-2026-09-15.md:198		حذف chunkهای قدیمی cursor خروجی unread را اصلاح نمی‌کند	MEDIUM	7	(assigned when fixed)	open — not verified fixed
+SE-DASH-001	DASH-025	confirmed	audit/audit-progress-2026-09-15.md:231		dashboard مستقل وضعیت سلامت و چند آمار را ساختگی/ناقص گزارش می‌کند	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-API-001	API-026	confirmed	audit/audit-progress-2026-09-15.md:254		endpoint لغو job، project binding مسیر را بررسی نمی‌کند	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-UI-001	UI-027	confirmed	audit/audit-progress-2026-09-15.md:283		شکست یا تغییر project switch، state و لینک پروژهٔ قبلی را پاک نمی‌کند	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-API-002	API-028	confirmed	audit/audit-progress-2026-09-15.md:309		خطاهای validation در Source Sync به HTTP 500 تبدیل می‌شوند	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-CONF-001	CONF-029	confirmed	audit/audit-progress-2026-09-15.md:342		PATCH config موفقیت را اعلام می‌کند ولی runtime config را تغییر نمی‌دهد	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-API-003	API-030	confirmed	audit/audit-progress-2026-09-15.md:368		OpenAPI قرارداد endpointهای dashboard موجود را ندارد	LOW	5	(assigned when fixed)	open — not verified fixed
+SE-P-007	P-031	potential/unverified	audit/audit-progress-2026-09-15.md:385		تست visualizer payload را بررسی نمی‌کند	LOW	5 (verify first)	(assigned when fixed)	open — not verified fixed
+SE-VIZ-001	VIZ-032	confirmed	audit/audit-progress-2026-09-15.md:404		نمای Module یال‌های معلق تولید می‌کند	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-VIZ-002	VIZ-033	confirmed	audit/audit-progress-2026-09-15.md:425		API nodeها در Architecture View حذف می‌شوند	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-VIZ-003	VIZ-034	confirmed	audit/audit-progress-2026-09-15.md:449		provenance/basis گراف یا جعل می‌شود یا خارج از contract برمی‌گردد	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-VIZ-004	VIZ-035	confirmed	audit/audit-progress-2026-09-15.md:469		`confidentRatio` در Module View همیشه `1.0` است	LOW	5	(assigned when fixed)	open — not verified fixed
+SE-VIZ-005	VIZ-036	confirmed	audit/audit-progress-2026-09-15.md:489		fallback معماری با level اشتباه برمی‌گردد	LOW	5	(assigned when fixed)	open — not verified fixed
+SE-VIZ-006	VIZ-037	confirmed	audit/audit-progress-2026-09-15.md:514		مقدار صفر در Neighborhood API به‌صورت silent به default تبدیل می‌شود	LOW	5	(assigned when fixed)	open — not verified fixed
+SE-DASH-002	DASH-038	confirmed	audit/audit-progress-2026-09-15.md:533		Git hotspot/co-churn به projectId bind نشده است	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-P-008	P-VIZ-039	potential/unverified	audit/audit-progress-2026-09-15.md:559		تب‌های Impact و Git Hotspots احتمالاً backend متناظر ندارند	LOW	5 (verify first)	(assigned when fixed)	open — not verified fixed
+SE-VIZ-007	VIZ-040	confirmed	audit/audit-progress-2026-09-15.md:570		چند تب visualizer به endpoint نمای اشتباه متصل‌اند	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SA-UI-001	UI-041	confirmed	audit/audit-progress-2026-09-15.md:587		در failure یا خالی‌بودن API، visualizer دادهٔ نمونهٔ ساختگی نمایش می‌دهد	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SA-HOOK-001	HOOK-042	confirmed	audit/audit-progress-2026-09-15.md:614		`on_failure: stop` اجرای graph را متوقف نمی‌کند	MEDIUM	8	(assigned when fixed)	open — not verified fixed
+SA-POL-001	POL-043	confirmed	audit/audit-progress-2026-09-15.md:641		regex نامعتبر در policy پذیرفته و در evaluation منفجر می‌شود	MEDIUM	8	(assigned when fixed)	open — not verified fixed
+SA-POL-002	POL-044	confirmed	audit/audit-progress-2026-09-15.md:661		pending approval به cancellation متصل نیست	MEDIUM	7	(assigned when fixed)	open — not verified fixed
+SA-POL-003	POL-045	confirmed	audit/audit-progress-2026-09-15.md:678		approval history بدون سقف رشد می‌کند	LOW	5	(assigned when fixed)	open — not verified fixed
+SA-POL-004	POL-046	confirmed	audit/audit-progress-2026-09-15.md:693		approval ردشده event/audit policy تولید نمی‌کند	MEDIUM	8	(assigned when fixed)	open — not verified fixed
+SA-PRJ-001	PRJ-047	confirmed	audit/audit-progress-2026-09-15.md:717		hook registry به active project run متصل نیست	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-HOOK-002	HOOK-042	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:5		on_failure=stop does not short-circuit dependency graph	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SA-POL-005	POL-043	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:54		malformed argument regex is accepted by registry validation and crashes policy evaluation	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-POL-006	POL-044	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:77		pending approval promise is not cancellation-aware	MEDIUM	7	(assigned when fixed)	open — not verified fixed
+SA-POL-007	POL-045	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:106		approval history is unbounded despite the stated bounded-history contract	LOW	5	(assigned when fixed)	open — not verified fixed
+SA-POL-008	POL-046	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:131		rejected approval is stored but omitted from policy decision event/audit callback	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SA-PRJ-002	PRJ-047	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:164		hook registry loads global workspace profile, not active run project	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-PIPE-001	PIPE-048	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:196		run-pipeline.js exits with code 0 on partial failure due to uncaught rejection in finally block	MEDIUM	9	(assigned when fixed)	open — not verified fixed
+SE-PIPE-002	PIPE-049	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:222		validate-project-index.js lacks concurrency safety and atomicity checks	LOW	2	(assigned when fixed)	open — not verified fixed
+SE-PIPE-003	PIPE-050	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:233		benchmark.js uses insecure temporary directory and lacks sandboxing	MEDIUM	9	(assigned when fixed)	open — not verified fixed
+SE-SE-002	SE-MCP-001	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:259		MCP Server File System Race Condition	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SE-SE-003	SE-MCP-002	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:276		CLI Token Security Issues	HIGH	4	(assigned when fixed)	open — not verified fixed
+SE-SE-004	SE-CONFIG-003	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:288		Path Traversal in ProjectPaths	HIGH	Out of scope (security; plan rule 10) — track separately	(assigned when fixed)	open — not verified fixed
+SE-SE-005	SE-CONFIG-004	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:302		Insecure Environment Variable Handling	MEDIUM	Out of scope (security; plan rule 10) — track separately	(assigned when fixed)	open — not verified fixed
+SE-SE-006	SE-CONFIG-005	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:315		Project ID Validation Bypass	MEDIUM	Out of scope (security; plan rule 10) — track separately	(assigned when fixed)	open — not verified fixed
+SE-SE-007	SE-PIPELINE-006	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:325		Command Injection in Pipeline Runner	HIGH	Out of scope (security; plan rule 10) — track separately	(assigned when fixed)	open — not verified fixed
+SE-SE-008	SE-VALIDATE-007	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:335		JSON Schema Validation Bypass	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SE-SE-009	SE-DISCOVERY-008	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:345		Semantic Search Injection	MEDIUM	Out of scope (security; plan rule 10) — track separately	(assigned when fixed)	open — not verified fixed
+SE-SE-010	SE-INDEX-009	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:355		Index Generation Predictability	LOW	Out of scope (security; plan rule 10) — track separately	(assigned when fixed)	open — not verified fixed
+SE-SE-011	SE-MIGRATION-010	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:368		Legacy Artifact Migration Security Issues	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-SE-012	SE-BENCHMARK-011	confirmed	audit/forensic-lifecycle-findings-2026-09-15.md:378		Temporary File Security Issues	LOW	Out of scope (security; plan rule 10) — track separately	(assigned when fixed)	open — not verified fixed
+SE-F-037	F-16	confirmed	audit/semantic-batch-2026-09-17.md:9		IndexPipeline ignores the entire top-level directory when output is nested under a source directory	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-038	F-17	confirmed	audit/semantic-batch-2026-09-17.md:39		TypeScript dependency extraction collapses multiple exported variables into one invalid export name	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-039	F-18	confirmed	audit/semantic-batch2.md:9		`scripts/snapshot.js` normalizer discards all supposedly stable IDs	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-040	F-19	confirmed	audit/semantic-batch3.md:13		Configuration PATCH reports success but never applies the update	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-041	F-20	confirmed	audit/semantic-batch3.md:48		Project PATCH and DELETE are success-only stubs and leave the registry unchanged	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-042	F-07	confirmed	audit/semantic-engine-audit-supplement.md:44		`watch` silently ignores the requested embedding provider	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-043	F-08	confirmed	audit/semantic-engine-audit-supplement.md:80		cancelling an active queue job does not cancel the worker task	HIGH	7	(assigned when fixed)	open — not verified fixed
+SE-F-044	F-09	confirmed	audit/semantic-engine-audit-supplement.md:129		neighborhood visualization replaces valid zero-valued options with defaults	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-F-045	F-10	confirmed	audit/semantic-engine-audit-supplement.md:157		`ContextService` drops target-file selection and returns a fabricated token estimate	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SE-F-046	F-11	confirmed	audit/semantic-engine-audit-supplement.md:218		OpenAI-compatible embedding batches silently accept short responses	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SE-F-047	F-12	confirmed	audit/semantic-engine-audit-supplement.md:251		SQLite graph traversal defaults are observably inconsistent with the in-memory graph API	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-048	F-13	confirmed	audit/semantic-engine-audit-supplement.md:309		SQLite shortest-path traversal ignores its public `maxNodes` limit	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-049	F-14	confirmed	audit/semantic-engine-audit-supplement.md:336		`check-tests.js` claims that all suites ran while allowing skipped suites	LOW	5	(assigned when fixed)	open — not verified fixed
+SE-F-050	F-15	confirmed	audit/semantic-engine-audit-supplement.md:375		`SearchService` does not honor its declared `mode` and `minScore` contract	MEDIUM	4	(assigned when fixed)	open — not verified fixed
+SE-F-051	F-16	confirmed	audit/semantic-engine-audit-supplement.md:470	SE-F-037	IndexPipeline ignores the entire top-level directory when output is nested under a source directory	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-052	F-17	confirmed	audit/semantic-engine-audit-supplement.md:500	SE-F-038	TypeScript dependency extraction collapses multiple exported variables into one invalid export name	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-053	F-18	confirmed	audit/semantic-engine-audit-supplement.md:562	SE-F-039	`scripts/snapshot.js` normalizer discards all supposedly stable IDs	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SE-F-054	F-19	confirmed	audit/semantic-engine-audit-supplement.md:633	SE-F-040	Configuration PATCH reports success but never applies the update	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-055	F-20	confirmed	audit/semantic-engine-audit-supplement.md:668	SE-F-041	Project PATCH and DELETE are success-only stubs and leave the registry unchanged	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-056	F-01	confirmed	audit/semantic-engine-audit.md:142		Standalone project PATCH/DELETE report success without mutating project state	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-057	F-02	confirmed	audit/semantic-engine-audit.md:182		Gateway dashboard configuration editing drops almost all form fields and cannot update an existing worker	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-058	F-03	confirmed	audit/semantic-engine-audit.md:207		Gateway project-list/dashboard statistics are hard-coded to zero	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SE-F-059	F-04	confirmed	audit/semantic-engine-audit.md:224		Persisted `autoStart` intent is discarded, and Gateway restart does not restore persisted projects into workers	HIGH	2	(assigned when fixed)	open — not verified fixed
+SE-F-060	F-05	confirmed	audit/semantic-engine-audit.md:282		`ProjectService.indexProject()` is a reload-only no-op indexing API	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SE-F-061	F-06	confirmed	audit/semantic-engine-audit.md:314		Gateway UI advertises logs/events actions with no corresponding Gateway route	LOW	5	(assigned when fixed)	open — not verified fixed
+SE-P-009	P-01	potential/unverified	audit/semantic-engine-audit.md:360		Structured-AI consumer-side project/generation integration is unverified within scope	HIGH	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-P-010	P-02	potential/unverified	audit/semantic-engine-audit.md:377		Gateway E2E verification is conditionally skipped without a build artifact	LOW	5 (verify first)	(assigned when fixed)	open — not verified fixed
+SE-ARCH-001	ARCH-021	confirmed	audit/step-s6-findings.md:34			HIGH	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-SEC-001	SEC-022	confirmed	audit/step-s6-findings.md:142	SE-ARCH-001		HIGH	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-ARCH-002	ARCH-023	confirmed	audit/step-s6-findings.md:213	SE-ARCH-001		MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-PERF-001	PERF-024	confirmed	audit/step-s6-findings.md:284	SE-ARCH-001		MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-REL-001	REL-025	confirmed	audit/step-s6-findings.md:367	SE-ARCH-001		MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-DEBT-001	DEBT-026	confirmed	audit/step-s6-findings.md:448	SE-ARCH-001		MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-DEBT-002	DEBT-027	confirmed	audit/step-s6-findings.md:521	SE-ARCH-001		LOW	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-DEBT-003	DEBT-028	confirmed	audit/step-s6-findings.md:589	SE-ARCH-001		LOW	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-SEC-002	POTENTIAL-SEC-029	potential/unverified	audit/step-s6-findings.md:643	SE-ARCH-001		MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-PERF-002	POTENTIAL-PERF-030	potential/unverified	audit/step-s6-findings.md:717	SE-ARCH-001		MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-ARCH-003	POTENTIAL-ARCH-031	potential/unverified	audit/step-s6-findings.md:771	SE-ARCH-001		MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SE-SEC-003	UNVERIFIED-SEC-032	potential/unverified	audit/step-s6-findings.md:818	SE-ARCH-001		LOW	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SA-F-001	F-009	confirmed	audit/structured-ai-audit-supplement.md:19		`fs_read_many` drops the active project context	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SA-F-002	F-010	confirmed	audit/structured-ai-audit-supplement.md:85		graduated context compression has no immutable original payload	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SA-F-003	F-011	confirmed	audit/structured-ai-audit-supplement.md:140		archive compaction rewrites fully-dead segments to empty files	LOW	7	(assigned when fixed)	open — not verified fixed
+SA-F-004	F-012	confirmed	audit/structured-ai-audit-supplement.md:195		`code_rename` does not apply edits by their designated range	MEDIUM	3	(assigned when fixed)	open — not verified fixed
+SA-F-005	F-013	confirmed	audit/structured-ai-audit-supplement.md:247		request JSON decoding corrupts UTF-8 split across incoming chunks	MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SA-F-006	F-014	confirmed	audit/structured-ai-audit-supplement.md:281		visualizer fabricates successful test coverage for every node	LOW	2	(assigned when fixed)	open — not verified fixed
+SA-F-007	F-015	confirmed	audit/structured-ai-audit-supplement.md:320		modular project settings overlay always reads the process workspace's project file	MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SA-F-008	F-016	confirmed	audit/structured-ai-audit-supplement.md:422		Session persistence is not atomic despite the repository contract	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-F-009	F-017	confirmed	audit/structured-ai-audit-supplement.md:455		Telemetry file provenance is process-workspace scoped, not project scoped	MEDIUM	5	(assigned when fixed)	open — not verified fixed
+SA-F-010	F-001	confirmed	audit/structured-ai-audit.md:393		Web API global busy gate defeats intended multi-project scheduler concurrency	HIGH	7	(assigned when fixed)	open — not verified fixed
+SA-F-011	F-002	confirmed	audit/structured-ai-audit.md:439		AUTO_CONTINUE drops project scope	HIGH	6	(assigned when fixed)	open — not verified fixed
+SA-F-012	F-003	confirmed	audit/structured-ai-audit.md:476		Cancelling a queued run leaves an untracked run context	MEDIUM	6	(assigned when fixed)	open — not verified fixed
+SA-F-013	F-004	confirmed	audit/structured-ai-audit.md:540		Foreground terminal stdout is buffered without the configured cap	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-F-014	F-005	confirmed	audit/structured-ai-audit.md:597		Session document save is non-atomic despite the repository atomic-write contract	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-F-015	F-006	confirmed	audit/structured-ai-audit.md:664		CI omits project/concurrency/persistence/semantic suites	LOW	5	(assigned when fixed)	open — not verified fixed
+SA-F-016	F-007	confirmed	audit/structured-ai-audit.md:706		Project registry read-modify-write can lose concurrent updates	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-F-017	F-008	confirmed	audit/structured-ai-audit.md:776		Explicit project object can bypass the documented registry/workspace validation	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-F-018	F-015	confirmed	audit/structured-batch2.md:5	SA-F-007	modular project settings overlay always reads the process workspace's project file	MEDIUM	Unscoped — not covered by any plan phase; needs triage decision	(assigned when fixed)	open — not verified fixed
+SA-F-019	F-016	confirmed	audit/structured-batch3.md:5	SA-F-008	Session persistence is not atomic despite the repository contract	MEDIUM	2	(assigned when fixed)	open — not verified fixed
+SA-F-020	F-017	confirmed	audit/structured-batch3.md:38	SA-F-009	Telemetry file provenance is process-workspace scoped, not project scoped	MEDIUM	5	(assigned when fixed)	open — not verified fixed
