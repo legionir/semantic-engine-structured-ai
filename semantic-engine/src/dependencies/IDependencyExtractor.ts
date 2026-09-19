@@ -12,6 +12,11 @@ export interface DependencyExtractionResult {
   readonly imports: readonly ImportEntry[];
   readonly exports: readonly ExportEntry[];
   readonly partial: boolean;
+  /**
+   * Every problem met on the way to this result (an extractor that threw, returned an error or
+   * only a partial answer). Empty/absent means the first available extractor succeeded cleanly.
+   */
+  readonly diagnostics?: readonly string[];
 }
 
 export interface IDependencyExtractor extends IDisposable {

@@ -91,8 +91,7 @@ export class TSDependencyExtractor implements IDependencyExtractor {
         } else if (ts.isExportAssignment(node)) {
           exports.push(this.parseExportAssignment(node));
         } else if (this.hasExportModifier(node)) {
-          const entry = this.parseExportedDeclaration(node);
-          if (entry) exports.push(entry);
+          exports.push(...this.parseExportedDeclaration(node));
         } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
           const entry = this.parseDynamicImport(node);
           if (entry) imports.push(entry);
@@ -310,8 +309,24 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     };
   }
 
-  private parseExportedDeclaration(node: ts.Node): ExportEntry | null {
+  /**
+   * One `ExportEntry` per exported name. `export const a = 1, b = 2;` used to
+   * be collapsed into a single entry named `"a, b"` (not a valid identifier,
+   * so nothing could ever match it); every declarator now gets its own entry,
+   * including names bound by destructuring (`export const { x, y: z } = o`).
+   */
+  private parseExportedDeclaration(node: ts.Node): ExportEntry[] {
     const isDefault = this.hasDefaultModifier(node);
+    const kind = isDefault ? 'default' : 'named';
+
+    if (ts.isVariableStatement(node)) {
+      const names: string[] = [];
+      for (const declaration of node.declarationList.declarations) {
+        this.collectBindingNames(declaration.name, names);
+      }
+      return names.map(name => ({ name, kind }));
+    }
+
     const name = this.getDeclarationName(node);
 
     /*
@@ -321,13 +336,20 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     | است که واردکننده با آن صدایش می‌زند.
     */
     if (!name) {
-      return isDefault ? { name: 'default', kind: 'default' } : null;
+      return isDefault ? [{ name: 'default', kind: 'default' }] : [];
     }
 
-    return {
-      name,
-      kind: isDefault ? 'default' : 'named',
-    };
+    return [{ name, kind }];
+  }
+
+  private collectBindingNames(binding: ts.BindingName, into: string[]): void {
+    if (ts.isIdentifier(binding)) {
+      into.push(binding.text);
+      return;
+    }
+    for (const element of binding.elements) {
+      if (ts.isBindingElement(element)) this.collectBindingNames(element.name, into);
+    }
   }
 
   private parseDynamicImport(node: ts.CallExpression): ImportEntry | null {
@@ -360,15 +382,6 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     if (ts.isInterfaceDeclaration(node) && node.name) return node.name.text;
     if (ts.isEnumDeclaration(node) && node.name) return node.name.text;
     if (ts.isTypeAliasDeclaration(node) && node.name) return node.name.text;
-    if (ts.isVariableStatement(node)) {
-      const names: string[] = [];
-      for (const decl of node.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name)) {
-          names.push(decl.name.text);
-        }
-      }
-      return names.length > 0 ? names.join(', ') : null;
-    }
     return null;
   }
 

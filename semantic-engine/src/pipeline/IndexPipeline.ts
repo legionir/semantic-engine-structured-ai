@@ -267,6 +267,15 @@ export class IndexPipeline {
             ),
             exports: result.value.exports,
           });
+          for (const message of result.value.diagnostics ?? []) {
+            addDiagnostic(file.id, {
+              severity: 'warning',
+              code: 'dependency-extraction',
+              line: 1,
+              message,
+              source: 'dependency-extraction',
+            });
+          }
         } else {
           this.logger.warn('dependency extraction failed', {
             file: file.path,

@@ -2,11 +2,23 @@
  * HeuristicDependencyExtractor — استخراج imports/exports با regex برای زبان‌هایی
  * که extractor اختصاصی ندارند.
  *
- * پشتیبانی‌شده:
- * - Python: import x, from x import y
- * - Go: import "x", import ( "x" )
- * - PHP: use X\Y; require/include
- * - Bash: source x.sh
+ * پشتیبانی‌شده (دقیقاً کلیدهای LANGUAGE_PATTERNS — تست
+ * DependencyExtractorManager.test.ts این فهرست را با map واقعی مقایسه می‌کند):
+ * - python: import x, from x import y
+ * - go: import "x", import ( "x" )
+ * - php: use XY; require/include (+ export: class/interface/trait/enum/function)
+ * - shellscript: source x.sh
+ * - java: import a.b.C;
+ * - rust: use / mod / extern crate
+ * - csharp: using X;
+ * - c, cpp: #include "x" / <x>
+ * - ruby: require / require_relative
+ * - swift: import X
+ * - kotlin: import a.b.C
+ *
+ * قرارداد resolution (تصمیم D-11): extractor فقط استخراج خام می‌کند.
+ * filePath روی خروجی اثر ندارد و resolvedFileId همیشه null برمی‌گردد؛
+ * resolve کردن importهای local کار مرحلهٔ pipeline است (resolveImport در IndexPipeline).
  */
 
 import { IDependencyExtractor, DependencyExtractionResult } from '../IDependencyExtractor';
@@ -109,7 +121,7 @@ export class HeuristicDependencyExtractor implements IDependencyExtractor {
 
   async extractDependencies(
     _fileId: string,
-    filePath: string,
+    _filePath: string,
     content: string,
     languageId: string
   ): Promise<Result<DependencyExtractionResult>> {
@@ -125,7 +137,7 @@ export class HeuristicDependencyExtractor implements IDependencyExtractor {
       regex.lastIndex = 0;
       let match: RegExpExecArray | null;
       while ((match = regex.exec(content)) !== null) {
-        imports.push(...this.parseImport(match, languageId, filePath));
+        imports.push(...this.parseImport(match, languageId));
       }
     }
 
@@ -155,11 +167,8 @@ export class HeuristicDependencyExtractor implements IDependencyExtractor {
    */
   private parseImport(
     match: RegExpExecArray,
-    languageId: string,
-    filePath: string
+    languageId: string
   ): ImportEntry[] {
-    void filePath;
-
     if (languageId === 'python') {
       if (match[0].trim().startsWith('from')) {
         const from = match[1]!;
