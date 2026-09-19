@@ -182,19 +182,38 @@ export async function stringifyToStream(
 ): Promise<void> {
   let sinceYield = 0;
 
-  for (const chunk of jsonChunks(value, options)) {
-    if (!stream.write(chunk)) {
-      await waitForDrain(stream);
-      sinceYield = 0;
-      continue;
-    }
+  /*
+  | An async stream error (ENOSPC, EACCES after open, ...) can be emitted while
+  | `write()` keeps returning true; without a listener for the whole write it is
+  | either an unhandled 'error' event or silently ignored until the end. Keep a
+  | listener for the full duration and surface the first error to the caller.
+  */
+  let failure: Error | undefined;
+  const onStreamError = (error: Error): void => {
+    failure ??= error;
+  };
+  stream.once('error', onStreamError as never);
 
-    sinceYield += 1;
+  try {
+    for (const chunk of jsonChunks(value, options)) {
+      if (failure) throw failure;
 
-    if (sinceYield >= CHUNKS_BETWEEN_YIELDS) {
-      sinceYield = 0;
-      await new Promise<void>(resolve => setImmediate(resolve));
+      if (!stream.write(chunk)) {
+        await waitForDrain(stream);
+        sinceYield = 0;
+        continue;
+      }
+
+      sinceYield += 1;
+
+      if (sinceYield >= CHUNKS_BETWEEN_YIELDS) {
+        sinceYield = 0;
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
     }
+    if (failure) throw failure;
+  } finally {
+    stream.removeListener?.('error', onStreamError as never);
   }
 }
 
@@ -304,13 +323,27 @@ export class NodeFileSystem implements FileSystemPort {
 
     try {
       const stream = this.createWriteStream(tmp, { encoding: 'utf8' });
+      /*
+      | Listener for the stream's whole life: an error emitted after the last
+      | write but before/while `end()` completes must reach the caller, not
+      | crash the process as an unhandled 'error' event.
+      */
+      let streamFailure: Error | undefined;
+      stream.on('error', (error: Error) => {
+        streamFailure ??= error;
+      });
+      let writeError: unknown;
       try {
         await stringifyToStream(value, stream as unknown as WritableLike, options);
+      } catch (error) {
+        writeError = error;
       } finally {
-        await new Promise<void>((resolve, reject) => {
-          stream.end((error?: Error | null) => (error ? reject(error) : resolve()));
+        await new Promise<void>(resolve => {
+          stream.end(() => resolve());
         });
       }
+      if (writeError) throw writeError;
+      if (streamFailure) throw streamFailure;
       await this.flush(tmp);
       await this.fs.rename(tmp, filePath);
     } catch (error) {

@@ -324,6 +324,33 @@ describe('SE-SCAN-17 — موتور خروجی خودش را ایندکس نمی
     expect(paths).toContain('src/controller.ts');
   });
 
+  it('an output nested under a source directory ignores only that directory, not its siblings (audit F-16)', async () => {
+    const outputDir = path.join(workspace, 'src', 'generated-index');
+    const run = () =>
+      new IndexPipeline({
+        workspaceRoot: workspace,
+        outputPath: path.join(outputDir, 'project-index.json'),
+        symbolExtractors: extractors.symbols,
+        dependencyExtractors: extractors.dependencies,
+        scannerConfig: { skipHiddenDirectories: false },
+        gitCollector: null,
+        vectorIndexer: null,
+      }).run();
+
+    const first = await run();
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(path.join(outputDir, 'project-index.json'), JSON.stringify(first.projectIndex));
+    fs.writeFileSync(path.join(outputDir, 'note.ts'), 'export const inOutput = 1;
+');
+
+    const second = await run();
+    const paths = second.projectIndex.files.map(f => f.path);
+
+    expect(paths).toContain('src/controller.ts'); // sibling of the output dir is still indexed
+    expect(paths.filter(f => f.startsWith('src/generated-index/'))).toEqual([]);
+    expect(paths.length).toBe(first.projectIndex.files.length);
+  });
+
   it('خروجی بیرون از کارگاه، چیزی را از اسکن حذف نمی‌کند', async () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'se-out24-'));
     try {

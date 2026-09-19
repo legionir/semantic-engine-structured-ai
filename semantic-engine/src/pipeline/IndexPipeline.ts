@@ -163,13 +163,15 @@ export class IndexPipeline {
 
     const scanner = new WorkspaceScanner(
       workspaceRoot,
-      this.scannerConfigIgnoringOwnOutput(workspaceRoot),
+      this.options.scannerConfig ?? {},
       {
         onContent: (file, content) => {
           fileReads++;
           if (!file.binary) contents.set(file.id, content);
         },
-      }
+      },
+      undefined,
+      path.dirname(path.resolve(this.options.outputPath))
     );
 
     const scanned = await scanner.scan(this.progress, this.token);
@@ -492,36 +494,13 @@ export class IndexPipeline {
    * خوانده (بزرگ‌تر از `maxFileSizeBytes`، SE-SCAN-01). تحویل دادن آن
    * ۸KB به استخراج‌گر یعنی ایندکسی که ادعا می‌کند فایل را دیده است.
    */
-  /**
-   * پیکربندی اسکنر، به‌علاوهٔ پوشهٔ خروجیِ *واقعی* — SE-SCAN-17.
-   *
-   * فهرست پیش‌فرض ignore نام `.semantic-engine` را هاردکد داشت. اگر
-   * کسی مسیر خروجی دیگری بدهد، اسکن بعدی خروجی خودش را ایندکس
-   * می‌کند و ایندکس، نسخهٔ قبلی خودش را در بر می‌گیرد — هر بار
-   * بزرگ‌تر. اندازه‌گیری‌شده:
-   *
-   * ```
-   * hidden .semantic-engine (default) -> files: src/a.ts
-   * non-hidden "index-out"            -> files: index-out/project-index.json, src/a.ts
-   * ```
-   *
-   * ignore کردن یک *نام* اشتباه بود؛ چیزی که باید ignore شود همان
-   * مسیری است که واقعاً در آن می‌نویسیم.
-   */
-  private scannerConfigIgnoringOwnOutput(workspaceRoot: string): Partial<ScannerConfig> {
-    const base = this.options.scannerConfig ?? {};
-    const outputDir = path.dirname(path.resolve(this.options.outputPath));
-    const relative = path.relative(workspaceRoot, outputDir).split(path.sep).join('/');
-
-    // خروجی بیرون از کارگاه است — چیزی برای ignore کردن نیست.
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return base;
-
-    const existing = base.ignoreDirectories ?? DEFAULT_IGNORE_DIRECTORIES;
-    const name = relative.split('/')[0]!;
-    if (existing.includes(name)) return base;
-
-    return { ...base, ignoreDirectories: [...existing, name] };
-  }
+  /*
+  | SE-SCAN-17: the real output directory must never be indexed, or every run indexes the
+  | previous run's index. It is passed to the scanner as `outputDir` and ignored by its
+  | FULL relative path (`IgnoreMatcher.isOutput`). The earlier version added only the first
+  | path segment to `ignoreDirectories`, so an output under `src/out` made the scanner skip
+  | the whole `src` tree (audit F-16).
+  */
 
   private async contentOf(
     file: FileEntry,
