@@ -21,6 +21,22 @@ import { DetectArchitectureViolationsTool } from './tools/DetectArchitectureViol
 import { GetGitHotspotsTool } from './tools/GetGitHotspotsTool';
 import { ToolResultCache } from './tools/ToolResultCache';
 import { ToolInputValidator } from './tools/ToolInputValidator';
+import {
+  CodeReadTool,
+  CodeFoldTool,
+  ProjectInfoTool,
+  ProjectListFilesTool,
+  DiagnosticsGetTool,
+  SearchTextTool,
+  SymbolInspectTool,
+  GainsReportTool,
+  CodeOutlineTool,
+  SymbolFindTool,
+} from './tools/Phase1ReadTools';
+import { StructuralSearchTool, RuleTestTool, SyntaxTreeDumpTool, EditPlanTool, EditApprovalTool, EditApplyTool, EditRollbackTool } from './tools/Phase2StructuralTools';
+import { TransactionalEditEngine } from '../core/codeintel/Phase2Transactions';
+import { SymbolReferencesTool, SemanticGraphInspectTool } from './tools/Phase3SemanticTools';
+import { Phase4ProviderStatusTool, Phase4ImpactTool, Phase4ContextTool, Phase4RenameTool } from './tools/Phase4ControlledTools';
 
 export interface AiToolRegistryOptions {
   readonly reader: ProjectIndexReader;
@@ -46,6 +62,11 @@ export interface AiToolRegistryOptions {
    * `discover_context` از آن به‌عنوان منبع دوم دانه استفاده می‌کند.
    */
   readonly blueprint?: BlueprintIndex;
+  /** v2 is disabled unless explicitly configured with a workspace root. */
+  readonly enablePhase2Edits?: boolean;
+  readonly phase2JournalDirectory?: string;
+  /** Experimental capabilities are opt-in and disabled by default. */
+  readonly experimental?: Readonly<Record<string, boolean>>;
 }
 
 export class AiToolRegistry {
@@ -110,6 +131,45 @@ export class AiToolRegistry {
     this.register(new SimulateMutationTool(this.options.reader));
     this.register(new DetectArchitectureViolationsTool(this.options.reader));
     this.register(new GetGitHotspotsTool(this.options.reader, this.options.workspaceRoot));
+    // Phase 1 v1 read-only surface. These tools are additive and require an
+    // explicit workspaceRoot for source access; the index-only tools remain
+    // usable when source access is unavailable.
+    this.register(new CodeReadTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new CodeFoldTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new ProjectInfoTool(this.options.reader));
+    this.register(new ProjectListFilesTool(this.options.reader));
+    this.register(new DiagnosticsGetTool(this.options.reader));
+    this.register(new SearchTextTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new SymbolInspectTool(this.options.reader));
+    this.register(new GainsReportTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new CodeOutlineTool(this.options.reader));
+    this.register(new SymbolFindTool(this.options.reader));
+    const phase2Engine = this.options.enablePhase2Edits && this.options.workspaceRoot
+      ? new TransactionalEditEngine(this.options.workspaceRoot, this.options.phase2JournalDirectory)
+      : undefined;
+    this.register(new StructuralSearchTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new RuleTestTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new SyntaxTreeDumpTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new EditPlanTool(this.options.reader, this.options.workspaceRoot, phase2Engine));
+    this.register(new EditApprovalTool(phase2Engine));
+    this.register(new EditApplyTool(phase2Engine));
+    this.register(new EditRollbackTool(phase2Engine));
+    // Phase 3 is experimental: no tool is exposed unless the host opts in.
+    if (this.options.experimental?.['semantic-graph'] === true && this.options.workspaceRoot) {
+      this.register(new SymbolReferencesTool(this.options.reader, this.options.workspaceRoot));
+      this.register(new SemanticGraphInspectTool(this.options.reader, this.options.workspaceRoot));
+    }
+    // Phase 4 remains opt-in and independently bounded. No Phase 4 tool is
+    // exposed unless the host explicitly enables controlled-expansion.
+    if (this.options.experimental?.['controlled-expansion'] === true) {
+      this.register(new Phase4ProviderStatusTool());
+      this.register(new Phase4ImpactTool(this.options.reader));
+      if (this.options.workspaceRoot) this.register(new Phase4ContextTool(this.options.reader, this.options.workspaceRoot));
+      const phase4Engine = this.options.enablePhase2Edits && this.options.workspaceRoot
+        ? new TransactionalEditEngine(this.options.workspaceRoot, this.options.phase2JournalDirectory)
+        : undefined;
+      if (this.options.workspaceRoot && phase4Engine) this.register(new Phase4RenameTool(this.options.reader, this.options.workspaceRoot, phase4Engine));
+    }
   }
 
   register(tool: AiTool): void {
