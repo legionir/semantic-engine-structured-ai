@@ -71,7 +71,7 @@ export function toProjectIndexLine(position: Position): number {
  */
 export function toProjectIndexLineCount(index: Pick<LineIndex, 'text' | 'lineCount'>): number {
   if (index.text.length === 0) return 0;
-  const endsWithLineBreak = /(?:\\r\\n|\\r|\\n)$/u.test(index.text);
+  const endsWithLineBreak = /(?:\r\n|\r|\n)$/u.test(index.text);
   return index.lineCount - (endsWithLineBreak ? 1 : 0);
 }
 

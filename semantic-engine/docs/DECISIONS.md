@@ -90,3 +90,81 @@
 - **Date:** 2026-09-21
 - **Decision:** Appendix B starting thresholds are recorded in `GATES.md` and must not be changed after measurement without a dated, owned decision.
 - **Status:** ACTIVE.
+
+## D-0010 — Point-to-point path queries are not depth-capped by default
+
+- **Date:** 2026-09-21
+- **Decision:** `GraphQueryEngine.shortestPath` defaults to unbounded depth (still bounded by
+  `maxNodes` and component exhaustion) when the caller has not passed `depth`. Neighborhood
+  queries (`neighbors`, `subgraph`, `bfs`) keep `DEFAULT_GRAPH_DEPTH = 2`.
+- **Reason:** the 2-hop default is a neighborhood-query policy; applied to `path(from, to)` it
+  made the فاز ۴۷ acceptance criterion (`path("API /login", "Database")`, five hops) unreachable —
+  three authored LayeredGraph tests were red on the pristine baseline (SE-P0-GRAPH-01). A caller
+  who already knows the target node cannot know the depth.
+- **Status:** DECIDED and FIXED; executed by `src/graphs/LayeredGraph.test.ts` (155/155 graph tests).
+
+## D-0011 — Visualization consumes the canonical edge-basis vocabulary
+
+- **Date:** 2026-09-21
+- **Decision:** `server/types.ts` `GraphEdge.metadata.basis` is widened to
+  `EdgeBasis | 'transitive' | 'blueprint' | 'index'`, and the two runtime guard sets
+  (`GraphViewModelMapper.EDGE_BASES`, `LodService.GRAPH_BASES`) carry the same values. Unknown
+  non-string bases are still rejected; nothing is guessed.
+- **Reason:** SE-P0-API-01 — the guard set was a stale subset without `import-resolved`, so every
+  real dependency edge the pipeline emits was silently dropped; the architecture view for a real
+  indexed project was empty and degraded to the file-level fallback. The strictness comment
+  ("never replace missing provenance with a guess") is preserved — the canonical vocabulary is
+  recognized, not guessed.
+- **Status:** DECIDED and FIXED; executed by `src/server/platform.e2e.test.ts` step 4.
+
+## D-0012 — The platform e2e fixture must contain a module boundary
+
+- **Date:** 2026-09-21
+- **Decision:** `platform.e2e.test.ts` places `auth.ts` under `src/auth/` and `user.ts` under
+  `src/api/`. No assertion was changed.
+- **Reason:** a single-module project *correctly* degrades to the SE-VIZ-01 file-level view; the
+  authored acceptance test asserted `level: 'architecture'` anyway. The contradiction was in the
+  fixture, not in the view and not in the assertion. With a real module boundary the view returns
+  level 1 data (layer + two modules + one cross-module edge), so both authored intents stand.
+- **Status:** DECIDED and FIXED; suite green (6/6).
+
+## D-0013 — One artifact-integrity gate for every serve path; legacy artifacts stay accepted
+
+- **Date:** 2026-09-21
+- **Decision:** `core/config/artifactManifest.ts` owns `MANIFEST_FILE_NAME` and
+  `assertIndexMatchesCommittedManifest`. HTTP (`ProjectService`), MCP
+  (`SemanticEngineMcpServer.reloadFromDisk`) and the MCP CLI entry (`cli.ts`, both load sites) all
+  pass through it. Artifacts with no manifest, or a manifest without a committed digest, remain
+  accepted (pre-Phase-0 policy, kept deliberately).
+- **Reason:** HTTP already refused a byte-mismatched pair; the MCP paths parsed and served it
+  silently — the consumer-visible half of SE-P0-PUB-01. Three copies of the manifest filename and
+  two copies of the check had already begun to drift; a gate with one owner cannot.
+- **Status:** DECIDED and FIXED; executed by `src/core/config/artifactManifest.test.ts`,
+  `src/ai/mcp/McpArtifactIntegrity.phase0.test.ts`, and the existing `runtimeArtifacts` suites.
+
+## D-0014 — Publication stays two-file; fail-closed consumption is the shipped invariant
+
+- **Date:** 2026-09-21
+- **Decision:** the writer keeps the index→manifest two-file order. True atomic publication of the
+  pair requires a generation-directory layout with an atomic pointer swap; that migration is
+  explicitly deferred (would invalidate stored artifact paths for all consumers). The shipped
+  invariant instead: **no serve path hands out a byte-mismatched pair, ever** (D-0013), so the
+  crash window degrades to "reload keeps the last good snapshot" instead of "consumers read a
+  torn state".
+- **Reason:** recording the architectural boundary honestly is better than claiming atomicity that
+  two independent files cannot have. SE-P0-PUB-01 is closed at the consumption layer and open at
+  the layout layer by decision.
+- **Status:** DECIDED (layout migration: POSTPONED, needs owner sign-off).
+
+## D-0015 — Unsatisfiable checks fail closed with named reasons; absent features are recorded, not faked
+
+- **Date:** 2026-09-21
+- **Decision:** `check:audit` preflights its three inputs and exits 1 with the named gap instead of
+  an `ENOENT` stack — the audit documents (`AUDIT-2026-08.md`, `EXECUTION-PLAN.md`,
+  `GRAPH-INTELLIGENCE-GAPS.md`) have never been committed to this repository and must come from the
+  owner. Separately: the apply→undo fuzz requirement is recorded as **NOT APPLICABLE**, because no
+  apply/undo implementation exists in this codebase to fuzz — inventing one to satisfy a test row
+  would be fabrication.
+- **Reason:** a gate that cannot pass for reasons outside the repo must say exactly that, and a
+  missing feature must stay a named gap, not a green checkmark.
+- **Status:** DECIDED.

@@ -28,15 +28,21 @@ Existing `semantic-engine/` contracts remain authoritative until direct source/t
 
 Directly inspect each boundary and link it to source symbols, tests, fixture IDs, command output, and exit code before changing any contract. Static file presence is not acceptance evidence.
 
-Still open after this stage:
+Still open after this stage (updated 2026-09-21, continuation):
 
-1. **SE-P0-PUB-01** — make the index/manifest pair coherent across an interruption
-   (write the manifest first with a pending marker, or publish into a new directory and swap).
-2. **SE-P0-COORD-01** — decide and document whether `file.lines` and `LineIndex.lineCount`
-   stay different numbers, and where a consumer converts between them.
+1. ~~SE-P0-PUB-01 (consumption half)~~ **CLOSED at the consumption layer:** every serve path
+   (HTTP `ProjectService`, MCP `reloadFromDisk`, MCP `cli.ts`) is fail-closed through
+   `core/config/artifactManifest.ts` (D-0013). The layout half stays open: true set atomicity
+   needs the generation-directory + pointer migration (D-0014, deferred, owner sign-off).
+2. **SE-P0-COORD-01** — mapping recorded and executed: `file.lines` = terminator count,
+   `LineIndex.lineCount` = logical lines; `toProjectIndexLine()`/`toProjectIndexLineCount()`
+   are the only bridges (`codeintel.test.ts` line-count bridge). Keeping the two numbers
+   different is now a documented contract, not a divergence.
 3. Wire `ConfinedFileProvider` (or a single shared confinement helper) into the MCP/HTTP read
-   paths, and unify it with `SourceSecurityGuard` (see D-0007).
-4. A handle issuer and a snapshot store, so `STALE_HANDLE`/`STALE_SNAPSHOT` become testable
-   runtime behaviour instead of a contract.
-5. The compatibility matrix (step 0.8), traceability matrix (step 0.9) and adopt-vs-build
-   decision (step 0.10).
+   paths, and unify it with `SourceSecurityGuard` (see D-0007). Still open.
+4. A handle issuer and a snapshot store: the reference `InMemorySnapshotStore` exists and is
+   LOCALLY tested; wiring to the permanent store and exposing `STALE_HANDLE`/`STALE_SNAPSHOT`
+   on the MCP runtime path remains open (matrix row 13).
+5. ~~Compatibility/traceability/adopt-vs-build~~ **DELIVERED:**
+   `phase0-compatibility-matrix.md` (0.8), `phase0-traceability-matrix.md` (0.9),
+   `phase0-adopt-vs-build.md` (0.10).

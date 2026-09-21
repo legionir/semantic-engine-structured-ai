@@ -5,6 +5,7 @@
 import type { ArtifactLocation } from '../core/config/DataRootResolver';
 import * as http from 'http';
 import { AuthContext, PermissionScope } from '../security/rbac/types';
+import type { EdgeBasis } from '../graphs/EdgeProvenance';
 
 export interface HttpRequestContext {
   readonly req: http.IncomingMessage;
@@ -148,7 +149,15 @@ export interface GraphEdge {
   readonly relation: EdgeRelation;
   readonly metadata: {
     readonly confidence: number;
-    readonly basis: 'resolved' | 'name-match' | 'transitive' | 'blueprint';
+    /*
+    | واژگانِ basis باید همان واژگانِ canonical لایهٔ گراف باشد
+    | (EdgeBasis در EdgeProvenance.ts) — پیش از این یک زیرمجموعهٔ
+    | کهنه نگه داشته می‌شد و یال‌های واقعیِ pipeline با
+    | basis:'import-resolved' همین‌جا بی‌صدا کنار گذاشته می‌شدند.
+    | 'transitive'/'blueprint' برای سازگاری و 'index' برای یال‌های
+    | لایه‌بندی‌شده (LayeredGraph) باقی‌اند.
+    */
+    readonly basis: EdgeBasis | 'transitive' | 'blueprint' | 'index';
     readonly sourceKind: 'compiler' | 'tree-sitter' | 'heuristic' | 'inferred';
     readonly line?: number;
   };

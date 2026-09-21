@@ -28,6 +28,7 @@ import { AiToolInput } from '../tools/types';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { resolveProjectIndexPath } from '../../core/config/ProjectPaths';
 import { parseIndexGeneration } from '../../core/config/indexGeneration';
+import { MANIFEST_FILE_NAME, assertIndexMatchesCommittedManifest } from '../../core/config/artifactManifest';
 import { loadBlueprintBeside } from '../discovery/loadBlueprint';
 
 export interface McpServerOptions {
@@ -149,10 +150,7 @@ export class SemanticEngineMcpServer {
    */
   private refreshGeneration(indexPath: string): void {
     try {
-      const manifestPath = path.join(
-        path.dirname(indexPath),
-        'project-artifacts.manifest.json'
-      );
+      const manifestPath = path.join(path.dirname(indexPath), MANIFEST_FILE_NAME);
       this.generation = parseIndexGeneration(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
     } catch {
       this.generation = 0;
@@ -169,7 +167,16 @@ export class SemanticEngineMcpServer {
     if (!indexPath || !fs.existsSync(indexPath)) return;
 
     try {
-      const projectIndex = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ProjectIndex;
+      /*
+      | fail-closed روی جفتِ artifact: انتشارِ index و manifest دو فایلِ
+      | مستقل است و crash میان آن‌ها indexِ جدید را کنار manifestِ قدیمی
+      | می‌گذارد. پیش از این، JSON معتبرِ ناسازگار بدون هیچ علامتی serve
+      | می‌شد؛ حالا تا سازگارشدن digest، آخرین snapshot سالم فعال می‌ماند
+      | و reload بعدی دوباره تلاش می‌کند.
+      */
+      const indexBytes = fs.readFileSync(indexPath);
+      assertIndexMatchesCommittedManifest(indexPath, indexBytes);
+      const projectIndex = JSON.parse(indexBytes.toString('utf8')) as ProjectIndex;
       this.refreshGeneration(indexPath);
       const loaded = loadBlueprintBeside(indexPath);
       this.reload(projectIndex, loaded.index ?? undefined);

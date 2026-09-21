@@ -19,6 +19,7 @@ import { validateAgainstSchema } from '../export/schemaValidation';
 import { FileSystemPort, NodeFileSystem } from '../host/FileSystem';
 import { ILogger, silentLogger } from '../host/Logger';
 import { nextIndexGeneration, parseIndexGeneration } from '../core/config/indexGeneration';
+import { MANIFEST_FILE_NAME } from '../core/config/artifactManifest';
 
 export interface OutputWriterOptions {
   readonly outputDir: string;
@@ -46,7 +47,9 @@ export interface WrittenArtifacts {
 
 export const INDEX_FILE_NAME = 'project-index.json';
 export const BLUEPRINT_FILE_NAME = 'blueprint.json';
-export const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
+// Canonical name lives in core/config/artifactManifest.ts; re-exported so
+// existing pipeline consumers keep their import site.
+export { MANIFEST_FILE_NAME };
 
 export class IncoherentArtifactSetError extends Error {
   readonly code = 'INCOHERENT_ARTIFACT_SET';

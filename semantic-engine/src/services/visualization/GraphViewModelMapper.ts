@@ -5,11 +5,20 @@
 import { NodeType, EdgeRelation, GraphNode, GraphEdge } from '../../server/types';
 import { SymbolEntry, FileEntry } from '../../core/types/project-index.types';
 
+/*
+| همان اتحادی که در server/types.ts اعلام شده: واژگانِ canonical
+| (EdgeProvenance) + میراثِ visualization + یال‌های لایه‌بندی‌شده.
+*/
 const EDGE_BASES = new Set<GraphEdge['metadata']['basis']>([
   'resolved',
+  'ast',
+  'import-resolved',
+  'declared',
+  'unresolved',
   'name-match',
   'transitive',
   'blueprint',
+  'index',
 ]);
 const EDGE_SOURCE_KINDS = new Set<GraphEdge['metadata']['sourceKind']>([
   'compiler',

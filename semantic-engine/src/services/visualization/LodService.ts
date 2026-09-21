@@ -12,11 +12,22 @@ import {
 } from '../../graphs/GraphQueryEngine';
 import { WorkflowStep } from '../../core/types/blueprint.types';
 
+/*
+| این مجموعه قبلاً زیرمجموعهٔ کهنه‌ای از واژگانِ basis بود و
+| یال‌های واقعیِ ایندکس — مثلاً basis:'import-resolved' ساختهٔ
+| pipeline — را رد می‌کرد؛ نتیجه معماریِ خالی و fallback به نمای
+| فایل بود. حالا با واژگانِ canonical لایهٔ گراف هم‌تراز است.
+*/
 const GRAPH_BASES = new Set<GraphEdge['metadata']['basis']>([
   'resolved',
+  'ast',
+  'import-resolved',
+  'declared',
+  'unresolved',
   'name-match',
   'transitive',
   'blueprint',
+  'index',
 ]);
 
 function edgeMetadata(provenance: unknown):

@@ -137,3 +137,70 @@ recorded npm run. Its new TypeScript and Jest files were reviewed statically and
 not be relabeled as evidence for the follow-up changes; rerun `npm ci`, `npm run build`,
 `npm test -- --silent`, `npm run lint`, and the focused suites before changing any gate
 status.
+
+---
+
+## 9. Continuation — transferred patch integrated and validated (2026-09-21, same day)
+
+The four follow-up commits (`14231578`, `721be53`, `673c3e5`, `52ab0636`, head `52ab0636`)
+landed on `arena/01a0c3c9-semantic-engine-structured-ai` on top of `fbc6164`. They were
+**WRITTEN / NOT EXECUTED** when authored (§8). They are now fetched, integrated and executed
+in this environment (same Node/npm/toolchain as §1), and the gaps they left open are fixed or
+recorded.
+
+### 9.1 Transferred-change defects found by the first execution
+
+| Defect | Root cause | Fix |
+|---|---|---|
+| `codeintel.test.ts` line-count bridge ×4 red | both the test data and the shipped regex were double-escaped (`'one\\\\n'` literal backslash sequences; `/(?:\\\\r\\\\n|…)/` matching literal backslashes) — the suite had never run | real terminators in data; `/(?:\r\n\|\r\|\n)$/` in `toProjectIndexLineCount()`; 165/165 contract tests green |
+
+### 9.2 Pre-existing red tests — root-caused and FIXED (no longer "pre-existing failures")
+
+| Id | Root cause (measured, not assumed) | Fix |
+|---|---|---|
+| SE-P0-GRAPH-01 (`LayeredGraph` ×3) | `shortestPath` inherited the 2-hop neighborhood default; the فاز ۴۷ acceptance path needs five hops. Resolution, edges, and BFS were all correct — the query died at `depthLimit=2` | point-to-point path queries default to unbounded depth, bounded by `maxNodes` + component exhaustion; explicit `depth` unchanged (D-0010). 155/155 graph tests green |
+| SE-P0-API-01 (`platform.e2e` "LoD Architecture Graph") | two causes: (a) the visualization `basis` guard was a stale subset (`resolved/name-match/transitive/blueprint`) that silently dropped every real `import-resolved` edge; (b) the e2e fixture fit every file in one module, which *correctly* triggers the SE-VIZ-01 file-level fallback | (a) vocabulary aligned to canonical `EdgeBasis` in `server/types.ts`, `GraphViewModelMapper`, `LodService` (D-0011); (b) fixture now has a module boundary, assertions untouched (D-0012). Suite 6/6 green |
+
+### 9.3 Open gaps closed this stage
+
+- **Artifact-integrity wiring (SE-P0-PUB-01 consumer half):** one shared gate
+  `core/config/artifactManifest.ts` now guards all three serve paths — HTTP `ProjectService`
+  (previously inline), MCP `SemanticEngineMcpServer.reloadFromDisk`, MCP `cli.ts` (both load
+  sites). Legacy artifacts without a manifest remain accepted by policy. Proofs:
+  `artifactManifest.test.ts` (7), `McpArtifactIntegrity.phase0.test.ts` (coherent served → torn
+  refused, last-good stays, generation frozen → coherent republish picked up, gen 1→2) (D-0013).
+  Layout-level atomicity deferred by decision (D-0014).
+- **check:audit:** preflight names the missing inputs (`AUDIT-2026-08.md`, `EXECUTION-PLAN.md`,
+  `GRAPH-INTELLIGENCE-GAPS.md` — never committed to this repository) and exits 1 with the named
+  gap instead of an ENOENT stack (D-0015). Still exit 1: owner input required.
+- **Steps 0.8–0.10 delivered:** `phase0-compatibility-matrix.md`,
+  `phase0-traceability-matrix.md`, `phase0-adopt-vs-build.md`.
+
+### 9.4 Commands of record (continuation)
+
+| # | Command | Result |
+|---|---|---|
+| C1 | `npm ci` (both packages) | exit 0 |
+| C2 | `npm run build` | exit 0 |
+| C3 | `npx eslint src` | exit 0 (same 4 pre-existing warnings, none new) |
+| C4 | `npx jest src/core/contracts` | 4 suites / 165 tests passed |
+| C5 | targeted Phase 0 suites (`pipeline`, `security`, `mcp`) | all green |
+| C6 | `npm test -- --silent` (after transfer, before §9.2 fixes) | 2 failed / 218 passed suites; 4 failed / 3028 / 3032 |
+| C7 | **`npm run test:gate` — run of record** | **exit 0 — 222/222 suites, 3040/3040 tests passed** |
+| C8 | `npm run check:audit` | exit 1 with named missing inputs (was: ENOENT stack) |
+| C9 | `git ls-remote origin` | remote session branch at `52ab0636`; `docs/audit-file-status` unchanged at `6a67a7f` |
+
+### 9.5 Gate verdict (updated)
+
+**Phase 0: 🟡 CONDITIONAL** — every executable check in this repository passes
+(`test:gate` exit 0, 3040/3040). Remaining blockers are explicitly **not** code:
+
+1. `check:audit` — unsatisfiable in-repo; the three audit documents live outside this
+   repository and must be committed by the owner (D-0015);
+2. true set-atomic publication — deferred architecture migration to a generation-directory
+   layout, needs owner sign-off (D-0014); the crash window is meanwhile fail-closed at every
+   serve path;
+3. snapshot/handle reference (`InMemorySnapshotStore`, LOCALLY tested) is not wired to the
+   permanent store or the MCP runtime — named gap, matrix row 13;
+4. apply→undo fuzz — NOT APPLICABLE until the feature exists (D-0015);
+5. ten 🟡 matrix rows keep their named missing halves (3, 4, 5, 7, 10, 13, 17, 18, 23, 24).

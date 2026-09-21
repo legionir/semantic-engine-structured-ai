@@ -195,10 +195,10 @@ describe('ProjectIndex line-count bridge', () => {
   test.each([
     ['', 0],
     ['one', 1],
-    ['one\\n', 1],
-    ['one\\ntwo', 2],
-    ['one\\ntwo\\n', 2],
-    ['one\\r\\ntwo\\r\\n', 2],
+    ['one\n', 1],
+    ['one\ntwo', 2],
+    ['one\ntwo\n', 2],
+    ['one\r\ntwo\r\n', 2],
   ] as const)('maps %j to FileEntry.lines=%i', (text, expected) => {
     expect(toProjectIndexLineCount(new LineIndex(text))).toBe(expected);
   });
