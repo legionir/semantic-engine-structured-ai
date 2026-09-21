@@ -94,23 +94,52 @@ export class SourceSecurityGuard {
     return { ok: true };
   }
 
+  /**
+   * Walks a symlink chain one hop at a time.
+   *
+   * SE-P0-SYM-01 — the previous version asked `fs.existsSync()` first and
+   * `fs.realpathSync()` second, which made both of its checks unreachable:
+   *
+   *   - `existsSync` follows links, so a cyclic link (`a → b → a`) reports
+   *     "does not exist" and the function returned `ok: true` for exactly the
+   *     case it was written to catch;
+   *   - `realpathSync` returns the *final* canonical path in one call, so the
+   *     chain was never walked and `maxSymlinkDepth` could never be exceeded.
+   *
+   * Measured with a two-link cycle and a five-deep chain: both were reported
+   * `ok: true`. `ReadBoundary.phase0.test.ts` now pins the corrected behaviour.
+   * A dangling link is still `ok: true` — there is nothing behind it to guard —
+   * but it is detected with `lstat`, which does not follow.
+   */
   validateSymlink(targetPath: string, visited: Set<string> = new Set()): { ok: boolean; reason?: string } {
+    const maxDepth = this.policy.maxSymlinkDepth || 3;
+    let current = targetPath;
+
     try {
-      if (!fs.existsSync(targetPath)) return { ok: true };
-      const stat = fs.lstatSync(targetPath);
-      if (!stat.isSymbolicLink()) return { ok: true };
+      for (let hops = 0; ; hops += 1) {
+        let stat: fs.Stats;
+        try {
+          stat = fs.lstatSync(current);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true };
+          throw err;
+        }
+        if (!stat.isSymbolicLink()) return { ok: true };
 
-      const real = fs.realpathSync(targetPath);
-      if (visited.has(real)) {
-        return { ok: false, reason: `Cyclic symlink loop detected at: ${targetPath}` };
+        const linkTarget = fs.readlinkSync(current);
+        const next = path.resolve(path.dirname(current), linkTarget);
+
+        if (visited.has(next)) {
+          return { ok: false, reason: `Cyclic symlink loop detected at: ${current}` };
+        }
+        visited.add(next);
+
+        if (hops + 1 > maxDepth) {
+          return { ok: false, reason: `Symlink traversal depth exceeded limit of ${maxDepth}` };
+        }
+
+        current = next;
       }
-      visited.add(real);
-
-      if (visited.size > (this.policy.maxSymlinkDepth || 3)) {
-        return { ok: false, reason: `Symlink traversal depth exceeded limit of ${this.policy.maxSymlinkDepth}` };
-      }
-
-      return this.validateSymlink(real, visited);
     } catch (err) {
       return { ok: false, reason: `Symlink resolution error: ${(err as Error).message}` };
     }

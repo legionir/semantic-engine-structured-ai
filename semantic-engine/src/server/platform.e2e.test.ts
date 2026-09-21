@@ -20,12 +20,17 @@ describe('Platform Core V1 — Full E2E Flow', () => {
   beforeAll(async () => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'se-platform-e2e-'));
 
-    // Create a real small codebase
+    // Create a real small codebase. Files live in TWO directories on
+    // purpose: with everything in a single module the architecture view
+    // correctly degrades to the file-level fallback (SE-VIZ-01), and the
+    // LoD level-1 contract — level 'architecture' with real module edges —
+    // needs a module boundary to cross.
     const srcDir = path.join(tmpRoot, 'src');
-    fs.mkdirSync(srcDir, { recursive: true });
+    fs.mkdirSync(path.join(srcDir, 'auth'), { recursive: true });
+    fs.mkdirSync(path.join(srcDir, 'api'), { recursive: true });
 
     fs.writeFileSync(
-      path.join(srcDir, 'auth.ts'),
+      path.join(srcDir, 'auth', 'auth.ts'),
       `export class AuthService {
   login(username: string, pass: string): boolean {
     return username === 'admin';
@@ -36,7 +41,7 @@ describe('Platform Core V1 — Full E2E Flow', () => {
     );
 
     fs.writeFileSync(
-      path.join(srcDir, 'user.ts'),
+      path.join(srcDir, 'api', 'user.ts'),
       `import { AuthService } from './auth';
 
 export class UserController {

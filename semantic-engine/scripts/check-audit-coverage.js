@@ -35,6 +35,23 @@ const AUDIT = path.join(ROOT, "AUDIT-2026-08.md");
 const PLAN = path.join(ROOT, "EXECUTION-PLAN.md");
 const GAPS = path.join(ROOT, "GRAPH-INTELLIGENCE-GAPS.md");
 
+/*
+| Preflight (Phase 0, 2026-09-21): the three inputs have never been
+| committed to this repository — not at docs/audit-file-status, not on
+| main. Until the owner supplies them, this check is unsatisfiable no
+| matter what the code does, and the raw ENOENT stack hid that. Fail
+| with the named gap instead of an exception trace.
+*/
+const missingInputs = [AUDIT, PLAN, GAPS].filter(file => !fs.existsSync(file));
+if (missingInputs.length > 0) {
+    console.error("check:audit cannot run — input documents are not in this repository:");
+    for (const file of missingInputs) {
+        console.error(`  missing: ${path.basename(file)} (expected at ${path.relative(ROOT, file)})`);
+    }
+    console.error("These audit documents exist outside this repo; ask the owner to commit them.");
+    process.exit(1);
+}
+
 const audit = fs.readFileSync(AUDIT, "utf8");
 const plan = fs.readFileSync(PLAN, "utf8");
 const gaps = fs.readFileSync(GAPS, "utf8");

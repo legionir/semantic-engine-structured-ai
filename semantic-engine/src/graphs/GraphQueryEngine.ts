@@ -508,7 +508,16 @@ export class GraphQueryEngine {
   private shortestPath(fromId: string, toId: string, options: TraversalOptions): PathResult {
     validateGraphTraversalOptions(options);
     const maxNodes = options.maxNodes ?? DEFAULT_GRAPH_MAX_NODES;
-    const depthLimit = options.depth ?? DEFAULT_GRAPH_DEPTH;
+    /*
+    | پرس‌وجوی «مسیر بین دو گرهٔ مشخص» با سقفِ عمقِ ۲ — پیش‌فرضِ
+    | پرس‌وجوهای همسایگی — عملاً همیشه null می‌دهد. معیار پذیرش فاز
+    | ۴۷ مسیرِ پنج‌گامیِ `API /login → Database` را فقط با
+    | `minConfidence: 0` می‌خواهد و این حق است: کسی که گرهٔ مقصد
+    | را داده، عمق را نمی‌داند. پس اینجا پیش‌فرض، بی‌سقف است و
+    | تنها مهار، `maxNodes` و تمام‌شدنِ مؤلفهٔ همبندی است؛ عمقِ
+    | داده‌شده‌شدهٔ صریح همچنان respected است.
+    */
+    const depthLimit = options.depth ?? Number.MAX_SAFE_INTEGER;
     const direction = options.direction ?? 'out';
 
     if (fromId === toId) {
