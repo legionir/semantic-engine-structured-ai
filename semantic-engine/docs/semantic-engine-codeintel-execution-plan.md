@@ -155,15 +155,16 @@
 
 **هدف:** baseline قابل‌تکرار، قراردادهای قفل‌شده و نگاشت specها به repo، پیش از هر قابلیت.\
 **وضعیت اولیه:** 🔴 NOT STARTED\
+**وضعیت اجرا:** 🟡 PARTIAL؛ Gate فعلی: 🔴 BLOCKED به دلیل نبود checkout و dependency environment قابل اجرا.\
 **وابستگی:** دسترسی به checkout، dependency tree و محیط اجرا.
 
 ### گام‌ها
 
-0.1. ثبت branch، revision دقیق، نسخه‌ی package، Node/npm، OS، hash lockfile و manifest.
+0.1. ثبت branch، revision دقیق، نسخه‌ی package، Node/npm، OS، hash lockfile و manifest. **وضعیت: 🟡 ناقص/تأییدنشده** — branch/revision/package/manifest/lockfile ثبت شده؛ اجرای محیط repository هنوز ممکن نیست.
 
 0.2. ثبت scriptهای واقعی و اجرای مستقل: build، typecheck، lint، test، `test:gate`، validate، snapshot، benchmark. برای هر کدام: command کامل، خروجی، exit code، timestamp. command ناموجود = `UNKNOWN`، نه pass.
 
-0.3. ایجاد/به‌روزرسانی `docs/DECISIONS.md`، `docs/CONTRACTS.md` و `docs/GATES.md` (آستانه‌ها، Appendix B).
+0.3. ایجاد/به‌روزرسانی `docs/DECISIONS.md`، `docs/CONTRACTS.md` و `docs/GATES.md` (آستانه‌ها، Appendix B). **وضعیت: 🟡 ناقص/تأییدنشده** — نسخه‌ی اولیه در شواهد Phase 0 آماده است؛ commit repository و بازبینی مستقیم هنوز باقی است.
 
 0.4. بازاعتبارسنجی مستقیم boundaryها: `ProjectIndex` schema/types، `ProjectPaths`/`ProjectRegistry`، scanner، parser/extractor، `IncrementalEngine`، `OutputWriter`، `ProjectIndexReader`، `AiToolRegistry`، MCP server، Gateway/worker lifecycle، filesystem port، تست‌ها.
 
