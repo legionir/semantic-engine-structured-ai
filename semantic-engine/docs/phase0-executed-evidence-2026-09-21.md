@@ -1,7 +1,7 @@
 # Phase 0 — Executed Evidence (2026-09-21)
 
 **Repository:** `legionir/semantic-engine-structured-ai`
-**Branch:** `arena/01a0c3c9-semantic-engine-structured-ai` @ `14231578c8422b345e0e7bede5c8de85f55c7f8e`
+**Branch:** `arena/01a0c3c9-semantic-engine-structured-ai` @ `673c3e52e617565bcb5a30d7c9986b158baaf79a`
 **Package under test:** `semantic-engine/`
 **Supersedes:** the command-evidence section of `phase0-baseline-2026-09-21.md`, which was
 written without an executable checkout. That file's limitation — "commands were **not**
