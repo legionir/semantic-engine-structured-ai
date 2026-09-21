@@ -56,8 +56,12 @@ export function languageForPath(filePath: string): StructuralLanguage {
 /**
  * Deterministic, dependency-free structural matcher. It deliberately accepts
  * line-oriented AST-shaped patterns and named metavariables ($NAME/$$$ARGS).
- * This is an adapter boundary: a future ast-grep adapter can implement the
- * same request/result contract without changing tools, transactions, or MCP.
+ * A pattern matches the code span it describes inside a line (for example
+ * `console.log($VALUE)` matches `console.log(user);`); start/end/column are
+ * UTF-16 offsets of that span, not of the whole line. Zero-length matches
+ * are rejected as noise. This is an adapter boundary: a future ast-grep
+ * adapter can implement the same request/result contract without changing
+ * tools, transactions, or MCP.
  */
 export function searchTextStructurally(text: string, request: Omit<StructuralSearchRequest, 'paths'> & { path: string }): StructuralSearchResult {
   const maxResults = request.maxResults ?? 1000;
@@ -72,22 +76,24 @@ export function searchTextStructurally(text: string, request: Omit<StructuralSea
     const candidate = line.trim();
     const matched = matchLine(candidate, pattern);
     if (matched && matches.length < maxResults) {
-      const start = offset + line.indexOf(candidate);
-      const end = start + candidate.length;
-      const id = crypto.createHash('sha256').update(`${request.path}:${start}:${end}:${candidate}`).digest('hex').slice(0, 16);
-      matches.push({ id, path: request.path, language: request.language, start, end, line: i + 1, column: Math.max(0, line.indexOf(candidate)), text: candidate, captures: matched, ...(request.ruleId ? { ruleId: request.ruleId } : {}) });
+      const candidateOffset = Math.max(0, line.indexOf(candidate));
+      const start = offset + candidateOffset + matched.start;
+      const end = start + matched.length;
+      const span = candidate.slice(matched.start, matched.start + matched.length);
+      const id = crypto.createHash('sha256').update(`${request.path}:${start}:${end}:${span}`).digest('hex').slice(0, 16);
+      matches.push({ id, path: request.path, language: request.language, start, end, line: i + 1, column: candidateOffset + matched.start, text: span, captures: matched.captures, ...(request.ruleId ? { ruleId: request.ruleId } : {}) });
     }
     offset += line.length + (text.slice(offset + line.length, offset + line.length + 2) === '\r\n' ? 2 : text[offset + line.length] ? 1 : 0);
   }
   return { matches, truncated: matches.length >= maxResults && lines.some((line, i) => i >= matches.length && matchLine(line.trim(), pattern) !== null) };
 }
 
-function matchLine(candidate: string, pattern: string): Readonly<Record<string, string>> | null {
+function matchLine(candidate: string, pattern: string): { readonly captures: Readonly<Record<string, string>>; readonly start: number; readonly length: number } | null {
   const captures: Record<string, string> = {};
   const captureNames: string[] = [];
   let regex = '';
   let cursor = 0;
-  const token = /\$\$\$?[A-Za-z_][A-Za-z0-9_]*/gu;
+  const token = /\$\$\$[A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z_][A-Za-z0-9_]*/gu;
   let match: RegExpExecArray | null;
   while ((match = token.exec(pattern))) {
     regex += escapeRegex(pattern.slice(cursor, match.index));
@@ -99,14 +105,14 @@ function matchLine(candidate: string, pattern: string): Readonly<Record<string, 
     cursor = match.index + match[0].length;
   }
   regex += escapeRegex(pattern.slice(cursor));
-  const found = new RegExp(`^\\s*${regex}\\s*$`, 'u').exec(candidate);
-  if (!found) return null;
+  const found = new RegExp(regex, 'u').exec(candidate);
+  if (!found || found[0].length === 0) return null;
   captureNames.forEach((name, index) => {
     const value = (found[index + 1] ?? '').trim();
     if (captures[name] !== undefined && captures[name] !== value) throw new Error(`metavariable ${name} matched inconsistent values`);
     captures[name] = value;
   });
-  return captures;
+  return { captures, start: found.index, length: found[0].length };
 }
 
 function escapeRegex(value: string): string { return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'); }

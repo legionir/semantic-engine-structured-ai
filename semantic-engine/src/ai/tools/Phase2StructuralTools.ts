@@ -61,6 +61,23 @@ export class EditRollbackTool implements AiTool {
   async execute(input: AiToolInput): Promise<AiToolOutput> { if (!this.engine || typeof input.transactionId !== 'string') return fail('DISABLED: transactional edits are not configured'); try { const record = await this.engine.rollback(input.transactionId); return ok([], { transactionId: record.transactionId, status: record.status }); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } }
 }
 
+export class EditStatusTool implements AiTool {
+  readonly name = 'edit_status'; readonly description = 'Inspect journaled transaction status without changing any file.';
+  readonly inputSchema = { type: 'object', properties: { transactionId: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 1000 } } };
+  constructor(private readonly engine?: TransactionalEditEngine) {}
+  async execute(input: AiToolInput): Promise<AiToolOutput> {
+    if (!this.engine) return fail('DISABLED: transactional edits are not configured');
+    try {
+      const records = await this.engine.recover();
+      const selected = typeof input.transactionId === 'string' ? records.filter(r => r.transactionId === input.transactionId) : records;
+      if (typeof input.transactionId === 'string' && selected.length === 0) return fail('NOT_FOUND: transaction');
+      const limit = typeof input.limit === 'number' ? input.limit : 100;
+      const rows = selected.slice(0, limit).map(r => ({ id: r.transactionId, name: r.status, kind: 'transaction', source: 'transaction-journal', metadata: { status: r.status, planId: r.plan.id, paths: r.plan.edits.map(e => e.path), editCount: r.plan.edits.length, updatedAt: r.updatedAt, diff: r.plan.diff.length > 4000 ? `${r.plan.diff.slice(0, 4000)}…` : r.plan.diff, diffTruncated: r.plan.diff.length > 4000 } }));
+      return ok(rows, { count: rows.length, truncated: selected.length > rows.length });
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  }
+}
+
 export function phase2EngineHash(text: string): string { return contentHash(text); }
 export type Phase2Rule = StructuralRule;
 export type Phase2Plan = EditPlan;

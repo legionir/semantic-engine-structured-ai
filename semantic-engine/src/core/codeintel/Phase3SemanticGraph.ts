@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ProjectIndexReader } from '../../ai/ProjectIndexReader';
 import { FileEntry, SymbolEntry } from '../types/project-index.types';
-import { compareCanonical, LineIndex, makeSymbolKey } from '../contracts/codeintel';
+import { compareCanonical, LineIndex, makeSymbolKey, sanitizeKeyPart } from '../contracts/codeintel';
 import { Phase1IndexPlatform } from './Phase1Platform';
 
 export type ResolutionConfidence = 'exact' | 'heuristic' | 'ambiguous' | 'unresolved';
@@ -86,7 +86,7 @@ export class Phase3SemanticGraphPilot {
   private findSymbol(value: string): SymbolEntry | undefined {
     return this.reader.getSymbolById(value) ?? [...this.reader.getAllSymbols()].find(s => this.symbolKey(s) === value || s.name === value);
   }
-  private symbolKey(symbol: SymbolEntry): string { const file = this.reader.getFileById(symbol.fileId); return String(makeSymbolKey(file?.path ?? symbol.fileId, symbol.fullyQualifiedName ?? symbol.name, symbol.kind)); }
+  private symbolKey(symbol: SymbolEntry): string { const file = this.reader.getFileById(symbol.fileId); return String(makeSymbolKey(file?.path ?? symbol.fileId, sanitizeKeyPart(symbol.fullyQualifiedName ?? symbol.name), sanitizeKeyPart(symbol.kind))); }
   private isTypeScript(file: FileEntry): boolean { return file.language === 'typescript' || file.language === 'javascript' || file.language === 'tsx' || /\.(tsx?|jsx?|mts|cts)$/u.test(file.path); }
   private async read(file: FileEntry): Promise<string> { const cached = this.sourceCache.get(file.id); if (cached !== undefined) return cached; const value = (await fs.readFile(path.resolve(this.workspaceRoot, file.path), 'utf8')).replace(/^\uFEFF/u, ''); this.sourceCache.set(file.id, value); return value; }
   private imports(file: FileEntry, text: string): ImportScan[] {

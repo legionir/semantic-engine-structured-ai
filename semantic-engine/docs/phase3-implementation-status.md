@@ -43,3 +43,14 @@ This patch implements one bounded TypeScript pilot, additively over `ProjectInde
 - Persistence migration/rollback: `NOT IMPLEMENTED IN THIS PILOT`
 
 This document is not a Phase 3 gate approval. The implementation remains experimental until the gold fixture, incremental/full equality, MCP execution, and precision threshold are executed and evidenced.
+
+## Gate closure 2026-09-21 — 🔴 BLOCKED / REMAINS EXPERIMENTAL
+
+Validation on `c2c7396` (+ gate-closure fixes): exact precision 1.0 ≥ 0.95 on
+the gold micro-fixture, incremental==full, ambiguity/unresolved retention, MCP
+e2e, experimental gating, and real-index execution all evidenced. Blocking
+gaps: G-3.1/G-3.5 (no persisted graph store or migration — stateless by
+design, owner decision required), G-3.7 (recall vs B0/B1, calibration, and
+adopted-tool comparison unmeasured; no Spike-S), G-3.9 (adopt-vs-build
+decision missing). Per the plan the pilot stays experimental-gated.
+Full report: `docs/validation/gate-closure-2026-09-21.md`.

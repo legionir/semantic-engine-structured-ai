@@ -36,3 +36,13 @@ Phase 4 gate: 🔴 BLOCKED / NOT ACCEPTED
 ```
 
 This document does not waive the Phase 3 prerequisite. Each additional Phase 4 capability still requires its own contract, fixture, failure-state, security boundary, metric, rollback evidence, and dated acceptance decision before it can be promoted beyond experimental status.
+
+## Gate closure 2026-09-21 — 🔴 BLOCKED / REMAINS EXPERIMENTAL
+
+Validation on `c2c7396` (+ gate-closure fixes): safety contract evidenced over
+real MCP calls (experimental gating, approval-gated rename planning, untrusted
+marking), deterministic budget-adherent context building, explicit provider
+status. Blocked because the Phase 3 prerequisite gate is unmet and quality
+criteria (recall@budget vs B0/B1, ablations; PPR/ranking not implemented) are
+unmeasured. Per-capability gates under plan §4.1–4.9 still required.
+Full report: `docs/validation/gate-closure-2026-09-21.md`.

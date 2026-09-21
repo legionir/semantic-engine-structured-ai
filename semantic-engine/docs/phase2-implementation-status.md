@@ -32,3 +32,13 @@ npm run test:gate
 ```
 
 Phase 2 status: `IMPLEMENTED / TESTS WRITTEN / NOT EXECUTED / GATE NOT ACCEPTED`.
+
+## Gate closure 2026-09-21 — 🟡 CONDITIONAL
+
+Validation on `c2c7396` (+ gate-closure fixes): all behavioral blocking
+criteria evidenced — MCP e2e `structural_search → edit_plan → edit_approve →
+edit_apply → edit_rollback` with byte verification, fuzz 1500/1500 byte-exact,
+crash/partial-failure recovery, `UNDO_CONFLICT`, host-only validators, v1
+regression green. Condition: G-2.1 — owner must ratify the dependency-free
+matcher seam as the implementation (→ 🟢) or require ast-grep integration
+(→ 🔴). Full report: `docs/validation/gate-closure-2026-09-21.md`.

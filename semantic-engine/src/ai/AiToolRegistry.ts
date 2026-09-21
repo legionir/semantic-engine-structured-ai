@@ -33,7 +33,7 @@ import {
   CodeOutlineTool,
   SymbolFindTool,
 } from './tools/Phase1ReadTools';
-import { StructuralSearchTool, RuleTestTool, SyntaxTreeDumpTool, EditPlanTool, EditApprovalTool, EditApplyTool, EditRollbackTool } from './tools/Phase2StructuralTools';
+import { StructuralSearchTool, RuleTestTool, SyntaxTreeDumpTool, EditPlanTool, EditApprovalTool, EditApplyTool, EditRollbackTool, EditStatusTool } from './tools/Phase2StructuralTools';
 import { TransactionalEditEngine } from '../core/codeintel/Phase2Transactions';
 import { SymbolReferencesTool, SemanticGraphInspectTool } from './tools/Phase3SemanticTools';
 import { Phase4ProviderStatusTool, Phase4ImpactTool, Phase4ContextTool, Phase4RenameTool } from './tools/Phase4ControlledTools';
@@ -68,6 +68,21 @@ export interface AiToolRegistryOptions {
   /** Experimental capabilities are opt-in and disabled by default. */
   readonly experimental?: Readonly<Record<string, boolean>>;
 }
+
+/**
+ * Phase 2 mutation tools — and the status read that observes them — are never
+ * served from, or stored into, the result cache. A cached `edit_apply`
+ * success would report a second identical call as applied without re-checking
+ * approval and preconditions, and a cached `edit_status` would report a stale
+ * transaction state after rollback; each call must execute honestly.
+ */
+const NON_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([
+  'edit_plan',
+  'edit_approve',
+  'edit_apply',
+  'edit_rollback',
+  'edit_status',
+]);
 
 export class AiToolRegistry {
   private readonly tools = new Map<string, AiTool>();
@@ -154,6 +169,7 @@ export class AiToolRegistry {
     this.register(new EditApprovalTool(phase2Engine));
     this.register(new EditApplyTool(phase2Engine));
     this.register(new EditRollbackTool(phase2Engine));
+    this.register(new EditStatusTool(phase2Engine));
     // Phase 3 is experimental: no tool is exposed unless the host opts in.
     if (this.options.experimental?.['semantic-graph'] === true && this.options.workspaceRoot) {
       this.register(new SymbolReferencesTool(this.options.reader, this.options.workspaceRoot));
@@ -209,7 +225,7 @@ export class AiToolRegistry {
     }
 
     const hash = this.projectHash;
-    if (this.options.enableCache !== false && hash) {
+    if (this.options.enableCache !== false && hash && !NON_CACHEABLE_TOOLS.has(name)) {
       const cached = this.cache.get(name, input, hash);
       if (cached) return cached;
 
