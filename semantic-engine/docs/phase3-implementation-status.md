@@ -66,3 +66,14 @@ default/re-export gaps, colliding overload keys. Calibration green
 no-go on the current pilot; go only with scoped resolver work, re-gated
 by the same fixture. Full report: `docs/validation/spike-s/report.md`.
 G-3.7 inputs (recall vs B0/B1, calibration) now measured; G-3.1/G-3.5/G-3.9 remain owner decisions. Phase 3 stays 🔴/experimental.
+
+## Owner ruling 2026-09-22 (D-0021) — persisted store REQUIRED
+
+G-3.1: PERSISTED SNAPSHOT STORE REQUIRED. G-3.5: PERSISTED RUNTIME/MCP
+HANDLE LIFECYCLE REQUIRED. Stateless pilot rejected for Phase 3
+acceptance / production contract / MCP lifecycle (spike/debug harness
+use only). G-3.7: FAIL (resolution fix required). G-3.9: FAIL (fix +
+re-gate). Phase 3: BLOCKED / NO-GO AS-IS. Ten executed-test acceptance
+criteria for the store + ordered next steps recorded in D-0021; order:
+record vote → fix resolution (five Spike-S blindnesses) → persisted
+lifecycle → re-run frozen goldens → re-gate → only then Phase 4.

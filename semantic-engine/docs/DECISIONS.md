@@ -279,3 +279,42 @@
   Rough size 2–4 engineer-weeks before migration/persistence questions.
   Feeds G-3.7 (measured) and G-3.9; G-3.1/G-3.5 remain owner decisions.
 - **Status:** RECORDED.
+
+## D-0021 — Owner ruling G-3.1/G-3.5: persisted store REQUIRED (stateless rejected for acceptance)
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-21 UTC)
+- **Decider:** repository owner (written ruling 2026-09-22, option
+  "store persisted").
+- **Ruling:** G-3.1: PERSISTED SNAPSHOT STORE REQUIRED. G-3.5: PERSISTED
+  RUNTIME/MCP HANDLE LIFECYCLE REQUIRED. Phase 3: NO-GO AS-IS.
+- **Reason (owner):** the stateless pilot served Spike-S measurement but
+  is insufficient for Phase 3 acceptance: snapshotId/generation must be
+  recoverable and validatable after restart; MCP handles must not depend
+  on process memory alone; stale-handle and snapshot-mismatch rejection
+  must stay fail-closed across crash/restart; incremental build must bind
+  to a durable comparable artifact; rollback, recovery, and stale-writer
+  detection are not trustworthy without a durable lifecycle; an
+  incidental pass via stateless full rebuild does not prove real
+  incremental parity.
+- **Explicit non-acceptance:** this ruling does NOT accept the current
+  resolution algorithm. Spike-S stands: P=0.925<0.95, R=0.742<B1/B0,
+  NO-GO. G-3.7: FAIL (resolution fix required). G-3.9: FAIL (resolution
+  fix + re-gate required). Phase 3: BLOCKED. Phase 4: BLOCKED.
+- **Persisted-store acceptance criteria (owner, executed tests required
+  before Phase 3 green):** (1) snapshot+generation save/restore across
+  restart; (2) durable handle issuance/validation; (3) stale-handle
+  rejection without returning source; (4) snapshot-mismatch and
+  generation-conflict rejection; (5) recovery after process kill during
+  publication; (6) atomic or generation-directory publication;
+  (7) incremental==full output equality after restart; (8) real execution
+  of the same scenarios via MCP/Gateway; (9) store schema
+  migration/versioning; (10) safe cleanup of old generations without
+  deleting the live artifact.
+- **Stateless scope (owner):** spike/debug harness ALLOWED; production
+  contract, Phase 3 acceptance, and MCP runtime lifecycle NOT allowed.
+- **Ordered next steps (owner, order must be kept):** (1) record this
+  vote in DECISIONS.md; (2) fix resolution per the five Spike-S
+  blindnesses; (3) implement persisted snapshot/runtime lifecycle;
+  (4) re-run the same frozen goldens; (5) re-gate precision, recall,
+  persistence, parity; (6) only after all pass, open Phase 4.
+- **Status:** DECIDED.
