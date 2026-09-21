@@ -64,3 +64,9 @@ Non-blocking follow-up recorded: Python/PHP explicitly unavailable
 (CLI-fallback or dynamic dylibs as future work).
 Evidence: `docs/validation/ast-grep-integration-2026-09-22.md`.
 On owner confirmation, next is Spike-S on the real engine.
+
+## Owner confirmation 2026-09-22 — 🟢 ACCEPTED
+
+D-0018: owner reviewed the ast-grep integration report and confirmed Phase 2
+ACCEPTED (non-blocking follow-up: Python/PHP via future CLI-fallback or
+dynamic dylibs). Spike-S authorized next.

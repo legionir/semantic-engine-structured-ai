@@ -220,3 +220,62 @@
   ast-grep (multiline). Error propagation fixed as F-11 (rule failures no
   longer masquerade as `passed: true`).
 - **Status:** DECIDED; implementation + executed matrix in this branch.
+
+## D-0018 — Owner confirms Phase 2 ACCEPTED; Spike-S authorized
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-21 UTC)
+- **Decider:** repository owner (explicit "proceed" 2026-09-22 on the D-0016
+  acceptance report `ast-grep-integration-2026-09-22.md`).
+- **Decision:** Phase 2 gate → 🟢 ACCEPTED. The D-0016 conditions (pinned
+  ast-grep, executed range/capture matrix, fixture parity, seam demoted to
+  explicit experimental fallback) are accepted as met. Recorded
+  non-blocking follow-up stands: Python/PHP structural search explicitly
+  unavailable (CLI-fallback or dynamic dylibs as future work).
+- **Authorization:** Spike-S is authorized next, on the real (ast-grep)
+  engine. Isolation adaptation: this session is fixed to a single branch,
+  so instead of a separate branch the spike lives in additive-only
+  `docs/validation/spike-s/` (fixture + scripts + report), touches no
+  shipped code paths, and performs no migrations. Output feeds G-3.7
+  (recall vs baselines) and G-3.9 (adopt-vs-build).
+- **Status:** DECIDED.
+
+## D-0019 — Native-binary rule reconciliation for the ast-grep engine
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-21 UTC)
+- **Decision:** Rule 2 of `phase0-adopt-vs-build.md` ("nothing binary is
+  linked into this package") is clarified, not violated, by the mandatory
+  `@ast-grep/napi` dependency (D-0016/D-0017, owner-confirmed D-0018):
+  (a) the rule's intent is language-*server* processes (heavy,
+  editor-coupled) staying spawn-only; linked *parsers* already have
+  precedent as optional deps (`tree-sitter-*`, napi-rs style);
+  (b) ast-grep is mandatory rather than optional because the default Phase 2
+  engine has no honest degradation (the seam is experimental-only by owner
+  order), with mitigations recorded in D-0017 (exact pin + drift test, lazy
+  load, fail-closed `AST_GREP_UNAVAILABLE`, tarball-contained binary, zero
+  audit findings, explicit SE-BUILD-10 allowlist entry).
+- **Status:** DECIDED (ratified by owner confirmation D-0018).
+
+## D-0020 — Spike-S executed on the real Phase 3 pilot (NO-GO as-is)
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-21 UTC)
+- **Context:** Authorized by D-0018. Additive-only under
+  `docs/validation/spike-s/` (12-file TS fixture + frozen `gold.json` with
+  20 goal→symbols tasks + `run.js` + `results.json` + `report.md`); no
+  shipped-code changes, no migrations. Method preregistered: M1 = seed +
+  enclosing symbols of `referencesFor(seed)` (single-query, plan-literal);
+  B0 = union keyword-substring files; B1 = both-direction depth-1 import
+  closure via independent scan. No adopted-tool comparison exists
+  (phase0-adopt-vs-build is dependency-only, in-house rule).
+- **Measured (locked GATES bars, macro):** M1 P=0.925 / R=0.742 vs B0
+  P=0.582 / R=0.787 vs B1 P=0.603 / R=0.896. All three bars FAIL:
+  P<0.95 (scope-blind exact on shadowed param), R<B1 and R<B0 (first-only
+  imports, same-file blindness, no graph walk, default/re-export gaps).
+  Calibration green: unresolved 4/4 retained, 1 ambiguous ref surfaced,
+  fileDeps 12/12, incremental==full, touched-unresolved 20/20.
+- **Decision input (no gate closed):** NO-GO on the current pilot;
+  go-with-graph-and-scope-work only (multi-name imports, same-file scan,
+  export-from/default/re-export binding, reference walk, scope-aware
+  exact, collision-free keys), re-gated by the same frozen fixture.
+  Rough size 2–4 engineer-weeks before migration/persistence questions.
+  Feeds G-3.7 (measured) and G-3.9; G-3.1/G-3.5 remain owner decisions.
+- **Status:** RECORDED.

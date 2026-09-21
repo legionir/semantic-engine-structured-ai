@@ -54,3 +54,15 @@ design, owner decision required), G-3.7 (recall vs B0/B1, calibration, and
 adopted-tool comparison unmeasured; no Spike-S), G-3.9 (adopt-vs-build
 decision missing). Per the plan the pilot stays experimental-gated.
 Full report: `docs/validation/gate-closure-2026-09-21.md`.
+
+## Spike-S executed 2026-09-22 — NO-GO as-is (decision input, not a gate)
+
+Real-pilot run on the frozen gold fixture (`docs/validation/spike-s/`):
+macro M1 P=0.925/R=0.742 vs B0 R=0.787 vs B1 R=0.896 — all three locked
+bars fail (P<0.95; R<B1; R<B0). Structural causes evidenced: scope-blind
+`exact`, first-only imports, same-file blindness, no graph walk,
+default/re-export gaps, colliding overload keys. Calibration green
+(unresolved 4/4, ambiguous surfaced, incremental==full). Recommendation:
+no-go on the current pilot; go only with scoped resolver work, re-gated
+by the same fixture. Full report: `docs/validation/spike-s/report.md`.
+G-3.7 inputs (recall vs B0/B1, calibration) now measured; G-3.1/G-3.5/G-3.9 remain owner decisions. Phase 3 stays 🔴/experimental.
