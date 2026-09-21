@@ -46,3 +46,49 @@ Still open after this stage (updated 2026-09-21, continuation):
 5. ~~Compatibility/traceability/adopt-vs-build~~ **DELIVERED:**
    `phase0-compatibility-matrix.md` (0.8), `phase0-traceability-matrix.md` (0.9),
    `phase0-adopt-vs-build.md` (0.10).
+
+## Phase 2 ast-grep engine contract (D-0016, executed 2026-09-22)
+
+Implemented in `src/core/codeintel/Phase2AstGrep.ts` (engine) behind the
+unchanged `StructuralSearchRequest`/`StructuralSearchResult` contract in
+`Phase2Structural.ts`. Executed by `src/core/codeintel/Phase2AstGrep.test.ts`
+(23 tests) plus unchanged parity in `Phase2Structural.test.ts`.
+
+- **Pin:** `@ast-grep/napi` exactly `0.45.3` in `dependencies` (mandatory: the
+  default engine has no honest degradation). A test asserts
+  `package.json` == installed `node_modules` == `AST_GREP_VERSION` and fails
+  on any drift. The `.node` binary ships inside the platform tarball (no
+  install/postinstall network); the module is lazy-loaded so platforms
+  without a prebuilt binding fail closed with `AST_GREP_UNAVAILABLE` instead
+  of breaking the import graph.
+- **Languages:** `typescript`→`TypeScript`, `javascript`→`JavaScript`,
+  `tsx`→`Tsx`. Every other language (including `python`, `php`, `unknown`)
+  throws `UNSUPPORTED_LANGUAGE` naming the supported set. Python/PHP structural
+  search needs dynamic-language dylibs or a CLI fallback (recorded follow-up,
+  explicitly unavailable per plan §1.3).
+- **Range unit (plan 2.3, verified empirically):** `node.range().*.index` is a
+  UTF-16 code-unit offset on 0.45.3 (the shipped `.d.ts` comment claims bytes;
+  Persian/emoji/CRLF probes prove UTF-16: `text.slice(start, end) ===
+  node.text()`). `start`/`end` are used directly after bounds validation
+  (violation → `AST_GREP_RANGE_ERROR`, never a corrupt offset). `line`
+  (1-based) and `column` (0-based UTF-16) are ALWAYS derived from our own
+  `LineIndex`, never from the engine — ast-grep does not count a lone `\r`
+  as a line break while this contract does.
+- **Captures:** `$NAME` → `getMatch(name)?.text() ?? ''`; `$$$NAME` → source
+  span from the first bound node's start to the last bound node's end
+  (anonymous nodes such as commas are included in the span), `''` when empty.
+  Repeated `$NAME` must match identical text (enforced natively).
+- **Matcher honesty:** empty patterns and non-positive bounds are rejected
+  before touching the engine; engine matcher errors surface as
+  `INVALID_PATTERN`; unparseable patterns match nothing (upstream napi
+  behavior, pinned by test — never a crash, never a silent pass).
+- **Ordering/bounds:** matches sorted by `(start, end, id)`; output sliced to
+  `maxResults` with an honest `truncated` flag.
+- **Legacy seam:** `engine: 'legacy-seam'` is an explicitly experimental,
+  library-level-only fallback (line patterns, no parser). Tools and MCP never
+  select it. It must not be described as ast-grep-compatible; a committed
+  test proves the divergence (multiline pattern: engine finds 1, seam 0).
+- **Tool error propagation (F-11):** `structural_search` surfaces adapter
+  errors verbatim (never wrapped/mislabelled) and reports read failures as
+  `IO_ERROR`; `structural_rule_test` propagates a failing rule's error
+  instead of reporting `passed: true`.

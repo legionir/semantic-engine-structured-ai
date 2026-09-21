@@ -1,9 +1,16 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { searchAstGrep } from './Phase2AstGrep';
 
 export type StructuralLanguage = 'typescript' | 'javascript' | 'tsx' | 'python' | 'php' | 'unknown';
 export type RuleSeverity = 'info' | 'warning' | 'error';
+/**
+ * Search engine selector (D-0016 / G-2.1). `ast-grep` is the default and only
+ * accepted engine; `legacy-seam` is an explicitly experimental fallback that
+ * must not be described as ast-grep-compatible (line patterns, no parser).
+ */
+export type SearchEngine = 'ast-grep' | 'legacy-seam';
 
 export interface StructuralMatch {
   readonly id: string;
@@ -24,6 +31,8 @@ export interface StructuralSearchRequest {
   readonly paths: readonly string[];
   readonly maxResults?: number;
   readonly ruleId?: string;
+  /** Defaults to `ast-grep`. `legacy-seam` is explicitly experimental. */
+  readonly engine?: SearchEngine;
 }
 
 export interface StructuralRule {
@@ -54,16 +63,24 @@ export function languageForPath(filePath: string): StructuralLanguage {
 }
 
 /**
- * Deterministic, dependency-free structural matcher. It deliberately accepts
- * line-oriented AST-shaped patterns and named metavariables ($NAME/$$$ARGS).
- * A pattern matches the code span it describes inside a line (for example
- * `console.log($VALUE)` matches `console.log(user);`); start/end/column are
- * UTF-16 offsets of that span, not of the whole line. Zero-length matches
- * are rejected as noise. This is an adapter boundary: a future ast-grep
- * adapter can implement the same request/result contract without changing
- * tools, transactions, or MCP.
+ * Structural search entry point. Defaults to the real ast-grep engine
+ * (`Phase2AstGrep`); pass `engine: 'legacy-seam'` only for the explicitly
+ * experimental dependency-free fallback. Tools and MCP never select the
+ * fallback: it is a library-level opt-in, not a silent degradation.
  */
 export function searchTextStructurally(text: string, request: Omit<StructuralSearchRequest, 'paths'> & { path: string }): StructuralSearchResult {
+  if ((request.engine ?? 'ast-grep') === 'legacy-seam') return searchLegacySeam(text, request);
+  return searchAstGrep(text, request);
+}
+
+/**
+ * EXPERIMENTAL fallback: deterministic, dependency-free line-pattern matcher.
+ * It accepts line-oriented patterns and named metavariables ($NAME/$$$ARGS)
+ * WITHOUT a parser: no nested syntax, no multiline, no AST fidelity. It must
+ * not be described as ast-grep-compatible (D-0016). Kept only so hosts that
+ * explicitly opt in keep a working seam where ast-grep has no parser.
+ */
+export function searchLegacySeam(text: string, request: Omit<StructuralSearchRequest, 'paths'> & { path: string }): StructuralSearchResult {
   const maxResults = request.maxResults ?? 1000;
   if (!Number.isInteger(maxResults) || maxResults <= 0) throw new Error('maxResults must be a positive integer');
   const pattern = request.pattern.trim();

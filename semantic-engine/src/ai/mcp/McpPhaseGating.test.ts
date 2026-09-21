@@ -19,6 +19,7 @@ import { contentHash } from '../../core/codeintel/Phase2Transactions';
 
 const A_TS = 'import { add } from "./b";\nexport const total = add(1, 2);\n';
 const B_TS = 'export function add(a: number, b: number) {\n  return a + b;\n}\n';
+const C_PY = 'x = 1\n';
 
 function createIndex(rootPath: string): ProjectIndex {
   return {
@@ -30,6 +31,7 @@ function createIndex(rootPath: string): ProjectIndex {
     files: [
       { id: 'fa', path: 'src/a.ts', language: 'typescript', encoding: 'utf8', size: A_TS.length, lines: 2, hash: contentHash(A_TS), modified: '2026-01-01T00:00:00.000Z', binary: false, testFile: false, generated: false },
       { id: 'fb', path: 'src/b.ts', language: 'typescript', encoding: 'utf8', size: B_TS.length, lines: 3, hash: contentHash(B_TS), modified: '2026-01-01T00:00:00.000Z', binary: false, testFile: false, generated: false },
+      { id: 'fc', path: 'src/c.py', language: 'python', encoding: 'utf8', size: C_PY.length, lines: 1, hash: contentHash(C_PY), modified: '2026-01-01T00:00:00.000Z', binary: false, testFile: false, generated: false },
     ],
     symbols: [
       { id: 's-add', fileId: 'fb', parentId: null, kind: 'function', name: 'add', fullyQualifiedName: 'add', line: 1, endLine: 3, signature: 'function add(a: number, b: number)', source: 'tree-sitter', confidence: makeConfidence(100), exported: true },
@@ -37,7 +39,7 @@ function createIndex(rootPath: string): ProjectIndex {
     ],
     graphs: { callGraph: [], typeGraph: [], dependencyGraph: [] },
     diagnostics: [],
-    metrics: { totalFiles: 2, totalLoc: 5, totalSymbols: 2, avgCyclomaticComplexity: 1, languageBreakdown: { typescript: 2 } },
+    metrics: { totalFiles: 3, totalLoc: 6, totalSymbols: 2, avgCyclomaticComplexity: 1, languageBreakdown: { typescript: 2, python: 1 } },
   } as ProjectIndex;
 }
 
@@ -54,6 +56,7 @@ describe('MCP Phase 2/3/4 gating', () => {
     fs.mkdirSync(path.join(root, 'src'), { recursive: true });
     fs.writeFileSync(path.join(root, 'src', 'a.ts'), A_TS, 'utf8');
     fs.writeFileSync(path.join(root, 'src', 'b.ts'), B_TS, 'utf8');
+    fs.writeFileSync(path.join(root, 'src', 'c.py'), C_PY, 'utf8');
   });
 
   afterEach(() => {
@@ -147,6 +150,35 @@ describe('MCP Phase 2/3/4 gating', () => {
       expect(plan.isError).toBe(false);
       expect(payload(plan).items[0].metadata.readOnlyPreview).toBe(true);
       expect(fs.readFileSync(path.join(root, 'src', 'a.ts'), 'utf8')).toBe(A_TS);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('runs rule packs on the ast-grep engine and fails rules honestly (F-11)', async () => {
+    const server = new SemanticEngineMcpServer({
+      projectIndex: createIndex(root),
+      workspaceRoot: root,
+    });
+    try {
+      const pack = JSON.stringify({ rules: [{ id: 'r-add', language: 'typescript', pattern: 'add($A, $B)', message: 'add call' }] });
+      const ok = await server.callTool('structural_rule_test', { rules: pack, path: 'src/a.ts' });
+      expect(ok.isError).toBe(false);
+      const body = payload(ok);
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].kind).toBe('rule:warning');
+      expect(body.metadata.passed).toBe(false);
+
+      // A rule the engine cannot execute must FAIL, never report passed:true.
+      const pyPack = JSON.stringify({ rules: [{ id: 'r-py', language: 'python', pattern: 'x', message: 'py' }] });
+      const bad = await server.callTool('structural_rule_test', { rules: pyPack, path: 'src/c.py' });
+      expect(bad.isError).toBe(true);
+      expect(payload(bad).error).toContain('UNSUPPORTED_LANGUAGE');
+      expect(payload(bad).error).not.toContain('INVALID_RULE_PACK');
+
+      const search = await server.callTool('structural_search', { pattern: 'x', language: 'python', path: 'src/c.py' });
+      expect(search.isError).toBe(true);
+      expect(payload(search).error).toContain('UNSUPPORTED_LANGUAGE');
     } finally {
       await server.close();
     }

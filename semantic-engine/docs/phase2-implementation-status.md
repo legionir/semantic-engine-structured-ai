@@ -42,3 +42,25 @@ crash/partial-failure recovery, `UNDO_CONFLICT`, host-only validators, v1
 regression green. Condition: G-2.1 — owner must ratify the dependency-free
 matcher seam as the implementation (→ 🟢) or require ast-grep integration
 (→ 🔴). Full report: `docs/validation/gate-closure-2026-09-21.md`.
+
+## Owner decision 2026-09-22 — 🔴 BLOCKED UNTIL AST-GREP INTEGRATION
+
+G-2.1 (D-0016 in `docs/DECISIONS.md`): AST-GREP REQUIRED. The dependency-free
+matcher stays a temporary adapter boundary only and may remain solely as an
+explicitly experimental fallback; it must not be described as
+ast-grep-compatible. Phase 2 returns to 🔴 until a pinned `@ast-grep/napi`
+(or CLI fallback) implementation is integrated with executed range/capture
+coverage ($NAME, $$$ARGS, nested, multiline, UTF-16, CRLF, invalid syntax)
+and parity with current fixtures, followed by full build/test/gate and
+Spike-S on the real engine.
+
+## Integration 2026-09-22 — D-0016 CONDITIONS MET, PROPOSED 🟢 (pending owner confirmation)
+
+Pinned `@ast-grep/napi@0.45.3` integrated behind the unchanged contract;
+executed matrix (23 engine tests + unchanged fixture parity + MCP rule e2e);
+seam kept only as explicit experimental fallback with committed
+not-compatible proof; full validation green (234/3114, gate exit 0, audit 0).
+Non-blocking follow-up recorded: Python/PHP explicitly unavailable
+(CLI-fallback or dynamic dylibs as future work).
+Evidence: `docs/validation/ast-grep-integration-2026-09-22.md`.
+On owner confirmation, next is Spike-S on the real engine.

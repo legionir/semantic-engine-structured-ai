@@ -168,3 +168,55 @@
 - **Reason:** a gate that cannot pass for reasons outside the repo must say exactly that, and a
   missing feature must stay a named gap, not a green checkmark.
 - **Status:** DECIDED.
+
+## D-0016 — G-2.1: ast-grep is REQUIRED for Phase 2 (owner decision)
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-21 UTC)
+- **Decider:** repository owner (relayed 2026-09-22; review of patch + traceability `34df0d3`)
+- **Decision:** The dependency-free matcher remains a temporary adapter boundary only.
+  Phase 2 cannot be accepted until a pinned ast-grep implementation
+  (`@ast-grep/napi` or CLI fallback) is integrated and its range/capture
+  behavior is covered by executed tests. The current seam may remain available
+  only as an explicitly experimental fallback and must not be described as
+  ast-grep-compatible.
+- **Reason:** review confirmed the F-01…F-10 fixes, the executed logs, no
+  regression and no test weakening — but none of that evidences behavioral
+  parity between the line-pattern seam and ast-grep (or any independent
+  baseline). The seam is a line-pattern matcher, not a real parser; accepting
+  it as the official Phase 2 implementation without false-positive /
+  false-negative and nested-syntax evidence would overstate structural search.
+- **Consequences:**
+  - Phase 2 gate: 🟡 CONDITIONAL → 🔴 BLOCKED UNTIL INTEGRATION.
+  - Work order: pin `@ast-grep/napi` → adapter behind the current
+    request/result contract → seam kept only as explicit experimental fallback
+    → executed range/capture matrix ($NAME, $$$ARGS, nested, multiline,
+    UTF-16, CRLF, invalid syntax) → parity with current fixtures → full
+    build/test/gate → Spike-S on the real engine.
+  - Phase 1 stays 🟢 ACCEPTED; Phases 3/4 stay 🔴 BLOCKED; release NOT GRANTED.
+- **Status:** DECIDED; implementation in progress on `arena/01a0c5f3-semantic-engine-structured-ai`.
+
+## D-0017 — ast-grep integration record (implements D-0016)
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-21 UTC)
+- **Decision:** `@ast-grep/napi` pinned exactly at `0.45.3` as a MANDATORY
+  `dependencies` entry (not optional): the default Phase 2 engine has no
+  honest degradation, so optionality would ship a feature that errors by
+  default on minimal installs. The SE-BUILD-10 packaging test allowlist was
+  extended with a conscious-decision comment and its name corrected to the
+  real invariant ("no install-time download/build" instead of "pure JS"):
+  the `.node` binary ships inside the platform tarball (verified: no
+  install/postinstall scripts), only the current platform's tarball is
+  fetched from the same registry, and the module is lazy-loaded so exotic
+  platforms fail closed with `AST_GREP_UNAVAILABLE` at search time.
+- **Scope:** napi engine covers TypeScript/JavaScript/TSX (the only bundled
+  parsers; verified from installed types). `registerDynamicLanguage` needs
+  per-language compiled dylibs and is not viable to ship casually, so
+  Python/PHP structural search stays explicitly `UNSUPPORTED_LANGUAGE`
+  (non-blocking per plan §1.3: explicitly-declared-unavailable languages)
+  with CLI-fallback-or-dynamic-dylib recorded as follow-up work.
+- **No silent fallback:** tools/MCP always use ast-grep; the legacy seam is
+  selectable only via explicit library-level `engine: 'legacy-seam'`, is
+  documented experimental, and a committed test proves it diverges from
+  ast-grep (multiline). Error propagation fixed as F-11 (rule failures no
+  longer masquerade as `passed: true`).
+- **Status:** DECIDED; implementation + executed matrix in this branch.
