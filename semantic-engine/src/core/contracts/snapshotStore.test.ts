@@ -1,4 +1,4 @@
-import { CODEINTEL_ERROR_CODES } from './codeintel';
+import { CODEINTEL_ERROR_CODES, Handle } from './codeintel';
 import { InMemorySnapshotStore } from './snapshotStore';
 
 describe('InMemorySnapshotStore — stale-handle runtime contract', () => {
@@ -34,7 +34,7 @@ describe('InMemorySnapshotStore — stale-handle runtime contract', () => {
   test('rejects an out-of-range handle without source content', () => {
     const store = new InMemorySnapshotStore();
     store.publish('s1', { 'a.ts': 'old' });
-    const forged = 'a.ts:0-99#' + 'a'.repeat(8) as any;
+    const forged = 'a.ts:0-99#' + 'a'.repeat(8) as Handle;
     const result = store.readHandle('r4', 's1', forged);
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe(CODEINTEL_ERROR_CODES.STALE_HANDLE);
