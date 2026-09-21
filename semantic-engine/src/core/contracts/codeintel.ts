@@ -11,27 +11,41 @@ export interface TextRange {
   readonly end: Position;
 }
 
+/** A single source of truth for UTF-16 offsets and all supported EOL forms. */
 export class LineIndex {
+  /** The indexed text is decoded and has one leading BOM removed. */
+  readonly text: string;
   private readonly starts: readonly number[];
-  private readonly text: string;
+  private readonly ends: readonly number[];
 
-  constructor(text: string) {
-    this.text = text;
+  constructor(input: string) {
+    this.text = input.startsWith("\uFEFF") ? input.slice(1) : input;
     const starts: number[] = [0];
-    for (let i = 0; i < text.length; i += 1) {
-      if (text[i] === "\n") starts.push(i + 1);
+    const ends: number[] = [];
+    let i = 0;
+    while (i < this.text.length) {
+      if (this.text[i] === "\r") {
+        ends.push(i);
+        i += this.text[i + 1] === "\n" ? 2 : 1;
+        starts.push(i);
+      } else if (this.text[i] === "\n") {
+        ends.push(i);
+        i += 1;
+        starts.push(i);
+      } else {
+        i += 1;
+      }
     }
+    ends.push(this.text.length);
     this.starts = starts;
+    this.ends = ends;
   }
 
   get lineCount(): number { return this.starts.length; }
 
   offsetAt(position: Position): number {
     this.assertPosition(position);
-    const lineStart = this.starts[position.line];
-    const lineEnd = this.lineEnd(position.line);
-    const offset = Math.min(lineStart + position.character, lineEnd);
-    return offset;
+    return Math.min(this.starts[position.line] + position.character, this.ends[position.line]);
   }
 
   positionAt(offset: number): Position {
@@ -46,7 +60,7 @@ export class LineIndex {
       else high = mid - 1;
     }
     const line = Math.max(0, high);
-    return { line, character: offset - this.starts[line] };
+    return { line, character: Math.min(offset, this.ends[line]) - this.starts[line] };
   }
 
   toOffsets(range: TextRange): { start: number; end: number } {
@@ -54,13 +68,6 @@ export class LineIndex {
     const end = this.offsetAt(range.end);
     if (end < start) throw new RangeError("range end precedes range start");
     return { start, end };
-  }
-
-  private lineEnd(line: number): number {
-    const next = this.starts[line + 1];
-    if (next === undefined) return this.text.length;
-    // Exclude LF and a preceding CR from the logical line contents.
-    return Math.max(this.starts[line], next - (this.text[next - 2] === "\r" ? 2 : 1));
   }
 
   private assertPosition(position: Position): void {
@@ -73,22 +80,51 @@ export class LineIndex {
   }
 }
 
+export interface SymbolIdentity {
+  readonly symbolKey: SymbolKey;
+  readonly signatureHash?: string;
+}
+
 export type SymbolKey = string & { readonly __symbolKey: unique symbol };
-export function makeSymbolKey(fileId: string, qualifiedName: string, kind: string): SymbolKey {
-  if (!fileId || !qualifiedName || !kind) throw new TypeError("symbol key parts must be non-empty");
-  return `${fileId}::${kind}::${qualifiedName}` as SymbolKey;
+export function makeSymbolKey(
+  relativePath: string,
+  qualifiedName: string,
+  kind: string,
+  ordinal?: number,
+): SymbolKey {
+  if (!relativePath || !qualifiedName || !kind) throw new TypeError("symbol key parts must be non-empty");
+  if (ordinal !== undefined && (!Number.isInteger(ordinal) || ordinal < 0)) {
+    throw new TypeError("symbol ordinal must be a non-negative integer");
+  }
+  const suffix = ordinal === undefined ? "" : `#${ordinal}`;
+  return `${relativePath}::${qualifiedName}::${kind}${suffix}` as SymbolKey;
 }
 
 export type Handle = string & { readonly __handle: unique symbol };
-export function makeHandle(namespace: string, id: string): Handle {
-  if (!/^[a-z][a-z0-9._-]*$/u.test(namespace) || !id) throw new TypeError("invalid handle");
-  return `h_${namespace}_${id}` as Handle;
+export function makeHandle(relativePath: string, start: number, end: number, hash8: string): Handle {
+  if (!relativePath || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
+    throw new TypeError("invalid handle range");
+  }
+  if (!/^[a-f0-9]{8}$/u.test(hash8)) throw new TypeError("handle hash must be eight lowercase hex characters");
+  return `${relativePath}:${start}-${end}#${hash8}` as Handle;
+}
+
+export type TrustLevel = "untrusted-source-content";
+export interface EnvelopeStats {
+  readonly durationMs?: number;
+  readonly resultCount?: number;
+  readonly truncated?: boolean;
 }
 
 export interface Envelope<T> {
   readonly ok: boolean;
   readonly requestId: string;
   readonly schemaVersion: "1";
+  readonly snapshotId: string;
+  readonly trust: TrustLevel;
+  readonly stats: EnvelopeStats;
+  readonly warnings: readonly string[];
+  readonly sessionId?: string;
   readonly data?: T;
   readonly error?: CodeIntelError;
 }
@@ -100,12 +136,12 @@ export interface CodeIntelError {
   readonly details?: Readonly<Record<string, unknown>>;
 }
 
-export function ok<T>(requestId: string, data: T): Envelope<T> {
-  return { ok: true, requestId, schemaVersion: "1", data };
+export function ok<T>(requestId: string, snapshotId: string, data: T, options: Partial<Pick<Envelope<T>, "stats" | "warnings" | "sessionId">> = {}): Envelope<T> {
+  return { ok: true, requestId, schemaVersion: "1", snapshotId, trust: "untrusted-source-content", stats: options.stats ?? {}, warnings: options.warnings ?? [], ...(options.sessionId ? { sessionId: options.sessionId } : {}), data };
 }
 
-export function fail<T = never>(requestId: string, error: CodeIntelError): Envelope<T> {
-  return { ok: false, requestId, schemaVersion: "1", error };
+export function fail<T = never>(requestId: string, snapshotId: string, error: CodeIntelError, options: Partial<Pick<Envelope<T>, "stats" | "warnings" | "sessionId">> = {}): Envelope<T> {
+  return { ok: false, requestId, schemaVersion: "1", snapshotId, trust: "untrusted-source-content", stats: options.stats ?? {}, warnings: options.warnings ?? [], ...(options.sessionId ? { sessionId: options.sessionId } : {}), error };
 }
 
 export interface CodeIntelConfig {

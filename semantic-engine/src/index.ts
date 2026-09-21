@@ -9,6 +9,8 @@
 // Phase 0 additive CodeIntel contracts
 export { LineIndex, makeHandle, makeSymbolKey, ok, fail, DEFAULT_CODEINTEL_CONFIG, canonicalJson } from './core/contracts/codeintel';
 export type { Position, TextRange, SymbolKey, Handle, Envelope, CodeIntelError, CodeIntelConfig } from './core/contracts/codeintel';
+export { deterministicPaths } from './core/contracts/ports';
+export type { FileMetadata, FileProvider, TokenCounter } from './core/contracts/ports';
 
 // Core types
 export type {

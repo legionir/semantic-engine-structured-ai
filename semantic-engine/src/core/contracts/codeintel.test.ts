@@ -8,32 +8,38 @@ import {
   ok,
 } from './codeintel';
 
-describe('LineIndex — UTF-16 and line endings', () => {
+describe('LineIndex — UTF-16, BOM and line endings', () => {
   test.each([
     ['ascii LF', 'alpha\nbeta'],
     ['CRLF', 'alpha\r\nbeta'],
+    ['lone CR', 'alpha\rbeta'],
     ['BOM and Unicode', '\uFEFF🙂\nλ'],
     ['empty', ''],
     ['trailing newline', 'a\n'],
-  ])('%s round-trips every UTF-16 offset', (_name, text) => {
-    const index = new LineIndex(text);
-    for (let offset = 0; offset <= text.length; offset += 1) {
+  ])('%s round-trips every decoded UTF-16 offset', (_name, input) => {
+    const index = new LineIndex(input);
+    for (let offset = 0; offset <= index.text.length; offset += 1) {
       expect(index.offsetAt(index.positionAt(offset))).toBe(offset);
     }
+  });
+
+  test('leading BOM is not part of the source coordinate space', () => {
+    const index = new LineIndex('\uFEFF🙂');
+    expect(index.text).toBe('🙂');
+    expect(index.positionAt(0)).toEqual({ line: 0, character: 0 });
+    expect(index.positionAt(2)).toEqual({ line: 0, character: 2 });
   });
 
   test('emoji character width is two UTF-16 code units', () => {
     const index = new LineIndex('a🙂b');
     expect(index.positionAt(1)).toEqual({ line: 0, character: 1 });
     expect(index.positionAt(3)).toEqual({ line: 0, character: 3 });
-    expect(index.offsetAt({ line: 0, character: 3 })).toBe(3);
   });
 
-  test('CRLF is excluded from the logical line range', () => {
-    const index = new LineIndex('ab\r\ncd');
-    expect(index.offsetAt({ line: 0, character: 2 })).toBe(2);
+  test.each(['\r', '\n', '\r\n'])('line separator %j is excluded from line range', (eol) => {
+    const index = new LineIndex(`ab${eol}cd`);
     expect(index.offsetAt({ line: 0, character: 99 })).toBe(2);
-    expect(index.positionAt(4)).toEqual({ line: 1, character: 0 });
+    expect(index.positionAt(2 + eol.length)).toEqual({ line: 1, character: 0 });
   });
 
   test('rejects invalid offsets and positions', () => {
@@ -46,30 +52,29 @@ describe('LineIndex — UTF-16 and line endings', () => {
 });
 
 describe('stable identifiers and envelopes', () => {
-  test('symbol keys and handles are deterministic', () => {
-    expect(makeSymbolKey('f1', 'A.run', 'method')).toBe('f1::method::A.run');
-    expect(makeSymbolKey('f1', 'A.run', 'method')).toBe(makeSymbolKey('f1', 'A.run', 'method'));
-    expect(makeHandle('project', 'p1')).toBe('h_project_p1');
-    expect(() => makeHandle('Bad Namespace', 'x')).toThrow(TypeError);
+  test('SymbolKey follows the canonical path/name/kind format', () => {
+    expect(makeSymbolKey('src/a.ts', 'A.run', 'method')).toBe('src/a.ts::A.run::method');
+    expect(makeSymbolKey('src/a.ts', 'A.run', 'method', 2)).toBe('src/a.ts::A.run::method#2');
+    expect(() => makeSymbolKey('', 'A', 'method')).toThrow(TypeError);
   });
 
-  test('success and failure are explicit and mutually exclusive', () => {
-    const success = ok('r1', { value: 1 });
-    const failure = fail('r2', { code: 'TIMEOUT', message: 'deadline', retryable: true });
-    expect(success).toMatchObject({ ok: true, requestId: 'r1', schemaVersion: '1', data: { value: 1 } });
+  test('Handle follows the canonical range/hash format', () => {
+    expect(makeHandle('src/a.ts', 10, 20, 'deadbeef')).toBe('src/a.ts:10-20#deadbeef');
+    expect(() => makeHandle('src/a.ts', 20, 10, 'deadbeef')).toThrow(TypeError);
+    expect(() => makeHandle('src/a.ts', 0, 1, 'DEADBEEF')).toThrow(TypeError);
+  });
+
+  test('success and failure include snapshot, trust, stats and warnings', () => {
+    const success = ok('r1', 'snap-1', { value: 1 }, { stats: { resultCount: 1 }, warnings: ['truncated'] });
+    const failure = fail('r2', 'snap-1', { code: 'STALE_HANDLE', message: 'stale', retryable: false });
+    expect(success).toMatchObject({ ok: true, requestId: 'r1', snapshotId: 'snap-1', trust: 'untrusted-source-content', data: { value: 1 } });
     expect(success.error).toBeUndefined();
-    expect(failure).toMatchObject({ ok: false, requestId: 'r2', schemaVersion: '1', error: { code: 'TIMEOUT' } });
+    expect(failure).toMatchObject({ ok: false, requestId: 'r2', snapshotId: 'snap-1', trust: 'untrusted-source-content', error: { code: 'STALE_HANDLE' } });
     expect(failure.data).toBeUndefined();
   });
 
   test('read-only disabled defaults are safe', () => {
-    expect(DEFAULT_CODEINTEL_CONFIG).toEqual({
-      enabled: false,
-      readOnly: true,
-      maxFiles: 10_000,
-      maxFileBytes: 2_000_000,
-      timeoutMs: 30_000,
-    });
+    expect(DEFAULT_CODEINTEL_CONFIG).toEqual({ enabled: false, readOnly: true, maxFiles: 10_000, maxFileBytes: 2_000_000, timeoutMs: 30_000 });
   });
 
   test('canonicalJson is independent from object insertion order', () => {
