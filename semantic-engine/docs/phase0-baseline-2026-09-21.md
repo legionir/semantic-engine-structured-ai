@@ -43,6 +43,13 @@ The branch tree includes `semantic-engine/src`, `semantic-engine/scripts`, `sema
 - adopt-vs-build measurements;
 - read-security execution and MCP/Gateway lifecycle execution.
 
+## Superseded for command evidence
+
+`phase0-executed-evidence-2026-09-21.md` records the same commands **actually executed** in an
+executable checkout (`npm ci`, `npm run build`, `npm run lint`, `npm test`, `npm run
+check:audit`) with their results. The limitation stated below — "commands were **not**
+executed" — applied to this file only and no longer applies to the phase.
+
 ## Current verdict
 
 **Phase 0: 🔴 BLOCKED.** The canonical plan is persisted, and the initial evidence inventory/contracts/gates are recorded. The phase cannot become 🟡 or 🟢 until an executable repository checkout with dependencies is available and the missing commands, fixtures, source mappings, security checks, and MCP/Gateway paths are run non-destructively with captured output and exit codes.

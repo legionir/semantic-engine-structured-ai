@@ -267,7 +267,14 @@ describeIfBuilt('MIG-51 — دستور index', () => {
       fs.mkdirSync(path.join(workspace, 'src'));
       fs.writeFileSync(path.join(workspace, 'src', 'a.ts'), 'export const a = 1;\n');
 
-      const result = run(['index', '--root', workspace,]);
+      /*
+      | Phase 0: the flag the test is named for was missing from the
+      | invocation — since فاز ۴ the default is `external`, so the test
+      | asserted the *legacy* layout while running the new default and had
+      | been red under `npm test` ever since. The flag is what makes the
+      | expectation true.
+      */
+      const result = run(['index', '--root', workspace, '--artifact-location', 'in-root']);
       expect(result.code).toBe(EXIT.ok);
       expect(
         fs.existsSync(path.join(workspace, '.semantic-engine', 'project-index.json'))

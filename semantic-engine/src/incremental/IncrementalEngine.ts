@@ -177,6 +177,9 @@ export class IncrementalEngine {
       const result = await this.handleRename(event);
       if (result) {
         changedFileIds.add(result.fileId);
+        for (const symbolId of result.removedSymbolIds ?? []) {
+          removedSymbolIds.add(symbolId);
+        }
         if (result.content) {
           fileContents.set(result.fileId, result.content);
         }
@@ -513,6 +516,13 @@ export class IncrementalEngine {
     fileId: string;
     dependents: FileEntry[];
     content?: string;
+    /**
+     * SE-P0-PARITY-02 — symbolهای فایلِ *مسیر قبلی* وقتی محتوا هم عوض شده
+     * (یا rename به فایل ناموجود تنزل می‌کند). بدون این‌ها `rebuildGraphs`
+     * یال‌های مرده را نگه می‌داشت، چون `removeFile` دیگر آن‌ها را در
+     * `projectIndex.symbols` نمی‌گذارد.
+     */
+    removedSymbolIds?: readonly string[];
   } | null> {
     if (!event.oldPath || !this.store) return null;
 
@@ -534,9 +544,17 @@ export class IncrementalEngine {
 
     const newAbsolutePath = path.join(this.options.workspaceRoot, event.path);
     if (!fs.existsSync(newAbsolutePath)) {
-      // rename به فایل موجود نیست → به‌عنوان delete
-      this.store.removeFile(oldFile.id);
-      return { fileId: oldFile.id, dependents: [] };
+      /*
+      | rename به فایل موجود نیست → به‌عنوان delete.
+      |
+      | SE-P0-PARITY-02: قبلاً فقط `removeFile` صدا زده می‌شد و هم
+      | شناسهٔ symbolهای رفته دور ریخته می‌شد و هم وابسته‌های فایلِ
+      | قدیمی بازپردازش نمی‌شدند. یعنی مسیر rename یک زیرمجموعهٔ
+      | ناقصِ مسیر delete بود.
+      */
+      const dependents = this.store.getTransitiveDependents(oldFile.id);
+      const removedSymbolIds = this.store.removeFile(oldFile.id);
+      return { fileId: oldFile.id, dependents, removedSymbolIds };
     }
 
     // مقایسه hash محتوا
@@ -545,14 +563,16 @@ export class IncrementalEngine {
     const newHash = sha256(newContent);
 
     if (newHash === oldFile.hash) {
-      // محتوا یکسان → id ثابت، فقط path آپدیت می‌شود
-      const updatedFile: FileEntry = {
-        ...oldFile,
-        path: event.path,
-        modified: new Date().toISOString(),
-      };
-      this.store.removeFile(oldFile.id);
-      this.store.upsertFile(updatedFile);
+      /*
+      | محتوا یکسان → id ثابت، فقط path آپدیت می‌شود.
+      |
+      | SE-P0-PARITY-01: این‌جا `removeFile` + `upsertFile` استفاده
+      | می‌شد. `removeFile` symbolهای فایل را هم پاک می‌کند (SE-INC-11)،
+      | پس rename فایل را بی‌symbol می‌گذاشت: ایندکس افزایشی ۵ symbol،
+      | rebuild کامل ۶. `renameFile` مسیر را عوض می‌کند و symbolها را
+      | نگه می‌دارد، چون rename یعنی همان فایل با مسیر دیگر.
+      */
+      this.store.renameFile(oldFile.id, event.path);
       this.idGenerator.invalidate(oldFile.path);
       /*
       | SE-INC-01: `getId` این‌جا بود، با کامنتِ «cache new path → old
@@ -568,19 +588,27 @@ export class IncrementalEngine {
       };
     }
 
-    // محتوا تغییر کرده → delete old + create new
-    this.store.removeFile(oldFile.id);
+    /*
+    | محتوا تغییر کرده → delete old + create new.
+    |
+    | SE-P0-PARITY-02: وابسته‌های مسیر قدیمی (مثلاً فایلی که
+    | `import { alpha } from './a'` داشت) باید بازپردازش شوند، وگرنه
+    | import آن‌ها تا ابد به شناسهٔ فایلی اشاره می‌کند که دیگر نیست.
+    */
+    const oldDependents = this.store.getTransitiveDependents(oldFile.id);
+    const removedSymbolIds = this.store.removeFile(oldFile.id);
     const result = await this.reprocessFile(event.path);
     if (result) {
       this.store.upsertFile(result.file);
       this.store.setSymbolsForFile(result.file.id, result.symbols);
       return {
         fileId: result.file.id,
-        dependents: this.store.getTransitiveDependents(result.file.id),
+        dependents: [...oldDependents, ...this.store.getTransitiveDependents(result.file.id)],
         content: result.content,
+        removedSymbolIds,
       };
     }
-    return { fileId: oldFile.id, dependents: [] };
+    return { fileId: oldFile.id, dependents: oldDependents, removedSymbolIds };
   }
 
   /**

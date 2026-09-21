@@ -229,6 +229,34 @@ export class ProjectIndexStore {
   }
 
   /**
+   * تغییر مسیر یک فایل بدون از دست دادن هویت آن — SE-P0-PARITY-01.
+   *
+   * مسیرِ rename با محتوای بدون‌تغییر، `removeFile` + `upsertFile` را صدا
+   * می‌زد. `removeFile` (طبق SE-INC-11) عمداً `symbolsByFileId` را هم پاک
+   * می‌کند، و `upsertFile` چیزی برای برگرداندنشان ندارد. اندازه‌گیری با
+   * fixture فاز ۰: بعد از rename، ایندکس افزایشی ۵ symbol داشت و یک
+   * rebuild کامل ۶ — همان یک symbolِ فایلِ جابه‌جاشده.
+   *
+   * rename یعنی «همان فایل، مسیر دیگر»، پس نگاشت symbolها باید دست‌نخورده
+   * بماند؛ فقط کلیدهای مسیر عوض می‌شوند.
+   */
+  renameFile(fileId: string, newPath: string): FileEntry | null {
+    const file = this.fileById.get(fileId);
+    if (!file) return null;
+
+    const renamed: FileEntry = {
+      ...file,
+      path: normalizePath(newPath),
+      modified: new Date().toISOString(),
+    };
+    this.fileByPath.delete(normalizePath(file.path));
+    this.fileById.set(fileId, renamed);
+    this.fileByPath.set(normalizePath(renamed.path), renamed);
+    this.syncArrays();
+    return renamed;
+  }
+
+  /**
    * جایگزینی symbol های یک فایل.
    */
   setSymbolsForFile(fileId: string, symbols: readonly SymbolEntry[]): void {
