@@ -1,7 +1,7 @@
 # Phase 0 — Executed Evidence (2026-09-21)
 
 **Repository:** `legionir/semantic-engine-structured-ai`
-**Branch:** `docs/audit-file-status` @ `6a67a7f80668bc68ea391d65d3fd4b7af84e46ad`
+**Branch:** `arena/01a0c3c9-semantic-engine-structured-ai` @ `14231578c8422b345e0e7bede5c8de85f55c7f8e`
 **Package under test:** `semantic-engine/`
 **Supersedes:** the command-evidence section of `phase0-baseline-2026-09-21.md`, which was
 written without an executable checkout. That file's limitation — "commands were **not**
@@ -52,8 +52,8 @@ jest's own summary lines, not from a pipeline's exit code.
 
 | ID | Gap | Evidence |
 |---|---|---|
-| **SE-P0-PUB-01** | `OutputWriter.write()` writes the index first and the manifest second. An interruption between the two leaves a **new index beside an old manifest**, so `manifest.artifacts.index.sha256` does not describe the file next to it. Per-file atomicity is solid; *set* atomicity is not. | `src/pipeline/Publication.phase0.test.ts` — "measured behaviour: the index moves on and the manifest still describes the previous one", plus the repair test. |
-| **SE-P0-COORD-01** | `file.lines` counts line terminators (`wc -l`: a file ending in `\n` with 3 breaks reports 3) while `LineIndex.lineCount` counts the empty line a trailing break opens (4). Both are defensible; the mapping between them is not stated anywhere a consumer can find it. | `IncrementalParity.phase0.test.ts` asserts both numbers side by side; recorded here and in `CONTRACTS.md`. |
+| **SE-P0-PUB-01** | The legacy two-file publication cannot atomically rename two independent paths. It is now fail-closed for consumers using `readCoherentArtifactSet()`: digest and byte count are verified before an index is exposed, and mismatch raises `INCOHERENT_ARTIFACT_SET`. The underlying writer interruption window remains open until all consumers migrate to a generation-directory/pointer layout. | `src/pipeline/Publication.phase0.test.ts` measures the interruption; `src/pipeline/ArtifactSetReader.phase0.test.ts` proves mismatch rejection. |
+| **SE-P0-COORD-01** | `file.lines` counts line terminators (`wc -l`: a file ending in `\n` with 3 breaks reports 3) while `LineIndex.lineCount` counts the empty line a trailing break opens (4). The explicit bridge `toProjectIndexLineCount()` now defines and tests the conversion, including empty text, LF, CRLF and trailing breaks. | `src/core/contracts/codeintel.ts` + `codeintel.test.ts`; `CONTRACTS.md` mapping row. |
 | **SE-P0-GRAPH-01** | `LayeredGraph` cross-layer path finding returns `path: null` in three acceptance tests, including the API → Database route its own phase-47 criterion requires. | `npx jest src/graphs/LayeredGraph.test.ts` → 3 failed. **Pre-existing**: identical in the pristine tree (run 4) before any change in this stage. |
 | **SE-P0-API-01** | `GET /api/v1/projects/:id/visualization/architecture` answers `level: "file"` where the platform e2e expects `"architecture"`. | `npx jest src/server/platform.e2e.test.ts` → 1 failed. **Pre-existing**, unchanged by this stage. |
 
@@ -75,6 +75,8 @@ Added (implementation / contract): `src/core/contracts/fileProvider.ts`
 
 Changed: `src/core/contracts/codeintel.ts` and `ports.ts` (contract rules documented and
 tightened), `src/core/contracts/codeintel.test.ts` and `ports.test.ts` (rebuilt),
+`src/core/contracts/snapshotStore.ts` + `snapshotStore.test.ts` (reference handle issuer/verifier),
+`src/pipeline/OutputWriter.ts` + `ArtifactSetReader.phase0.test.ts` (fail-closed artifact reader),
 `src/services/source/SourceSecurityGuard.ts` (SE-P0-SYM-01),
 `src/incremental/IncrementalEngine.ts` + `ProjectIndexStore.ts` (SE-P0-PARITY-01/02),
 `src/cli/cli.test.ts` (SE-P0-CLI-01).
@@ -118,10 +120,20 @@ security, size/count limits, deadline/cancellation, MCP read-only behaviour, and
 3. the compatibility matrix (step 0.8), the traceability matrix (step 0.9) and adopt-vs-build
    (step 0.10) are not written;
 4. ten of the 24 required items are still 🟡 with named missing halves (matrix rows 3, 4, 5, 7,
-   10, 17, 18, 19, 23, 24), one is blocked by design (row 20 — no apply/undo implementation),
-   and one is blocked until a handle issuer exists (row 13 — runtime staleness);
+   10, 17, 18, 19, 23, 24), one is blocked by design (row 20 — no apply/undo implementation).
+   Row 13 now has an in-memory issuer/verifier contract with stale-handle tests; production
+   snapshot-store wiring and MCP exposure remain unverified.
 5. the repository's own gate, `npm run test:gate`, exits 1 because of the four pre-existing
    red tests in §4 — it cannot be green while those two suites are;
 6. `npm run check:audit` cannot run in this snapshot at all.
 
 A 🟡 or ⛔ is not a failure of the code; it is the honest state of the evidence.
+
+## 8. Post-fix validation status
+
+The follow-up commit `14231578c8422b345e0e7bede5c8de85f55c7f8e` was authored after the
+recorded npm run. Its new TypeScript and Jest files were reviewed statically and are
+**WRITTEN / NOT EXECUTED** in this environment. The earlier command results above must
+not be relabeled as evidence for the follow-up changes; rerun `npm ci`, `npm run build`,
+`npm test -- --silent`, `npm run lint`, and the focused suites before changing any gate
+status.
