@@ -6,6 +6,10 @@
  * from `@aicoder/semantic-engine`.
  */
 
+// Phase 0 additive CodeIntel contracts
+export { LineIndex, makeHandle, makeSymbolKey, ok, fail, DEFAULT_CODEINTEL_CONFIG, canonicalJson } from './core/contracts/codeintel';
+export type { Position, TextRange, SymbolKey, Handle, Envelope, CodeIntelError, CodeIntelConfig } from './core/contracts/codeintel';
+
 // Core types
 export type {
   ProjectIndex,
