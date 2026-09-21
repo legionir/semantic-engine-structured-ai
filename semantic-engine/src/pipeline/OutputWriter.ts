@@ -48,6 +48,44 @@ export const INDEX_FILE_NAME = 'project-index.json';
 export const BLUEPRINT_FILE_NAME = 'blueprint.json';
 export const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
 
+export class IncoherentArtifactSetError extends Error {
+  readonly code = 'INCOHERENT_ARTIFACT_SET';
+  constructor(message: string) {
+    super(message);
+    this.name = 'IncoherentArtifactSetError';
+  }
+}
+
+/**
+ * Fail-closed reader for the legacy two-file layout. A writer interruption can
+ * never be silently interpreted as a valid index: the manifest digest is
+ * checked before JSON is exposed to a consumer. Callers should use this
+ * helper (or the equivalent generation-aware reader) instead of reading the
+ * two files independently.
+ */
+export async function readCoherentArtifactSet(
+  outputDir: string,
+  fileSystem: FileSystemPort = new NodeFileSystem()
+): Promise<ProjectIndex> {
+  const manifestPath = path.join(outputDir, MANIFEST_FILE_NAME);
+  const indexPath = path.join(outputDir, INDEX_FILE_NAME);
+  const manifest = JSON.parse(await fileSystem.readFile(manifestPath)) as {
+    artifacts?: { index?: { path?: string; sha256?: string; bytes?: number } | null };
+  };
+  const expected = manifest.artifacts?.index;
+  if (!expected?.sha256 || expected.path !== INDEX_FILE_NAME) {
+    throw new IncoherentArtifactSetError('artifact manifest has no canonical index digest');
+  }
+  const raw = await fileSystem.readFile(indexPath);
+  const actual = crypto.createHash('sha256').update(raw, 'utf8').digest('hex');
+  if (actual !== expected.sha256 || Buffer.byteLength(raw, 'utf8') !== expected.bytes) {
+    throw new IncoherentArtifactSetError(
+      `manifest does not describe ${INDEX_FILE_NAME}; refusing to expose source-derived data`
+    );
+  }
+  return JSON.parse(raw) as ProjectIndex;
+}
+
 export class OutputWriter {
   private readonly fs: FileSystemPort;
   private readonly logger: ILogger;

@@ -63,6 +63,18 @@ export function toProjectIndexLine(position: Position): number {
   return position.line + CODEINTEL_LINE_BASE + 1;
 }
 
+/**
+ * Bridge for `FileEntry.lines`, whose existing contract follows `countLines`:
+ * it counts line terminators and does not count the empty logical line opened
+ * by a trailing terminator. `LineIndex.lineCount` deliberately exposes the
+ * editor/LSP view and therefore differs for empty and trailing-newline text.
+ */
+export function toProjectIndexLineCount(index: Pick<LineIndex, 'text' | 'lineCount'>): number {
+  if (index.text.length === 0) return 0;
+  const endsWithLineBreak = /(?:\\r\\n|\\r|\\n)$/u.test(index.text);
+  return index.lineCount - (endsWithLineBreak ? 1 : 0);
+}
+
 /** A line break, `[start, end)`, as an offset range. */
 export interface LineBreak {
   readonly start: number;

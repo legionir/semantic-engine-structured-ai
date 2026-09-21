@@ -3,6 +3,7 @@ import {
   CODEINTEL_LINE_BASE,
   DEFAULT_CODEINTEL_CONFIG,
   LineIndex,
+  toProjectIndexLineCount,
   canonicalJson,
   codeIntelError,
   compareCanonical,
@@ -187,6 +188,19 @@ describe('LineIndex — UTF-16, BOM and line endings', () => {
     expect(CODEINTEL_LINE_BASE).toBe(0);
     expect(toProjectIndexLine({ line: 0, character: 4 })).toBe(1);
     expect(toProjectIndexLine({ line: 6, character: 0 })).toBe(7);
+  });
+});
+
+describe('ProjectIndex line-count bridge', () => {
+  test.each([
+    ['', 0],
+    ['one', 1],
+    ['one\\n', 1],
+    ['one\\ntwo', 2],
+    ['one\\ntwo\\n', 2],
+    ['one\\r\\ntwo\\r\\n', 2],
+  ] as const)('maps %j to FileEntry.lines=%i', (text, expected) => {
+    expect(toProjectIndexLineCount(new LineIndex(text))).toBe(expected);
   });
 });
 
