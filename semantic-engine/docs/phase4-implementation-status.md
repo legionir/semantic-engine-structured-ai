@@ -46,3 +46,14 @@ status. Blocked because the Phase 3 prerequisite gate is unmet and quality
 criteria (recall@budget vs B0/B1, ablations; PPR/ranking not implemented) are
 unmeasured. Per-capability gates under plan §4.1–4.9 still required.
 Full report: `docs/validation/gate-closure-2026-09-21.md`.
+
+## Gate measurement 2026-09-22 (D-0027) — 🔴 → 🟢 ACCEPTED (executive)
+
+The Phase 3 prerequisite gate is ACCEPTED (D-0026). `context_build_v4` now consumes the
+measured Phase 3 retrieval layer (goal-aware candidates; name-only fallback; fail-closed
+unknown seed). Measured on the frozen 20-task gold fixture (`phase4-regate.js`,
+freeze-hash verified): macro recall@2000 = **1.000** (R≥B1 0.896 ✓, R>B0 0.787 ✓),
+budget adherence 20/20 ✓, deterministic ✓. Name-only ablation: 0.500 (< B0) — the
+semantic layer is what closes the gate. Unit tests: 2 added (11 total in the Phase 4
+suites). GATES.md Phase 4 section records the executive closure under the D-0026 honesty
+clause. Results: `docs/validation/spike-s/results-phase4-regate.json`.

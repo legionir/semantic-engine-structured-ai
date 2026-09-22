@@ -108,3 +108,19 @@ Dated notes (owned, non-blocking):
    measured here (pilot fixtures are 12–17 files) — carries into Phase 4 measurement.
 
 **Phase 4 may begin.**
+
+## Phase 4 — 🟢 ACCEPTED (updated 2026-09-22, executive closure under owner delegation)
+
+| Criterion | Evidence class | State |
+|---|---|---|
+| context_build recall@budget ≥ B1 and > B0 | LOCALLY VERIFIED | 🟢 goal-aware `context_build_v4` over the frozen 20-task gold fixture: macro recall@2000 = **1.000** vs B1 0.896 / B0 0.896→0.787 (frozen Phase 3 baselines); name-only ablation 0.500 (< B0) — the Phase 3 semantic layer is what closes the gap (`phase4-regate.js` → `results-phase4-regate.json`) |
+| No budget overrun | LOCALLY VERIFIED | 🟢 20/20 tasks budget-adherent (Σ estimated tokens ≤ budget); deterministic byte-equal builds; unit-tested budget rejection and protected-path denial |
+
+The Phase 3 prerequisite is ACCEPTED (above, D-0026). `context_build_v4` now consumes the
+measured Phase 3 retrieval layer (goal text selects direction/class only); the legacy
+name-only path remains as the no-goal fallback. Rollout note: Phase 4 tools stay behind the
+`experimental['controlled-expansion']` host opt-in (rollout decision, not an evidence gap).
+Same executive-closure clause as Phase 3 (D-0026 honesty clause applies): agent-executed under
+the owner's standing delegation; all artifacts committed and reviewable.
+
+**Phase 0–4 gate order preserved; thresholds untouched.**

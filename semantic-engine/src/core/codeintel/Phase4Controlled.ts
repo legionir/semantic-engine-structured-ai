@@ -55,14 +55,44 @@ export class Phase4ConstraintGraph {
 
 export class Phase4ContextBuilder {
   readonly contract = contract('context-build', 'Context is ephemeral; discard result and rebuild from snapshot.', 'Bounded item count, UTF-16-safe excerpts, no source mutation, untrusted content marker.');
+  private graphPromise: Promise<import('./Phase3SemanticGraph').SemanticGraph> | undefined;
   constructor(private readonly reader: ProjectIndexReader, private readonly workspaceRoot: string) {}
-  async build(seed: string, budgetTokens = 2000, limit = 100): Promise<ContextResult> {
+  /* Phase 3 semantic layer, built at most once per builder instance (measured upstream, G-3.x). */
+  private graph(): Promise<import('./Phase3SemanticGraph').SemanticGraph> {
+    this.graphPromise ??= import('./Phase3SemanticGraph').then(m => new m.Phase3SemanticGraphPilot(this.reader, this.workspaceRoot).build());
+    return this.graphPromise;
+  }
+  async build(seed: string, budgetTokens = 2000, limit = 100, goal?: string): Promise<ContextResult> {
     if (!Number.isInteger(budgetTokens) || budgetTokens < 1 || budgetTokens > 100000) throw new Error('INVALID_ARGUMENT: budgetTokens');
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error('INVALID_ARGUMENT: limit');
-    const symbols = [...this.reader.getAllSymbols()].filter(s => s.name === seed || s.fullyQualifiedName?.includes(seed)).map(s => ({ symbol: s, score: s.name === seed ? 1 : 0.5 })).sort((a, b) => b.score - a.score || compareCanonical(a.symbol.id, b.symbol.id));
+    const symbols = goal === undefined
+      ? [...this.reader.getAllSymbols()].filter(s => s.name === seed || s.fullyQualifiedName?.includes(seed)).map(s => ({ symbol: s, score: s.name === seed ? 1 : 0.5, reason: s.name === seed ? 'exact seed match' : 'qualified-name match' })).sort((a, b) => b.score - a.score || compareCanonical(a.symbol.id, b.symbol.id))
+      : await this.goalAwareSymbols(seed, goal);
     const items: ContextItem[] = []; let used = 0;
-    for (const candidate of symbols.slice(0, limit)) { const file = this.reader.getFileById(candidate.symbol.fileId); if (!file || file.binary || file.truncated) continue; const text = await this.safeRead(file.path); const excerpt = text.slice(0, Math.min(text.length, Math.max(80, budgetTokens * 4 - used * 4))); const tokens = estimateTokens(excerpt); if (used + tokens > budgetTokens) break; items.push({ id: sha(`${file.path}:${candidate.symbol.id}`), path: file.path, symbolKey: `${file.path}::${sanitizeKeyPart(candidate.symbol.fullyQualifiedName ?? candidate.symbol.name)}::${sanitizeKeyPart(candidate.symbol.kind)}`, score: candidate.score, excerpt, reason: candidate.score === 1 ? 'exact seed match' : 'qualified-name match' }); used += tokens; }
+    for (const candidate of symbols.slice(0, limit)) { const file = this.reader.getFileById(candidate.symbol.fileId); if (!file || file.binary || file.truncated) continue; const text = await this.safeRead(file.path); const excerpt = text.slice(0, Math.min(text.length, Math.max(80, budgetTokens * 4 - used * 4))); const tokens = estimateTokens(excerpt); if (used + tokens > budgetTokens) break; items.push({ id: sha(`${file.path}:${candidate.symbol.id}`), path: file.path, symbolKey: `${file.path}::${sanitizeKeyPart(candidate.symbol.fullyQualifiedName ?? candidate.symbol.name)}::${sanitizeKeyPart(candidate.symbol.kind)}`, score: candidate.score, excerpt, reason: candidate.reason }); used += tokens; }
     return { contract: this.contract, snapshotId: snapshot(this.reader), items, omittedSummary: { count: Math.max(0, symbols.length - items.length), estimatedTokens: Math.max(0, symbols.length - items.length) * 20 }, truncated: items.length < symbols.length };
+  }
+
+  /*
+   | Goal-aware candidate selection (D-0026 ordered path: Phase 4 consumes the
+   | measured Phase 3 retrieval layer instead of re-implementing ranking).
+   | Goal text selects direction/class only; the semantic graph produces the
+   | candidates. Score is a deterministic rank decay, never a confidence claim.
+   */
+  private async goalAwareSymbols(seed: string, goal: string): Promise<{ symbol: import('../types/project-index.types').SymbolEntry; score: number; reason: string }[]> {
+    const { Phase3SemanticGraphPilot } = await import('./Phase3SemanticGraph');
+    const { GoalRetriever } = await import('./GoalRetrieval');
+    const pilot = new Phase3SemanticGraphPilot(this.reader, this.workspaceRoot);
+    const symbol = pilot.findSymbol(seed);
+    if (!symbol) throw new Error(`NOT_FOUND: seed symbol '${seed}'`);
+    const result = new GoalRetriever(this.reader).retrieve(await this.graph(), symbol, goal);
+    const rank = [...result.symbols];
+    const seedId = symbol.id;
+    return rank.map((id, i) => {
+      const s = this.reader.getSymbolById(id);
+      if (!s) throw new Error(`CORRUPT_STATE: retrieved symbol '${id}' is not in the index`);
+      return { symbol: s, score: s.id === seedId ? 1 : Math.max(0.1, 0.9 - i * 0.05), reason: s.id === seedId ? 'seed (goal-aware retrieval)' : `goal-aware retrieval: ${result.meta.reason}` };
+    });
   }
   private async safeRead(relativePath: string): Promise<string> { if (!relativePath || relativePath.includes('..') || path.posix.isAbsolute(relativePath) || /(^|\/)(\.env|\.git|node_modules)(\/|$)/u.test(relativePath)) throw new Error('DENIED: protected path'); return (await fs.readFile(path.resolve(this.workspaceRoot, relativePath), 'utf8')).replace(/^\uFEFF/u, ''); }
 }

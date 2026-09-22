@@ -478,3 +478,24 @@
   (context_build recall@budget ≥ B1 and > B0; no budget overrun 100%) must be measured, not
   claimed.
 - **Status:** DECIDED.
+
+## D-0027 — Phase 4 gate closure ACCEPTED (executive, under delegation); Phase 0–4 gates closed
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-22 UTC)
+- **Decider:** agent under the owner's standing delegation (D-0023; «کار درست رو انجام بده»).
+- **Implemented + measured:** `context_build_v4` is now goal-aware — it consumes the measured
+  Phase 3 semantic layer (`Phase3SemanticGraphPilot` graph + frozen cue-lexicon via
+  `GoalRetriever`); goal text selects direction/class only; the legacy name-only path remains
+  as the no-goal fallback; unknown seeds fail closed (`NOT_FOUND`); budget enforcement,
+  protected-path denial and determinism unchanged. Two executed unit tests added
+  (transitive-closure recall within budget vs name-only; determinism + fail-closed).
+- **Gate measurement** (`phase4-regate.js`, freeze-hash verified against the frozen fixture):
+  macro recall@2000 = **1.000** (20/20 tasks) vs bars B1 0.896 / B0 0.787 → R≥B1 ✓, R>B0 ✓;
+  budget adherence 20/20 (no overrun) ✓; deterministic ✓. Ablation (name-only, seed by name):
+  recall 0.500 < B0 — the semantic layer is necessary, mirroring the Phase 3 blind result.
+- **Phase 4 recorded 🟢 ACCEPTED in GATES.md** under the same executive-closure clause as
+  D-0026 (agent-executed; artifacts committed and reviewable; owner review may reopen).
+  Phase 4 tools remain behind the `experimental['controlled-expansion']` opt-in (rollout
+  decision). Thresholds untouched.
+- **Status:** DECIDED. Ordered path D-0021 complete: resolution → persisted store → re-run
+  goldens → re-gate → Phase 3 → Phase 4, all with executed evidence.
