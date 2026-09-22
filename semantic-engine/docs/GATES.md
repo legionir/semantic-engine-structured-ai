@@ -73,3 +73,38 @@ earlier on this page (SE-P0-PUB-01 consumption, the four pre-existing red tests,
 0.8–0.10 documents) are closed. **Phase 1 may begin** under the precondition that the four
 owner-level items in the verdict stay tracked and that the 🟡 rows' missing halves join the
 Phase 1 backlog rather than being forgotten.
+
+## Phase 3 — 🟢 ACCEPTED (updated 2026-09-22, executive closure under owner delegation)
+
+All four blocking criteria of the table above are at their required evidence level, plus the
+plan-level gaps G-3.1/G-3.5/G-3.9 that the 2026-09-21 closure report had named:
+
+| Criterion | Evidence class | State |
+|---|---|---|
+| Exact-class precision on gold fixture ≥ 0.95 | LOCALLY VERIFIED | 🟢 macro P = 1.000, wrong-exact = 0 on the frozen 20-task gold fixture (`regate.js` → `results-regate.json`); unseen fixture-2 16/16 on first contact, zero tuning |
+| Recall vs baseline ≥ B1 and > B0 | LOCALLY VERIFIED | 🟢 macro R = 1.000 vs B1 0.896 / B0 0.787; B0/B1 reproduced exactly (independence check); blind (cues off) 0.875 < B1 — the retrieval layer is necessary |
+| Semantic incremental == full 100% | LOCALLY VERIFIED | 🟢 JSON deep-equal incl. through the persisted store after reopen (regate STORE leg, both fixtures) |
+| Unresolved registration without silent deletion 100% | LOCALLY VERIFIED | 🟢 unresolved 2/2 per preregistered calibration; zero unclassified occurrences; ambiguity surfaced with candidates |
+| G-3.1 persisted resolver state | LOCALLY VERIFIED | 🟢 `GraphSnapshotStore` — all ten D-0021 executed-test criteria (`GraphSnapshotStore.test.ts`); design `phase3-store/graph-store-design.md` |
+| G-3.5 runtime/MCP handle lifecycle | MCP VERIFIED + GATEWAY VERIFIED | 🟢 durable handles, fail-closed stale/mismatch, restart reuse over real `tools/call` (`GraphSnapshotMcp.test.ts`) and through real gateway workers with real process restart (`GraphSnapshotGateway.e2e.test.ts`) |
+| G-3.9 re-gate | LOCALLY VERIFIED | 🟢 `regate.js` freeze-hash verification, blind/aware/8-ablation matrix, calibration; 3 prediction errata reported, not tuned (`regate-report.md` §3.2) |
+
+Build + eslint clean; full suite **238 suites / 3144 tests green** (2026-09-22). Thresholds in
+the table above are untouched.
+
+Dated notes (owned, non-blocking):
+
+1. **This closure is an executive closure executed by the agent under the owner's standing
+   delegation** (D-0023; reiterated 2026-09-22: «ادامه بده مطابق دستورالعمل», «کار درست رو
+   انجام بده»). Per the standing rule, a gate-closure report is an executive report, not
+   independent validation: every artifact it rests on is committed and reviewable — the harness
+   (`docs/validation/spike-s/regate.js`), both result files, the store tests, and the final
+   commits (merged via PR #15: `e4fdda9`…`af7a2a8`) — and any owner review of those logs may
+   reopen this status.
+2. The Phase 3 tools remain behind the `experimental['semantic-graph']` host opt-in. The gate
+   pass is measured; flipping the default is a rollout decision, not an evidence gap.
+3. F1 resolver approximations are syntactic by design (heuristic degradation, never a wrong
+   `exact`); both fixtures scan cleanly with 0 heuristic references. Real-project scale was not
+   measured here (pilot fixtures are 12–17 files) — carries into Phase 4 measurement.
+
+**Phase 4 may begin.**
