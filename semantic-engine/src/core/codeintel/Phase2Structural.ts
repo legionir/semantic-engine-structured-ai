@@ -1,9 +1,16 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { searchAstGrep } from './Phase2AstGrep';
 
 export type StructuralLanguage = 'typescript' | 'javascript' | 'tsx' | 'python' | 'php' | 'unknown';
 export type RuleSeverity = 'info' | 'warning' | 'error';
+/**
+ * Search engine selector (D-0016 / G-2.1). `ast-grep` is the default and only
+ * accepted engine; `legacy-seam` is an explicitly experimental fallback that
+ * must not be described as ast-grep-compatible (line patterns, no parser).
+ */
+export type SearchEngine = 'ast-grep' | 'legacy-seam';
 
 export interface StructuralMatch {
   readonly id: string;
@@ -24,6 +31,8 @@ export interface StructuralSearchRequest {
   readonly paths: readonly string[];
   readonly maxResults?: number;
   readonly ruleId?: string;
+  /** Defaults to `ast-grep`. `legacy-seam` is explicitly experimental. */
+  readonly engine?: SearchEngine;
 }
 
 export interface StructuralRule {
@@ -54,12 +63,24 @@ export function languageForPath(filePath: string): StructuralLanguage {
 }
 
 /**
- * Deterministic, dependency-free structural matcher. It deliberately accepts
- * line-oriented AST-shaped patterns and named metavariables ($NAME/$$$ARGS).
- * This is an adapter boundary: a future ast-grep adapter can implement the
- * same request/result contract without changing tools, transactions, or MCP.
+ * Structural search entry point. Defaults to the real ast-grep engine
+ * (`Phase2AstGrep`); pass `engine: 'legacy-seam'` only for the explicitly
+ * experimental dependency-free fallback. Tools and MCP never select the
+ * fallback: it is a library-level opt-in, not a silent degradation.
  */
 export function searchTextStructurally(text: string, request: Omit<StructuralSearchRequest, 'paths'> & { path: string }): StructuralSearchResult {
+  if ((request.engine ?? 'ast-grep') === 'legacy-seam') return searchLegacySeam(text, request);
+  return searchAstGrep(text, request);
+}
+
+/**
+ * EXPERIMENTAL fallback: deterministic, dependency-free line-pattern matcher.
+ * It accepts line-oriented patterns and named metavariables ($NAME/$$$ARGS)
+ * WITHOUT a parser: no nested syntax, no multiline, no AST fidelity. It must
+ * not be described as ast-grep-compatible (D-0016). Kept only so hosts that
+ * explicitly opt in keep a working seam where ast-grep has no parser.
+ */
+export function searchLegacySeam(text: string, request: Omit<StructuralSearchRequest, 'paths'> & { path: string }): StructuralSearchResult {
   const maxResults = request.maxResults ?? 1000;
   if (!Number.isInteger(maxResults) || maxResults <= 0) throw new Error('maxResults must be a positive integer');
   const pattern = request.pattern.trim();
@@ -72,22 +93,24 @@ export function searchTextStructurally(text: string, request: Omit<StructuralSea
     const candidate = line.trim();
     const matched = matchLine(candidate, pattern);
     if (matched && matches.length < maxResults) {
-      const start = offset + line.indexOf(candidate);
-      const end = start + candidate.length;
-      const id = crypto.createHash('sha256').update(`${request.path}:${start}:${end}:${candidate}`).digest('hex').slice(0, 16);
-      matches.push({ id, path: request.path, language: request.language, start, end, line: i + 1, column: Math.max(0, line.indexOf(candidate)), text: candidate, captures: matched, ...(request.ruleId ? { ruleId: request.ruleId } : {}) });
+      const candidateOffset = Math.max(0, line.indexOf(candidate));
+      const start = offset + candidateOffset + matched.start;
+      const end = start + matched.length;
+      const span = candidate.slice(matched.start, matched.start + matched.length);
+      const id = crypto.createHash('sha256').update(`${request.path}:${start}:${end}:${span}`).digest('hex').slice(0, 16);
+      matches.push({ id, path: request.path, language: request.language, start, end, line: i + 1, column: candidateOffset + matched.start, text: span, captures: matched.captures, ...(request.ruleId ? { ruleId: request.ruleId } : {}) });
     }
     offset += line.length + (text.slice(offset + line.length, offset + line.length + 2) === '\r\n' ? 2 : text[offset + line.length] ? 1 : 0);
   }
   return { matches, truncated: matches.length >= maxResults && lines.some((line, i) => i >= matches.length && matchLine(line.trim(), pattern) !== null) };
 }
 
-function matchLine(candidate: string, pattern: string): Readonly<Record<string, string>> | null {
+function matchLine(candidate: string, pattern: string): { readonly captures: Readonly<Record<string, string>>; readonly start: number; readonly length: number } | null {
   const captures: Record<string, string> = {};
   const captureNames: string[] = [];
   let regex = '';
   let cursor = 0;
-  const token = /\$\$\$?[A-Za-z_][A-Za-z0-9_]*/gu;
+  const token = /\$\$\$[A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z_][A-Za-z0-9_]*/gu;
   let match: RegExpExecArray | null;
   while ((match = token.exec(pattern))) {
     regex += escapeRegex(pattern.slice(cursor, match.index));
@@ -99,14 +122,14 @@ function matchLine(candidate: string, pattern: string): Readonly<Record<string, 
     cursor = match.index + match[0].length;
   }
   regex += escapeRegex(pattern.slice(cursor));
-  const found = new RegExp(`^\\s*${regex}\\s*$`, 'u').exec(candidate);
-  if (!found) return null;
+  const found = new RegExp(regex, 'u').exec(candidate);
+  if (!found || found[0].length === 0) return null;
   captureNames.forEach((name, index) => {
     const value = (found[index + 1] ?? '').trim();
     if (captures[name] !== undefined && captures[name] !== value) throw new Error(`metavariable ${name} matched inconsistent values`);
     captures[name] = value;
   });
-  return captures;
+  return { captures, start: found.index, length: found[0].length };
 }
 
 function escapeRegex(value: string): string { return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'); }
