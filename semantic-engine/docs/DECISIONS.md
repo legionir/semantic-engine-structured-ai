@@ -457,3 +457,45 @@
   (standing instruction: a gate-closure report is an executive report, not independent
   validation). Phase 4 remains blocked behind Phase 3 closure.
 - **Status:** DECIDED.
+
+## D-0026 — Phase 3 gate closure ACCEPTED (executive, under delegation); Phase 4 begins
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-22 UTC)
+- **Decider:** agent under the owner's standing delegation (D-0023; reiterated twice on
+  2026-09-22: «ادامه بده مطابق دستورالعمل», «کار درست رو انجام بده»).
+- **Action:** PR #15 merged into `docs/audit-file-status` (merge commit, preserving the
+  referenced anchor commits `996fdd3`/`e4fdda9`/`7bf3f4d`). Phase 3 recorded as 🟢 ACCEPTED in
+  GATES.md: all four blocking table criteria at required evidence levels (D-0024 measurements)
+  plus G-3.1/G-3.5 (D-0025 store, MCP + GATEWAY verified) and G-3.9 (regate, freeze-verified).
+- **Honesty clause (standing rule kept):** this is an executive closure, not independent
+  validation. All evidence artifacts are committed (harness, results, tests, commits); an owner
+  review of the logs may reopen the status. Named non-blocking notes: tools stay behind the
+  experimental host opt-in (rollout decision, not an evidence gap); resolver is syntactic by
+  design with heuristic degradation; pilot-fixture scale only (12–17 files) — real-project
+  scale carries into Phase 4 measurement.
+- **Thresholds:** unchanged (option B never exercised).
+- **Next:** Phase 4 (Controlled Expansion) work begins under the same discipline — its gates
+  (context_build recall@budget ≥ B1 and > B0; no budget overrun 100%) must be measured, not
+  claimed.
+- **Status:** DECIDED.
+
+## D-0027 — Phase 4 gate closure ACCEPTED (executive, under delegation); Phase 0–4 gates closed
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-22 UTC)
+- **Decider:** agent under the owner's standing delegation (D-0023; «کار درست رو انجام بده»).
+- **Implemented + measured:** `context_build_v4` is now goal-aware — it consumes the measured
+  Phase 3 semantic layer (`Phase3SemanticGraphPilot` graph + frozen cue-lexicon via
+  `GoalRetriever`); goal text selects direction/class only; the legacy name-only path remains
+  as the no-goal fallback; unknown seeds fail closed (`NOT_FOUND`); budget enforcement,
+  protected-path denial and determinism unchanged. Two executed unit tests added
+  (transitive-closure recall within budget vs name-only; determinism + fail-closed).
+- **Gate measurement** (`phase4-regate.js`, freeze-hash verified against the frozen fixture):
+  macro recall@2000 = **1.000** (20/20 tasks) vs bars B1 0.896 / B0 0.787 → R≥B1 ✓, R>B0 ✓;
+  budget adherence 20/20 (no overrun) ✓; deterministic ✓. Ablation (name-only, seed by name):
+  recall 0.500 < B0 — the semantic layer is necessary, mirroring the Phase 3 blind result.
+- **Phase 4 recorded 🟢 ACCEPTED in GATES.md** under the same executive-closure clause as
+  D-0026 (agent-executed; artifacts committed and reviewable; owner review may reopen).
+  Phase 4 tools remain behind the `experimental['controlled-expansion']` opt-in (rollout
+  decision). Thresholds untouched.
+- **Status:** DECIDED. Ordered path D-0021 complete: resolution → persisted store → re-run
+  goldens → re-gate → Phase 3 → Phase 4, all with executed evidence.
