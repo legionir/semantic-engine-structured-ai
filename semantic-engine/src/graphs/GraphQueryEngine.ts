@@ -167,6 +167,8 @@ export interface SubgraphResult {
 
 export const DEFAULT_GRAPH_MAX_NODES = 5_000;
 export const DEFAULT_GRAPH_DEPTH = 2;
+/** Shortest-path search needs a deeper default than neighbourhood traversal; shared by in-memory and SQLite. */
+export const DEFAULT_GRAPH_PATH_DEPTH = 8;
 export const DEFAULT_GRAPH_DIRECTION: Direction = 'out';
 export const DEFAULT_GRAPH_MIN_CONFIDENCE = HIGH_CONFIDENCE_THRESHOLD;
 const ALL_RELATIONS: readonly GraphRelation[] = ['imports', 'calls', 'types', 'layers'];
@@ -517,7 +519,7 @@ export class GraphQueryEngine {
     | تنها مهار، `maxNodes` و تمام‌شدنِ مؤلفهٔ همبندی است؛ عمقِ
     | داده‌شده‌شدهٔ صریح همچنان respected است.
     */
-    const depthLimit = options.depth ?? Number.MAX_SAFE_INTEGER;
+    const depthLimit = options.depth ?? DEFAULT_GRAPH_PATH_DEPTH;
     const direction = options.direction ?? 'out';
 
     if (fromId === toId) {

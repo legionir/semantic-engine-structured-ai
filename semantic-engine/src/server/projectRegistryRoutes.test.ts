@@ -103,6 +103,33 @@ describe('project registration over HTTP — no id collisions', () => {
     expect(listed.json.total).toBe(2);
   });
 
+  it('PATCH persists name/autoStart and DELETE removes the project durably', async () => {
+    const root = makeProject(base, 'patch-delete', 'proj');
+    const created = await request('POST', '/api/v1/projects', { path: root, name: 'before' });
+    expect(created.status).toBe(201);
+    const id = created.json.id as string;
+
+    expect((await request('PATCH', `/api/v1/projects/${id}`, { autoStart: 'yes' })).status).toBe(400);
+
+    const patched = await request('PATCH', `/api/v1/projects/${id}`, { name: 'after', autoStart: true });
+    expect(patched.status).toBe(200);
+    expect(patched.json.name).toBe('after');
+    expect((await request('GET', `/api/v1/projects/${id}`)).json.name).toBe('after');
+
+    const persisted = JSON.parse(fs.readFileSync(path.join(dataRoot, REGISTRY_FILE), 'utf8'));
+    const list = Array.isArray(persisted) ? persisted : persisted.projects;
+    const record = list.find((r: { id: string }) => r.id === id);
+    expect(record.name).toBe('after');
+    expect(record.autoStart).toBe(true);
+
+    expect((await request('DELETE', `/api/v1/projects/${id}`)).status).toBe(200);
+    expect((await request('GET', `/api/v1/projects/${id}`)).status).toBe(404);
+    expect((await request('DELETE', `/api/v1/projects/${id}`)).status).toBe(404);
+    const listed = await request('GET', '/api/v1/projects');
+    expect((listed.json.projects as { id: string }[]).some(x => x.id === id)).toBe(false);
+    expect(fs.readFileSync(path.join(dataRoot, REGISTRY_FILE), 'utf8')).not.toContain(id);
+  });
+
   it('keeps the registry in the data root and the checkouts clean', async () => {
     expect(fs.existsSync(path.join(dataRoot, REGISTRY_FILE))).toBe(true);
 

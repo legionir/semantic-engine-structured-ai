@@ -29,6 +29,8 @@
  * دارند و آبشاری حذف می‌شوند.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { ProjectIndex } from '../core/types/project-index.types';
 import { openSqlite, SqliteDriver, SqliteStatement } from './sqlite/SqliteDriver';
 
@@ -54,6 +56,32 @@ const TABLES = [
 
 export interface SQLiteExportOptions {
   readonly outputPath: string;
+  /**
+   * The database records which project it belongs to (`meta.root_path`).
+   * Exporting a different project into it would delete that project's rows
+   * (`deleteDeadRows`), so it is refused unless the caller explicitly says the
+   * root was moved.
+   */
+  readonly allowRootChange?: boolean;
+}
+
+/** Thrown when an export would overwrite/delete another project's data. */
+export class SqliteOwnershipError extends Error {
+  constructor(readonly databasePath: string, readonly owner: string, readonly requested: string) {
+    super(
+      `Refusing to export into ${databasePath}: it belongs to project root "${owner}", not "${requested}". ` +
+        'Use a separate database per project, or pass allowRootChange when the root was moved.'
+    );
+    this.name = 'SqliteOwnershipError';
+  }
+}
+
+function sameRoot(a: string, b: string): boolean {
+  const norm = (value: string): string => {
+    const resolved = path.resolve(value);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  return norm(a) === norm(b);
 }
 
 export class SQLiteExporter {
@@ -61,7 +89,8 @@ export class SQLiteExporter {
     const db = await openSqlite(options.outputPath);
     try {
       await this.optimizeForBulkInsert(db);
-      await this.ensureSchema(db);
+      await this.assertOwnership(db, projectIndex, options);
+      await this.ensureSchema(db, options.outputPath);
       await this.runInTransaction(db, async () => {
         await this.insertFiles(db, projectIndex.files);
         await this.insertSymbols(db, projectIndex.symbols);
@@ -80,6 +109,26 @@ export class SQLiteExporter {
       });
     } finally {
       await db.close();
+    }
+  }
+
+  private async assertOwnership(
+    db: SqliteDriver,
+    projectIndex: ProjectIndex,
+    options: SQLiteExportOptions
+  ): Promise<void> {
+    if (options.allowRootChange) return;
+    const requested = projectIndex.rootPath ?? '';
+    if (requested === '') return;
+    let owner = '';
+    try {
+      const rows = await db.all<{ value: string }>("SELECT value FROM meta WHERE key = 'root_path'");
+      owner = rows[0]?.value ?? '';
+    } catch {
+      return; // no meta table: fresh or legacy database, nothing to protect yet
+    }
+    if (owner !== '' && !sameRoot(owner, requested)) {
+      throw new SqliteOwnershipError(options.outputPath, owner, requested);
     }
   }
 
@@ -111,14 +160,54 @@ export class SQLiteExporter {
    * دیتابیس قدیمی هیچ کاری نمی‌کند و ستون جدید هرگز اضافه نمی‌شود —
    * بی‌صدا، تا وقتی یک `INSERT` با تعداد ستون اشتباه بترکد.
    */
-  private async ensureSchema(db: SqliteDriver): Promise<void> {
+  private async ensureSchema(db: SqliteDriver, databasePath: string): Promise<void> {
     const existing = await this.readSchemaVersion(db);
 
-    if (existing !== null && existing !== SQLITE_SCHEMA_VERSION) {
-      await this.dropAll(db);
+    /*
+    | دیتابیس قدیمی (پیش از جدول `meta`) نسخه‌ای اعلام نمی‌کند ولی جدول‌های
+    | با ستون‌های قدیمی دارد؛ `CREATE TABLE IF NOT EXISTS` رویشان بی‌اثر است
+    | و INSERT بعدی با تعداد ستون اشتباه می‌ترکد. پس «نسخهٔ نامعلوم + جدول
+    | موجود» همان «نسخهٔ ناسازگار» است و باید بازسازی شود.
+    */
+    const legacy = existing === null && (await this.hasOwnedTables(db));
+    const mismatched = existing !== null && existing !== SQLITE_SCHEMA_VERSION;
+
+    if (legacy || mismatched) {
+      await this.backupBeforeRebuild(db, databasePath, existing);
+      await this.runInTransaction(db, async () => {
+        await this.dropAll(db);
+        await this.createTables(db);
+      });
+      return;
     }
 
     await this.createTables(db);
+  }
+
+  private async hasOwnedTables(db: SqliteDriver): Promise<boolean> {
+    const rows = await db.all<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table'"
+    );
+    const owned = new Set<string>(TABLES);
+    return rows.some(row => owned.has(row.name));
+  }
+
+  /**
+   * مسیر rollback: پیش از هر بازسازی، فایل قبلی کنار خودش نگه داشته می‌شود
+   * (`<db>.schema-<نسخه|legacy>.bak`). نام ثابت است، پس اجرای دوباره
+   * فایل جدید نمی‌سازد و رشد نمی‌کند (idempotent).
+   */
+  private async backupBeforeRebuild(
+    db: SqliteDriver,
+    databasePath: string,
+    existing: number | null
+  ): Promise<void> {
+    try {
+      await db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+      fs.copyFileSync(databasePath, `${databasePath}.schema-${existing ?? 'legacy'}.bak`);
+    } catch {
+      /* :memory: یا مسیر غیرفایلی — چیزی برای پشتیبان‌گیری نیست. */
+    }
   }
 
   private async readSchemaVersion(db: SqliteDriver): Promise<number | null> {

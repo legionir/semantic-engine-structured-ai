@@ -181,6 +181,26 @@ describe('SE-EXP-06 — خروجی پیش از نوشتن با schema سنجید
     expect(fs.existsSync(target)).toBe(false);
   });
 
+  it('export() has the same contract as writeProjectIndex(): validates first, creates the parent, writes atomically', async () => {
+    const exporter = new JsonExporter();
+    const scan = { files: [], diagnostics: [], root: workspace } as never;
+
+    const spy = jest.spyOn(exporter, 'buildProjectIndex');
+    const brokenTarget = path.join(workspace, 'deep', 'missing', 'parent', 'broken.json');
+    spy.mockResolvedValueOnce({ ...minimalIndex(), schemaVersion: undefined } as unknown as ProjectIndex);
+    await expect(
+      exporter.export(scan, [], { outputPath: brokenTarget, workspaceRoot: workspace, validate: true })
+    ).rejects.toThrow(/schema/i);
+    expect(fs.existsSync(brokenTarget)).toBe(false);
+
+    const okTarget = path.join(workspace, 'deep', 'missing', 'parent', 'ok.json');
+    spy.mockResolvedValueOnce(minimalIndex());
+    await exporter.export(scan, [], { outputPath: okTarget, workspaceRoot: workspace, validate: true });
+    expect(JSON.parse(fs.readFileSync(okTarget, 'utf8')).schemaVersion).toBe('2.0.0');
+    expect(fs.readdirSync(path.dirname(okTarget)).filter(n => n.includes('.tmp-'))).toEqual([]);
+    spy.mockRestore();
+  });
+
   it('خروجی واقعی pipeline از اعتبارسنجی عبور می‌کند', async () => {
     const { projectIndex } = await pipeline().run();
     expect(new JsonExporter().validate(projectIndex)).toEqual([]);

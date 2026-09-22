@@ -46,6 +46,8 @@ export interface GatewayServerOptions {
   /** توکن bootstrap با دسترسی کامل؛ در نبودش ساخته می‌شود. */
   readonly token?: string;
   readonly registry?: ProjectRegistry;
+  /** Restore autoStart projects on `start()`. Default true. */
+  readonly hydrateOnStart?: boolean;
   readonly supervisor?: WorkerSupervisor;
   readonly now?: () => Date;
 }
@@ -87,9 +89,40 @@ export class GatewayServer {
     this.startedAt = Date.now();
   }
 
+  /**
+   * Startup hydration: every persisted project that is `enabled` and has
+   * `autoStart` gets its worker back after a Gateway restart. One failing
+   * project (capacity, lock, bad root) never blocks the others; the failure is
+   * broadcast and returned so callers/tests can see it.
+   */
+  async hydrateProjects(): Promise<{ started: string[]; failed: { projectId: string; error: string }[] }> {
+    const started: string[] = [];
+    const failed: { projectId: string; error: string }[] = [];
+    for (const record of this.registry.list()) {
+      if (!record.enabled || !record.autoStart) continue;
+      try {
+        await this.startWorkerFor(record.id, record.rootPath, record.name);
+        started.push(record.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failed.push({ projectId: record.id, error: message });
+        this.broadcast({ type: 'project-hydration-failed', projectId: record.id, error: message });
+      }
+    }
+    return { started, failed };
+  }
+
   async start(): Promise<GatewayStartInfo> {
     this.supervisor.startHealthLoop();
 
+    const info = await this.listen();
+    if (this.options.hydrateOnStart !== false) {
+      await this.hydrateProjects();
+    }
+    return info;
+  }
+
+  private listen(): Promise<GatewayStartInfo> {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
         this.handle(req, res).catch(error => {
@@ -557,7 +590,7 @@ export class GatewayServer {
     const name = String(body['name'] ?? path.basename(rootPath));
     const requestedId = body['id'] !== undefined ? String(body['id']) : undefined;
 
-    let registered;
+    let registered: ReturnType<ProjectRegistry['register']>;
     try {
       registered = this.registry.register({
         rootPath,
@@ -567,6 +600,10 @@ export class GatewayServer {
     } catch (error) {
       this.send(res, 400, { error: error instanceof Error ? error.message : String(error) });
       return;
+    }
+
+    if (typeof body['autoStart'] === 'boolean' && registered.autoStart !== body['autoStart']) {
+      registered = this.registry.update(registered.id, { autoStart: body['autoStart'] });
     }
 
     const autoStart = body['autoStart'] === true;
@@ -655,8 +692,27 @@ export class GatewayServer {
           this.send(res, 400, { error: error instanceof Error ? error.message : String(error) });
           return;
         }
-        const renamed = typeof body['name'] === 'string' ? (body['name'] as string) : undefined;
-        const updated = renamed ? this.registry.rename(projectId, renamed) : registered;
+        const patch: { name?: string; enabled?: boolean; autoStart?: boolean } = {};
+        if (body['name'] !== undefined) {
+          if (typeof body['name'] !== 'string' || body['name'].trim() === '') {
+            this.send(res, 400, { error: 'name must be a non-empty string' });
+            return;
+          }
+          patch.name = body['name'];
+        }
+        for (const key of ['enabled', 'autoStart'] as const) {
+          if (body[key] !== undefined) {
+            if (typeof body[key] !== 'boolean') {
+              this.send(res, 400, { error: `${key} must be a boolean` });
+              return;
+            }
+            patch[key] = body[key] as boolean;
+          }
+        }
+        const updated = this.registry.update(projectId, patch);
+        // Decision D-2: disabling a project must not leave its worker running.
+        if (patch.enabled === false) await this.supervisor.stop(projectId);
+        this.broadcast({ type: 'project-updated', projectId: updated.id });
         this.send(res, 200, this.projectEntry(updated.id));
         return;
       }

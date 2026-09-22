@@ -24,23 +24,23 @@
 
 # پلن اجرایی
 
-## [🔴] فاز ۱: تثبیت baseline، قراردادها و محیط قابل‌راستی‌آزمایی
+## [🟢] فاز ۱: تثبیت baseline، قراردادها و محیط قابل‌راستی‌آزمایی
 
 هدف این فاز ایجاد مبنای reproducible برای تمام اصلاحات است؛ تا وقتی dependency، build، fixture، contract و inventory روشن نشده، هیچ finding به‌عنوان fix‌شده پذیرفته نمی‌شود.
 
-### [🔴] گام ۱: قفل‌کردن baseline و traceability ممیزی
+### [🟢] گام ۱: قفل‌کردن baseline و traceability ممیزی
 
 در ریشهٔ repository revision جاری، branch و تغییرات local را ثبت کن. `AUDIT_FILE_STATUS.md` و تمام فایل‌های `audit/` را به‌عنوان source map نگه دار. برای هر finding یک شناسهٔ یکتا با فرمت `SE-<domain>-<number>` یا `SA-<domain>-<number>` بساز و شناسه‌های تکراری batchها را با `path:line` تفکیک کن. برای هر مورد status فعلی، severity، evidence، اثر، اصلاح، تست و dependency فاز را ثبت کن.
 
-### [🔴] گام ۲: آماده‌سازی environment و fixtureهای واقعی
+### [🟢] گام ۲: آماده‌سازی environment و fixtureهای واقعی
 
 manifestها و scriptهای package هر دو پروژه را بخوان و dependencyهای واقعی را نصب/قفل کن؛ از جایگزین‌کردن dependency با mock خودداری کن. `semantic-engine` را برای `jest`، `ts-jest`، `tsc` و fixtureهایی مانند `test-fixture/node_modules/left-pad` آماده کن. artifactهای `dist/cli/main.js`، grammar/WASM و executableهای لازم را طبق repository بساز. اگر نسخهٔ Node با قرارداد package ناسازگار است، **Unknown / Requires Verification** را به تصمیم صریح compatibility تبدیل کن.
 
-### [🔴] گام ۳: ثبت baseline تست، build و contract
+### [🟢] گام ۳: ثبت baseline تست، build و contract
 
 قبل از تغییر، suiteهای موجود، suiteهای skipped، تست‌های timeout‌شده، `npm test`، build، audit checker و contract validation را اجرا کن. خطاهای شناخته‌شده شامل `Preset ts-jest not found`، `tsc: not found`، نبود `AUDIT-2026-08.md` و fixture ناقص است؛ پس از آماده‌سازی environment معلوم کن کدام خطا واقعی باقی مانده است. pass/fail/skip را با command، زمان، revision و خروجی ثبت کن.
 
-### [🔴] گام ۴: تعریف invariantها و قراردادهای مشترک
+### [🟢] گام ۴: تعریف invariantها و قراردادهای مشترک
 
 قراردادهای مشترک زیر را به‌صورت type/schema/test ثبت کن: project identity (`projectId`, `workspaceRoot`)، context propagation، ownership validation، cancellation state، error terminal state، graph node/edge/provenance/level، search mode/threshold، config mutation، persistence atomicity، و API error format. این قراردادها باید مرجع semantic-engine و structured-ai باشند و defaultهای in-memory/SQLite از آن‌ها مشتق شوند.
 
@@ -54,27 +54,27 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ---
 
-## [🔴] فاز ۲: persistence، migration و project isolation در semantic-engine
+## [🟢] فاز ۲: persistence، migration و project isolation در semantic-engine
 
 هدف این فاز تضمین استقلال و دوام دادهٔ هر project در registry، export، SQLite، indexing و restart است.
 
-### [🔴] گام ۱: تکمیل lifecycle registry و startup hydration
+### [🟢] گام ۱: تکمیل lifecycle registry و startup hydration
 
 در `semantic-engine/src/gateway/ProjectRegistry.ts:203-216` و `src/gateway/GatewayServer.ts:90-92,560-575`، `autoStart` و تمام تنظیمات لازم را به‌صورت durable ذخیره کن. هنگام `start()` registry را load، validate و hydrate کن؛ برای هر project worker/index state را با root مستقل restore کن. register/update/delete/list/get باید map، persistence و worker/runtime را هم‌زمان و سازگار mutate کنند. regression برای restart، autoStart، update و delete اضافه کن.
 
-### [🔴] گام ۲: واقعی‌کردن project API و config mutation
+### [🟢] گام ۲: واقعی‌کردن project API و config mutation
 
 در `src/server/routes/projectRoutes.ts:85-119`، PATCH و DELETE را به service/registry واقعی وصل کن و stale state را پاک کن. در `src/server/routes/configRoutes.ts:35-53` mutation، persistence و runtime reconfigure واقعی پیاده کن و `0` را با nullish semantics حفظ کن. در `src/services/ProjectService.ts:371-389` قرارداد `indexProject()` را با رفتار واقعی هم‌راستا کن؛ اگر indexing async است job و result contract را صریح کن. dashboard routeهای غایب را با `contracts/platform-v1.openapi.json:294-323` همگام کن.
 
-### [🔴] گام ۳: atomic persistence و migration کامل
+### [🟢] گام ۳: atomic persistence و migration کامل
 
 `structured-ai/agent/tools/planning/PlanRepository.js:83-94` و session save pathهای `structured-ai` را به temp+rename یا `JsonRepository` atomic تبدیل کن. در `structured-ai/agent/persistence/DataRoot.js:23-32` و `ProjectMigration.js:56-64,199-206` directory `discussion` و transcriptهای legacy را migrate کن. در `semantic-engine/src/export/SQLiteExporter.ts:114-122,124-137` schema قدیمی را با migration/rebuild واقعی سازگار کن؛ migration باید idempotent، قابل rollback و project-scoped باشد.
 
-### [🔴] گام ۴: جلوگیری از حذف cross-project در export و data root
+### [🟢] گام ۴: جلوگیری از حذف cross-project در export و data root
 
 هر export، SQLite driver و delete-dead-rows را با project-specific DB/root اجرا کن. قبل از حذف، ownership و project key را validate کن. اگر DB مشترک از نظر معماری اجباری است، namespace و query predicate اجباری اضافه کن؛ **Unknown / Requires Verification:** consumerهای بیرونی که DB مشترک را می‌سازند باید با caller inventory تأیید شوند.
 
-### [🔴] گام ۵: سازگاری runtime Node و export path
+### [🟢] گام ۵: سازگاری runtime Node و export path
 
 در `src/export/JsonExporter.ts:141-160` validation، ساخت parent directory و error contract را با `writeProjectIndex` یکسان کن. در `package.json` و `src/export/sqlite/SqliteDriver.ts:14-17,123-126,171-173` تضاد Node `>=20`، native SQLite `22.5` و fallback `sqlite3` را برطرف کن؛ تصمیم نهایی version/dependency باید در compatibility matrix و Node 20/22 CI test ثبت شود.
 
@@ -386,3 +386,14 @@ migrationهای persistence را روی copy و dataset واقعی/fixture versi
 - docs، OpenAPI، schema، CI، runtime و implementation یک قرارداد واحد نشان می‌دهند.
 - build، test، smoke، concurrency، isolation، performance و failure checks در revision نهایی pass هستند.
 - همهٔ فازها و گام‌ها طبق پروتکل وضعیت به‌روز شده‌اند و فقط در صورت Definition of Done واقعی 🟢 اعلام می‌شوند.
+
+---
+
+# یادداشت اجرا (living log)
+
+- **2026-09-19 — کار روی branch `work/execution-plan` (مشتق از `docs/audit-file-status`):** این branch ۱۲ commit جلوتر از `main` است و فازهای ۴، ۵ و گام ۱ فاز ۶ را 🟢 علامت زده است. این 🟢ها در این جلسه دوباره اجرا/راستی‌آزمایی نشده‌اند (**Unknown / Requires Verification**)؛ در فاز ۹ باید با regression matrix تأیید شوند. فازهای ۱–۳ و ۷–۱۰ در این branch 🔴 بودند.
+- **فاز ۱ 🟡:** baseline روی `main@94955bc` ثبت شد (`audit/BASELINE.md`، `audit/FINDING_INDEX.tsv`): semantic-engine ۲۲ از ۲۰۸ suite fail (۶۶ از ۲۷۹۷ تست)، structured-ai ۱۴ از ۵۱ suite fail؛ علل Unknown. گام ۴ (قراردادهای مشترک) شروع نشده. baseline روی نوک این branch دوباره گرفته نشده است.
+- **فاز ۲ گام ۲ 🟡:** `PATCH/DELETE /api/v1/projects/:id` (که در این branch 501 بودند) واقعاً به `ProjectRegistry.update`/`remove` و `ProjectService.updateProject`/`removeProject` وصل شد؛ تست regression در `projectRegistryRoutes.test.ts` pass است (۵/۵). باقی‌مانده: config PATCH runtime، قرارداد `indexProject()`، همگام‌سازی OpenAPI برای dashboard.
+- **فاز ۲ گام ۲ 🟡 (به‌روزرسانی):** `PATCH /api/v1/config` اکنون `maxBodyBytes` را واقعاً در runtime اعمال می‌کند (`HttpServer` آن را هر درخواست می‌خواند)؛ `0`/غیرعدد → 400؛ کلیدهای startup-only (`port`, `host`, …) → 409؛ کلید ناشناخته → 400؛ `persisted:false` صریح است چون فایل config پایدار در repo وجود ندارد (**Unknown / Requires Verification:** آیا persist لازم است). `indexProject()` قرارداد صریح `mode:'reload', reindexed:false` گرفت و `IndexingWorker` دیگر `shadowSwapped:true` جعلی نمی‌دهد؛ اتصال واقعی `IndexPipeline` به `ProjectService` هنوز انجام نشده (باقی‌مانده). همگام‌سازی OpenAPI dashboard بررسی نشده. تست‌ها: `configRoutes.test.ts` (3)، `projectRegistryRoutes.test.ts` (5)، `ProjectService.test.ts` (8) همگی pass.
+- **2026-09-19 — فاز ۱ 🟢:** گام‌های ۱–۴ کامل شدند. شواهد: `audit/FINDING_INDEX.tsv` (۱۵۹ finding واقعی؛ ۳۰ مورد «Unscoped» و ۷ مورد امنیتی خارج از scope صریح برچسب خورده‌اند)، `audit/BASELINE.md` (نتایج CI لینوکس روی `94955bc` دست‌نخورده و `d7569d3`، ماتریس Node 20.18/22.12/24.15، triage همهٔ suiteهای fail)، `docs/contracts/shared-invariants.md` و ۱۱ تست `sharedContracts.test.ts`. انحراف افشاشده: ویرایش production (PATCH/DELETE، config) وسط اجرای اولین baseline محلی شروع شد؛ baseline مرجع = CI روی نسخهٔ دست‌نخورده. نتایج مهم baseline: (الف) ۱۴ شکست محلی structured-ai فقط Windows است؛ (ب) `sqlite3` در package.json اعلام نشده و روی Node 20 تست‌های SQLite fail می‌شوند → فاز ۲ گام ۵؛ (ج) دو regression شاخه (عمق مسیر graph و تست LoD) در این جلسه اصلاح شد؛ (د) `MIG-51 in-root` و شکست Node 18 در structured-ai علت Unknown دارند → فاز ۹؛ (هـ) ۳۰ finding بدون فاز در فاز ۹ گام ۲ باید triage شوند.
+- **2026-09-19 — فاز ۲ 🟢:** همهٔ گام‌ها انجام و با تست تأیید شد. گام ۱: `GatewayServer.hydrateProjects()`/`start()` پروژه‌های `enabled+autoStart` را پس از restart برمی‌گرداند (خطای یک پروژه بقیه را متوقف نمی‌کند)، `autoStart` هنگام register و PATCH ماندگار است، `enabled:false` worker را stop می‌کند (`GatewayHydration.test.ts`، ۳ تست). گام ۲: PATCH/DELETE پروژه و PATCH config واقعی، `indexProject` با قرارداد صریح، OpenAPI ۴۷ عملیات = ۴۷ route با تست parity (`openapiSync.test.ts`). گام ۳: `PlanRepository`/`SessionRepository`/`WorkspaceProfile`/compaction آرشیو atomic (`test/persistence/atomic-saves.test.js`، crash injection)، migration پوشهٔ `discussion` (idempotent، در `project-stores.test.js`)، SQLite قدیمی بدون `meta` واقعاً بازسازی می‌شود با پشتیبان rollback. گام ۴: `SqliteOwnershipError` جلوی حذف دادهٔ پروژهٔ دیگر را می‌گیرد. گام ۵: `JsonExporter.export` هم‌قرارداد با `writeProjectIndex` (تست)، `sqlite3` در optionalDependencies اعلام شد، ماتریس Node با باینری واقعی 20.18/22.12/24.15 در `docs/compatibility.md`، CI semantic-engine روی Node 20 و 22. انحرافات/تصمیم‌ها: `audit/DECISIONS.md` (D-1…D-9). محدودیت صریح: ۳ suite فقط-Windows روی هر ۳ نسخهٔ Node fail می‌شوند و روی Linux CI pass هستند (فاز ۹ نتیجهٔ CI را تأیید می‌کند).

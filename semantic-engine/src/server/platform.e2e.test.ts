@@ -175,7 +175,10 @@ export class UserController {
   it('4. LoD Architecture Graph: extracts top level architecture view', async () => {
     const arch = await api('GET', '/api/v1/projects/e2e-project/visualization/architecture');
     expect(arch.status).toBe(200);
-    expect(arch.json.level).toBe('architecture');
+    // VIZ-036: a project without module structure falls back to the file-level
+    // view and must report that level honestly instead of claiming 'architecture'.
+    expect(['architecture', 'file']).toContain(arch.json.level);
+    expect(arch.json.state).toBe('ready');
     expect(Array.isArray(arch.json.nodes)).toBe(true);
     expect(arch.json.nodes.length).toBeGreaterThan(0);
   });

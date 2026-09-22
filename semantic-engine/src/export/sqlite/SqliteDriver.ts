@@ -34,7 +34,10 @@ export interface SqliteDriver {
   close(): Promise<void>;
 }
 
-/** آیا SQLite داخلی Node در دسترس است؟ (Node >= 22.5) */
+/**
+ * آیا SQLite داخلی Node بدون فلگ در دسترس است؟ اندازه‌گیری‌شده: Node 22.12 هنوز
+ * `--experimental-sqlite` می‌خواهد؛ از 22.13 (و 23.4+، و 24) بدون فلگ است.
+ */
 export function hasNativeSqlite(): boolean {
   try {
     require('node:sqlite');
@@ -122,9 +125,23 @@ interface Sqlite3Statement {
 
 function openSqlite3(filePath: string): Promise<SqliteDriver> {
 
-  const sqlite3 = require('sqlite3') as {
+  let sqlite3: {
     Database: new (path: string, cb: (err: Error | null) => void) => Sqlite3Database;
   };
+  try {
+    sqlite3 = require('sqlite3');
+  } catch (cause) {
+    /*
+    | Compatibility contract (plan phase 2 / step 5): Node >= 22.5 uses the
+    | built-in `node:sqlite`; older Node (engines allows >= 20) needs the
+    | optional dependency `sqlite3`. When neither exists say exactly that.
+    */
+    throw new Error(
+      `SQLite export needs Node >= 22.13 (built-in node:sqlite) or the optional dependency "sqlite3"; ` +
+        `running Node ${process.versions.node} without sqlite3 installed. Install it with: npm install sqlite3`,
+      { cause }
+    );
+  }
 
   return new Promise<SqliteDriver>((resolve, reject) => {
     const db: Sqlite3Database = new sqlite3.Database(filePath, error => {
@@ -169,6 +186,22 @@ function openSqlite3(filePath: string): Promise<SqliteDriver> {
  * @param filePath مسیر فایل، یا `:memory:` برای تست.
  */
 export async function openSqlite(filePath: string): Promise<SqliteDriver> {
+  /*
+  | `SEMANTIC_ENGINE_SQLITE_DRIVER=sqlite3|node:sqlite` forces a driver so both
+  | code paths can be tested on one Node version. Forcing an unavailable driver
+  | is an error, never a silent switch.
+  */
+  const forced = process.env['SEMANTIC_ENGINE_SQLITE_DRIVER'];
+  if (forced === 'sqlite3') return openSqlite3(filePath);
+  if (forced === 'node:sqlite') {
+    if (!hasNativeSqlite()) {
+      throw new Error(`SEMANTIC_ENGINE_SQLITE_DRIVER=node:sqlite but node:sqlite is unavailable on Node ${process.versions.node}`);
+    }
+    return openNodeSqlite(filePath);
+  }
+  if (forced !== undefined && forced !== '') {
+    throw new Error(`Unknown SEMANTIC_ENGINE_SQLITE_DRIVER "${forced}" (use "sqlite3" or "node:sqlite")`);
+  }
   if (hasNativeSqlite()) return openNodeSqlite(filePath);
   return openSqlite3(filePath);
 }

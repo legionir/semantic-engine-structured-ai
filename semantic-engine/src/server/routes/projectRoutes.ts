@@ -72,8 +72,26 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
       requireAuth: true,
       handler: async ctx => {
         if (!find(ctx.params.id)) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
-        // ProjectService has no update API; claiming success would leave stale registry/runtime state.
-        return { status: 501, json: { error: 'Project update is unavailable', ...unavailable('ProjectService exposes no project update method') } };
+        const project = find(ctx.params.id)!;
+        const body = (ctx.body ?? {}) as Record<string, unknown>;
+        const patch: { name?: string; enabled?: boolean; autoStart?: boolean } = {};
+        if (body['name'] !== undefined) {
+          if (typeof body['name'] !== 'string' || body['name'].trim() === '') {
+            return { status: 400, json: { error: 'name must be a non-empty string' } };
+          }
+          patch.name = body['name'];
+        }
+        for (const key of ['enabled', 'autoStart'] as const) {
+          if (body[key] !== undefined) {
+            if (typeof body[key] !== 'boolean') {
+              return { status: 400, json: { error: `${key} must be a boolean` } };
+            }
+            patch[key] = body[key] as boolean;
+          }
+        }
+        const updated = projectService.updateProject(project.id, patch);
+        if (!updated) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
+        return { status: 200, json: { updated: true, id: updated.id, name: updated.name, status: updated.status } };
       },
     },
     {
@@ -82,7 +100,11 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
       requireAuth: true,
       handler: async ctx => {
         if (!find(ctx.params.id)) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
-        return { status: 501, json: { error: 'Project deletion is unavailable', ...unavailable('ProjectService exposes no project deletion method') } };
+        const project = find(ctx.params.id)!;
+        if (!projectService.removeProject(project.id)) {
+          return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
+        }
+        return { status: 200, json: { deleted: true, id: project.id } };
       },
     },
     {

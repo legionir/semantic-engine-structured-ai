@@ -134,3 +134,55 @@ describe('ProjectService — project identity and registration', () => {
     service.dispose();
   });
 });
+
+describe('ProjectService — update, remove and indexProject contract', () => {
+  let base: string;
+
+  beforeEach(() => {
+    base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'se-project-service-mut-')));
+  });
+
+  afterEach(() => {
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  it('updateProject changes the map and the registry; a new service sees it after restart', () => {
+    const dataRoot = path.join(base, 'data');
+    const root = makeProject(base, 'a', 'app');
+    const service = new ProjectService(base, { registry: new ProjectRegistry({ dataRoot }) });
+    const project = service.registerProject(root, 'app-id', 'Old');
+
+    const updated = service.updateProject(project.id, { name: 'New', autoStart: true });
+    expect(updated?.name).toBe('New');
+    expect(service.getProject('app-id')?.name).toBe('New');
+    expect(service.listProjects()).toHaveLength(1);
+    service.dispose();
+
+    const registry = new ProjectRegistry({ dataRoot });
+    expect(registry.get('app-id')).toMatchObject({ name: 'New', autoStart: true });
+  });
+
+  it('removeProject clears every alias and does not come back after restart', () => {
+    const dataRoot = path.join(base, 'data');
+    const service = new ProjectService(base, { registry: new ProjectRegistry({ dataRoot }) });
+    const project = service.registerProject(makeProject(base, 'a', 'app'), 'gone', 'Gone');
+    const alias = project.aliases[0];
+
+    expect(service.removeProject('gone')).toBe(true);
+    expect(service.getProject('gone')).toBeUndefined();
+    if (alias) expect(service.getProject(alias)).toBeUndefined();
+    expect(service.listProjects()).toHaveLength(0);
+    expect(service.removeProject('gone')).toBe(false);
+    expect(new ProjectRegistry({ dataRoot }).get('gone')).toBeUndefined();
+    service.dispose();
+  });
+
+  it('indexProject states that it reloaded artifacts and did not re-index', async () => {
+    const service = new ProjectService(base);
+    const project = service.registerProject(makeProject(base, 'a', 'app'), 'idx', 'Idx');
+    const result = await service.indexProject(project.id);
+    expect(result).toMatchObject({ mode: 'reload', reindexed: false });
+    await expect(service.indexProject('missing')).rejects.toThrow(/not found/);
+    service.dispose();
+  });
+});

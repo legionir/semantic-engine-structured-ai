@@ -807,6 +807,15 @@ async function main() {
                 `${JSON.stringify({ type: "run:start", run_id: "old-run" })}\n`
             );
 
+            /* legacy discussion transcript (plan phase 2 / step 3) */
+
+            fs.mkdirSync(path.join(legacyAgent, "discussion"), { recursive: true });
+
+            fs.writeFileSync(
+                path.join(legacyAgent, "discussion", "d-old.json"),
+                JSON.stringify({ id: "d-old", turns: [] })
+            );
+
             /* the corrupt entry: memory.json as a DIRECTORY — copying
                it must fail without stopping the rest */
 
@@ -843,6 +852,15 @@ async function main() {
             );
             assert.ok(
                 first.copied.includes(path.join("eventstore", "2026-08-24.jsonl"))
+            );
+
+            assert.ok(
+                first.copied.includes(path.join("discussion", "d-old.json")),
+                "legacy discussion transcript must be migrated"
+            );
+
+            assert.ok(
+                fs.existsSync(path.join(centralRoot("prj-mig"), "discussion", "d-old.json"))
             );
 
             /* old files are never deleted */

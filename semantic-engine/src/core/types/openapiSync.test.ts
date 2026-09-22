@@ -45,4 +45,59 @@ describe('Platform Core V1 — OpenAPI Specification Sync', () => {
       expect(paths).toContain(p);
     }
   });
+  /*
+  | Phase 2 / step 2: the spec and the registered routes must be the same set.
+  | Every route operation needs a spec entry and every spec entry needs a route,
+  | so a route added (or a stub removed) without touching the contract fails here.
+  */
+  describe('route <-> contract parity', () => {
+    const ROUTES_DIR = path.join(__dirname, '..', '..', 'server', 'routes');
+
+    function routeOperations(): string[] {
+      const ops: string[] = [];
+      for (const file of fs.readdirSync(ROUTES_DIR)) {
+        if (!file.endsWith('.ts') || file.includes('.test.')) continue;
+        const source = fs.readFileSync(path.join(ROUTES_DIR, file), 'utf8');
+        const re = /method:\s*'(GET|POST|PATCH|PUT|DELETE)',\s*\r?\n\s*pattern:\s*'([^']+)'/g;
+        let match: RegExpExecArray | null;
+        while ((match = re.exec(source)) !== null) {
+          ops.push(`${match[1]} ${match[2].replace(/:([A-Za-z]+)/g, '{$1}')}`);
+        }
+      }
+      return ops;
+    }
+
+    function specOperations(): string[] {
+      const parsed = JSON.parse(fs.readFileSync(CONTRACT_PATH, 'utf8'));
+      const ops: string[] = [];
+      for (const [p, item] of Object.entries<Record<string, unknown>>(parsed.paths)) {
+        for (const method of Object.keys(item)) ops.push(`${method.toUpperCase()} ${p}`);
+      }
+      return ops;
+    }
+
+    it('documents every registered route operation', () => {
+      const spec = new Set(specOperations());
+      expect(routeOperations().filter(op => !spec.has(op))).toEqual([]);
+    });
+
+    it('has no spec operation without a registered route', () => {
+      const routes = new Set(routeOperations());
+      expect(specOperations().filter(op => !routes.has(op))).toEqual([]);
+    });
+
+    it('declares the request and response contract of the phase 2 mutations', () => {
+      const parsed = JSON.parse(fs.readFileSync(CONTRACT_PATH, 'utf8'));
+      const patchProject = parsed.paths['/api/v1/projects/{id}'].patch;
+      expect(Object.keys(patchProject.requestBody.content['application/json'].schema.properties).sort())
+        .toEqual(['autoStart', 'enabled', 'name']);
+      expect(Object.keys(patchProject.responses)).toEqual(expect.arrayContaining(['200', '400', '404']));
+      expect(Object.keys(parsed.paths['/api/v1/projects/{id}'].delete.responses)).toEqual(
+        expect.arrayContaining(['200', '404'])
+      );
+      const patchConfig = parsed.paths['/api/v1/config'].patch;
+      expect(patchConfig.requestBody.content['application/json'].schema.properties.maxBodyBytes.minimum).toBe(1);
+      expect(Object.keys(patchConfig.responses)).toEqual(expect.arrayContaining(['200', '400', '409']));
+    });
+  });
 });

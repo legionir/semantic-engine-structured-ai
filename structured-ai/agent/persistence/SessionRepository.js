@@ -5,6 +5,7 @@ const path = require("path");
 
 const settings = require("../config");
 const dataRoot = require("../persistence/DataRoot");
+const AtomicFile = require("./AtomicFile");
 
 const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
 const JsonRepository = require("./JsonRepository");
@@ -241,7 +242,7 @@ function saveSession(session, root) {
 
     trim(session);
 
-    fs.writeFileSync(
+    AtomicFile.writeFile(
         sessionPath(session.id, root),
         `${JSON.stringify(session, null, 2)}\n`,
         "utf8"

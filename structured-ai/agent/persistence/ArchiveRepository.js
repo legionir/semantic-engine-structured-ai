@@ -957,7 +957,7 @@ function compactSegments(index, root) {
             continue;
         }
 
-        fs.writeFileSync(
+        AtomicFile.writeFile(
             segmentPath(name, root),
             `${kept.join("\n")}\n`,
             "utf8"

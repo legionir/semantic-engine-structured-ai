@@ -37,16 +37,48 @@ export function createConfigRoutes(platformConfig: PlatformConfig): RouteDefinit
       requireAuth: true,
       permission: 'config:write',
       handler: async ctx => {
-        const body = (ctx.body || {}) as Record<string, unknown>;
+        const body = (ctx.body ?? {}) as Record<string, unknown>;
+
+        /*
+        | فقط تنظیماتی که در runtime واقعاً خوانده می‌شوند قابل تغییرند.
+        | `HttpServer` مقدار `maxBodyBytes` را در هر درخواست از همین شیء
+        | می‌خواند، پس تغییر آن بلافاصله اثر می‌کند. بقیه (port/host/...)
+        | فقط هنگام start اعمال می‌شوند؛ رد صریح بهتر از موفقیت دروغین است.
+        | `0` مقدار معتبر nullish نیست: با `??` حفظ می‌شود و اعتبارسنجی
+        | آن را رد می‌کند، نه اینکه بی‌صدا به default برگردد.
+        */
+        const MUTABLE = ['maxBodyBytes'];
+        const READ_ONLY = ['port', 'host', 'allowRemote', 'projectsRoot', 'token', 'staticDir', 'dataRoot'];
+        for (const key of Object.keys(body)) {
+          if (MUTABLE.includes(key)) continue;
+          return {
+            status: READ_ONLY.includes(key) ? 409 : 400,
+            json: {
+              error: READ_ONLY.includes(key)
+                ? `${key} cannot be changed at runtime; restart the server with the new value`
+                : `Unknown config key: ${key}`,
+            },
+          };
+        }
+
+        if (body['maxBodyBytes'] !== undefined) {
+          const value = body['maxBodyBytes'];
+          if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+            return { status: 400, json: { error: 'maxBodyBytes must be a positive integer' } };
+          }
+          (platformConfig as { maxBodyBytes?: number }).maxBodyBytes = value;
+        }
+
         return {
           status: 200,
           json: {
             updated: true,
+            persisted: false,
             config: {
               port: platformConfig.port,
               host: platformConfig.host,
               allowRemote: platformConfig.allowRemote,
-              maxBodyBytes: body.maxBodyBytes || platformConfig.maxBodyBytes,
+              maxBodyBytes: platformConfig.maxBodyBytes,
               projectsRoot: platformConfig.projectsRoot,
             },
           },

@@ -67,6 +67,7 @@ import {
   Direction,
   GraphEdge,
   DEFAULT_GRAPH_DEPTH,
+  DEFAULT_GRAPH_PATH_DEPTH,
   DEFAULT_GRAPH_DIRECTION,
   DEFAULT_GRAPH_MAX_NODES,
   DEFAULT_GRAPH_MIN_CONFIDENCE,
@@ -363,7 +364,7 @@ export class SqliteGraphQuery {
     minConfidence: number
   ): Promise<{ path: string[]; weakest: number } | null> {
     validateGraphTraversalOptions(options);
-    const depth = options.depth ?? DEFAULT_GRAPH_DEPTH;
+    const depth = options.depth ?? DEFAULT_GRAPH_PATH_DEPTH;
     const direction = options.direction ?? DEFAULT_GRAPH_DIRECTION;
     validateTraversalBound('depth', depth);
     const legs = branchesFor(options.relations).flatMap(branch => directed(branch, direction));

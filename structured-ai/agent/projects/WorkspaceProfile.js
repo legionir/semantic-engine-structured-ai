@@ -1,4 +1,5 @@
 const fs = require("fs");
+const AtomicFile = require("../persistence/AtomicFile");
 const path = require("path");
 
 const settings = require("../config");
@@ -199,7 +200,7 @@ function saveProject(project, target) {
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
 
-    fs.writeFileSync(
+    AtomicFile.writeFile(
         file,
         `${JSON.stringify(project, null, 2)}\n`,
         "utf8"
