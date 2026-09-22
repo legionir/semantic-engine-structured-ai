@@ -19,7 +19,7 @@ export class Phase4ImpactTool implements AiTool {
   readonly description = 'Experimental bounded impact analysis with explicit constraint provenance.';
   readonly inputSchema = { type: 'object', properties: { symbolId: { type: 'string' }, includeHeuristic: { type: 'boolean' } }, required: ['symbolId'] };
   constructor(private readonly reader: ProjectIndexReader) {}
-  async execute(input: AiToolInput): Promise<AiToolOutput> { if (typeof input.symbolId !== 'string') return fail('INVALID_ARGUMENT: symbolId'); const result = new Phase4ImpactAnalyzer(new Phase4ConstraintGraph(this.reader)).analyze(input.symbolId, input.includeHeuristic === true); return ok(result.items.map(e => ({ id: e.id, name: e.kind, kind: e.kind, path: e.path, source: 'phase4-constraint-graph', metadata: e })), { experimental: true, symbolId: result.symbolId, warnings: result.warnings, trust: 'untrusted-source-content' }); }
+  async execute(input: AiToolInput): Promise<AiToolOutput> { if (typeof input.symbolId !== 'string') return fail('INVALID_ARGUMENT: symbolId'); const result = new Phase4ImpactAnalyzer(new Phase4ConstraintGraph(this.reader)).analyze(input.symbolId, input.includeHeuristic === true); return ok(result.items.map(e => ({ id: e.id, name: e.kind, kind: e.kind, path: e.path, source: 'phase4-constraint-graph', metadata: { ...e } })), { experimental: true, symbolId: result.symbolId, warnings: result.warnings, trust: 'untrusted-source-content' }); }
 }
 
 export class Phase4ContextTool implements AiTool {

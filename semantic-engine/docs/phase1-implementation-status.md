@@ -45,3 +45,13 @@
 | performance / peak RSS | NOT MEASURED |
 
 این سند completion یا release approval نیست. Gate فاز ۱ فقط پس از اجرای commandهای واقعی، ثبت revision/environment/output/exit code و رفع blockerهای acceptance قابل تعیین است.
+
+## Gate closure 2026-09-21 — 🟢 ACCEPTED
+
+Validation on `c2c7396` (+ gate-closure fixes on this branch): build/lint/full
+suite (233/3090)/test:gate green; MCP `tools/list`+`tools/call` executed for
+all 10 Phase 1 tools; fold L2 63.14% ≥ 60% on the real 402-line file; unfold
+402/402 lines byte-exact; determinism and read-security evidenced; Gateway
+suites green. Non-blocking gaps recorded: G-1.2 (no grammar pin/conformance
+snapshots), G-1.7 (GenerationOwnership unwired), G-1.14 (cold/warm unmeasured).
+Full report: `docs/validation/gate-closure-2026-09-21.md`.

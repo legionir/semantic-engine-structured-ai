@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { FileEntry, ProjectIndex, SymbolEntry, Diagnostic, LanguageSupportEntry } from '../types/project-index.types';
-import { compareCanonical, LineIndex, makeSymbolKey } from '../contracts/codeintel';
+import { compareCanonical, LineIndex, makeSymbolKey, sanitizeKeyPart } from '../contracts/codeintel';
 import { LanguageRegistry } from '../../language/LanguageRegistry';
 
 export type AdapterStatus = 'ok' | 'degraded' | 'unavailable';
@@ -87,7 +87,7 @@ export class Phase1IndexPlatform {
       .map((symbol, ordinal, all) => {
         const same = all.filter(s => s.name === symbol.name && s.kind === symbol.kind);
         const duplicateOrdinal = same.length > 1 ? same.indexOf(symbol) : undefined;
-        const key = makeSymbolKey(file.path, symbol.fullyQualifiedName ?? symbol.name, symbol.kind, duplicateOrdinal);
+        const key = makeSymbolKey(file.path, sanitizeKeyPart(symbol.fullyQualifiedName ?? symbol.name), sanitizeKeyPart(symbol.kind), duplicateOrdinal);
         const startLine = Math.max(0, symbol.line - 1);
         const endLine = Math.max(startLine, Math.min(lineIndex.lineCount - 1, symbol.endLine - 1));
         return { key, name: symbol.name, kind: symbol.kind, fileId, range: { start: lineIndex.lineStart(startLine), end: lineIndex.contentEnd(endLine) }, ...(symbol.signature ? { signatureHash: sha8(symbol.signature) } : {}) };
