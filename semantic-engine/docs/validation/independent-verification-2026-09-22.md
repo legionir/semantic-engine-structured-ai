@@ -107,8 +107,17 @@ branch `docs/audit-file-status`). So the phase 3/4 closure merges carried **no P
 GitHub's “CLEAN / mergeable” state was not a check result. ✅ *Mitigation already in place:* the
 post-merge push run for `a00575c` (run `35777210257`) shows **semantic-engine Node 20 ✅ and Node 22 ✅**,
 i.e. the merged phase code *is* CI-verified — just after the merge rather than before it.
-**Recommendation:** make the `Test` workflow a required check for PRs so future gate closures cannot be
-merged without it.
+**Constraint found while preparing the recommendation (F-1b):** the repository is private on the GitHub
+Free plan, so **branch protection / rulesets are not available** (`GET /branches/main/protection` → 403;
+`GET /rulesets` → *“Upgrade to GitHub Pro or make this repository public”*). A required-check rule cannot
+enforce anything here yet. The exact reason the `pull_request` workflow never fired for PRs #15/#16 is not
+observable from this token's API surface (bot-actor/permission hypotheses remain untested — only PR #17,
+whose head branch was pushed outside the agent flow, produced a run).
+**Practical mitigations available today (no plan change needed):**
+1. before merging any gate PR run `gh pr checks <n>` — and treat *“no checks reported”* as **not verified**;
+2. run the local equivalent of CI (`npm ci && npm run build && npm run lint && npm run test:gate && npm test`)
+   on the merge candidate and record the log in the PR description;
+3. consider making the repository public (or upgrading the plan) if enforced required checks are wanted.
 
 ### F-2 (CI, unrelated to phases) — main's CI badge is red because of the `structured-ai` job
 Run `35777210257` (commit `a00575c`): `structured-ai (Node 18)` ❌ and `structured-ai (Node 20)` ❌, while
