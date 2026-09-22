@@ -1186,7 +1186,16 @@ async function main() {
 
                 const state = await request("GET", "/api/state");
 
-                return state.body.status === "done";
+                /* `done` is published before the asynchronous git report
+                   in the server's finally block. Wait for the artifacts
+                   this test asserts, not just the model's terminal state. */
+                return state.body.status === "done" &&
+                    state.body.messages.some(
+                        message => message.kind === "git-report"
+                    ) &&
+                    state.body.events.some(
+                        event => event.type === "git:report"
+                    );
             }
         );
 
