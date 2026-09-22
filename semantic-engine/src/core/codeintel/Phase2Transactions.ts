@@ -6,7 +6,7 @@ import { isInside } from '../contracts/fileProvider';
 export interface TextEdit { readonly path: string; readonly start: number; readonly end: number; readonly replacement: string; readonly expectedHash: string; }
 export interface EditOperation extends TextEdit { readonly original: string; readonly updated: string; }
 export interface EditPlan { readonly id: string; readonly createdAt: string; readonly workspaceRoot: string; readonly edits: readonly EditOperation[]; readonly diff: string; readonly source: 'structural-search' | 'client'; readonly approved: boolean; }
-export interface TransactionRecord { readonly transactionId: string; readonly status: 'applied' | 'rolled_back'; readonly plan: EditPlan; readonly originals: readonly { path: string; content: string; hash: string }[]; readonly updatedAt: string; }
+export interface TransactionRecord { readonly transactionId: string; readonly status: 'applied' | 'rolled_back'; readonly plan: EditPlan; readonly originals: readonly { path: string; content: string; hash: string }[]; readonly after: readonly { path: string; hash: string }[]; readonly updatedAt: string; }
 export interface Validator { readonly id: string; readonly validate: (paths: readonly string[]) => Promise<{ ok: boolean; message?: string }>; }
 
 /** Host-owned unsaved buffers. They are never persisted by this class. */
@@ -49,10 +49,24 @@ export class TransactionalEditEngine {
     const byFile = new Map<string, EditOperation[]>(); for (const edit of plan.edits) (byFile.get(edit.path) ?? (byFile.set(edit.path, []), byFile.get(edit.path)!)).push(edit);
     try { for (const [relativePath, edits] of byFile) { const absolute = this.absolute(relativePath); const original = originals.find(x => x.path === relativePath)!.content; const updated = applyEdits(original, edits); await atomicWrite(absolute, updated); } }
     catch (error) { for (const original of originals) await atomicWrite(this.absolute(original.path), original.content); throw error; }
-    const record: TransactionRecord = { transactionId: plan.id, status: 'applied', plan: { ...plan, approved: true }, originals, updatedAt: new Date().toISOString() }; await this.writeJournal(record); return record;
+    const after: { path: string; hash: string }[] = [];
+    for (const relativePath of paths) after.push({ path: relativePath, hash: hash(await fs.readFile(this.absolute(relativePath), 'utf8')) });
+    const record: TransactionRecord = { transactionId: plan.id, status: 'applied', plan: { ...plan, approved: true }, originals, after, updatedAt: new Date().toISOString() }; await this.writeJournal(record); return record;
   }
 
-  async rollback(transactionId: string): Promise<TransactionRecord> { const record = await this.readJournal(transactionId); for (const original of record.originals) await atomicWrite(this.absolute(original.path), original.content); const rolled: TransactionRecord = { ...record, status: 'rolled_back', updatedAt: new Date().toISOString() }; await this.writeJournal(rolled); return rolled; }
+  async rollback(transactionId: string): Promise<TransactionRecord> {
+    const record = await this.readJournal(transactionId);
+    if (!Array.isArray((record as { after?: unknown }).after)) throw new Error(`UNDO_CONFLICT: ${transactionId} has no verifiable after-state`);
+    for (const original of record.originals) {
+      const expected = record.after.find(a => a.path === original.path)?.hash;
+      let current: string;
+      try { current = await fs.readFile(this.absolute(original.path), 'utf8'); }
+      catch { throw new Error(`UNDO_CONFLICT: ${original.path} is missing or unreadable`); }
+      if (expected === undefined || hash(current) !== expected) throw new Error(`UNDO_CONFLICT: ${original.path} changed since apply`);
+    }
+    for (const original of record.originals) await atomicWrite(this.absolute(original.path), original.content);
+    const rolled: TransactionRecord = { ...record, status: 'rolled_back', updatedAt: new Date().toISOString() }; await this.writeJournal(rolled); return rolled;
+  }
   async undo(transactionId: string): Promise<TransactionRecord> { return this.rollback(transactionId); }
   async recover(): Promise<readonly TransactionRecord[]> { try { const names = (await fs.readdir(this.absolute(this.journalDirectory))).filter(n => n.endsWith('.json')).sort(); const records: TransactionRecord[] = []; for (const name of names) records.push(JSON.parse(await fs.readFile(path.join(this.absolute(this.journalDirectory), name), 'utf8')) as TransactionRecord); return records; } catch { return []; } }
 

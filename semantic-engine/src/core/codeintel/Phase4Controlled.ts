@@ -2,8 +2,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ProjectIndexReader } from '../../ai/ProjectIndexReader';
-import { FileEntry, SymbolEntry } from '../types/project-index.types';
-import { compareCanonical, LineIndex, makeSymbolKey } from '../contracts/codeintel';
+import { SymbolEntry } from '../types/project-index.types';
+import { compareCanonical, LineIndex, sanitizeKeyPart } from '../contracts/codeintel';
 import { TransactionalEditEngine, TextEdit, EditPlan, contentHash } from './Phase2Transactions';
 
 export type Phase4Language = 'typescript' | 'javascript' | 'tsx' | 'python';
@@ -18,7 +18,7 @@ export interface ContextResult { readonly contract: Phase4Contract; readonly sna
 export interface RenameResult { readonly contract: Phase4Contract; readonly plan: EditPlan; readonly skipped: readonly { readonly path: string; readonly reason: string }[]; readonly conflicts: readonly { readonly path: string; readonly reason: string }[]; readonly expect: { readonly unresolvedNotIncreased: true }; }
 
 const contract = (feature: string, rollback: string, securityBoundary: string): Phase4Contract => ({ schemaVersion: '4-controlled', feature, experimental: true, rollback, securityBoundary });
-const phase4Contract = contract('controlled-expansion', 'Use TransactionalEditEngine.rollback(transactionId) and journal recovery.', 'Read-only by default; workspace-relative paths, denylist and bounded results; writes require host approval.');
+
 
 export class Phase4ProviderRegistry {
   readonly contract = contract('provider-expansion', 'Disable provider flag; no index mutation is performed.', 'Only workspace-relative files selected by ProjectIndex are read.');
@@ -50,7 +50,7 @@ export class Phase4ConstraintGraph {
     }
     return { nodes, edges: edges.sort((a, b) => compareCanonical(a.id, b.id)) };
   }
-  private node(s: SymbolEntry): Phase4Symbol { const file = this.reader.getFileById(s.fileId); const key = `${file?.path ?? s.fileId}::${s.fullyQualifiedName ?? s.name}::${s.kind}`; return { id: s.id, key, name: s.name, kind: s.kind, path: file?.path ?? s.fileId, language: (file?.language as Phase4Language) ?? 'typescript', start: 0, end: 0, line: s.line, exported: s.exported === true, confidence: 'exact' }; }
+  private node(s: SymbolEntry): Phase4Symbol { const file = this.reader.getFileById(s.fileId); const key = `${file?.path ?? s.fileId}::${sanitizeKeyPart(s.fullyQualifiedName ?? s.name)}::${sanitizeKeyPart(s.kind)}`; return { id: s.id, key, name: s.name, kind: s.kind, path: file?.path ?? s.fileId, language: (file?.language as Phase4Language) ?? 'typescript', start: 0, end: 0, line: s.line, exported: s.exported === true, confidence: 'exact' }; }
 }
 
 export class Phase4ContextBuilder {
@@ -61,7 +61,7 @@ export class Phase4ContextBuilder {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error('INVALID_ARGUMENT: limit');
     const symbols = [...this.reader.getAllSymbols()].filter(s => s.name === seed || s.fullyQualifiedName?.includes(seed)).map(s => ({ symbol: s, score: s.name === seed ? 1 : 0.5 })).sort((a, b) => b.score - a.score || compareCanonical(a.symbol.id, b.symbol.id));
     const items: ContextItem[] = []; let used = 0;
-    for (const candidate of symbols.slice(0, limit)) { const file = this.reader.getFileById(candidate.symbol.fileId); if (!file || file.binary || file.truncated) continue; const text = await this.safeRead(file.path); const excerpt = text.slice(0, Math.min(text.length, Math.max(80, budgetTokens * 4 - used * 4))); const tokens = estimateTokens(excerpt); if (used + tokens > budgetTokens) break; items.push({ id: sha(`${file.path}:${candidate.symbol.id}`), path: file.path, symbolKey: `${file.path}::${candidate.symbol.fullyQualifiedName ?? candidate.symbol.name}::${candidate.symbol.kind}`, score: candidate.score, excerpt, reason: candidate.score === 1 ? 'exact seed match' : 'qualified-name match' }); used += tokens; }
+    for (const candidate of symbols.slice(0, limit)) { const file = this.reader.getFileById(candidate.symbol.fileId); if (!file || file.binary || file.truncated) continue; const text = await this.safeRead(file.path); const excerpt = text.slice(0, Math.min(text.length, Math.max(80, budgetTokens * 4 - used * 4))); const tokens = estimateTokens(excerpt); if (used + tokens > budgetTokens) break; items.push({ id: sha(`${file.path}:${candidate.symbol.id}`), path: file.path, symbolKey: `${file.path}::${sanitizeKeyPart(candidate.symbol.fullyQualifiedName ?? candidate.symbol.name)}::${sanitizeKeyPart(candidate.symbol.kind)}`, score: candidate.score, excerpt, reason: candidate.score === 1 ? 'exact seed match' : 'qualified-name match' }); used += tokens; }
     return { contract: this.contract, snapshotId: snapshot(this.reader), items, omittedSummary: { count: Math.max(0, symbols.length - items.length), estimatedTokens: Math.max(0, symbols.length - items.length) * 20 }, truncated: items.length < symbols.length };
   }
   private async safeRead(relativePath: string): Promise<string> { if (!relativePath || relativePath.includes('..') || path.posix.isAbsolute(relativePath) || /(^|\/)(\.env|\.git|node_modules)(\/|$)/u.test(relativePath)) throw new Error('DENIED: protected path'); return (await fs.readFile(path.resolve(this.workspaceRoot, relativePath), 'utf8')).replace(/^\uFEFF/u, ''); }

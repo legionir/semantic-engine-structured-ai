@@ -1,10 +1,9 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { AiTool, AiToolInput, AiToolOutput } from './types';
 import { ProjectIndexReader } from '../ProjectIndexReader';
 import { FileEntry, SymbolEntry } from '../../core/types/project-index.types';
-import { LineIndex, makeHandle, parseHandle } from '../../core/contracts/codeintel';
+import { makeHandle, parseHandle, sanitizeKeyPart } from '../../core/contracts/codeintel';
 import { SourceSecurityGuard } from '../../services/source/SourceSecurityGuard';
 import { Phase1IndexPlatform } from '../../core/codeintel/Phase1Platform';
 
@@ -102,7 +101,7 @@ export class ProjectInfoTool implements AiTool {
   readonly name = 'project_info'; readonly description = 'Return project identity, generation, languages and adapter status.';
   readonly inputSchema = { type: 'object', properties: {} };
   constructor(private readonly reader: ProjectIndexReader) {}
-  async execute(): Promise<AiToolOutput> { const p = this.reader.projectIndex; const platform = new Phase1IndexPlatform(); return { success: true, items: [{ id: p.root, name: p.root, kind: 'project', source: 'project-index', metadata: { root: p.root, rootPath: p.rootPath, schemaVersion: p.schemaVersion, generatedAt: p.generatedAt, snapshotId: platform.snapshotId(p), languages: [...p.languages].sort(), languageSupport: platform.adapters(p), generation: p.incremental?.mode ?? 'full', trust: 'untrusted-source-content' } }] }; }
+  async execute(_input?: AiToolInput): Promise<AiToolOutput> { const p = this.reader.projectIndex; const platform = new Phase1IndexPlatform(); return { success: true, items: [{ id: p.root, name: p.root, kind: 'project', source: 'project-index', metadata: { root: p.root, rootPath: p.rootPath, schemaVersion: p.schemaVersion, generatedAt: p.generatedAt, snapshotId: platform.snapshotId(p), languages: [...p.languages].sort(), languageSupport: platform.adapters(p), generation: p.incremental?.mode ?? 'full', trust: 'untrusted-source-content' } }] }; }
 }
 
 export class ProjectListFilesTool implements AiTool {
@@ -137,7 +136,7 @@ export class SymbolInspectTool implements AiTool {
   readonly description = 'Inspect a symbol identity, range, signature and provenance from the index.';
   readonly inputSchema = { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, path: { type: 'string' } }, anyOf: [{ required: ['id'] }, { required: ['name'] }] };
   constructor(private readonly reader: ProjectIndexReader) {}
-  async execute(input: AiToolInput): Promise<AiToolOutput> { let symbols: readonly SymbolEntry[] = []; if (typeof input.id === 'string') { const one = this.reader.getSymbolById(input.id); symbols = one ? [one] : []; } else if (typeof input.name === 'string') symbols = this.reader.getSymbolsByName(input.name); if (typeof input.path === 'string') { const file = this.reader.getFileByPath(input.path); symbols = symbols.filter(s => s.fileId === file?.id); } if (symbols.length === 0) return fail('NOT_FOUND: symbol'); const items = [...symbols].sort((a, b) => a.fileId.localeCompare(b.fileId) || a.line - b.line).map(s => { const file = this.reader.getFileById(s.fileId); return { id: s.id, name: s.name, kind: s.kind, path: file?.path, line: s.line, source: s.source, excerpt: s.signature ?? s.name, metadata: { symbolKey: `${file?.path ?? s.fileId}::${s.fullyQualifiedName ?? s.name}::${s.kind}`, signatureHash: s.signature ? hash8(s.signature) : undefined, endLine: s.endLine, confidence: s.confidence, exported: s.exported ?? false } }; }); return { success: true, items }; }
+  async execute(input: AiToolInput): Promise<AiToolOutput> { let symbols: readonly SymbolEntry[] = []; if (typeof input.id === 'string') { const one = this.reader.getSymbolById(input.id); symbols = one ? [one] : []; } else if (typeof input.name === 'string') symbols = this.reader.getSymbolsByName(input.name); if (typeof input.path === 'string') { const file = this.reader.getFileByPath(input.path); symbols = symbols.filter(s => s.fileId === file?.id); } if (symbols.length === 0) return fail('NOT_FOUND: symbol'); const items = [...symbols].sort((a, b) => a.fileId.localeCompare(b.fileId) || a.line - b.line).map(s => { const file = this.reader.getFileById(s.fileId); return { id: s.id, name: s.name, kind: s.kind, path: file?.path, line: s.line, source: s.source, excerpt: s.signature ?? s.name, metadata: { symbolKey: `${file?.path ?? s.fileId}::${sanitizeKeyPart(s.fullyQualifiedName ?? s.name)}::${sanitizeKeyPart(s.kind)}`, signatureHash: s.signature ? hash8(s.signature) : undefined, endLine: s.endLine, confidence: s.confidence, exported: s.exported ?? false } }; }); return { success: true, items }; }
 }
 
 export class GainsReportTool implements AiTool {
@@ -156,7 +155,7 @@ export class CodeOutlineTool implements AiTool {
   async execute(input: AiToolInput): Promise<AiToolOutput> {
     const file = fileOf(this.reader, input); if (!file) return fail('NOT_FOUND: source file');
     const symbols = [...this.reader.getSymbolsForFile(file.id)].sort((a, b) => a.line - b.line || a.endLine - b.endLine || a.name.localeCompare(b.name));
-    return { success: true, items: symbols.map((s, ordinal) => ({ id: s.id, name: s.name, kind: s.kind, path: file.path, line: s.line, source: s.source, excerpt: s.signature ?? s.name, metadata: { symbolKey: `${file.path}::${s.fullyQualifiedName ?? s.name}::${s.kind}${symbols.filter(x => x.name === s.name && x.kind === s.kind).length > 1 ? `#${ordinal}` : ''}`, endLine: s.endLine, ...(input.includeRanges === false ? {} : { range: { startLine: s.line, endLine: s.endLine } }), partial: false, confidence: s.confidence } })), metadata: { returnedTokens: symbols.reduce((n, s) => n + tokens(s.signature ?? s.name), 0), truncated: false } };
+    return { success: true, items: symbols.map((s, ordinal) => ({ id: s.id, name: s.name, kind: s.kind, path: file.path, line: s.line, source: s.source, excerpt: s.signature ?? s.name, metadata: { symbolKey: `${file.path}::${sanitizeKeyPart(s.fullyQualifiedName ?? s.name)}::${sanitizeKeyPart(s.kind)}${symbols.filter(x => x.name === s.name && x.kind === s.kind).length > 1 ? `#${ordinal}` : ''}`, endLine: s.endLine, ...(input.includeRanges === false ? {} : { range: { startLine: s.line, endLine: s.endLine } }), partial: false, confidence: s.confidence } })), metadata: { returnedTokens: symbols.reduce((n, s) => n + tokens(s.signature ?? s.name), 0), truncated: false } };
   }
 }
 

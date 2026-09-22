@@ -328,12 +328,27 @@ export async function runWorker(
       const blueprint = loadBlueprintBeside(paths.indexPath).index;
 
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      /*
+       | فاز ۳ (D-0021): پرچم‌های آزمایشی host صریح‌اند — یا از `--experimental`
+       | (مثل entry point مستقل MCP) یا از محیط `SEMANTIC_ENGINE_EXPERIMENTAL`
+       | برای workerهایی که Gateway بالا می‌آورد و argvشان را کنترل نمی‌کند.
+       | نام ناشناخته همان‌جا دور انداخته می‌شود تا typo چیزی را بی‌صدا روشن نکند.
+       */
+      const knownExperimental = new Set(['semantic-graph', 'controlled-expansion']);
+      const experimentalNames = [
+        ...(stringOption(args.options, 'experimental') ?? '').split(','),
+        ...(process.env['SEMANTIC_ENGINE_EXPERIMENTAL'] ?? '').split(','),
+      ].map(name => name.trim()).filter(name => knownExperimental.has(name));
+      const experimental: Record<string, boolean> | undefined = experimentalNames.length
+        ? Object.fromEntries(experimentalNames.map(name => [name, true]))
+        : undefined;
       const mcpServer = new SemanticEngineMcpServer({
         projectIndex,
         workspaceRoot: paths.workspaceRoot,
         projectId: paths.projectId,
         indexPath: paths.indexPath,
         ...(blueprint ? { blueprint } : {}),
+        ...(experimental ? { experimental } : {}),
       });
       await mcpServer.connectTransport(transport);
 

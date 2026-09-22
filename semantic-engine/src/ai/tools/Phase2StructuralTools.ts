@@ -18,13 +18,44 @@ abstract class StructuralTool {
 export class StructuralSearchTool extends StructuralTool implements AiTool {
   readonly name = 'structural_search'; readonly description = 'Search source files using deterministic structural patterns and named metavariables.';
   readonly inputSchema = { type: 'object', properties: { pattern: { type: 'string', minLength: 1 }, language: { type: 'string' }, path: { type: 'string' }, maxResults: { type: 'integer', minimum: 1, maximum: 10000 }, ruleId: { type: 'string' } }, required: ['pattern', 'language'] };
-  async execute(input: AiToolInput): Promise<AiToolOutput> { if (!this.workspaceRoot) return fail('DISABLED: workspaceRoot is not configured'); if (typeof input.pattern !== 'string' || typeof input.language !== 'string') return fail('INVALID_ARGUMENT: pattern and language are required'); const max = typeof input.maxResults === 'number' ? input.maxResults : 100; const items: AiToolOutput['items'][number][] = []; let truncated = false; for (const file of this.files(input)) { if (file.language && input.language !== file.language && languageForPath(file.path) !== input.language) continue; const text = await this.source(file); const result = searchTextStructurally(text, { pattern: input.pattern, language: input.language as StructuralLanguage, path: file.path, maxResults: Math.max(1, max - items.length), ...(typeof input.ruleId === 'string' ? { ruleId: input.ruleId } : {}) }); truncated ||= result.truncated; items.push(...result.matches.map(m => ({ id: m.id, name: m.path, kind: 'structural_match', path: m.path, line: m.line, source: 'structural-search', excerpt: m.text, metadata: { start: m.start, end: m.end, column: m.column, captures: m.captures, language: m.language, ruleId: m.ruleId } }))); if (items.length >= max) { truncated = true; break; } } return ok(items.slice(0, max), { returnedTokens: items.reduce((n, i) => n + Math.ceil((i.excerpt ?? '').length / 4), 0), truncated }); }
+  async execute(input: AiToolInput): Promise<AiToolOutput> {
+    if (!this.workspaceRoot) return fail('DISABLED: workspaceRoot is not configured');
+    if (typeof input.pattern !== 'string' || typeof input.language !== 'string') return fail('INVALID_ARGUMENT: pattern and language are required');
+    const max = typeof input.maxResults === 'number' ? input.maxResults : 100; const items: AiToolOutput['items'][number][] = []; let truncated = false;
+    for (const file of this.files(input)) {
+      if (file.language && input.language !== file.language && languageForPath(file.path) !== input.language) continue;
+      let text: string; try { text = await this.source(file); } catch (error) { return fail(`IO_ERROR: ${error instanceof Error ? error.message : String(error)}`); }
+      // Adapter errors already carry honest prefixes (UNSUPPORTED_LANGUAGE,
+      // INVALID_PATTERN, AST_GREP_*): surface them verbatim, never wrapped.
+      let result: ReturnType<typeof searchTextStructurally>;
+      try { result = searchTextStructurally(text, { pattern: input.pattern, language: input.language as StructuralLanguage, path: file.path, maxResults: Math.max(1, max - items.length), ...(typeof input.ruleId === 'string' ? { ruleId: input.ruleId } : {}) }); }
+      catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+      truncated ||= result.truncated;
+      items.push(...result.matches.map(m => ({ id: m.id, name: m.path, kind: 'structural_match', path: m.path, line: m.line, source: 'structural-search', excerpt: m.text, metadata: { start: m.start, end: m.end, column: m.column, captures: m.captures, language: m.language, ruleId: m.ruleId } })));
+      if (items.length >= max) { truncated = true; break; }
+    }
+    return ok(items.slice(0, max), { returnedTokens: items.reduce((n, i) => n + Math.ceil((i.excerpt ?? '').length / 4), 0), truncated });
+  }
 }
 
 export class RuleTestTool extends StructuralTool implements AiTool {
   readonly name = 'structural_rule_test'; readonly description = 'Run a validated project-scoped structural rule pack without editing files.';
   readonly inputSchema = { type: 'object', properties: { rules: { type: 'string' }, rulePath: { type: 'string' }, path: { type: 'string' }, maxResults: { type: 'integer', minimum: 1 } }, anyOf: [{ required: ['rules'] }, { required: ['rulePath'] }] };
-  async execute(input: AiToolInput): Promise<AiToolOutput> { if (!this.workspaceRoot) return fail('DISABLED: workspaceRoot is not configured'); try { const pack = typeof input.rules === 'string' ? parseRulePack(input.rules) : typeof input.rulePath === 'string' ? await readRulePack(this.absolute(input.rulePath)) : (() => { throw new Error('rules or rulePath is required'); })(); const rows: AiToolOutput['items'][number][] = []; for (const rule of pack.rules) { const result = await new StructuralSearchTool(this.reader, this.workspaceRoot).execute({ pattern: rule.pattern, language: rule.language, ...(typeof input.path === 'string' ? { path: input.path } : {}), maxResults: input.maxResults ?? 1000, ruleId: rule.id }); rows.push(...result.items.map(item => ({ ...item, kind: `rule:${rule.severity}`, name: rule.message, metadata: { ...item.metadata, ruleId: rule.id, message: rule.message, severity: rule.severity } }))); } return ok(rows, { ruleCount: pack.rules.length, passed: rows.length === 0 }); } catch (error) { return fail(`INVALID_RULE_PACK: ${error instanceof Error ? error.message : String(error)}`); } }
+  async execute(input: AiToolInput): Promise<AiToolOutput> {
+    if (!this.workspaceRoot) return fail('DISABLED: workspaceRoot is not configured');
+    try {
+      const pack = typeof input.rules === 'string' ? parseRulePack(input.rules) : typeof input.rulePath === 'string' ? await readRulePack(this.absolute(input.rulePath)) : (() => { throw new Error('rules or rulePath is required'); })();
+      const rows: AiToolOutput['items'][number][] = [];
+      for (const rule of pack.rules) {
+        const result = await new StructuralSearchTool(this.reader, this.workspaceRoot).execute({ pattern: rule.pattern, language: rule.language, ...(typeof input.path === 'string' ? { path: input.path } : {}), maxResults: input.maxResults ?? 1000, ruleId: rule.id });
+        // F-11: a rule that ERRORS must fail the call, never masquerade as
+        // "passed" with zero rows.
+        if (!result.success) return result;
+        rows.push(...result.items.map(item => ({ ...item, kind: `rule:${rule.severity}`, name: rule.message, metadata: { ...item.metadata, ruleId: rule.id, message: rule.message, severity: rule.severity } })));
+      }
+      return ok(rows, { ruleCount: pack.rules.length, passed: rows.length === 0 });
+    } catch (error) { return fail(`INVALID_RULE_PACK: ${error instanceof Error ? error.message : String(error)}`); }
+  }
 }
 
 export class SyntaxTreeDumpTool extends StructuralTool implements AiTool {
@@ -59,6 +90,23 @@ export class EditRollbackTool implements AiTool {
   readonly inputSchema = { type: 'object', properties: { transactionId: { type: 'string' } }, required: ['transactionId'] };
   constructor(private readonly engine?: TransactionalEditEngine) {}
   async execute(input: AiToolInput): Promise<AiToolOutput> { if (!this.engine || typeof input.transactionId !== 'string') return fail('DISABLED: transactional edits are not configured'); try { const record = await this.engine.rollback(input.transactionId); return ok([], { transactionId: record.transactionId, status: record.status }); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } }
+}
+
+export class EditStatusTool implements AiTool {
+  readonly name = 'edit_status'; readonly description = 'Inspect journaled transaction status without changing any file.';
+  readonly inputSchema = { type: 'object', properties: { transactionId: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 1000 } } };
+  constructor(private readonly engine?: TransactionalEditEngine) {}
+  async execute(input: AiToolInput): Promise<AiToolOutput> {
+    if (!this.engine) return fail('DISABLED: transactional edits are not configured');
+    try {
+      const records = await this.engine.recover();
+      const selected = typeof input.transactionId === 'string' ? records.filter(r => r.transactionId === input.transactionId) : records;
+      if (typeof input.transactionId === 'string' && selected.length === 0) return fail('NOT_FOUND: transaction');
+      const limit = typeof input.limit === 'number' ? input.limit : 100;
+      const rows = selected.slice(0, limit).map(r => ({ id: r.transactionId, name: r.status, kind: 'transaction', source: 'transaction-journal', metadata: { status: r.status, planId: r.plan.id, paths: r.plan.edits.map(e => e.path), editCount: r.plan.edits.length, updatedAt: r.updatedAt, diff: r.plan.diff.length > 4000 ? `${r.plan.diff.slice(0, 4000)}…` : r.plan.diff, diffTruncated: r.plan.diff.length > 4000 } }));
+      return ok(rows, { count: rows.length, truncated: selected.length > rows.length });
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  }
 }
 
 export function phase2EngineHash(text: string): string { return contentHash(text); }
