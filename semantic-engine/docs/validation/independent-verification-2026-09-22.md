@@ -161,6 +161,12 @@ real clients): only entries exposing `close` are closed.
 | `node test/projects/project-api.test.js` on Node 18 | 17/17 ✅ (was: crash) |
 | full `structured-ai` chain on Node 22 | exit 0, all groups ✅ |
 | `node --check agent/mcp/McpManager.js` | ✅ |
+| **CI re-run on the real runner** (run `35782745484`, commit `7b56cc6`) | `structured-ai (Node 18)` ✅ **4m3s** — was ❌ (16–33 s) on every previous run; `structured-ai (Node 20)` ✅ 1m22s |
+
+That CI result is the decisive check: the previously deterministic red leg now runs the *whole* chain on
+the runner. The two `semantic-engine` jobs of that run were still executing when this sandbox lost its
+GitHub credentials, so their conclusion is not recorded here (the same jobs were green on both Node 20
+and Node 22 for the parent commit).
 
 **F-2b — the intermittent failure: reproduced, still open.** `test/web/web.test.js` (position 49/52 of
 the chain) is flaky: 1 of 6 consecutive direct runs failed with **10/28 passed**, while neighbouring runs
