@@ -6,6 +6,15 @@
  * from `@aicoder/semantic-engine`.
  */
 
+// Phase 0 additive CodeIntel contracts
+export { LineIndex, makeHandle, makeSymbolKey, ok, fail, DEFAULT_CODEINTEL_CONFIG, canonicalJson } from './core/contracts/codeintel';
+export type { Position, TextRange, SymbolKey, Handle, Envelope, CodeIntelError, CodeIntelConfig } from './core/contracts/codeintel';
+export { deterministicPaths } from './core/contracts/ports';
+export { readCoherentArtifactSet, IncoherentArtifactSetError } from './pipeline/OutputWriter';
+export type { FileMetadata, FileProvider, TokenCounter } from './core/contracts/ports';
+export { InMemorySnapshotStore } from './core/contracts/snapshotStore';
+export type { SnapshotFile, SnapshotHandleResult } from './core/contracts/snapshotStore';
+
 // Core types
 export type {
   ProjectIndex,

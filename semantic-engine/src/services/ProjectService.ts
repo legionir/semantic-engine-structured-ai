@@ -21,9 +21,13 @@ import { ArtifactLocation, DEFAULT_ARTIFACT_LOCATION } from '../core/config/Data
 import { migrateLegacyArtifacts } from '../core/config/migrateLegacyArtifacts';
 import type { ProjectRecord, ProjectRegistry } from '../core/config/ProjectRegistry';
 import { canonicalizeRoot, isPathSafeProjectId, isSafeProjectId, projectIdFor } from '../core/config/ProjectIdentity';
+import {
+  MANIFEST_FILE_NAME,
+  assertIndexMatchesCommittedManifest,
+} from '../core/config/artifactManifest';
 
 const MAX_INDEX_BYTES = 256 * 1024 * 1024;
-const MANIFEST_FILE_NAME = 'project-artifacts.manifest.json';
+
 
 export interface ManagedProject {
   readonly id: string;
@@ -170,16 +174,15 @@ export class ProjectService {
             }
           : null;
 
-        if (manifest?.artifacts?.index?.sha256) {
-          const actualHash = crypto.createHash('sha256')
-            .update(fs.readFileSync(actualIndexPath))
-            .digest('hex');
-          if (actualHash !== manifest.artifacts.index.sha256) {
-            throw new Error('project-index does not match its committed artifact manifest');
-          }
-        }
+        /*
+        | fail-closed روی جفتِ artifact: اگر manifest دیجست متفاوتی پین
+        | کرده باشد، ایندکس هرگز parse و تحویل نمی‌شود. قاعدهٔ مشترک با
+        | مسیر MCP است (core/config/artifactManifest.ts).
+        */
+        const indexBytes = fs.readFileSync(actualIndexPath);
+        assertIndexMatchesCommittedManifest(actualIndexPath, indexBytes);
 
-        index = JSON.parse(fs.readFileSync(actualIndexPath, 'utf8')) as ProjectIndex;
+        index = JSON.parse(indexBytes.toString('utf8')) as ProjectIndex;
         reader = new ProjectIndexReader(index);
         const bpResult = manifest?.artifacts?.blueprint
           ? loadBlueprintBeside(actualIndexPath)

@@ -2,7 +2,10 @@
  * AiToolRegistry — ثبت و اجرای همه‌ی AI tools.
  */
 
+import * as path from 'path';
 import { ProjectIndexReader } from './ProjectIndexReader';
+import { GraphSnapshotStore } from '../core/codeintel/GraphSnapshotStore';
+import { PROJECT_OUTPUT_DIR } from '../core/config/ProjectPaths';
 import { AiTool, AiToolInput, AiToolOutput } from './tools/types';
 import { FindSymbolTool } from './tools/FindSymbolTool';
 import { GetDependenciesTool } from './tools/GetDependenciesTool';
@@ -21,6 +24,22 @@ import { DetectArchitectureViolationsTool } from './tools/DetectArchitectureViol
 import { GetGitHotspotsTool } from './tools/GetGitHotspotsTool';
 import { ToolResultCache } from './tools/ToolResultCache';
 import { ToolInputValidator } from './tools/ToolInputValidator';
+import {
+  CodeReadTool,
+  CodeFoldTool,
+  ProjectInfoTool,
+  ProjectListFilesTool,
+  DiagnosticsGetTool,
+  SearchTextTool,
+  SymbolInspectTool,
+  GainsReportTool,
+  CodeOutlineTool,
+  SymbolFindTool,
+} from './tools/Phase1ReadTools';
+import { StructuralSearchTool, RuleTestTool, SyntaxTreeDumpTool, EditPlanTool, EditApprovalTool, EditApplyTool, EditRollbackTool, EditStatusTool } from './tools/Phase2StructuralTools';
+import { TransactionalEditEngine } from '../core/codeintel/Phase2Transactions';
+import { SymbolReferencesTool, SemanticGraphInspectTool } from './tools/Phase3SemanticTools';
+import { Phase4ProviderStatusTool, Phase4ImpactTool, Phase4ContextTool, Phase4RenameTool } from './tools/Phase4ControlledTools';
 
 export interface AiToolRegistryOptions {
   readonly reader: ProjectIndexReader;
@@ -46,7 +65,33 @@ export interface AiToolRegistryOptions {
    * `discover_context` از آن به‌عنوان منبع دوم دانه استفاده می‌کند.
    */
   readonly blueprint?: BlueprintIndex;
+  /** v2 is disabled unless explicitly configured with a workspace root. */
+  readonly enablePhase2Edits?: boolean;
+  readonly phase2JournalDirectory?: string;
+  /** Experimental capabilities are opt-in and disabled by default. */
+  readonly experimental?: Readonly<Record<string, boolean>>;
 }
+
+/**
+ * Phase 2 mutation tools — and the status read that observes them — are never
+ * served from, or stored into, the result cache. A cached `edit_apply`
+ * success would report a second identical call as applied without re-checking
+ * approval and preconditions, and a cached `edit_status` would report a stale
+ * transaction state after rollback; each call must execute honestly.
+ */
+const NON_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([
+  'edit_plan',
+  'edit_approve',
+  'edit_apply',
+  'edit_rollback',
+  'edit_status',
+  // Phase 3 (D-0021): results bind to the persisted snapshot store, which is
+  // shared mutable state the (tool, input, projectHash) cache key cannot see.
+  // A cached success would mask a handle that has since gone stale or been
+  // superseded — stale/mismatched handles must fail closed on every call.
+  'symbol_references',
+  'semantic_graph_inspect',
+]);
 
 export class AiToolRegistry {
   private readonly tools = new Map<string, AiTool>();
@@ -110,6 +155,49 @@ export class AiToolRegistry {
     this.register(new SimulateMutationTool(this.options.reader));
     this.register(new DetectArchitectureViolationsTool(this.options.reader));
     this.register(new GetGitHotspotsTool(this.options.reader, this.options.workspaceRoot));
+    // Phase 1 v1 read-only surface. These tools are additive and require an
+    // explicit workspaceRoot for source access; the index-only tools remain
+    // usable when source access is unavailable.
+    this.register(new CodeReadTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new CodeFoldTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new ProjectInfoTool(this.options.reader));
+    this.register(new ProjectListFilesTool(this.options.reader));
+    this.register(new DiagnosticsGetTool(this.options.reader));
+    this.register(new SearchTextTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new SymbolInspectTool(this.options.reader));
+    this.register(new GainsReportTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new CodeOutlineTool(this.options.reader));
+    this.register(new SymbolFindTool(this.options.reader));
+    const phase2Engine = this.options.enablePhase2Edits && this.options.workspaceRoot
+      ? new TransactionalEditEngine(this.options.workspaceRoot, this.options.phase2JournalDirectory)
+      : undefined;
+    this.register(new StructuralSearchTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new RuleTestTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new SyntaxTreeDumpTool(this.options.reader, this.options.workspaceRoot));
+    this.register(new EditPlanTool(this.options.reader, this.options.workspaceRoot, phase2Engine));
+    this.register(new EditApprovalTool(phase2Engine));
+    this.register(new EditApplyTool(phase2Engine));
+    this.register(new EditRollbackTool(phase2Engine));
+    this.register(new EditStatusTool(phase2Engine));
+    // Phase 3 is experimental: no tool is exposed unless the host opts in.
+    if (this.options.experimental?.['semantic-graph'] === true && this.options.workspaceRoot) {
+      // D-0021: Phase 3 tools run against the persisted snapshot store (durable
+      // handles, fail-closed stale/mismatch rejection) instead of per-call rebuilds.
+      const graphStore = new GraphSnapshotStore(path.join(this.options.workspaceRoot, PROJECT_OUTPUT_DIR, 'graph-snapshots'));
+      this.register(new SymbolReferencesTool(this.options.reader, this.options.workspaceRoot, graphStore));
+      this.register(new SemanticGraphInspectTool(this.options.reader, this.options.workspaceRoot, graphStore));
+    }
+    // Phase 4 remains opt-in and independently bounded. No Phase 4 tool is
+    // exposed unless the host explicitly enables controlled-expansion.
+    if (this.options.experimental?.['controlled-expansion'] === true) {
+      this.register(new Phase4ProviderStatusTool());
+      this.register(new Phase4ImpactTool(this.options.reader));
+      if (this.options.workspaceRoot) this.register(new Phase4ContextTool(this.options.reader, this.options.workspaceRoot));
+      const phase4Engine = this.options.enablePhase2Edits && this.options.workspaceRoot
+        ? new TransactionalEditEngine(this.options.workspaceRoot, this.options.phase2JournalDirectory)
+        : undefined;
+      if (this.options.workspaceRoot && phase4Engine) this.register(new Phase4RenameTool(this.options.reader, this.options.workspaceRoot, phase4Engine));
+    }
   }
 
   register(tool: AiTool): void {
@@ -149,7 +237,7 @@ export class AiToolRegistry {
     }
 
     const hash = this.projectHash;
-    if (this.options.enableCache !== false && hash) {
+    if (this.options.enableCache !== false && hash && !NON_CACHEABLE_TOOLS.has(name)) {
       const cached = this.cache.get(name, input, hash);
       if (cached) return cached;
 

@@ -159,6 +159,7 @@ describe('SemanticEngineMcpServer', () => {
     const toolNames = listResponse.result.tools.map((t: any) => t.name);
     expect(toolNames).toContain('find_symbol');
     expect(toolNames).toContain('get_config_usage');
+    expect(toolNames).toEqual(expect.arrayContaining(['code_outline', 'code_fold', 'code_read', 'symbol_find', 'symbol_inspect', 'search_text', 'diagnostics_get', 'project_info', 'project_list_files', 'gains_report']));
 
     await server.close();
   });
@@ -212,6 +213,14 @@ describe('SemanticEngineMcpServer', () => {
     expect(parsed.success).toBe(true);
     expect(parsed.items.length).toBeGreaterThan(0);
 
+    await server.close();
+  });
+
+  it('exposes the Phase 1 structural tools through tools/call', async () => {
+    const server = new SemanticEngineMcpServer({ projectIndex: createProjectIndex() });
+    const result = await server.callTool('code_outline', { path: 'src/utils.ts' });
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent).toEqual(expect.objectContaining({ success: true, indexGeneration: 0 }));
     await server.close();
   });
 

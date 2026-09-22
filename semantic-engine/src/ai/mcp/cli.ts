@@ -4,6 +4,10 @@
  * Usage:
  *   node dist/ai/mcp/cli.js <path-to-project-index.json>
  *   node dist/ai/mcp/cli.js <path-to-project-index.json> --http --port 3000
+ *   node dist/ai/mcp/cli.js <path-to-project-index.json> --allow-edits --experimental semantic-graph,controlled-expansion
+ *
+ * Mutation (`edit_*`) and experimental Phase 3/4 tools stay disabled unless
+ * the host explicitly passes --allow-edits / --experimental.
  *
  * This is intended to be used by MCP clients (e.g., Claude Desktop, Claude Code).
  */
@@ -23,6 +27,7 @@ import {
 } from '../../core/config/ProjectPaths';
 import type { IndexLookupOptions } from '../../core/config/ProjectPaths';
 import { artifactLocationOrDefault, DATA_DIR_ENV_VAR } from '../../core/config/DataRootResolver';
+import { assertIndexMatchesCommittedManifest } from '../../core/config/artifactManifest';
 import { canonicalizeRoot, projectIdFor } from '../../core/config/ProjectIdentity';
 import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
 import { ARTIFACT_LOCATION_ENV_VAR } from '../../cli/projectPathsFromArgs';
@@ -44,6 +49,8 @@ interface ParsedCliArgs {
   readonly allowRemote: boolean;
   readonly maxBodyBytes: number;
   readonly watch: boolean;
+  readonly allowEdits: boolean;
+  readonly experimental: readonly string[];
 }
 
 /**
@@ -70,7 +77,7 @@ function valueAfter(argv: string[], flag: string): string | undefined {
 }
 
 function positionalArgument(argv: string[]): string | undefined {
-  const valueFlags = new Set(['--root', '--index', '--port', '--host', '--token', '--max-body']);
+  const valueFlags = new Set(['--root', '--index', '--port', '--host', '--token', '--max-body', '--experimental']);
 
   for (let index = 2; index < argv.length; index++) {
     const token = argv[index]!;
@@ -104,6 +111,10 @@ function parseArgs(argv: string[]): ParsedCliArgs {
       : '');
   const rawPort = valueAfter(argv, '--port');
   const rawMaxBody = valueAfter(argv, '--max-body');
+  const rawExperimental = valueAfter(argv, '--experimental');
+  const experimental = rawExperimental === undefined
+    ? []
+    : rawExperimental.split(',').map(name => name.trim()).filter(name => name.length > 0);
 
   return {
     projectIndexPath,
@@ -116,7 +127,19 @@ function parseArgs(argv: string[]): ParsedCliArgs {
     maxBodyBytes:
       rawMaxBody !== undefined ? parseInt(rawMaxBody, 10) : DEFAULT_MAX_BODY_BYTES,
     watch: !argv.includes('--no-watch'),
+    allowEdits: argv.includes('--allow-edits'),
+    experimental,
   };
+}
+
+/**
+ * Only known experimental capabilities are forwarded; unknown names are
+ * dropped so a typo can never silently enable something else.
+ */
+function experimentalMap(names: readonly string[]): Record<string, boolean> | undefined {
+  const known = new Set(['semantic-graph', 'controlled-expansion']);
+  const entries = [...new Set(names)].filter(name => known.has(name)).map(name => [name, true as const]);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 interface StartedWatcher {
@@ -198,6 +221,8 @@ async function runStdio(
     | می‌خواند به مسیری بی‌معنا نگاه می‌کرد.
     */
     workspaceRoot: args.rootPath ?? workspaceRootFromIndex(projectIndex, args.projectIndexPath),
+    ...(args.allowEdits ? { enablePhase2Edits: true as const } : {}),
+    ...(experimentalMap(args.experimental) ? { experimental: experimentalMap(args.experimental) } : {}),
   });
   server.watchIndexFile(args.projectIndexPath);
   const watcher = args.watch
@@ -258,7 +283,9 @@ async function runHttp(
     void guard.handle(req, res, async body => {
       const currentIndex = (() => {
         try {
-          return JSON.parse(fs.readFileSync(args.projectIndexPath, 'utf8')) as ProjectIndex;
+          const rawBytes = fs.readFileSync(args.projectIndexPath);
+          assertIndexMatchesCommittedManifest(args.projectIndexPath, rawBytes);
+          return JSON.parse(rawBytes.toString('utf8')) as ProjectIndex;
         } catch {
           return projectIndex;
         }
@@ -269,6 +296,8 @@ async function runHttp(
         projectIndex: currentIndex,
         ...(currentBlueprint ? { blueprint: currentBlueprint } : blueprint ? { blueprint } : {}),
         workspaceRoot,
+        ...(args.allowEdits ? { enablePhase2Edits: true as const } : {}),
+        ...(experimentalMap(args.experimental) ? { experimental: experimentalMap(args.experimental) } : {}),
       });
       await mcpServer.connectTransport(transport);
 
@@ -355,8 +384,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const raw = fs.readFileSync(args.projectIndexPath, 'utf8');
-  const projectIndex = JSON.parse(raw) as ProjectIndex;
+  const rawBytes = fs.readFileSync(args.projectIndexPath);
+  // همان دروازهٔ fail-closed مسیر HTTP/MCP — شروع با index ناسازگار ممنوع است.
+  assertIndexMatchesCommittedManifest(args.projectIndexPath, rawBytes);
+  const projectIndex = JSON.parse(rawBytes.toString('utf8')) as ProjectIndex;
 
   /*
   | SE-BP-06 — blueprint کنار project-index نوشته می‌شود و تا فاز ۴۳

@@ -28,6 +28,7 @@ import { AiToolInput } from '../tools/types';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { resolveProjectIndexPath } from '../../core/config/ProjectPaths';
 import { parseIndexGeneration } from '../../core/config/indexGeneration';
+import { MANIFEST_FILE_NAME, assertIndexMatchesCommittedManifest } from '../../core/config/artifactManifest';
 import { loadBlueprintBeside } from '../discovery/loadBlueprint';
 
 export interface McpServerOptions {
@@ -47,6 +48,20 @@ export interface McpServerOptions {
    * استفاده می‌کند.
    */
   readonly blueprint?: BlueprintIndex;
+  /**
+   * Phase 2 transactional edits stay disabled unless the host explicitly
+   * opts in. This is the MCP-side switch for `AiToolRegistryOptions`
+   * (`enablePhase2Edits` + `phase2JournalDirectory`); without it the edit
+   * tools are registered but fail closed with DISABLED.
+   */
+  readonly enablePhase2Edits?: boolean;
+  readonly phase2JournalDirectory?: string;
+  /**
+   * Experimental Phase 3/4 capabilities. Only the named capabilities are
+   * registered (`semantic-graph`, `controlled-expansion`); anything else
+   * stays unlisted. Absent by default.
+   */
+  readonly experimental?: Readonly<Record<string, boolean>>;
 }
 
 export class SemanticEngineMcpServer {
@@ -60,11 +75,17 @@ export class SemanticEngineMcpServer {
   private readonly projectId?: string;
   private indexPath?: string;
   private generation: number = 0;
+  private readonly enablePhase2Edits?: boolean;
+  private readonly phase2JournalDirectory?: string;
+  private readonly experimental?: Readonly<Record<string, boolean>>;
 
   constructor(options: McpServerOptions) {
     this.workspaceRoot = options.workspaceRoot;
     this.projectId = options.projectId;
     this.indexPath = options.indexPath;
+    this.enablePhase2Edits = options.enablePhase2Edits;
+    this.phase2JournalDirectory = options.phase2JournalDirectory;
+    this.experimental = options.experimental;
     this.registry = this.createRegistry(options.projectIndex, options.blueprint);
     if (options.indexPath) this.refreshGeneration(options.indexPath);
 
@@ -91,6 +112,9 @@ export class SemanticEngineMcpServer {
       projectHash: projectIndex.generatedAt,
       enableCache: true,
       ...(blueprint ? { blueprint } : {}),
+      ...(this.enablePhase2Edits === true ? { enablePhase2Edits: true as const } : {}),
+      ...(this.phase2JournalDirectory !== undefined ? { phase2JournalDirectory: this.phase2JournalDirectory } : {}),
+      ...(this.experimental !== undefined ? { experimental: this.experimental } : {}),
     });
   }
 
@@ -149,10 +173,7 @@ export class SemanticEngineMcpServer {
    */
   private refreshGeneration(indexPath: string): void {
     try {
-      const manifestPath = path.join(
-        path.dirname(indexPath),
-        'project-artifacts.manifest.json'
-      );
+      const manifestPath = path.join(path.dirname(indexPath), MANIFEST_FILE_NAME);
       this.generation = parseIndexGeneration(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
     } catch {
       this.generation = 0;
@@ -169,7 +190,16 @@ export class SemanticEngineMcpServer {
     if (!indexPath || !fs.existsSync(indexPath)) return;
 
     try {
-      const projectIndex = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ProjectIndex;
+      /*
+      | fail-closed روی جفتِ artifact: انتشارِ index و manifest دو فایلِ
+      | مستقل است و crash میان آن‌ها indexِ جدید را کنار manifestِ قدیمی
+      | می‌گذارد. پیش از این، JSON معتبرِ ناسازگار بدون هیچ علامتی serve
+      | می‌شد؛ حالا تا سازگارشدن digest، آخرین snapshot سالم فعال می‌ماند
+      | و reload بعدی دوباره تلاش می‌کند.
+      */
+      const indexBytes = fs.readFileSync(indexPath);
+      assertIndexMatchesCommittedManifest(indexPath, indexBytes);
+      const projectIndex = JSON.parse(indexBytes.toString('utf8')) as ProjectIndex;
       this.refreshGeneration(indexPath);
       const loaded = loadBlueprintBeside(indexPath);
       this.reload(projectIndex, loaded.index ?? undefined);
