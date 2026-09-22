@@ -318,3 +318,36 @@
   (4) re-run the same frozen goldens; (5) re-gate precision, recall,
   persistence, parity; (6) only after all pass, open Phase 4.
 - **Status:** DECIDED.
+
+## D-0022 — Owner ruling: option A (goal-aware retrieval) approved for design-freeze review ONLY; implementation not yet authorized
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-21 UTC)
+- **Decider:** repository owner (written ruling 2026-09-22).
+- **Ruling:** Spike-S extension (option A) approved CONDITIONALLY, gated:
+  design freeze first, owner approval of the freeze required before any
+  implementation. G-3.7/G-3.9 remain FAIL until re-gate. Phase 3/Phase 4
+  remain BLOCKED. Option B (gate-threshold change) REJECTED — changing bars
+  before testing A is a bypass. Option C (park) premature — revisitable only
+  after A is fully executed. Persisted lifecycle (D-0021) continues
+  independently.
+- **Mandatory design contents (owner):** (1) precise cue definitions;
+  (2) cue→behavior mapping incl. priorities, tie-breakers, budget cap and
+  shortage behavior; (3) goal classes (direct reference, same-file consumer,
+  transitive dependency, re-export/export-from, default binding,
+  ambiguous/unresolved, scope-shadowed/overloads); (4) anti-gaming protocol
+  (lexicon frozen+hashed pre-benchmark, no fixture-specific vocabulary, golds
+  unchanged post-freeze, blind AND aware runs recorded, per-cue + combined
+  ablation, unseen-fixture results reported); (5) re-gate criteria (P≥0.95,
+  R≥B1, R>B0, no hidden-unresolved increase, incremental==full, separate
+  exact/ambiguous/heuristic/unresolved reporting, cue must not raise
+  confidence above exact).
+- **Separation principle (owner, binding):** goal text → retrieval
+  direction/class selection only; source graph → candidate generation and
+  resolution; gold fixture → evaluation only, never runtime input.
+- **Submission:** design freeze submitted as
+  docs/validation/spike-s/retrieval-design.md v1.0.0 + cue-lexicon.json
+  v1.0.0 (SHA-256 recorded inside; gold.json/index.json hashes locked).
+  Preregistered predictions: aware macro P=R=1.000 (20/20, assumes fixes
+  achieve spec); blind (fixes only) macro R=0.8875 < B1 0.896 → cue layer
+  necessary. Implementation order and ~3.5–5 engineer-week size inside.
+- **Status:** DECIDED; freeze SUBMITTED — owner approval PENDING.

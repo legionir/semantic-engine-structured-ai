@@ -77,3 +77,13 @@ re-gate). Phase 3: BLOCKED / NO-GO AS-IS. Ten executed-test acceptance
 criteria for the store + ordered next steps recorded in D-0021; order:
 record vote → fix resolution (five Spike-S blindnesses) → persisted
 lifecycle → re-run frozen goldens → re-gate → only then Phase 4.
+
+## Design freeze submitted 2026-09-22 (D-0022) — extended Step 2
+
+Owner approved option A (goal-aware retrieval) for design-freeze review only;
+implementation NOT authorized. Submitted: retrieval-design.md v1.0.0 +
+cue-lexicon.json v1.0.0 (frozen, hashed; golds untouched). Resolver fixes
+F1–F7 + 5-cue direction layer + anti-gaming protocol + re-gate criteria +
+preregistered predictions (aware 1.0/1.0; blind 0.8875 < B1). G-3.7/G-3.9
+still FAIL; Phase 3/4 BLOCKED. Awaiting owner ratification; persisted store
+(D-0021) continues independently.
