@@ -177,6 +177,11 @@ so the signature is not Node-18-specific. Root cause not identified in this pass
 (no reliable reproduction). Recommended follow-up: instrument that wait/retry path with timing output and
 run the file in a loop (the local recipe is in the evidence log).
 
+**Local follow-up, 2026-09-23:** the missing git-report assertion now has a deterministic
+real-callback-delay reproduction and a test-only synchronization fix. See
+[f2b-follow-up-2026-09-23.md](f2b-follow-up-2026-09-23.md) for before/after logs and limits.
+The broader timeout cascade remains open; this follow-up is not CI-confirmed.
+
 **F-2c — `structured-ai (Node 18)` also runs the engine, which declares `engines: node >= 20`.** When
 `semantic-engine/dist` happens to exist (not in CI, since only the `semantic-engine` jobs build), the
 gateway test spawns the engine under Node 18 and gets
