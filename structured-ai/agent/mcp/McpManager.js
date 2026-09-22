@@ -700,9 +700,22 @@ class McpManager {
 
     async shutdown() {
 
+        /*
+        | Not every entry in this map is guaranteed to be an McpClient:
+        | tests inject doubles (`manager.clients.set(name, { config })`) and
+        | callers may register a server whose definition never produced a
+        | connection. Calling `client.close()` on such an entry throws a
+        | TypeError *synchronously* inside this async function, which turns a
+        | shutdown into an unhandled rejection — fatal on Node 18, silently
+        | swallowed on Node 22, so the same teardown crashed CI only on some
+        | runtimes (project-api teardown). Skip entries that cannot close.
+        */
         const closing =
             [...this.clients.values()].map(
-                client => client.close().catch(() => {})
+                client =>
+                    client && typeof client.close === "function"
+                        ? client.close().catch(() => {})
+                        : Promise.resolve()
             );
 
         this.clients.clear();
