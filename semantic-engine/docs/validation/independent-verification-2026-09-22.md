@@ -31,6 +31,9 @@ evidence; prior logs were used only as the claims under test. Raw logs are attac
 | 7 | `sha256sum gold.json cue-lexicon.json fixture/index.json` | independent freeze-hash check |
 | 8 | `npx jest …GraphSnapshotStore.test.ts …Phase4Controlled.test.ts …Phase4ControlledTools.test.ts` | gate unit tests |
 | 9 | GitHub API: `commits/<sha>/check-runs`, `actions/runs?head_sha=…` | CI coverage at merge time |
+| 10 | `npm i node-linux-x64@18.20.8` (nodejs.org is blocked here; the npm mirror is not) | obtain a real Node 18 to replay the red CI leg |
+| 11 | `sh -c "$(node -e 'print package.json scripts.test')"` under Node 18, with and without `semantic-engine/dist`, with and without the CI-mode equivalents | reproduce the CI failure and isolate its trigger |
+| 12 | `NODE_OPTIONS=--require <instrument.js> node test/projects/project-api.test.js` | identify the offending map entries without editing the repo |
 
 ## 2. Frozen-artifact integrity (independent check)
 
@@ -119,6 +122,11 @@ whose head branch was pushed outside the agent flow, produced a run).
    on the merge candidate and record the log in the PR description;
 3. consider making the repository public (or upgrading the plan) if enforced required checks are wanted.
 
+**Live counter-example to any “arena branches don't get CI” generalisation:** this audit's own PR (#18,
+same `arena/…` branch pattern) **did** trigger the workflow — `pull_request` run `35779358265` with all
+four jobs scheduled. So the missing checks on PR #15/#16 are a case-specific anomaly, not a systematic
+exemption, and the method of checking (`gh pr checks <n>` on the actual PR) is demonstrably reliable.
+
 ### F-2 (CI, unrelated to phases) — main's CI badge is red because of the `structured-ai` job
 Run `35777210257` (commit `a00575c`): `structured-ai (Node 18)` ❌ and `structured-ai (Node 20)` ❌, while
 both `semantic-engine` jobs passed. Evidence that this is pre-existing and unrelated to Phase 0–4 work:
@@ -127,15 +135,48 @@ both `semantic-engine` jobs passed. Evidence that this is pre-existing and unrel
 - `structured-ai` has **zero third-party dependencies** (`dependencies: {}`);
 - the oldest workflow run in the repo (5 days old, `35266308108`) already had `structured-ai (Node 18)` ❌;
 - running the whole `structured-ai` chain locally on Node 22 **passes** (all groups, exit 0);
-- Node 20 flips between ✅ and ❌ on identical trees (PR #17 run: ✅; main push run: ❌) ⇒ **flaky**;
-  Node 18 failed in every observed run ⇒ deterministic on that runtime.
+- Node 20 flips between ✅ and ❌ on identical trees ⇒ **flaky**; Node 18 failed in every observed run.
 
-**Limitation:** CI logs could not be retrieved from this sandbox (Actions log blob host unreachable), and
-`nodejs.org` is blocked so Node 18/20 binaries could not be installed to reproduce locally. Root cause
-of F-2 therefore remains **open** and is out of scope for the gate evidence. Suggested follow-up: split
-the single `&&`-chained `test` script into a loop that prints the failing file name (or add
-`console.error` markers), then re-run to identify the flaky file; consider dropping Node 18 or pinning
-the flake.
+**F-2a — the deterministic Node 18 failure: root-caused and fixed in this PR.** CI logs are unreadable
+from this sandbox, so Node 18 was obtained another way (npm package `node-linux-x64@18.20.8`) and the
+job's exact commands were replayed. Result: the failure reproduces **deterministically in 17 s**, matching
+CI's 16-second step time, and is a *teardown* crash:
+
+```
+TypeError: client.close is not a function
+    at McpManager.shutdown (agent/mcp/McpManager.js:705)
+    ... <- ToolRuntime.shutdown <- ServerImplementation.close <- WebServer.close
+    ... <- main (test/projects/project-api.test.js:521)
+```
+
+Mechanism (instrumented, both runtimes): `test/projects/project-api.test.js` injects *test doubles*
+(`manager.clients.set("alpha", { config })`, same for `"glob"`) that have no `close()`, and
+`McpManager.shutdown()` assumed every map entry is an `McpClient`. **Node 22 reaches the same bad entries
+and swallows the rejected promise; Node 18 reports it as an unhandled rejection and exits 1** — hence a
+deterministic red job on one runtime only. Fix applied (one function, defensive, no behaviour change for
+real clients): only entries exposing `close` are closed.
+
+| Verification after the fix | Result |
+|---|---|
+| `node test/projects/project-api.test.js` on Node 18 | 17/17 ✅ (was: crash) |
+| full `structured-ai` chain on Node 22 | exit 0, all groups ✅ |
+| `node --check agent/mcp/McpManager.js` | ✅ |
+
+**F-2b — the intermittent failure: reproduced, still open.** `test/web/web.test.js` (position 49/52 of
+the chain) is flaky: 1 of 6 consecutive direct runs failed with **10/28 passed**, while neighbouring runs
+passed 28/28 — and the same file's runtime swings between ~3.4 s and ~70 s per run, which points at a
+wait/timeout path rather than a logic error. The same file also produced the "27/28 — *a git report
+message was recorded*" failure seen while replaying the chain on Node 18 after the fix (log attached),
+so the signature is not Node-18-specific. Root cause not identified in this pass; **not modified**
+(no reliable reproduction). Recommended follow-up: instrument that wait/retry path with timing output and
+run the file in a loop (the local recipe is in the evidence log).
+
+**F-2c — `structured-ai (Node 18)` also runs the engine, which declares `engines: node >= 20`.** When
+`semantic-engine/dist` happens to exist (not in CI, since only the `semantic-engine` jobs build), the
+gateway test spawns the engine under Node 18 and gets
+`ReferenceError: crypto is not defined` (the Web Crypto global is Node ≥ 19). In CI this test **skips**,
+so it does not affect the badge; the matrix inconsistency remains and is worth deciding explicitly:
+either drop Node 18 from the `structured-ai` matrix or skip the engine-backed test on < 20.
 
 ### F-3 (documentation) — suite/test counts refer to different tree states
 | Tree | `*.test.ts` under `src/` | Documented |
@@ -173,7 +214,7 @@ audit found **no contradicting evidence** to the Phase 3/Phase 4 closures.
 | Build + lint | ✅ clean (warnings only) |
 | Full suite | ⚠️ 3177/3178 locally; single failure is the optional native `sqlite3` env-bound test (CI green on Node 20/22) |
 | CI evidence at gate-merge time | ❌ absent (F-1) — mitigated by post-merge green `semantic-engine` jobs |
-| CI overall on main | ❌ red, caused solely by the pre-existing/flaky `structured-ai` job (F-2) |
+| CI overall on main | ❌ red — `structured-ai` job only: Node 18 leg **root-caused and fixed here** (F-2a); Node 20 leg is a pre-existing flake in `test/web/web.test.js` (F-2b, open) |
 
 **No gate metric failed re-verification.** Thresholds were not touched by this audit; no gate file was
 modified except by the owner's own merges.
@@ -188,3 +229,12 @@ modified except by the owner's own merges.
 | `evidence-a00575c/phase3-regate-fixture2.log` | Phase 3 generalisation re-run (unseen) |
 | `evidence-a00575c/phase4-regate.log` | Phase 4 gate re-run |
 | `evidence-a00575c/gate-unit-tests.log` | 3 gate suites / 19 tests pass |
+| `evidence-a00575c/structured-ai-node18-BEFORE-fix.log` | deterministic Node 18 teardown crash (17 s, matches CI's 16 s) |
+| `evidence-a00575c/structured-ai-node18-ci-mode-AFTER-fix.log` | after the fix: chain reaches position 49/52 (`web.test.js`), where the *flake* shows its signature |
+| `evidence-a00575c/structured-ai-node22-chain-AFTER-fix.log` | after the fix: full `structured-ai` chain green on Node 22 |
+
+**Note on scope:** the only non-docs change in this PR is the one-function defensive guard in
+`structured-ai/agent/mcp/McpManager.js` (F-2a) — a pre-existing CI crash, verified before/after, with no
+behaviour change for real `McpClient` instances. No gate file, threshold, or phase artifact was touched;
+the other unguarded `client.close()` call sites in the same file were deliberately left alone to keep the
+change minimal and verifiable, and are listed here as latent risk for the owner to schedule.
