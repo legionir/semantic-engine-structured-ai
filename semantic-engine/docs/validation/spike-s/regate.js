@@ -25,7 +25,7 @@ const SPIKE_DIR = __dirname;
 const FIXTURE_DIR = path.join(SPIKE_DIR, "fixture");
 const { ProjectIndexReader } = require("../../../dist/ai/ProjectIndexReader");
 const { Phase3SemanticGraphPilot } = require("../../../dist/core/codeintel/Phase3SemanticGraph");
-const { GoalRetriever, CUE_LEXICON } = require("../../../dist/core/codeintel/GoalRetrieval");
+const { GoalRetriever, CUE_LEXICON, referenceModeCounts } = require("../../../dist/core/codeintel/GoalRetrieval");
 const distLexicon = require("../../../dist/core/codeintel/cue-lexicon.json");
 
 const useFixture2 = process.argv.includes("--fixture2");
@@ -44,14 +44,23 @@ function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
+const FROZEN_HASHES_F2 = {
+  "gold-2.json": "f997b5514cb89bf1077dcea81f171cbb54cf817579ce41375f8f87390085b04d",
+  "fixture2/index.json": "9d0ff9026c212ad3f69fe4ee07956eee1ec8de0888d83c1f0023350a2c8c7684",
+};
+
 function verifyFreeze() {
   const checks = [];
-  const rel = useFixture2 ? null : "fixture/index.json";
-  if (rel) checks.push([rel, path.join(SPIKE_DIR, rel)]);
-  checks.push(["gold.json", GOLD_FILE]);
-  checks.push(["cue-lexicon.json", path.join(SPIKE_DIR, "cue-lexicon.json")]);
-  for (const [name, file] of checks) {
-    if (sha256(file) !== FROZEN_HASHES[name]) {
+  if (useFixture2) {
+    checks.push(["fixture2/index.json", path.join(SPIKE_DIR, "fixture2", "index.json"), FROZEN_HASHES_F2]);
+    checks.push(["gold-2.json", GOLD_FILE, FROZEN_HASHES_F2]);
+  } else {
+    checks.push(["fixture/index.json", path.join(SPIKE_DIR, "fixture", "index.json"), FROZEN_HASHES]);
+    checks.push(["gold.json", GOLD_FILE, FROZEN_HASHES]);
+  }
+  checks.push(["cue-lexicon.json", path.join(SPIKE_DIR, "cue-lexicon.json"), FROZEN_HASHES]);
+  for (const [name, file, table] of checks) {
+    if (sha256(file) !== table[name]) {
       throw new Error(`FREEZE VIOLATION: ${name} hash mismatch — refusing to run`);
     }
   }
@@ -191,6 +200,10 @@ async function main() {
         meta: { direction: result.meta.direction, cue: result.meta.cue ? result.meta.cue.patternId : null, reason: result.meta.reason, depth: result.meta.depth, truncated: result.meta.truncated },
       };
     }
+    // Resolution-mode reporting (design 7 criterion 7): counts by confidence class
+    // for references that touch this task's seed (incoming + outgoing) + hard bindings.
+    const seedRefs = graph.references.filter(r => r.targetSymbolId === t.seed || r.provenance.candidates.some(c => c.symbolId === t.seed) || r.sourceEnclosingSymbolId === t.seed);
+    row.resolution = { ...referenceModeCounts(seedRefs), hardBindings: graph.hardBindings.filter(h => h.sourceEnclosingSymbolId === t.seed || h.name === seed.name).length };
     const b0 = b0Set(t.goal);
     const seedFile = fileById.get(seed.fileId);
     const b1 = b1Set(seedFile.path, edges);
@@ -239,7 +252,10 @@ async function main() {
   };
 
   // ── Post-fix calibration (§8.3) ──
-  const unresolvedChecks = POSTFIX.unresolved.map((exp) => ({
+  const unresolvedExpectations = useFixture2
+    ? gold.calibration.globalUnresolved.map((g) => ({ name: g.name, sourcePath: g.sourcePath, reasonContains: g.reasonContains }))
+    : POSTFIX.unresolved;
+  const unresolvedChecks = unresolvedExpectations.map((exp) => ({
     ...exp,
     found: graph.unresolved.some((u) => u.name === exp.name && u.sourcePath === exp.sourcePath && u.reason.includes(exp.reasonContains)),
   }));
@@ -293,7 +309,7 @@ async function main() {
     ambiguousRefs: ambiguousRefs.map((r) => ({ at: `${r.sourcePath}:${r.line}`, candidates: r.provenance.candidates.map((c) => c.symbolId) })),
     wrongExactRefs: wrongExact,
     fileDepCount: depRows.length,
-    fileDepCountExpected: useFixture2 ? null : POSTFIX.fileDepCount,
+    fileDepCountExpected: useFixture2 ? (gold.calibration.fileDeps?.expectedDepCount ?? null) : POSTFIX.fileDepCount,
     midEdgeCheck: useFixture2 ? null : midEdgeCheck,
     viaMidYieldsCheck: useFixture2 ? null : viaMidCheck,
     unclassifiedOccurrences: unclassifiedRows.length,
@@ -325,7 +341,7 @@ async function main() {
       recall_ge_b1_minus_05: aware.recall >= summary.macro.B1.recall - 0.05,
     } : null,
     calibration,
-    graphCounts: { references: graph.references.length, unresolved: graph.unresolved.length, hardBindings: graph.hardBindings.length, fileDeps: graph.fileDeps.length },
+    graphCounts: { references: graph.references.length, unresolved: graph.unresolved.length, hardBindings: graph.hardBindings.length, fileDeps: graph.fileDeps.length, resolutionModes: referenceModeCounts(graph.references) },
     tasks: taskRows,
   };
   fs.writeFileSync(OUT_FILE, JSON.stringify(results, null, 2));

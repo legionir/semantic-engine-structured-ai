@@ -369,3 +369,44 @@
   docs/GATES.md remain untouched, and Phase 4 stays blocked behind Phase 3.
   What is lifted is the approval-waiting, not the integrity constraints.
 - **Status:** DECIDED.
+
+## D-0024 — Re-gate executed: resolution + retrieval PASS; persistence remains
+
+- **Date:** 2026-09-22 (Asia/Tehran; 2026-09-22 UTC)
+- **Decider:** agent under D-0023 delegation; measurement discipline per
+  D-0022's preregistered protocol.
+- **Executed:** retrieval-design.md v1.0.0 fully implemented — resolver fixes
+  F1–F7 in Phase3SemanticGraph (occurrence classification incl. comment/
+  string/property/declarator, scope-aware shadow binding for params/arrows/
+  consts, multi-name imports, same-file references, default/re-export/
+  export-from/export-* routing with bindingKind provenance, star conflicts
+  surfaced as ambiguous, collision-free ordinal symbol keys, hardBindings +
+  occurrenceAudit with zero unclassified), goal-aware GoalRetrieval over the
+  frozen cue-lexicon v1.0.0 (goal selects direction/class only), and the
+  regate.js harness (freeze-hash verification, blind/aware/8-ablation matrix,
+  calibration, determinism, incremental). Fixture-2 (unseen, 17 files / 19
+  symbols, disjoint vocabulary) authored and frozen at commit 7bf3f4d BEFORE
+  the first run on it.
+- **Measured (frozen fixture-1 golds, 20 tasks):** aware macro P=1.000
+  R=1.000 (20/20 exact, wrong-exact=0); blind 0.975/0.875 (< B1 0.896 → cue
+  layer necessary); every single-cue ablation still ≥ B1; B0 0.582/0.787 and
+  B1 0.603/0.896 reproduced exactly; post-fix calibration §8.3 all green
+  (unresolved 2/2, hardBindings 1/1, ambiguous 1/1, incremental==full,
+  deterministic 3/3). Gates G-3.7 (precision/recall bars) and G-3.9 (re-gate)
+  measured **PASS**.
+- **Measured (unseen fixture-2, first contact, zero tuning):** aware macro
+  P=1.000 R=1.000 (16/16); blind 0.927/0.757; unresolved 2/2; star conflict
+  surfaced ambiguous; fileDeps 18/18; incremental/determinism green. Soft
+  bars pass (hard bars would also pass).
+- **Errata (honesty, no re-tuning):** three hand-derivation slips in MY
+  preregistered predictions (blind T10 R=0.25 not 0.5 since grand ∉ T10
+  gold; −HARD_SURFACE 0.975/0.963; touchedUnresolved set is {T4,T5,T6,T13}),
+  root-caused in docs/validation/spike-s/regate-report.md §3.2. Every
+  conclusion's direction is unchanged; no gold, lexicon, or threshold was
+  modified.
+- **Phase 3 status:** resolution/recall/precision/persistence-ordering step
+  1 of D-0021 COMPLETE. Phase 3 remains 🔴 BLOCKED solely on G-3.1/G-3.5
+  (persisted snapshot store + runtime/MCP handle lifecycle; the ten
+  executed-test criteria in D-0021 are unexecuted). Phase 4 remains blocked.
+  GATES.md thresholds untouched (option B never exercised).
+- **Status:** DECIDED (recorded outcome; next step = D-0021 persisted store).

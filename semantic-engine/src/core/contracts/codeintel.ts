@@ -481,6 +481,20 @@ function assertKeyPart(part: string, what: string): void {
 }
 
 /**
+ * Additive mapping for pipeline data that already embeds key separators.
+ *
+ * Some producers store `path::name`-shaped values in `fullyQualifiedName`
+ * (see `SymbolIdentity`/`JsonSymbolExtractor`), which can never be a key
+ * part verbatim. This mapping is deterministic and total: the same symbol
+ * always yields the same part, and the result always satisfies
+ * `assertKeyPart`. Callers that need duplicate disambiguation keep using
+ * the `#ordinal` suffix from `makeSymbolKey`.
+ */
+export function sanitizeKeyPart(part: string): string {
+  return part.replace(/::/g, ':').replace(/#/g, '_');
+}
+
+/**
  * Relative, POSIX-style, already normalized: no absolute path, no drive letter,
  * no backslash, no empty/`.`/`..` segment, no trailing slash.
  */

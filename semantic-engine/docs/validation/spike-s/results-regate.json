@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-22T10:26:01.404Z",
+  "generatedAt": "2026-09-22T10:29:46.406Z",
   "fixture": "fixture/",
   "goldFile": "gold.json",
   "gateBars": "macro precision >= 0.95 AND exact-class precision = 1.0; macro recall >= B1 AND > B0 (docs/GATES.md; measured, never changed)",
@@ -258,7 +258,13 @@
     "references": 15,
     "unresolved": 2,
     "hardBindings": 1,
-    "fileDeps": 13
+    "fileDeps": 13,
+    "resolutionModes": {
+      "exact": 14,
+      "ambiguous": 1,
+      "heuristic": 0,
+      "unresolved": 0
+    }
   },
   "tasks": [
     {
@@ -472,6 +478,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 5,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 1
       },
       "b0": {
         "set": [
@@ -692,6 +705,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 1,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
+      },
       "b0": {
         "set": [],
         "tp": 0,
@@ -902,6 +922,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 1,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
       },
       "b0": {
         "set": [
@@ -1127,6 +1154,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 4,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
       },
       "b0": {
         "set": [
@@ -1355,6 +1389,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 4,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
+      },
       "b0": {
         "set": [
           "s-double",
@@ -1580,6 +1621,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 2,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
+      },
       "b0": {
         "set": [
           "s-add",
@@ -1792,6 +1840,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 0,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 1
       },
       "b0": {
         "set": [
@@ -2023,6 +2078,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 0,
+        "ambiguous": 1,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
+      },
       "b0": {
         "set": [],
         "tp": 0,
@@ -2224,6 +2286,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 1,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
       },
       "b0": {
         "set": [
@@ -2444,6 +2513,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 4,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
       },
       "b0": {
         "set": [
@@ -2673,6 +2749,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 0,
+        "ambiguous": 1,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
+      },
       "b0": {
         "set": [
           "s-add",
@@ -2883,6 +2966,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 2,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
+      },
       "b0": {
         "set": [
           "s-add",
@@ -3092,6 +3182,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 0,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
+      },
       "b0": {
         "set": [
           "s-lonely"
@@ -3280,6 +3377,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 1,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
       },
       "b0": {
         "set": [
@@ -3485,6 +3589,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 2,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 0
       },
       "b0": {
         "set": [
@@ -3730,6 +3841,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 5,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 1
       },
       "b0": {
         "set": [
@@ -3989,6 +4107,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 5,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 1
       },
       "b0": {
         "set": [
@@ -4254,6 +4379,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 5,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 1
+      },
       "b0": {
         "set": [
           "s-add",
@@ -4512,6 +4644,13 @@
           }
         }
       },
+      "resolution": {
+        "exact": 5,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 1
+      },
       "b0": {
         "set": [],
         "tp": 0,
@@ -4762,6 +4901,13 @@
             "truncated": false
           }
         }
+      },
+      "resolution": {
+        "exact": 5,
+        "ambiguous": 0,
+        "heuristic": 0,
+        "unresolved": 0,
+        "hardBindings": 1
       },
       "b0": {
         "set": [],

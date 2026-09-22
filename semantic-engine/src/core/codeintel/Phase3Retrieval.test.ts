@@ -279,7 +279,7 @@ describe('Cue lexicon anti-gaming invariants', () => {
   });
 
   it('matches no fixture identifier except the allowlisted generic verb "use"', () => {
-    const identifiers = ['add', 'sub', 'PI', 'total', 'double', 'r', 'r2', 'v', 'f', 'fmt', 'o', 'lonely', 'grand', 'Store', 's', 'math', 'calc', 'shadow', 'mid', 'via', 'dup', 'usesfmt', 'admin', 'app', 'unused', 'store', 'use', 'fs', 'ghost', 'tokenize', 'score', 'layout'];
+    const identifiers = ['add', 'sub', 'PI', 'total', 'double', 'r', 'r2', 'v', 'f', 'fmt', 'o', 'lonely', 'grand', 'Store', 's', 'math', 'calc', 'shadow', 'mid', 'via', 'dup', 'usesfmt', 'admin', 'app', 'unused', 'store', 'use', 'fs', 'ghost', 'tokenize', 'score', 'layout', 'LIMIT', 'pairs', 'triple', 'census', 'summary', 'stage', 'fold', 'rate', 'verdict', 'prize', 'wrap', 'panel', 'page', 'note', 'bag', 'picked', 'solo', 'phantom', 'nodefs', 'tk', 'inner', 'mapper', 'both'];
     const allowlist = new Set(['use']);
     for (const pattern of CUE_LEXICON.patterns) {
       const re = new RegExp(pattern.regex, pattern.flags);
