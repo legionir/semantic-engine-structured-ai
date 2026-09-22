@@ -290,3 +290,40 @@ describe('Cue lexicon anti-gaming invariants', () => {
     }
   });
 });
+
+describe('F5 — export-* star conflicts', () => {
+  const STAR_FILES: Record<string, string> = {
+    'src/one.ts': 'export function rate(n: number): number {\n  return n + 1;\n}\n',
+    'src/two.ts': 'export function rate(n: number): number {\n  return n + 2;\n}\n',
+    'src/star.ts': "export * from './one';\nexport * from './two';\n",
+    'src/consumer.ts': "import { rate } from './star';\nexport const prize = rate(3);\n",
+  };
+  it('surfaces a star conflict as ambiguous instead of silently picking one', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'phase3-star-'));
+    try {
+      for (const [rel, content] of Object.entries(STAR_FILES)) {
+        await fs.mkdir(path.join(root, path.dirname(rel)), { recursive: true });
+        await fs.writeFile(path.join(root, rel), content);
+      }
+      const files = Object.keys(STAR_FILES).map((p, i) => ({ id: `g-${i}`, path: p, language: 'typescript', encoding: 'utf8', size: STAR_FILES[p].length, lines: STAR_FILES[p].split('\n').length - 1, hash: `h-${i}`, modified: '2026-01-01T00:00:00Z', binary: false, testFile: false, generated: false }));
+      const symbols = [
+        symbol('s-rate-one', 'g-0', 'function', 'rate', 1, 3),
+        symbol('s-rate-two', 'g-1', 'function', 'rate', 1, 3),
+        symbol('s-prize', 'g-3', 'variable', 'prize', 2, 2),
+      ];
+      const idx: ProjectIndex = {
+        schemaVersion: '2.0.0', root: 'fixture', rootPath: '/', generatedAt: '2026-01-01T00:00:00Z', languages: ['typescript'],
+        files, symbols, graphs: { callGraph: [], typeGraph: [], dependencyGraph: [], reverseDependencyGraph: [] }, diagnostics: [],
+        metrics: { totalFiles: files.length, totalLoc: 10, totalSymbols: symbols.length, avgCyclomaticComplexity: 1, languageBreakdown: { typescript: files.length } },
+      };
+      const reader = new ProjectIndexReader(idx);
+      const graph = await new Phase3SemanticGraphPilot(reader, root).build();
+      const ref = graph.references.find(r => r.sourcePath === 'src/consumer.ts');
+      expect(ref?.provenance.confidence).toBe('ambiguous');
+      expect(ref?.provenance.candidates.map(c => c.symbolId).sort()).toEqual(['s-rate-one', 's-rate-two']);
+      expect(ref?.bindingKind).toBe('re-export-routed');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});

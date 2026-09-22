@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-22T10:12:15.664Z",
+  "generatedAt": "2026-09-22T10:26:01.404Z",
   "fixture": "fixture/",
   "goldFile": "gold.json",
   "gateBars": "macro precision >= 0.95 AND exact-class precision = 1.0; macro recall >= B1 AND > B0 (docs/GATES.md; measured, never changed)",

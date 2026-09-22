@@ -580,7 +580,7 @@ export class Phase3SemanticGraphPilot {
     return [...this.reader.getAllFiles()].find(f => probes.includes(f.path));
   }
 
-  private resolveExport(from: FileEntry, name: string, visited: Set<string>, depth: number): { candidates: readonly CandidateWithFile[]; route: 'direct' | 're-export-routed' | 'default-routed' } {
+  private resolveExport(from: FileEntry, name: string, visited: Set<string>, depth: number): { candidates: readonly CandidateWithFile[]; route: "direct" | "re-export-routed" | "default-routed" } {
     if (depth > MAX_REEXPORT_DEPTH) return { candidates: [], route: 'direct' };
     const key = `${from.id}:${name}`;
     if (visited.has(key)) return { candidates: [], route: 'direct' };
@@ -604,12 +604,16 @@ export class Phase3SemanticGraphPilot {
       }
       return { candidates: [], route: 'direct' }; // star-namespace: a namespace object, no named symbol
     }
+    const starCandidates: CandidateWithFile[] = [];
     for (const star of exports.stars) {
       const target = this.resolveModule(from, star);
       if (!target) continue;
       const inner = this.resolveExport(target, name, visited, depth + 1);
-      if (inner.candidates.length) return { candidates: inner.candidates, route: 're-export-routed' };
+      for (const candidate of inner.candidates) {
+        if (!starCandidates.some(c => c.symbolId === candidate.symbolId)) starCandidates.push(candidate);
+      }
     }
+    if (starCandidates.length) return { candidates: starCandidates.sort((a, b) => compareCanonical(a.symbolKey, b.symbolKey)), route: 're-export-routed' };
     return { candidates: [], route: 'direct' };
   }
 
