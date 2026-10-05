@@ -26,6 +26,7 @@ import { createScannerConfig } from '../core/config/ScannerConfig';
 import { SymbolExtractorManager } from '../symbols/SymbolExtractorManager';
 import { DependencyExtractorManager } from '../dependencies/DependencyExtractorManager';
 import { TSPathResolver } from '../dependencies/typescript/TSPathResolver';
+import { resolveProjectImport, PROJECT_PATH_LANGUAGES } from '../pipeline/IndexPipeline';
 import { CallGraphBuilder, TypeGraphBuilder, DependencyGraphBuilder } from '../graphs';
 import { ProjectIndexStore } from './ProjectIndexStore';
 import { DependencyResult, GraphResult, JsonExporter, ProjectEnrichment } from '../export/JsonExporter';
@@ -466,7 +467,9 @@ export class IncrementalEngine {
           );
           if (result.ok) {
             imports = result.value.imports.map(imp =>
-              imp.type === 'local' ? this.resolveImport(imp, file) : imp
+              imp.type === 'local' || PROJECT_PATH_LANGUAGES.has(file.language ?? '')
+                ? this.resolveImport(imp, file)
+                : imp
             );
             exports = [...result.value.exports];
           }
@@ -628,6 +631,17 @@ export class IncrementalEngine {
   }
 
   private resolveImport(imp: ImportEntry, file: FileEntry): ImportEntry {
+    /*
+    | هم‌راستا با IndexPipeline: زبان‌هایی که importشان مسیرِ ماژول/بسته است
+    | (پایتون/Go/Rust/Java/Kotlin/C-Cpp/Ruby/PHP) با resolveProjectImport مشترک
+    | resolve می‌شوند؛ ایندکسِ افزایشی (watch) هم باید همان یال‌ها را ببیند.
+    */
+    const language = file.language ?? '';
+    if (PROJECT_PATH_LANGUAGES.has(language)) {
+      const target = resolveProjectImport(language, imp.from, file.path, this.store?.projectIndex.files ?? []);
+      return target ? { ...imp, resolvedFileId: target.id, type: 'local' } : imp;
+    }
+
     const resolvedPath = this.pathResolver.resolve(imp.from, file.path);
     if (!resolvedPath) return imp;
 
