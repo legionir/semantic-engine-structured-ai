@@ -139,9 +139,14 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
       const visitedCount = 'visitedCount' in traversal
         ? traversal.visitedCount
         : seeds.length + traversal.nodes.length;
-      const items = traversal.nodes
-        .filter(node => this.matchesLevel(node.id, level))
-        .map(node => this.describe(node))
+
+      const symbolCallers = new Map<string, string[]>();
+      const candidates = level === 'file'
+        ? this.rollUpToFiles(traversal.nodes, symbolCallers)
+        : traversal.nodes.filter(node => this.matchesLevel(node.id, level));
+
+      const items = candidates
+        .map(node => this.describe(node, level === 'file' ? symbolCallers.get(node.id) : undefined))
         .sort((left, right) => right.relevanceScore - left.relevanceScore)
         .slice(0, limit);
 
@@ -221,13 +226,57 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
   }
 
 
+  /*
+  | SE-AI-12 — فراخوانِ یک سمبل، فایلش را گم نمی‌کند.
+  |
+  | `GraphQueryEngine` سرِ یال call را **سمبل** می‌شناسد؛ فیلتر
+  | `level: 'file'` آن گره‌ها را دور می‌ریخت، پس impact_analysis فقط
+  | فایل‌هایی را نشان می‌داد که فراخوانشان در سطح ماژول نوشته شده
+  | بود. روی همین مخزن، سه caller واقعیِ `ContextRanker.rank`
+  | (SemanticSearchTool، ContextDiscoverer، AssembleContextTool) غیب
+  | می‌شدند و agent برداشتِ کم‌تأثیر می‌گرفت — همان چیزی که برای
+  | تصمیمِ ویرایشِ امن خطرناک است.
+  |
+  | سمبل‌ها به فایل مادرشان جمع می‌شوند و نزدیک‌ترین/مطمئن‌ترین مسیر
+  | نگه داشته می‌شود؛ نام سمبل‌های فراخوان هم در metadata می‌ماند تا
+  | مشخص باشد این تأثیر از کجا آمده.
+  */
+  private rollUpToFiles(
+    nodes: readonly VisitedNode[],
+    symbolCallers: Map<string, string[]>
+  ): VisitedNode[] {
+    const best = new Map<string, VisitedNode>();
+
+    for (const node of nodes) {
+      const symbol = this.reader.getSymbolById(node.id);
+      const fileId = symbol ? symbol.fileId : node.id;
+      if (!this.reader.getFileById(fileId)) continue;
+      if (symbol) {
+        const seen = symbolCallers.get(fileId) ?? [];
+        if (!seen.includes(symbol.name)) symbolCallers.set(fileId, [...seen, symbol.name]);
+      }
+
+      const candidate: VisitedNode = symbol ? { ...node, id: fileId } : node;
+      const current = best.get(fileId);
+      if (
+        !current ||
+        candidate.depth < current.depth ||
+        (candidate.depth === current.depth && candidate.pathConfidence > current.pathConfidence)
+      ) {
+        best.set(fileId, candidate);
+      }
+    }
+
+    return [...best.values()];
+  }
+
   private matchesLevel(id: string, level: 'file' | 'symbol' | 'any'): boolean {
     if (level === 'any') return true;
     if (level === 'file') return this.reader.getFileById(id) !== undefined;
     return this.reader.getSymbolById(id) !== undefined;
   }
 
-  private describe(node: VisitedNode) {
+  private describe(node: VisitedNode, viaSymbols?: string[]) {
     const file = this.reader.getFileById(node.id);
     const symbol = this.reader.getSymbolById(node.id);
 
@@ -253,6 +302,7 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
         depth: node.depth,
         pathConfidence: node.pathConfidence,
         via: node.via ? `${node.via.relation}:${node.via.basis}` : null,
+        ...(viaSymbols && viaSymbols.length > 0 ? { viaSymbols } : {}),
       },
     };
   }

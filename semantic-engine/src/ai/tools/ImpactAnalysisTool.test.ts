@@ -248,3 +248,91 @@ describe('SE-AI-03 — گزارش صادقانه', () => {
     expect(Math.max(...depths)).toBeLessThanOrEqual(3);
   });
 });
+
+/*
+| SE-AI-12 — فراخوانی که سرِ یالش یک **سمبل** است، فایلش باید در
+| `level: 'file'` دیده شود.
+|
+| این همان حالتِ واقعیِ `this.ranker.rank(...)` است: یال call بین دو
+| سمبل است، نه بین دو فایل. فیلتر `level: 'file'` آن گره را دور
+| می‌ریخت، پس سه caller واقعیِ `ContextRanker.rank` (SemanticSearchTool،
+| ContextDiscoverer، AssembleContextTool) در تحلیل تأثیر غیب می‌شدند —
+| کم‌گزارشی که برای تصمیمِ ویرایشِ امن خطرناک است.
+|
+| گراف این آزمون عمداً سادگیِ فیکسچرِ بالا را ندارد: `solo` هیچ یال
+| import به `core` ندارد، پس تنها راه رسیدن به آن، همان یالِ callِ
+| سمبلی است. اگر رول‌آپ نبود، `solo` هرگز در خروجیِ `level: 'file'`
+| ظاهر نمی‌شد.
+ */
+function symbolOnlyCallerIndex(callsFromSolo = 1): ProjectIndex {
+  const symbols = [symbolIn('sym-core', 'core', 'coreFn'), symbolIn('sym-solo', 'solo', 'soloFn')];
+  const callGraph = [
+    {
+      id: 'c1',
+      caller: 'sym-solo',
+      callee: 'sym-core',
+      callerKind: 'symbol' as const,
+      kind: 'direct' as const,
+      line: 7,
+      provenance: provenanceFor('ast', 'typescript-api', { file: 'src/solo.ts', line: 7 }),
+    },
+  ];
+
+  if (callsFromSolo > 1) {
+    symbols.push(symbolIn('sym-solo2', 'solo', 'soloFn2'));
+    callGraph.push({
+      id: 'c2',
+      caller: 'sym-solo2',
+      callee: 'sym-core',
+      callerKind: 'symbol',
+      kind: 'direct',
+      line: 12,
+      provenance: provenanceFor('ast', 'typescript-api', { file: 'src/solo.ts', line: 12 }),
+    });
+  }
+
+  return {
+    schemaVersion: '2.0.0',
+    generatedAt: new Date().toISOString(),
+    root: 'test',
+    rootPath: '/test',
+    files: [file('core', 'src/core.ts'), file('solo', 'src/solo.ts')],
+    symbols,
+    languages: {},
+    graphs: {
+      dependencyGraph: [],
+      typeGraph: [],
+      reverseDependencyGraph: [],
+      callGraph,
+    },
+    diagnostics: [],
+    metrics: {} as never,
+  } as unknown as ProjectIndex;
+}
+
+describe('SE-AI-12 — رول‌آپِ فراخوانِ سمبلی به فایلش', () => {
+  const soloTool = () => new ImpactAnalysisTool(new ProjectIndexReader(symbolOnlyCallerIndex()));
+
+  it('با `level: file` فایلِ میزبانِ فراخوان می‌آید، با ردپای سمبل', async () => {
+    const result = await soloTool().execute({ id: 'sym-core', depth: 1, level: 'file' });
+    const solo = result.items.find(item => item.id === 'solo');
+
+    expect(solo).toBeDefined();
+    expect(solo?.kind).toBe('file');
+    expect(solo?.path).toBe('src/solo.ts');
+    expect(solo?.metadata).toMatchObject({ depth: 1, viaSymbols: ['soloFn'] });
+  });
+
+  it('با `level: symbol` همان سمبل خام می‌آید (رفتار قبلی دست‌نخورده)', async () => {
+    const result = await soloTool().execute({ id: 'sym-core', depth: 1, level: 'symbol' });
+    expect(result.items.map(item => item.id)).toEqual(['sym-solo']);
+  });
+
+  it('یک فایل با چند فراخوان، یک آیتم می‌گیرد — نه یکی به‌ازای سمبل', async () => {
+    const result = await new ImpactAnalysisTool(new ProjectIndexReader(symbolOnlyCallerIndex(2))).execute({ id: 'sym-core', depth: 1 });
+    const soloItems = result.items.filter(item => item.id === 'solo');
+
+    expect(soloItems).toHaveLength(1);
+    expect(soloItems[0]?.metadata).toMatchObject({ viaSymbols: ['soloFn', 'soloFn2'] });
+  });
+});
