@@ -37,11 +37,15 @@ describe('V2 AI Tools (Simulate Mutation, Architecture Violations, Git Hotspots)
     expect(result.success).toBe(true);
     expect(result.items.length).toBe(1);
     /*
-    | نام آیتم دیگر شناسهٔ هش نیست — فهرستی از `a4f9…` برای هیچ خواننده‌ای
-    | قابل استفاده نبود. خودِ شناسه هم از دست نمی‌رود: در `id` می‌ماند.
+    | SE-AI-11 — آیتم حالا **به‌ازای فایل** تجمیع می‌شود، نه به‌ازای هر یال،
+    | پس هویت آیتم مسیر فایل است (یکتا و قابل ویرایش) و نام هم همان
+    | مسیر خوانا؛ شناسهٔ سمبل فراخوان دیگر در `id` تکراری نمی‌آید، بلكه
+    | در `metadata.callerSymbols` و `metadata.diff.brokenReferences` حفظ می‌شود.
     */
     expect(result.items[0]?.name).toBe('src/auth.service.ts');
-    expect(result.items[0]?.id).toBe('s1');
+    expect(result.items[0]?.id).toBe('src/auth.service.ts');
+    expect((result.items[0]?.metadata ?? {}).brokenReferenceCount).toBe(1);
+    expect(JSON.stringify((result.metadata as { diff: unknown }).diff)).toContain('s1');
   });
 
   it('فراخوانِ سطح ماژول، فایلش را گم نمی‌کند (callerFile ≠ unknown)', async () => {
