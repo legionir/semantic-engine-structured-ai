@@ -81,6 +81,26 @@ export function projectHash(canonicalRoot: string): string {
 }
 
 /**
+ * شناسهٔ یک پروژه نباید به **املای درایو** بند باشد.
+ *
+| SE-IDENT-01 — اندازه‌گیری‌شده روی همین مخزن:
+|     cwd = 'I:\structured-ai\last\semantic-engine' → prj-semantic-engine-2d5b4da0
+|     cwd = 'i:\structured-ai\last\semantic-engine' → prj-semantic-engine-fcc08d5f
+| یعنی یک مخزن، دو شناسه، دو پوشهٔ داده. بدترینِ حالت این نیست که
+| دوباره‌کاری شود: این است که ابزار روی یک شناسه **ایندکسِ کهنه** را
+| می‌خواند و نتیجهٔ درستِ همان سؤال را نمی‌دهد — و هیچ خطایی هم
+| ندارد. `path.resolve` جداکننده‌ها را یکی می‌کند ولی حرفِ درایو را
+| دست نمی‌زند؛ `fs.realpathSync` هم آن را همان‌طور که آمده برمی‌گرداند.
+ *
+| قاعده: روی ویندوز حرفِ درایو بزرگ می‌شود (شکلِ استانداردِ خودِ
+| ویندوز) و بقیهٔ مسیر دست‌نخورده می‌ماند — روی لینوکس/مک که
+| بزرگی/کوچکی معنا دارد، هیچ چیزی عوض نمی‌شود.
+ */
+export function normalizeDriveLetter(rootPath: string): string {
+  return /^[a-z]:[\\/]/.test(rootPath) ? rootPath.charAt(0).toUpperCase() + rootPath.slice(1) : rootPath;
+}
+
+/**
  * Resolve a root to its real path, falling back to the textual path when the
  * directory does not exist (an index can be inspected for a checkout that is
  * not mounted right now).
@@ -89,9 +109,9 @@ export function projectHash(canonicalRoot: string): string {
  * non-directory root — the same contract structured-ai's registry enforces.
  */
 export function canonicalizeRoot(rootPath: string): string {
-  const resolved = path.resolve(String(rootPath ?? ''));
+  const resolved = normalizeDriveLetter(path.resolve(String(rootPath ?? '')));
   try {
-    return fs.realpathSync(resolved);
+    return normalizeDriveLetter(fs.realpathSync(resolved));
   } catch {
     return resolved;
   }
@@ -108,7 +128,7 @@ export function assertProjectRoot(rootPath: string): string {
     throw new Error('Project rootPath is required and must be a non-empty string.');
   }
 
-  const resolved = path.resolve(rootPath);
+  const resolved = normalizeDriveLetter(path.resolve(rootPath));
 
   let stats: fs.Stats;
   try {
@@ -122,7 +142,7 @@ export function assertProjectRoot(rootPath: string): string {
     throw new Error(`Project root is not a directory: ${rootPath}`);
   }
 
-  return fs.realpathSync(resolved);
+  return normalizeDriveLetter(fs.realpathSync(resolved));
 }
 
 /** The generated id for a project name and its canonical root. */

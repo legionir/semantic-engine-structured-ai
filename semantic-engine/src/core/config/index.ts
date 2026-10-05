@@ -77,6 +77,7 @@ export {
   isPathSafeProjectId,
   isSafeProjectId,
   isValidProjectId,
+  normalizeDriveLetter,
   projectIdFor,
   projectHash,
   slugify,

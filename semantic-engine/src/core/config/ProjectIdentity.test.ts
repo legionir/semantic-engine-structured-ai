@@ -8,6 +8,7 @@ import {
   assertProjectRoot,
   canonicalizeRoot,
   isValidProjectId,
+  normalizeDriveLetter,
   projectIdFor,
   projectHash,
   slugify,
@@ -110,5 +111,50 @@ describe('ProjectIdentity — ids that cannot collide', () => {
     const file = path.join(base, 'a-file');
     fs.writeFileSync(file, 'x');
     expect(() => assertProjectRoot(file)).toThrow(/not a directory/);
+  });
+});
+
+/*
+| SE-IDENT-01 — املای درایو نباید شناسهٔ پروژه را عوض کند.
+|
+| اندازه‌گیری‌شده: یک مخزن با `I:\...` یک شناسه و با `i:\...` شناسهٔ
+| دیگری می‌گرفت، یعنی دو پوشهٔ داده برای یک کد — و ابزار روی یکی
+| ایندکسِ کهنه را بی‌خطا می‌خواند.
+ */
+describe('SE-IDENT-01 — normalizeDriveLetter', () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'se-drive-case-')));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('حرفِ درایوِ کوچکِ ویندوز را بزرگ می‌کند', () => {
+    expect(normalizeDriveLetter('i:\\repo\\app')).toBe('I:\\repo\\app');
+    expect(normalizeDriveLetter('i:/repo/app')).toBe('I:/repo/app');
+    expect(normalizeDriveLetter('c:\\')).toBe('C:\\');
+  });
+
+  it('شکلِ درست را دست نمی‌زند', () => {
+    expect(normalizeDriveLetter('I:\\repo\\app')).toBe('I:\\repo\\app');
+  });
+
+  it('روی مسیرهای POSIX بزرگی/کوچکی را تغییر نمی‌دهد', () => {
+    expect(normalizeDriveLetter('/srv/App')).toBe('/srv/App');
+    expect(normalizeDriveLetter('./rel')).toBe('./rel');
+    expect(normalizeDriveLetter('')).toBe('');
+  });
+
+  it('دو املای یک ریشهٔ موجود، یک شناسه می‌دهند', () => {
+    const real = makeTree(tmp, 'drive-case');
+    // روی ویندوز tmp با حرفِ بزرگ شروع می‌شود؛ نسخهٔ کوچکِ همان مسیر را می‌سازیم
+    const lower = real.charAt(0).toLowerCase() + real.slice(1);
+
+    expect(canonicalizeRoot(lower)).toBe(canonicalizeRoot(real));
+    expect(projectIdFor('app', canonicalizeRoot(lower))).toBe(projectIdFor('app', canonicalizeRoot(real)));
+    expect(assertProjectRoot(lower)).toBe(assertProjectRoot(real));
   });
 });
