@@ -41,6 +41,13 @@ import { ContextRanker, RankCandidate, RankedCandidate } from '../ranking/Contex
 import { BudgetSection, TokenBudget, estimateTokens } from '../ranking/TokenBudget';
 import type { FileEntry, SymbolEntry } from '../../core/types/project-index.types';
 
+/*
+| نمادهای کم‌اطلاعات: یک property/constant/variable که خودِ پرس‌وجو نامزدش
+| نکرده، برای ایجنت ارزش خبری ندارد و فقط context را پُر و توکن را می‌سوزاند.
+| در گسترشِ همسایگی حذف می‌شوند، مگر آن‌که جست‌وجو صریحاً آن را نامزد کرده باشد.
+*/
+const TRIVIAL_SYMBOL_KINDS: ReadonlySet<string> = new Set(['property', 'constant', 'variable']);
+
 export interface AssembleContextInput extends AiToolInput {
   readonly task: string;
   readonly targetFiles?: readonly string[];
@@ -264,7 +271,11 @@ export class AssembleContextTool implements AiTool<AssembleContextInput> {
           continue;
         }
         const s = this.reader.getSymbolById(id);
-        if (s) entities.push(this.symbolEntity(s, 'relatedSymbols', hops));
+        if (s) {
+          // نمادِ کم‌اطلاعاتِ ناخواسته وارد context نمی‌شود (بالا را ببین).
+          if (TRIVIAL_SYMBOL_KINDS.has(s.kind) && !keywordById.has(s.id)) continue;
+          entities.push(this.symbolEntity(s, 'relatedSymbols', hops));
+        }
       }
 
       if (includeTests) {
