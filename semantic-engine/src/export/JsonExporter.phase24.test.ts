@@ -340,8 +340,7 @@ describe('SE-SCAN-17 — موتور خروجی خودش را ایندکس نمی
     const first = await run();
     fs.mkdirSync(outputDir, { recursive: true });
     fs.writeFileSync(path.join(outputDir, 'project-index.json'), JSON.stringify(first.projectIndex));
-    fs.writeFileSync(path.join(outputDir, 'note.ts'), 'export const inOutput = 1;
-');
+    fs.writeFileSync(path.join(outputDir, 'note.ts'), 'export const inOutput = 1;\n');
 
     const second = await run();
     const paths = second.projectIndex.files.map(f => f.path);
