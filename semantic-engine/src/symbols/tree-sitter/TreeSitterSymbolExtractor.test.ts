@@ -21,8 +21,9 @@ describe('TreeSitterSymbolExtractor', () => {
     expect(await extractor.isAvailable('javascript')).toBe(true);
     expect(await extractor.isAvailable('typescriptreact')).toBe(true);
     expect(await extractor.isAvailable('javascriptreact')).toBe(true);
-    // فاز ۴۸ — Python حالا گرامر دارد؛ Ruby ندارد.
-    expect(await extractor.isAvailable('ruby')).toBe(false);
+    // Python/Ruby حالا گرامر دارند؛ zig ندارد.
+    expect(await extractor.isAvailable('zig')).toBe(false);
+    expect(await extractor.isAvailable('ruby')).toBe(true);
     expect(await extractor.isAvailable('python')).toBe(true);
     await extractor.dispose();
   });

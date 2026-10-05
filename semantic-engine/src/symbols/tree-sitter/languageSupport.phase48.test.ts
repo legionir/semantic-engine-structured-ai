@@ -36,10 +36,22 @@ describe('describeLanguageSupport (SE-SYM-16 / SE-GRAPH-08)', () => {
   });
 
   it('زبانِ بدون گرامر، heuristic اعلام می‌شود', () => {
-    const support = describeLanguageSupport(['ruby', 'swift']);
+    const support = describeLanguageSupport(['zig', 'swift']);
 
-    expect(support.ruby).toEqual({ symbols: 'heuristic', callGraph: false });
+    expect(support.zig).toEqual({ symbols: 'heuristic', callGraph: false });
     expect(support.swift).toEqual({ symbols: 'heuristic', callGraph: false });
+  });
+
+  it('C#، PHP و Ruby ساختاری‌اند و گراف فراخوانی ندارند', () => {
+    const support = describeLanguageSupport(['csharp', 'php', 'ruby']);
+
+    for (const language of ['csharp', 'php', 'ruby']) {
+      expect({ language, ...support[language]! }).toEqual({
+        language,
+        symbols: 'structural',
+        callGraph: false,
+      });
+    }
   });
 
   it('فقط زبان‌هایی که واقعاً در پروژه‌اند گزارش می‌شوند', () => {

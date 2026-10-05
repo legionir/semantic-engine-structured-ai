@@ -143,8 +143,8 @@ describe('TreeSitterParserManager', () => {
   it('reports the languages it has grammars for', async () => {
     await expect(manager.isAvailable('typescript')).resolves.toBe(true);
     await expect(manager.isAvailable('javascript')).resolves.toBe(true);
-    // فاز ۴۸ — Python حالا گرامر دارد. زبانی که ندارد:
-    await expect(manager.isAvailable('ruby')).resolves.toBe(false);
+    // Python/Ruby/PHP/C# حالا گرامر دارند. زبانی که ندارد (zig):
+    await expect(manager.isAvailable('zig')).resolves.toBe(false);
     await expect(manager.isAvailable('python')).resolves.toBe(true);
   });
 
@@ -177,6 +177,6 @@ describe('TreeSitterParserManager', () => {
   });
 
   it('returns null for a language it has no grammar for', async () => {
-    expect(await manager.getParser('ruby')).toBeNull();
+    expect(await manager.getParser('zig')).toBeNull();
   });
 });

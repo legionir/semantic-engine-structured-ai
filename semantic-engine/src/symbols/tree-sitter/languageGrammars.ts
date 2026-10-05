@@ -172,6 +172,45 @@ const RUST_KINDS: Readonly<Record<string, SymbolKind>> = {
   field_declaration: 'property',
 };
 
+/*
+| C#، PHP و Ruby از فیلدِ `name`ِ خودِ گرامر استفاده می‌کنند (extractName
+| اول `childForFieldName('name')` را می‌پرسد)، پس نام‌ها درست درمی‌آیند.
+| C++ نام را زیر `declarator` می‌گذارد (نه فیلد `name`) و لذا با این
+| mapper تابع/فیلدهایش را از دست می‌دهد؛ عمداً روی heuristic مانده تا
+| completeness نسبت به heuristic افت نکند. Kotlin/Swift گرامرِ سازگار با
+| ABIِ این web-tree-sitter ندارند.
+*/
+const CSHARP_KINDS: Readonly<Record<string, SymbolKind>> = {
+  class_declaration: 'class',
+  interface_declaration: 'interface',
+  struct_declaration: 'struct',
+  enum_declaration: 'enum',
+  record_declaration: 'struct',
+  method_declaration: 'method',
+  constructor_declaration: 'method',
+  property_declaration: 'property',
+  field_declaration: 'property',
+  enum_member_declaration: 'constant',
+  namespace_declaration: 'namespace',
+};
+
+const PHP_KINDS: Readonly<Record<string, SymbolKind>> = {
+  class_declaration: 'class',
+  interface_declaration: 'interface',
+  trait_declaration: 'trait',
+  enum_declaration: 'enum',
+  method_declaration: 'method',
+  function_definition: 'function',
+  enum_case: 'constant',
+};
+
+const RUBY_KINDS: Readonly<Record<string, SymbolKind>> = {
+  module: 'module',
+  class: 'class',
+  method: 'method',
+  singleton_method: 'method',
+};
+
 export const LANGUAGE_GRAMMARS: Readonly<Record<string, LanguageGrammar>> = Object.freeze({
   typescript: { grammar: 'typescript', support: 'full', kinds: TS_KINDS },
   javascript: { grammar: 'javascript', support: 'full', kinds: TS_KINDS },
@@ -208,6 +247,15 @@ export const LANGUAGE_GRAMMARS: Readonly<Record<string, LanguageGrammar>> = Obje
     support: 'structural',
     kinds: RUST_KINDS,
     attachesTo: { impl_item: 'type' },
+    functionsInContainersAreMethods: true,
+  },
+
+  csharp: { grammar: 'c-sharp', support: 'structural', kinds: CSHARP_KINDS },
+  php: { grammar: 'php', support: 'structural', kinds: PHP_KINDS },
+  ruby: {
+    grammar: 'ruby',
+    support: 'structural',
+    kinds: RUBY_KINDS,
     functionsInContainersAreMethods: true,
   },
 });
