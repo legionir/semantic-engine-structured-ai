@@ -401,12 +401,108 @@ export class TreeSitterSymbolMapper {
 
   private extractParameters(node: Node): Parameter[] {
     const source = this.functionValueOf(node) ?? node;
-    const formalParams = source.namedChildren.find(c => c.type === 'formal_parameters');
-    if (!formalParams) return [];
+    /*
+    | SE-SYM-20 — نامِ گرهٔ لیستِ پارامتر گرامر‌به‌گرامر فرق دارد
+    | (پایتون `parameters`، C#/Go `parameter_list`، روبی
+    | `method_parameters`، راست `parameters`). پیش‌فرض همان
+    | `formal_parameters` می‌ماند تا مسیر TS/JS تکان نخورد.
+    */
+    const declared = this.grammar?.paramListNodeTypes;
+    const candidates = declared && declared.length > 0 ? declared : ['formal_parameters'];
+    /*
+    | اول فیلدِ `parameters` خودِ گرامر. لازم است چون Go در
+    | `method_declaration` **دو** `parameter_list` دارد: اولی receiver
+    | `(s *UserService)` و دومی پارامترهای واقعی؛ جست‌وجوی ترتیبیِ
+    | فرزندها receiver را به‌عنوانِ پارامترها ثبت می‌کرد.
+    */
+    const byField = node.childForFieldName?.('parameters') ?? null;
+    const paramsNode = (byField && candidates.includes(byField.type) ? byField : null)
+      ?? source.namedChildren.find(c => candidates.includes(c.type));
+    if (!paramsNode) return [];
 
-    return formalParams.namedChildren
-      .map(p => this.parseParameter(p))
+    /*
+    | زبانی که configِ پارامتر دارد از مسیرِ ساختاریِ نو می‌رود: نام و نوع
+    | در گره‌هایِ جدا هستند (`formal_parameter` جاوا `int x` است، نه
+    | `x: int`)؛ مسیرِ متنیِ TS روی آن‌ها نام را «int x» می‌گرفت.
+    */
+    const useStructural = declared !== undefined && declared.length > 0;
+
+    return paramsNode.namedChildren
+      .map(p => (useStructural ? this.parseStructuralParameter(p) : this.parseParameter(p)))
       .filter((p): p is Parameter => p !== null);
+  }
+
+  /** گره‌هایی که «نام» پارامترند، در گرامرهایِ غیر از TS. */
+  private static readonly PARAM_NAME_NODES = new Set([
+    'identifier', 'variable_name', 'name', 'field_identifier', 'this', 'type_identifier',
+  ]);
+
+  /** گره‌هایی که «نوع» پارامتر/بازگشت‌اند، در گرامرهایِ غیر از TS. */
+  private static readonly PARAM_TYPE_NODES = new Set([
+    'type', 'primitive_type', 'predefined_type', 'array_type', 'generic_type',
+    'scoped_type_identifier', 'reference_type', 'optional_type', 'nullable_type',
+    'union_type', 'tuple_type', 'integral_type', 'floating_point_type',
+    'boolean_type', 'string_type', 'void_type', 'object', 'defined_type',
+    'qualified_identifier', 'implicit_type',
+    // انواعِ اولیه در گرامر جاوا نامِ اختصاصی دارند (`int x` روی `int_type`)
+    'int_type', 'long_type', 'short_type', 'byte_type', 'char_type',
+    'float_type', 'double_type', 'boolean_primitive_type',
+  ]);
+
+  /** فیلدهایی که در بیشتر گرامرها «نامِ پارامتر» را می‌دهند. */
+  private static readonly PARAM_NAME_FIELDS = ['name', 'pattern'] as const;
+  /** فیلدهایی که «نوعِ پارامتر» را می‌دهند. */
+  private static readonly PARAM_TYPE_FIELDS = ['type', 'type_hint'] as const;
+
+  private parseStructuralParameter(param: Node): Parameter | null {
+    const named = param.namedChildren;
+    /*
+    | اول فیلدها. در جاوا `String b` هر دو فرزندش `identifier`اند (نامِ نوع
+    | و نامِ پارامتر یکی است)، پس دسته‌بندیِ بر پایهٔ نوعِ گره آن‌ها را
+    | قاطی می‌کند؛ خودِ گرامر می‌داند کدام `type` و کدام `name` است.
+    */
+    const fieldRead = (fields: readonly string[]): Node | null => {
+      for (const f of fields) {
+        const hit = param.childForFieldName?.(f);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    const typeField = fieldRead(TreeSitterSymbolMapper.PARAM_TYPE_FIELDS);
+    const nameField = fieldRead(TreeSitterSymbolMapper.PARAM_NAME_FIELDS);
+
+    const typeChild = typeField
+      ?? named.find(c => TreeSitterSymbolMapper.PARAM_TYPE_NODES.has(c.type))
+      ?? null;
+    const nameChild = nameField
+      ?? named.find(c => c !== typeChild && TreeSitterSymbolMapper.PARAM_NAME_NODES.has(c.type))
+      ?? null;
+
+    // مقدارِ پیش‌فرض: گرهٔ مقدار در `default_parameter`/`optional_parameter`
+    const valueChild = named.find(c =>
+      c !== typeChild && c !== nameChild &&
+      !TreeSitterSymbolMapper.PARAM_TYPE_NODES.has(c.type) &&
+      TreeSitterSymbolMapper.PARAM_NAME_NODES.has(c.type) === false
+    ) ?? null;
+
+    const text = param.text.trim();
+    if (!text) return null;
+
+    const name = nameChild?.text.trim() ?? (typeChild ? '' : text.replace(/^[*&]+\s*/, '')) ?? '';
+    if (!name) return null;
+
+    return {
+      name,
+      type: typeChild?.text.trim() ?? null,
+      optional: param.type === 'optional_parameter' || param.type === 'default_parameter' ||
+        param.type === 'typed_default_parameter' || text.includes('='),
+      defaultValue: valueChild?.text.trim(),
+      rest:
+        param.type === 'rest_parameter' ||
+        param.type === 'list_splat_pattern' ||
+        param.type === 'dictionary_splat_pattern' ||
+        text.startsWith('...') || text.startsWith('*'),
+    };
   }
 
   private parseParameter(param: Node): Parameter | null {
@@ -475,6 +571,28 @@ export class TreeSitterSymbolMapper {
       const own = fn.namedChildren.find(c => c.type === 'type_annotation');
       return own ? own.text.replace(/^:\s*/, '') : null;
     }
+
+    /*
+    | SE-SYM-20 — نوعِ بازگشتی در بیشتر گرامرها یک **فیلد** است
+    | (پایتون/راست `return_type`، جاوا `type`، پی‌اچ‌پی `return_type`،
+    | Go `result`)، و در C# یک گرهٔ هم‌سطح (`predefined_type`). زبان
+    | config‌دار که هیچ‌کدامشان نبود عمداً null برمی‌گرداند — بازگشت به
+    | جست‌وجوی `type_annotation` یعنی قاطی‌کردنِ نوعِ زبان‌های دیگر.
+    */
+    const field = this.grammar?.returnTypeField;
+    if (field) {
+      const child = node.childForFieldName?.(field);
+      return child ? child.text.trim().replace(/^:\s*/, '') : null;
+    }
+
+    const childTypes = this.grammar?.returnTypeChildTypes;
+    if (childTypes && childTypes.length > 0) {
+      const nameNode = node.childForFieldName?.('name');
+      const hit = node.namedChildren.find(c => childTypes.includes(c.type) && c !== nameNode);
+      return hit ? hit.text.trim() : null;
+    }
+
+    if (this.grammar?.paramListNodeTypes) return null;
 
     const typeAnnotation = node.namedChildren.find(c => c.type === 'type_annotation');
     return typeAnnotation ? typeAnnotation.text.replace(/^:\s*/, '') : null;
@@ -566,6 +684,20 @@ export class TreeSitterSymbolMapper {
    * TypeGraph بخش بزرگی از سلسله‌مراتب تایپ را از دست می‌داد.
    */
   private extractExtends(node: Node): string[] {
+    /*
+    | SE-SYM-20 — پدرها در هر گرامر جای دیگری‌اند:
+    |   java   فیلد `superclass`   (گرهٔ `superclass` → `type_identifier`)
+    |   ruby   فیلد `superclass`   (`< B`)
+    |   python فرزندِ `argument_list` (`class A(B, C):` — فیلد ندارد)
+    |   csharp فرزندِ `base_list`    (`: B, IC`)
+    |   php    فرزندِ `base_clause`
+    | اگر زبانِ config‌دار چیزی پیدا نکرد، [] برمی‌گردد و به نام‌هایِ TS
+    | برنمی‌گردد — آن fallback یعنی حدس‌زدنِ ساختارِ یک گرامرِ دیگر.
+    */
+    const fromConfig = this.collectFromClauses(node, this.grammar?.extendsFields, this.grammar?.extendsChildTypes);
+    if (fromConfig.length > 0) return fromConfig;
+    if (this.grammar && (this.grammar.extendsFields?.length || this.grammar.extendsChildTypes?.length)) return [];
+
     const interfaceClause = node.namedChildren.find(c => c.type === 'extends_type_clause');
     if (interfaceClause) {
       return interfaceClause.namedChildren
@@ -583,6 +715,10 @@ export class TreeSitterSymbolMapper {
   }
 
   private extractImplements(node: Node): string[] {
+    const fromConfig = this.collectFromClauses(node, this.grammar?.implementsFields, this.grammar?.implementsChildTypes);
+    if (fromConfig.length > 0) return fromConfig;
+    if (this.grammar && (this.grammar.implementsFields?.length || this.grammar.implementsChildTypes?.length)) return [];
+
     const heritage = node.namedChildren.find(c => c.type === 'class_heritage');
     if (!heritage) return [];
     const implementsClause = heritage.namedChildren.find(c => c.type === 'implements_clause');
@@ -590,6 +726,61 @@ export class TreeSitterSymbolMapper {
     return implementsClause.namedChildren
       .map(c => c.text)
       .filter(t => t !== 'implements' && t.length > 0);
+  }
+
+  /**
+   * نامِ type‌ها را از فیلدها/گره‌هایِ اعلام‌شده بیرون می‌کشد.
+   *
+   * عمق محدود است و از بدنه بیرون نمی‌ماند، تا یک `class_body` یا
+   * `block` تصادفاً به‌عنوانِ والد ثبت نشود.
+   */
+  private collectFromClauses(
+    node: Node,
+    fields: readonly string[] | undefined,
+    childTypes: readonly string[] | undefined
+  ): string[] {
+    const sink: string[] = [];
+
+    for (const field of fields ?? []) {
+      const clause = node.childForFieldName?.(field);
+      if (clause) this.collectTypeNames(clause, sink);
+    }
+
+    for (const type of childTypes ?? []) {
+      const clause = node.namedChildren.find(c => c.type === type);
+      if (clause) this.collectTypeNames(clause, sink);
+    }
+
+    return [...new Set(sink)];
+  }
+
+  /** گره‌هایی که «بدنه‌اند» و هرگز به‌عنوانِ نامِ والد خوانده نمی‌شوند. */
+  private static readonly BODY_NODE_TYPES = new Set([
+    'class_body', 'interface_body', 'declaration_list', 'enum_body', 'block',
+    'body_statement', 'compound_statement', 'statements', 'function_body', 'field_initializer',
+  ]);
+
+  private collectTypeNames(node: Node, sink: string[], depth = 0): void {
+    if (depth > 3) return;
+
+    for (const child of node.namedChildren) {
+      if (TreeSitterSymbolMapper.BODY_NODE_TYPES.has(child.type)) continue;
+
+      if (TreeSitterSymbolMapper.PARAM_TYPE_NODES.has(child.type) ||
+        child.type === 'type_identifier' || child.type === 'generic_name' ||
+        child.type === 'scoped_identifier' || child.type === 'identifier' ||
+        child.type === 'constant' || child.type === 'attribute' ||
+        child.type === 'member_expression' || child.type === 'name') {
+        const raw = child.type === 'generic_name'
+          ? (child.childForFieldName?.('name')?.text ?? child.text.split('<')[0] ?? '')
+          : child.text;
+        const name = raw.trim().replace(/\s+/g, ' ');
+        if (name && name !== 'extends' && name !== 'implements') sink.push(name);
+        continue;
+      }
+
+      this.collectTypeNames(child, sink, depth + 1);
+    }
   }
 
   private computeConfidence(node: Node): Confidence {

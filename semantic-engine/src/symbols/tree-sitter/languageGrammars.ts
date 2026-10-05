@@ -75,6 +75,40 @@ export interface LanguageGrammar {
    * `method` می‌داد.
    */
   readonly functionsInContainersAreMethods?: boolean;
+  /*
+  | SE-SYM-20 — پارامتر، نوعِ بازگشتی و پدر/اینترفیس هم گرامر-محور می‌شوند.
+  |
+  | تا این فاز، `TreeSitterSymbolMapper` فقط نام‌هایِ گرامرِ TypeScript را
+  | می‌شناخت: `formal_parameters`، `type_annotation`، `class_heritage`،
+  | `extends_type_clause`. یعنی برای هر زبانِ دیگر `parameters`،
+  | `returnType`، `extends` و `implements` **خالی** می‌ماند — همان
+  | خانوادۀ «کم‌گزارشِ بی‌صدا» که در SE-GRAPH-14 دیدیم، ولی این‌بار در
+  | TypeGraph و امضا. اندازه‌گیری: `class A(B, C)` در پایتون صفر والد،
+  | `public class A extends B implements C` در جاوا صفر (با اینکه
+  | پارامترهایش می‌آمد، چون جاوا هم تصادفاً `formal_parameters` دارد).
+  |
+  | نام‌هایِ این فیلدها حدس نیستند: هر کدام از probe روی همان wasm که در
+  | زمانِ ایندکس بار می‌شود آمده (audit/phase_reports/C1-grammar-shape.txt).
+  */
+  /** گره‌های لیستِ پارامتر. پیش‌فرض `['formal_parameters']` (TS/JS/Java/PHP). */
+  readonly paramListNodeTypes?: readonly string[];
+  /** فیلدی که نوع بازگشتی را می‌دهد (python/rust/go/php). */
+  readonly returnTypeField?: string;
+  /**
+   * گره‌های نوعی که به‌عنوانِ فرزندِ هم‌سطح می‌نشینند و نوعِ بازگشتی‌اند.
+   *
+   | C# فیلدِ `type` ندارد: `public bool M(...)` نوع را در گرهٔ
+   | `predefined_type` هم‌سطحِ نام می‌گذارد.
+   */
+  readonly returnTypeChildTypes?: readonly string[];
+  /** فیلدهایی که والد(ها) را می‌دهند (جاوا `superclass`، روبی `superclass`). */
+  readonly extendsFields?: readonly string[];
+  /** فیلدهایی که اینترفیس(ها) را می‌دهند (جاوا `interfaces`). */
+  readonly implementsFields?: readonly string[];
+  /** گره‌های هم‌سطح که والد(ها) داخلشان است (TS heritage، پایتون bases، C# base list، PHP base clause). */
+  readonly extendsChildTypes?: readonly string[];
+  /** گره‌های هم‌سطح که اینترفیس(ها) داخلشان است (TS implements، PHP interface clause). */
+  readonly implementsChildTypes?: readonly string[];
 }
 
 /**
@@ -228,6 +262,10 @@ export const LANGUAGE_GRAMMARS: Readonly<Record<string, LanguageGrammar>> = Obje
     support: 'structural',
     kinds: PYTHON_KINDS,
     functionsInContainersAreMethods: true,
+    paramListNodeTypes: ['parameters'],
+    returnTypeField: 'return_type',
+    // `class A(B, C):` پدرها را در `argument_list` می‌گذارد (فیلد ندارد)
+    extendsChildTypes: ['argument_list'],
   },
   go: {
     grammar: 'go',
@@ -236,11 +274,21 @@ export const LANGUAGE_GRAMMARS: Readonly<Record<string, LanguageGrammar>> = Obje
     kindFromChild: {
       type_spec: { struct_type: 'struct', interface_type: 'interface' },
     },
+    paramListNodeTypes: ['parameter_list'],
+    // `(int, error)` در فیلد `result` است، نه کنارِ نام
+    returnTypeField: 'result',
+    // embedding در struct گرامر-محور نامش `field_declaration` است (بدونِ نامِ صریح)؛
+    // حدس‌زدنِ والد از آن انجام نمی‌شود — ادعایِ دروغ بهتر از سکوت نیست.
   },
   java: {
     grammar: 'java',
     support: 'structural',
     kinds: JAVA_KINDS,
+    // پارامتر جاوا همان `formal_parameters` است؛ نوعِ بازگشتی در فیلد `type`
+    paramListNodeTypes: ['formal_parameters'],
+    returnTypeField: 'type',
+    extendsFields: ['superclass'],
+    implementsFields: ['interfaces'],
   },
   rust: {
     grammar: 'rust',
@@ -248,15 +296,44 @@ export const LANGUAGE_GRAMMARS: Readonly<Record<string, LanguageGrammar>> = Obje
     kinds: RUST_KINDS,
     attachesTo: { impl_item: 'type' },
     functionsInContainersAreMethods: true,
+    paramListNodeTypes: ['parameters'],
+    returnTypeField: 'return_type',
+    // `impl T for S` رابطه را بینِ دو گره می‌گذارد و مالکیتِ سمبلِ S از
+    // `attachesTo` حل می‌شود؛ یالِ implements نیازمندِ کارِ جداست و اینجا
+    // ساخته نمی‌شود (تا ادعایِ نیامده، یالِ نادرست).
   },
 
-  csharp: { grammar: 'c-sharp', support: 'structural', kinds: CSHARP_KINDS },
-  php: { grammar: 'php', support: 'structural', kinds: PHP_KINDS },
+  csharp: {
+    grammar: 'c-sharp',
+    support: 'structural',
+    kinds: CSHARP_KINDS,
+    paramListNodeTypes: ['parameter_list'],
+    // فیلدِ نوعِ بازگشتی ندارد؛ نوع گرهٔ هم‌سطح است
+    returnTypeChildTypes: [
+      'predefined_type', 'identifier', 'generic_name', 'array_type',
+      'nullable_type', 'qualified_identifier', 'implicit_type', 'pointer_type',
+    ],
+    // `class A : B, IC` — خودِ گرامر کلاس و اینترفیس را تفکیک نمی‌کند،
+    // پس همه در extends می‌نشینند؛ حدس‌زدنِ `I`-prefix یعنی ساختنِ یالِ اشتباه.
+    extendsChildTypes: ['base_list'],
+  },
+  php: {
+    grammar: 'php',
+    support: 'structural',
+    kinds: PHP_KINDS,
+    paramListNodeTypes: ['formal_parameters'],
+    returnTypeField: 'return_type',
+    extendsChildTypes: ['base_clause'],
+    implementsChildTypes: ['class_interface_clause'],
+  },
   ruby: {
     grammar: 'ruby',
     support: 'structural',
     kinds: RUBY_KINDS,
     functionsInContainersAreMethods: true,
+    paramListNodeTypes: ['method_parameters'],
+    // روبی type annotation ندارد؛ پس returnType عمداً نمی‌خوانده می‌شود
+    extendsFields: ['superclass'],
   },
 });
 
