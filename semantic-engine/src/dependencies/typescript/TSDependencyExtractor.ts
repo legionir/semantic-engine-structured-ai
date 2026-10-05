@@ -244,9 +244,17 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     const property = left.name.text;
 
     // module.exports = …
-    if (ts.isPropertyAccessExpression(object) === false &&
-        ts.isIdentifier(object) && object.text === 'module' && property === 'exports') {
-      return [{ name: 'module.exports', kind: 'namespace' }];
+    if (ts.isIdentifier(object) && object.text === 'module' && property === 'exports') {
+      /*
+      | SE-DEP-12 — `module.exports = { HookRunner, dirtyPathsFromStatus }` قبلاً
+      | یک entry به نام `module.exports` می‌داد، نه به‌ازای هر نام. نتیجه اینکه
+      | هیچ‌چیز سمبلِ `HookRunner` را به import‌کننده‌هایش وصل نمی‌کرد و
+      | `simulate_mutation` یک rename را «safe» گزارش می‌کرد درحالی‌که فایل
+      | با requireِ نام‌دار مصرف می‌شد. حالا هر کلیدِ object-literal یک
+      | exportِ نام‌دار می‌گیرد (هم‌راستا با ESM)؛ شکل غیر-آبجکت همان namespace می‌ماند.
+      */
+      const named = this.commonJsExportNames(expression.right);
+      return named.length > 0 ? named : [{ name: 'module.exports', kind: 'namespace' }];
     }
 
     // exports.name = …
@@ -260,6 +268,31 @@ export class TSDependencyExtractor implements IDependencyExtractor {
         object.expression.text === 'module' &&
         object.name.text === 'exports') {
       return [{ name: property, kind: 'named' }];
+    }
+
+    return [];
+  }
+
+  /**
+   * SE-DEP-12 — نام‌های صادرشده از مقدارِ سمت راستِ `module.exports = …`.
+   *
+   * فقط object-literal به تک‌تک نام‌ها باز می‌شود؛ spread (نام‌های ناشناخته)
+   * نادیده می‌رود تا export جعلی نسازیم. هر چیز دیگر [] برمی‌گرداند تا
+   * فراخوان همان namespace واحد را نگه دارد.
+   */
+  private commonJsExportNames(value: ts.Expression): ExportEntry[] {
+    if (ts.isObjectLiteralExpression(value)) {
+      const out: ExportEntry[] = [];
+      for (const prop of value.properties) {
+        if (ts.isSpreadAssignment(prop)) continue;
+        const nameNode = prop.name;
+        if (!nameNode) continue;
+        const name = ts.isStringLiteral(nameNode)
+          ? nameNode.text
+          : nameNode.getText().replace(/^['"]|['"]$/g, '');
+        if (name) out.push({ name, kind: 'named' });
+      }
+      return out;
     }
 
     return [];

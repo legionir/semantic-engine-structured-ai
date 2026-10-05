@@ -141,8 +141,15 @@ describe('CommonJS (SE-DEP-01)', () => {
     expect(imports).toEqual([]);
   });
 
-  it('records module.exports as a namespace export', async () => {
-    const { exports } = await run('module.exports = { a: 1 };\n', 'javascript', 'a.js');
+  it('expands a module.exports object literal into named exports (SE-DEP-12)', async () => {
+    const { exports } = await run('module.exports = { a: 1, b: 2 };\n', 'javascript', 'a.js');
+
+    expect(exports.map(e => e.name)).toEqual(['a', 'b']);
+    expect(exports.every(e => e.kind === 'named')).toBe(true);
+  });
+
+  it('keeps a non-object module.exports as a namespace export', async () => {
+    const { exports } = await run('module.exports = someValue;\n', 'javascript', 'a.js');
 
     expect(exports).toEqual([expect.objectContaining({ kind: 'namespace' })]);
   });
