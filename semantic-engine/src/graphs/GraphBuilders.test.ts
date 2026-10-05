@@ -198,6 +198,144 @@ describe('Graph builders', () => {
     expect(edges.some(e => e.caller === 's-main' && e.callee === 's-helper' && e.kind === 'async')).toBe(true);
   });
 
+  it('CallGraphBuilder records `new Foo()` as a call edge (SE-GRAPH-13)', () => {
+    fs.writeFileSync(
+      path.join(workspaceRoot, 'src', 'new-instance.ts'),
+      `export class Widget {}\nexport function build() { return new Widget(); }`
+    );
+
+    const file = createFile('f-new', 'src/new-instance.ts', 'typescript');
+    const widget = createSymbol('s-widget', 'f-new', 'class', 'Widget', 1);
+    const build = createSymbol('s-build', 'f-new', 'function', 'build', 2);
+
+    const builder = new CallGraphBuilder({
+      workspaceRoot,
+      files: [file],
+      symbols: [widget, build],
+    });
+
+    const edges = builder.build();
+
+    // `new Widget()` is not a CallExpression, yet it must link build → Widget
+    // so impact/mutation stop claiming a constructed class has no callers.
+    expect(edges.some(e => e.callee === 's-widget' && e.kind === 'direct')).toBe(true);
+  });
+
+  it('CallGraphBuilder resolves `this.field = new X(); this.field.m()` (SE-GRAPH-14)', () => {
+    /*
+    | این همان حالتی است که در `SemanticSearchTool` دیده شد:
+    |     private readonly ranker = new ContextRanker();
+    |     … this.ranker.rank(candidates, …)
+    | زنجیره با `this` شروع می‌شود ولی متد روی **کلاسِ فیلد** است، نه روی
+    | کلاس جاری. پیش از این، نامِ آخر داخل کلاس جاری گشته و یا به هیچ‌جا
+    | نمی‌رسید یا به یک سمبل بی‌ربطِ هم‌نام در همان فایل وصل می‌شد؛ پس
+    | `impact_analysis` caller واقعی را کم گزارش می‌کرد.
+    */
+    fs.writeFileSync(
+      path.join(workspaceRoot, 'src', 'ranker.ts'),
+      `export class Ranker { rank(items: number[]): number[] { return items; } }\n`
+    );
+    fs.writeFileSync(
+      path.join(workspaceRoot, 'src', 'search.ts'),
+      `import { Ranker } from './ranker';\n` +
+      `export class Search {\n` +
+      `  private readonly ranker = new Ranker();\n` +
+      `  search(items: number[]): number[] { return this.ranker.rank(items); }\n` +
+      `}\n`
+    );
+
+    const rankerFile: FileEntry = {
+      ...createFile('f-ranker', 'src/ranker.ts', 'typescript'),
+      exports: [{ name: 'Ranker', kind: 'named' }],
+    };
+    const searchFile: FileEntry = {
+      ...createFile('f-search', 'src/search.ts', 'typescript'),
+      imports: [{
+        from: './ranker',
+        type: 'local',
+        resolvedFileId: 'f-ranker',
+        specifiers: [{ imported: 'Ranker', local: 'Ranker' }],
+      } as ImportEntry],
+    };
+
+    const builder = new CallGraphBuilder({
+      workspaceRoot,
+      files: [rankerFile, searchFile],
+      symbols: [
+        createSymbol('s-ranker', 'f-ranker', 'class', 'Ranker', 1),
+        createSymbol('s-rank', 'f-ranker', 'method', 'rank', 1, 's-ranker'),
+        createSymbol('s-search-cls', 'f-search', 'class', 'Search', 2),
+        createSymbol('s-ranker-field', 'f-search', 'property', 'ranker', 3, 's-search-cls'),
+        createSymbol('s-search', 'f-search', 'method', 'search', 4, 's-search-cls'),
+      ],
+    });
+
+    const edges = builder.build();
+    const hit = edges.find(e => e.callee === 's-rank');
+    expect(hit?.caller).toBe('s-search');
+    // مبنای یال حدس نیست: از importِ resolve‌شده و AST همان فایل آمده
+    expect(hit?.provenance.basis).not.toBe('name-match');
+    expect(hit?.provenance.basis).not.toBe('unresolved');
+  });
+
+  it('a factory-initialized field does not invent a confident call edge (SE-GRAPH-14)', () => {
+    /*
+    | اگر فیلد با `new X()` مقدار نگرفته باشد (`makeRanker()`)، نوعش را
+    | حدس نمی‌زنیم. fallbackِ موجودِ «اولین سمبل هم‌نام در کل فایل‌ها»
+    | ممکن است همچنان یالی با مبنای `name-match` بسازد — رفتارِ قبلی که
+    | آگاهانه نگه داشته شده — پس چیزی که این تست قفل می‌کند این است:
+    | **هیچ یالِ مطمئنی** از این حدس ساخته نمی‌شود.
+    */
+    fs.writeFileSync(
+      path.join(workspaceRoot, 'src', 'factory.ts'),
+      `export class Ranker { rank(items: number[]): number[] { return items; } }\n` +
+      `export function makeRanker(): Ranker { return new Ranker(); }\n`
+    );
+    fs.writeFileSync(
+      path.join(workspaceRoot, 'src', 'via-factory.ts'),
+      `import { makeRanker } from './factory';\n` +
+      `export class Search {\n` +
+      `  private readonly ranker = makeRanker();\n` +
+      `  search(items: number[]): number[] { return this.ranker.rank(items); }\n` +
+      `}\n`
+    );
+
+    const factoryFile: FileEntry = {
+      ...createFile('f-factory', 'src/factory.ts', 'typescript'),
+      exports: [
+        { name: 'Ranker', kind: 'named' },
+        { name: 'makeRanker', kind: 'named' },
+      ],
+    };
+    const viaFile: FileEntry = {
+      ...createFile('f-via', 'src/via-factory.ts', 'typescript'),
+      imports: [{
+        from: './factory',
+        type: 'local',
+        resolvedFileId: 'f-factory',
+        specifiers: [{ imported: 'makeRanker', local: 'makeRanker' }],
+      } as ImportEntry],
+    };
+
+    const builder = new CallGraphBuilder({
+      workspaceRoot,
+      files: [factoryFile, viaFile],
+      symbols: [
+        createSymbol('s2-ranker', 'f-factory', 'class', 'Ranker', 1),
+        createSymbol('s2-rank', 'f-factory', 'method', 'rank', 1, 's2-ranker'),
+        createSymbol('s2-make', 'f-factory', 'function', 'makeRanker', 2),
+        createSymbol('s2-search-cls', 'f-via', 'class', 'Search', 2),
+        createSymbol('s2-ranker-field', 'f-via', 'property', 'ranker', 3, 's2-search-cls'),
+        createSymbol('s2-search', 'f-via', 'method', 'search', 4, 's2-search-cls'),
+      ],
+    });
+
+    const edges = builder.build();
+    expect(
+      edges.filter(e => e.callee === 's2-rank' && e.provenance.basis !== 'name-match')
+    ).toHaveLength(0);
+  });
+
   it('TypeGraphBuilder should create extends edges', () => {
     const base = createSymbol('s1', 'f1', 'class', 'Base', 1);
     const child: SymbolEntry = {
