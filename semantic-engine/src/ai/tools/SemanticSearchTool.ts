@@ -63,6 +63,52 @@ interface ScoredEntity {
   readonly score: number;
 }
 
+/**
+ * SE-AI-13 — «این نتیجه با کدام موتور رتبه‌بندی شد؟»
+ *
+ * دو اجرایِ یک پرس‌وجو — با مدلِ محلی و بدون آن — می‌توانند خروجیِ
+ * بیت‌به‌بیت یکسان بدهند. اگر خروجی نگویید کدام مسیر امتیاز را
+ * ساخته، agent نمی‌تواند به نتیجه اعتماد بدهد (مثلاً نتیجهٔ
+ * کلیدواژهٔ خالص را با تطبیقِ معنایی یکسان فرض می‌کند).
+ */
+export interface SearchModeFacts {
+  readonly requestedMode: 'keyword' | 'vector' | 'hybrid';
+  /** ایندکس واقعاً بردار دارد؟ */
+  readonly vectorAvailable: boolean;
+  /** generatorِ هم‌سنجه با بردارهای ایندکس در دسترس بود؟ */
+  readonly generatorReady: boolean;
+  /** آیا نامزدی از مسیر بردار آمد؟ */
+  readonly vectorUsed: boolean;
+}
+
+export interface SearchModeReport {
+  readonly searchMode: 'hybrid' | 'vector-only' | 'keyword-only';
+  readonly vectorAvailable: boolean;
+  readonly degradedReason?:
+    | 'no-vectors-in-index'
+    | 'no-embedding-model'
+    | 'no-vector-matches';
+}
+
+export function describeSearchMode(facts: SearchModeFacts): SearchModeReport {
+  const { requestedMode, vectorAvailable, generatorReady, vectorUsed } = facts;
+
+  if (vectorUsed) {
+    return requestedMode === 'vector'
+      ? { searchMode: 'vector-only', vectorAvailable }
+      : { searchMode: 'hybrid', vectorAvailable };
+  }
+
+  if (requestedMode === 'keyword') return { searchMode: 'keyword-only', vectorAvailable };
+
+  const degradedReason = !vectorAvailable
+    ? 'no-vectors-in-index' as const
+    : !generatorReady
+      ? 'no-embedding-model' as const
+      : 'no-vector-matches' as const;
+  return { searchMode: 'keyword-only', vectorAvailable, degradedReason };
+}
+
 export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
   readonly name = 'semantic_search';
   readonly description = 'Search symbols and files by natural language query. Uses keyword matching, vector embeddings, and reference count.';
@@ -164,9 +210,22 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
       return this.embeddingGenerator;
     }
 
+    // آفلاین-محور: بدون مسیر مدل محلی، ترنسفورمر را امتحان نکن — وگرنه
+    // transformers.js نام مدل را به‌عنوان شناسهٔ Hub می‌بیند و تلاشِ اتصال به
+    // شبکه می‌کند؛ هم خلافِ عهدِ آفلاین بودن است هم در تست‌ها کند/غیرقطعی می‌شود.
+    const localModelPath = process.env.SEMANTIC_ENGINE_LOCAL_MODEL_PATH;
+    if (!localModelPath) return undefined;
+
     try {
       const { LocalEmbeddingGenerator } = await import('../../vector/LocalEmbeddingGenerator');
-      const local = new LocalEmbeddingGenerator();
+      /*
+      | بردارِ پرس‌وجو باید با همان مدلی ساخته شود که chunkها با آن ساخته
+      | شده‌اند، وگرنه دو فضای برداری ناهم‌سنجه شباهتِ بی‌معنا می‌دهند.
+      */
+      const local = new LocalEmbeddingGenerator({
+        localModelPath,
+        ...(chunkModel ? { model: chunkModel } : {}),
+      });
       if (!(await local.isReady())) throw new Error('local embedding model unavailable');
       this.embeddingGenerator = local;
       return this.embeddingGenerator;
@@ -307,6 +366,14 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
       const ranked = this.ranker
         .rank<ScoredEntity>(candidates, {
           ...(churnRanks.length > 0 ? { churnRankOutOf: Math.max(...churnRanks) } : {}),
+          /*
+          | hybridِ واقعی: وقتی بردار در دسته حضور دارد، یک تک‌برخوردِ
+          | کلیدواژه‌ای نباید با تطبیقِ معنایی برابر شود. `coreRelevanceSignals`
+          | مخرجِ ثابت می‌دهد و وزنِ بردار بالاتر است؛ در حالتِ کلیدواژهٔ خالص
+          | (بدون بردار) هیچ‌کدام فعال نمی‌شود و رفتار مثلِ قبل است.
+          */
+          coreRelevanceSignals: ['keyword', 'vector'],
+          weights: { vector: 2, keyword: 1 },
         })
         .filter(r => input.minScore == null || r.score >= input.minScore)
         .slice(0, limit);
@@ -343,6 +410,19 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
           */
           usedEmbeddings: embeddingGenerator !== undefined && embeddingCandidates.length > 0,
           embeddingModel: embeddingGenerator?.modelName ?? null,
+          /*
+          | SE-AI-13 — سطحِ اعتمادِ نتیجه باید خوانا باشد، نه ضمنی.
+          | دو اجرایِ یک پرس‌وجو با و بدون مدلِ محلی می‌توانند
+          | بیت‌به‌بیت یکی باشند؛ اگر خروجی نگویید کدام موتور
+          | رتبه‌بندی کرده، agent نمی‌تواند به نتیجه وزن بدهد.
+          */
+          ...describeSearchMode({
+            requestedMode: mode,
+            vectorAvailable: (this.reader.projectIndex.vectorChunks ?? [])
+              .some(chunk => Boolean(chunk.embedding) && chunk.embedding!.length > 0),
+            generatorReady: embeddingGenerator !== undefined,
+            vectorUsed: embeddingCandidates.length > 0,
+          }),
           ...(mode !== 'keyword' && this.vectorStore && !embeddingGenerator
             ? { embeddingNote: 'no usable embedding generator for the model these chunks were built with' }
             : {}),
