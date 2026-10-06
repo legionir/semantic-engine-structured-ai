@@ -27,6 +27,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RangeLike } from '../symbols/types';
 import { pathOf } from './LspClient';
+import { NodeFileSystem } from '../host/FileSystem';
 
 export interface TextEditLike {
   readonly range: RangeLike;
@@ -64,11 +65,35 @@ export interface PlanOptions {
   readonly readFile?: (filePath: string) => string;
 }
 
+/**
+ * نقطه‌های تزریقِ `applyEditPlan`.
+ *
+ * وجودشان دو چیز است: تستِ قطعیِ «خرابی وسط نوشتن» (بدون این، تزریقِ
+ * خطا فقط با monkey-patch کردن `fs` ممکن بود) و این‌که نوشتنِ اتمیکِ
+ * خودِ مخزن (`host/FileSystem`) از بیرون قابل جایگزینی بماند.
+ */
+export interface ApplyEditOptions {
+  readonly writeAtomic?: (filePath: string, content: string) => Promise<void>;
+  readonly readCurrent?: (filePath: string) => Promise<string>;
+}
+
 export class WorkspaceEditError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'WorkspaceEditError';
   }
+}
+
+/*
+| نوشتنِ اتمیکِ پیش‌فرض: همان `writeFileAtomic` خودِ مخزن — temp + fsync +
+| rename، با پاک‌سازیِ temp وقتی rename می‌شکند. یک نمونه برای همهٔ
+| نوشتن‌ها ساخته می‌شود؛ گران نیست و حالتی نگه نمی‌دارد.
+*/
+let fileSystemPort: NodeFileSystem | undefined;
+
+async function defaultAtomicWrite(filePath: string, content: string): Promise<void> {
+  fileSystemPort ??= new NodeFileSystem();
+  await fileSystemPort.writeFileAtomic(filePath, content);
 }
 
 /**
@@ -109,14 +134,78 @@ export function planWorkspaceEdit(
 }
 
 /** نوشتن نقشه روی دیسک. فقط فایل‌هایی که واقعاً عوض شده‌اند. */
-export async function applyEditPlan(plan: WorkspaceEditPlan): Promise<readonly string[]> {
-  const written: string[] = [];
-  for (const file of plan.files) {
-    if (file.before === file.after) continue;
-    await fs.promises.writeFile(file.path, file.after, 'utf8');
-    written.push(file.relativePath);
+export async function applyEditPlan(
+  plan: WorkspaceEditPlan,
+  options: ApplyEditOptions = {}
+): Promise<readonly string[]> {
+  const writer = options.writeAtomic ?? defaultAtomicWrite;
+  const read = options.readCurrent ?? ((filePath: string) => fs.promises.readFile(filePath, 'utf8'));
+  const toWrite = plan.files.filter(file => file.before !== file.after);
+  if (toWrite.length === 0) return [];
+
+  /*
+  | F-0025 — قاعدهٔ ۲ همین فایل («همه یا هیچ») تا این فاز فقط برای
+  | *ساخت* نقشه اجرا می‌شد، نه برای *نوشتن*: نوشتن ترتیبی بود و
+  | هیچ بازگشتی نداشت. یک خطای I/O روی فایل دوم، rename را وسط راه
+  | ول می‌کرد — نه قبل، نه بعد — و کاربر نمی‌دانست کدام فایل عوض شده.
+  |
+  | دو کار قبل از هر نوشتن:
+  |   ۱) نگهبانِ تازگی: اگر محتوای دیسک با همان چیزی که نقشه از آن
+  |      ساخته شده فرق کند، اصلاً چیزی نوشته نمی‌شود (وگرنه ویرایشِ
+  |      بقیهٔ فایل‌ها روی متنی می‌نشیند که آن‌بین تغییر کرده).
+  |   ۲) هر نوشتن اتمیک است (temp + rename، همان `writeFileAtomic`
+  |      خود مخزن)، پس crash وسط نوشتن فایلی را نصفه نمی‌گذارد.
+  |
+  | اگر باز هم نوشتنی شکست، فایل‌های نوشته‌شده با `before` خودِ نقشه
+  | برمی‌گردند — snapshotِ رایگان و از پیش درست.
+  */
+  for (const file of toWrite) {
+    let current: string | null = null;
+    try {
+      current = await read(file.path);
+    } catch (error) {
+      if (file.before === '' && (error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw new WorkspaceEditError(
+        `cannot read ${file.relativePath} before applying the edit: ` +
+          (error instanceof Error ? error.message : String(error))
+      );
+    }
+    if (current !== file.before) {
+      throw new WorkspaceEditError(
+        `${file.relativePath} changed on disk after it was planned; nothing was written`
+      );
+    }
   }
-  return written;
+
+  const applied: PlannedFileEdit[] = [];
+  try {
+    for (const file of toWrite) {
+      await writer(file.path, file.after);
+      applied.push(file);
+    }
+  } catch (error) {
+    /*
+    | بازگشت به ترتیبِ برعکسِ نوشتن، و «تلاشِ حداکثری»: اگر برگرداندنِ
+    | یک فایل هم شکست بخورد، نباید خطای اصلی را بپوشاند — آن فایل در
+    | پیامِ خطا نام برده می‌شود تا کاربر بداند کجا نیمه‌مانده است.
+    */
+    const unrestored: string[] = [];
+    for (const file of [...applied].reverse()) {
+      try {
+        await writer(file.path, file.before);
+      } catch {
+        unrestored.push(file.relativePath);
+      }
+    }
+    const suffix = unrestored.length > 0
+      ? `; could not restore: ${unrestored.join(', ')}`
+      : '; earlier files were restored';
+    throw new WorkspaceEditError(
+      `applying the edit failed: ${error instanceof Error ? error.message : String(error)}${suffix}`
+    );
+  }
+
+  return toWrite.map(file => file.relativePath);
 }
 
 /**
