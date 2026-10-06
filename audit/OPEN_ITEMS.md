@@ -65,9 +65,10 @@ Legend
 
 | # | id | Why blocked / required action |
 |---|---|---|
-| 27 | blocked-ci | F-0006 CI/Linux jest evidence: workflow exists but no successful run has been recorded; authoritative result needs a **push** (owner). Every P0 `[APPLIED]` AC depends on this evidence. |
+| 27 | blocked-ci | F-0006 CI/Linux jest evidence — ✅ RESOLVED 2026-10-06: push of consolidated `main` triggered `semantic-engine CI (Linux full test suite)`; Node 20.x + 22.x both green. |
 | 28 | blocked-ks | Kotlin / Swift grammar support: requires a tree-sitter wasm toolchain not available in this sandbox. |
 | 29 | ff-main | fast-forward `main` → `work/reconcile-remote`: must overwrite `structured-ai/agent/mcp/McpManager.js` and `structured-ai/test/web/web.test.js`, both held dirty by another agent — awaiting owner decision. |
+| 29b | sa-web-flake | `structured-ai/test/web/web.test.js`: 2–5 of 28 specs fail nondeterministically (`no tool:graph`, `no run:loop`, approval timeout). Red on `main` since before this session; documented as timing/teardown fragility in the file's own comments. Follow-up: split per-server or serialize runs. Out of this report's scope (report is semantic-engine). |
 
 ## 6. Deliberately deferred (protected by rationale — do not re-open)
 
@@ -79,7 +80,7 @@ Legend
 | 33 | no-cpp | C++ structural extraction: protected to avoid regressions in existing completeness. |
 | 34 | no-ns | C#/Swift namespace import resolution: out of current scope. |
 
-## 7. Test failures observed in this sandbox (fixed on 2026-10-06)
+## 7. Test failures observed and closed (2026-10-06)
 
 | Suite | Symptom | Root cause | Fix |
 |---|---|---|---|
@@ -87,8 +88,27 @@ Legend
 | `src/export/SQLiteExporter.phase24.test.ts` | `sqlite3` fallback fails to load | `sqlite3` is an *optional* native dep; this env's glibc 2.35 predates the prebuilt binary's 2.38 requirement. Product already degrades to `node:sqlite` (SE-BUILD-10). | Introduce `canLoadSqlite3()` sync probe; `itIfSqlite3` skips the fallback case honestly. |
 | `src/gateway/ProjectLock.test.ts` | `recovers from a half-written lock file` fails | F-0026 fix intentionally refuses to steal a torn lock whose raw pid is *alive*. Test was written pre-fix with `isProcessAlive: () => true` and still asserted the old (live-lock-steal) behavior. | Split into `never steals a half-written lock whose owner is still alive` (AC-1) + `recovers from a half-written lock file whose owner is gone` (AC-2). Matches F-0026 design and closes plan id `c4lock`. |
 | `src/lsp/lspTesting.test.ts` | `گیت ۵ — orphan` fails on Linux | Sandbox PID 1 (`sandbox-runtime`) is not a real reaper: after `SIGKILL` on the parent, the pipe FD on the child's stdin stays open, so the fake LSP never sees EOF and lives on. On real `ubuntu-latest` CI (systemd/PID 1 with proper reaping) the gate is meaningful. | Add `environmentReapsOrphans()` sync probe; wrap gate in `describeIfReaper`. Same policy as the `lspIsolation` EPERM entry: honest skip when the environment cannot execute the gate, never a false green. |
+| `src/cli/cli.test.ts` MIG-51 (`test:gate`, CI) | `written.symbols.length` 201 ≠ golden 200 | The golden was last recorded at `cf94a13`, before the tree-sitter structural-extraction commits (`f4f315b`, `5ba1fcd`). Same 58-file fixture now emits 201 symbols with new grammar fields (params/returnType/extends/implements) and TS `interface`/`namespace` correctly reclassified. The symbol commits never bumped the golden. | `scripts/snapshot.js --update`, diff reviewed by hand (files identical at 58; symbol set +1 namespace, class→interface reclass), committed as `e17c476`. `snapshot.js` compare re-run → `unchanged`, deterministic. |
 
-## 8. Execution order (priority)
+### 7a. structured-ai `web.test.js` — pre-existing, out of this report's scope
+The `Test` workflow also runs `structured-ai`. Its `web.test.js` fails 2–5 of 28
+specs (`no tool:graph event was streamed`, `no run:loop event`, an approval
+timeout), and the failing set **varies run-to-run** locally (23/28 … 26/28).
+This is **not** caused by any change in this session: the same `Test` workflow
+was already red on `main` at commit `1555613` (before branch consolidation) and
+across the Sept history. Root cause is timing/teardown fragility in the shared
+single-server SSE suite (documented in that file's own comments as a known
+flake), not a product regression. Deferred as a separate follow-up; recorded
+here honestly rather than masked. See item `sa-web-flake` in §5.
+
+## 8. Blocked item closed by this session
+- `blocked-ci` (F-0006 Linux jest evidence): the push of the consolidated `main`
+  triggered `semantic-engine CI (Linux full test suite)` on Node 20.x **and**
+  22.x. Both passed (`✓ Full Jest suite (Linux)`). The gate evidence the P0
+  `[APPLIED]` ACs were waiting on now exists. After the MIG-51 golden fix the
+  authoritative `semantic-engine CI` run is green end-to-end.
+
+## 9. Execution order (priority)
 
 Work items top-to-bottom. The four sandbox test failures above are already
 closed; from here the plan-of-record is:
