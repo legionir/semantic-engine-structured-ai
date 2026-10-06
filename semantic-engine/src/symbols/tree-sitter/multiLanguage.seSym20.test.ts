@@ -125,3 +125,62 @@ describe('SE-SYM-20 — params / return type / inheritance خارج از TypeScr
     expect(m.parameters?.[1]).toMatchObject({ optional: true, defaultValue: '2' });
   });
 });
+
+/*
+| F-0037 — سازنده نوعِ بازگشتی ندارد.
+|
+| در C#/Java گرهٔ `constructor_declaration` یک گرهٔ نوعِ هم‌سطح (نامِ کلاس)
+| دارد، پس مسیرِ گرامر-محورِ تازه آن را به‌عنوانِ returnType برمی‌داشت و
+| امضا `WeatherController(...): WeatherController` می‌شد.
+*/
+describe('F-0037 — سازنده‌ها returnType ندارند', () => {
+  it('csharp: سازنده null می‌ماند، متد معمولی نوعش را نگه می‌دارد', async () => {
+    const symbols = await extract('csharp', `public class Weather {
+  public Weather(int x) { }
+  public bool M(int x, string y) { return true; }
+}
+`);
+
+    // خودِ کلاس هم نباید «نوع بازگشتی» بگیرد (نام کلاس گرهٔ identifier است)
+    expect(byName(symbols, 'Weather').returnType).toBeNull();
+    const ctor = symbols.find(s => s.kind === 'method' && s.name === 'Weather');
+    expect(ctor).toBeDefined();
+    expect(ctor?.returnType).toBeNull();
+    expect(byName(symbols, 'M').returnType).toBe('bool');
+  });
+
+  it('java: سازنده null، متد معمولی پر', async () => {
+    const symbols = await extract('java', `package app;
+public class Foo {
+  public Foo(int a) { }
+  public int m(int a) { return a; }
+}
+`);
+
+    expect(byName(symbols, 'Foo').returnType).toBeNull();
+    const javaCtor = symbols.find(s => s.kind === 'method' && s.name === 'Foo');
+    expect(javaCtor?.returnType).toBeNull();
+    expect(byName(symbols, 'm').returnType).toBe('int');
+  });
+
+  it('python: __init__ نوعِ بازگشتی نمی‌گیرد', async () => {
+    const symbols = await extract('python', `class Node:
+    def __init__(self, v: int) -> "Node":
+        self.v = v
+`);
+
+    expect(byName(symbols, '__init__').returnType).toBeNull();
+  });
+
+  it('typescript: سازنده هم مثل قبل null است (رگرسشن)', async () => {
+    const symbols = await extract('typescript', `export class Box {
+  constructor(private v: number) { }
+  value(): number { return this.v; }
+}
+`);
+
+    const ctor = symbols.find(s => s.name === 'constructor');
+    expect(ctor?.returnType ?? null).toBeNull();
+    expect(byName(symbols, 'value').returnType).toBe('number');
+  });
+});

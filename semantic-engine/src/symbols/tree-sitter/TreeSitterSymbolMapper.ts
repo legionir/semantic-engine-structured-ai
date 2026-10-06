@@ -266,7 +266,14 @@ export class TreeSitterSymbolMapper {
     const id = allocated.id;
 
     const parameters = this.extractParameters(node);
-    const returnType = this.extractReturnType(node);
+    /*
+    | F-0037 — سازنده نوعِ بازگشتی ندارد. در C#/Java گرهٔ
+    | `constructor_declaration` یک گرهٔ نوع (همان نامِ کلاس) قبل از نام
+    | می‌گذارد و `returnTypeChildTypes` آن را برمی‌داشت، پس امضا
+    | `WeatherController(...): WeatherController` می‌شد — ادعایی که هیچ
+    | زبانی نمی‌کند و برای agent نویزِ گمراه‌کننده است.
+    */
+    const returnType = this.isConstructorNode(node, name) ? null : this.extractReturnType(node, kind);
     /*
     | برای kindهای اعلانی، «امضا» همان سرِ اعلان است — نه `Name()`.
     | (SE-SYM-19)
@@ -397,6 +404,19 @@ export class TreeSitterSymbolMapper {
       child.type === 'function' ||
       child.type === 'generator_function'
     ) ?? null;
+  }
+
+  /**
+   * آیا این گره سازنده است؟ F-0037.
+   *
+   * از دو نشانه خوانده می‌شود چون گرامرها یکسان نیستند: نامِ گرهٔ اعلان
+   * (`constructor_declaration` در C#/Java، `constructor_definition` در TS)
+   * و نامِ رویه‌ای پایتون. `fn new()` راست عمداً اینجا نیست — آن یک متد
+   * استاتیک معمولی است، نه سازندهٔ گرامری.
+   */
+  private isConstructorNode(node: Node, name: string): boolean {
+    if (/constructor/i.test(node.type)) return true;
+    return name === '__init__' || name === 'constructor';
   }
 
   private extractParameters(node: Node): Parameter[] {
@@ -562,7 +582,7 @@ export class TreeSitterSymbolMapper {
    * ثبتش به‌عنوان نوع بازگشتی یعنی ایندکس ادعا می‌کند یک ثابت،
    * تابعی است که `Settings` برمی‌گرداند.
    */
-  private extractReturnType(node: Node): string | null {
+  private extractReturnType(node: Node, kind: SymbolKind): string | null {
     if (node.type === 'variable_declarator') {
       // فقط اگر مقدارش واقعاً یک تابع باشد، آن هم از annotation خودِ تابع
       const fn = this.functionValueOf(node);
@@ -578,7 +598,14 @@ export class TreeSitterSymbolMapper {
     | Go `result`)، و در C# یک گرهٔ هم‌سطح (`predefined_type`). زبان
     | config‌دار که هیچ‌کدامشان نبود عمداً null برمی‌گرداند — بازگشت به
     | جست‌وجوی `type_annotation` یعنی قاطی‌کردنِ نوعِ زبان‌های دیگر.
+    |
+    | F-0037 — این مسیر فقط برای سمبلِ **تابع‌مانند** خوانده می‌شود.
+    | در C# نامِ کلاس هم یک گرهٔ `identifier` هم‌سطح است، پس بدون این
+    | شرط خودِ `class Weather` هم «نوعِ بازگشتی: Weather» می‌گرفت.
     */
+    const functionLike = kind === 'function' || kind === 'method';
+    if (!functionLike) return null;
+
     const field = this.grammar?.returnTypeField;
     if (field) {
       const child = node.childForFieldName?.(field);
@@ -592,7 +619,7 @@ export class TreeSitterSymbolMapper {
       return hit ? hit.text.trim() : null;
     }
 
-    if (this.grammar?.paramListNodeTypes) return null;
+    if (this.grammar?.paramListNodeTypes || this.grammar?.returnTypeChildTypes) return null;
 
     const typeAnnotation = node.namedChildren.find(c => c.type === 'type_annotation');
     return typeAnnotation ? typeAnnotation.text.replace(/^:\s*/, '') : null;
