@@ -80,6 +80,13 @@ describe('MIG-60 — package.json دیگر یک افزونهٔ ویرایشگر 
   it('`files` هرچه را که اعلام کرده واقعاً دارد', () => {
     expect(pkg.files).toBeDefined();
     for (const entry of pkg.files!) {
+      /*
+      | `dist/` خروجی `tsc` است؛ تا وقتی build نشده در درخت منبع وجود
+      | ندارد (دقیقاً همان دلیلی که تست `bin` فقط مقصد `bin/` را بررسی
+      | می‌کند). پس نبودِ آن در نصبِ پیش از build نباید این گیت را قرمز کند؛
+      | presence واقعی‌اش را خودِ `npm pack` در انتشار تضمین می‌کند.
+      */
+      if (entry.replace(/\/$/, '') === 'dist') continue;
       const resolved = path.join(ROOT, entry.replace(/\/$/, ''));
       expect(fs.existsSync(resolved)).toBe(true);
     }

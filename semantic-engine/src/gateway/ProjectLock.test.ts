@@ -112,13 +112,35 @@ describe('ProjectLock — one owner at a time, recoverable after a crash', () =>
     if (acquired.ok) acquired.release();
   });
 
-  it('recovers from a half-written lock file', () => {
+  it('never steals a half-written lock whose owner is still alive', () => {
+    /*
+    | F-0026 — یک JSONِ نیمه‌نوشته parse نمی‌شود و `readLock` تهی می‌دهد؛
+    | «تهی» دیگر به‌خودی‌خود نشانهٔ رهاشدن نیست. pid خام از متن درمی‌آید
+    | و صاحب زنده باشد، قفلش دست‌نخورده می‌ماند. وگرنه یک heartbeat
+    | نیمه‌نوشته می‌توانست صاحبِ زنده را بی‌قفل کند و دو worker روی یک
+    | پروژه بنشیند.
+    */
     fs.mkdirSync(path.dirname(lockPath), { recursive: true });
     fs.writeFileSync(lockPath, '{"pid": 11');
 
     const acquired = acquireLock(lockPath, 'prj-a-11111111', 'worker', {
       pid: 666,
       isProcessAlive: () => true,
+    });
+
+    expect(acquired.ok).toBe(false);
+    if (!acquired.ok) expect(acquired.reason).toBe('held');
+    /* فایل صاحب اول نباید پاک شده باشد. */
+    expect(fs.existsSync(lockPath)).toBe(true);
+  });
+
+  it('recovers from a half-written lock file whose owner is gone', () => {
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, '{"pid": 11');
+
+    const acquired = acquireLock(lockPath, 'prj-a-11111111', 'worker', {
+      pid: 666,
+      isProcessAlive: () => false,
     });
 
     expect(acquired.ok).toBe(true);

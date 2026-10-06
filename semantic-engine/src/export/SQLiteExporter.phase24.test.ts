@@ -79,6 +79,19 @@ async function query<T = Record<string, unknown>>(sql: string): Promise<T[]> {
   }
 }
 
+function canLoadSqlite3(): boolean {
+  // `sqlite3` is an *optional* native dependency. On a platform whose glibc is
+  // older than the prebuilt binary (or with no network at install time) it is
+  // legitimately absent and the engine degrades to node:sqlite — SE-BUILD-10.
+  try {
+    require.resolve('sqlite3');
+    require('sqlite3');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe('درایور SQLite — compatibility matrix', () => {
   const [major = 0, minor = 0] = process.versions.node.split('.').map(Number);
   // Measured: Node 22.12 still needs --experimental-sqlite; unflagged from 22.13 / 23.4 / 24.
@@ -99,7 +112,8 @@ describe('درایور SQLite — compatibility matrix', () => {
     await db.close();
   });
 
-  it('the sqlite3 fallback runs the whole exporter and produces the same rows', async () => {
+  const itIfSqlite3 = canLoadSqlite3() ? it : it.skip;
+  itIfSqlite3('the sqlite3 fallback runs the whole exporter and produces the same rows', async () => {
     process.env['SEMANTIC_ENGINE_SQLITE_DRIVER'] = 'sqlite3';
     const db = await openSqlite(':memory:');
     expect(db.name).toBe('sqlite3');
