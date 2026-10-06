@@ -79,6 +79,25 @@ export function createFsRoutes(
         const requested = ctx.query.path && ctx.query.path.trim().length > 0 ? ctx.query.path : defaultRoot;
         let target = path.resolve(requested);
 
+        /*
+        | SE-SEC-08 — confinement باید پیش از هر تماس با فایل‌سیستم
+        | بررسی شود. شکل قبلی اول `stat` می‌زد و در خطای 404 نشانیِ
+        | `cwd` و `os.homedir()` را برمی‌گرداند: یعنی یک مسیر بیرونِ
+        | workspace که وجود هم نداشت، نامِ کاربر و ریشهٔ سرور را لو
+        | می‌داد و هرگز به مرحلهٔ confinement نمی‌رسید. این چک
+        | لغت‌شناختی است و فایل نمی‌خواند؛ چکِ `realpath` پایین‌تر هم
+        | می‌ماند تا symlinkِ بیرون‌زننده گرفته شود.
+        */
+        if (options.confineToRoot) {
+          const root = path.resolve(defaultRoot);
+          if (target !== root && !target.startsWith(root + path.sep)) {
+            return {
+              status: 403,
+              json: { error: 'path is outside this worker\'s workspace root' },
+            };
+          }
+        }
+
         // اگر مسیر وجود ندارد یا فایل است، به دایرکتوری معتبر عقب برگرد.
         try {
           const stat = await fs.promises.stat(target);
@@ -86,7 +105,9 @@ export function createFsRoutes(
         } catch {
           return {
             status: 404,
-            json: { error: `path not found: ${target}`, cwd: defaultRoot, home: os.homedir() },
+            json: options.confineToRoot
+              ? { error: 'path not found' }
+              : { error: `path not found: ${target}`, cwd: defaultRoot, home: os.homedir() },
           };
         }
 

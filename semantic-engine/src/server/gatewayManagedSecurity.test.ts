@@ -20,6 +20,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { HttpServer } from './HttpServer';
 import { SecurityPipeline } from './SecurityPipeline';
+import { socketEndpoint } from './socketEndpoint';
 
 const TOKEN = 'internal-worker-token';
 
@@ -48,7 +49,7 @@ function requestViaSocket(
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = http.request(
       {
-        socketPath,
+        socketPath: socketEndpoint(socketPath),
         path: urlPath,
         method,
         headers: {
@@ -294,17 +295,44 @@ describe('gateway-managed worker — no unauthenticated or cross-project surface
     );
     expect(inside.status).toBe(200);
 
+    /*
+    | «بیرون از workspace» باید رد شود. `/etc` روی ویندوز وجود ندارد،
+    | پس 404 می‌دهد و چیزی اثبات نمی‌کند؛ اینجا از پوشهٔ موقتِ سیستم
+    | استفاده می‌شود که روی هر دو پلتفرم هست و از workspace بیرون است.
+    */
     const outside = await requestViaSocket(
       socketPath,
       'GET',
-      '/api/v1/fs/browse?path=/etc',
+      `/api/v1/fs/browse?path=${encodeURIComponent(fs.realpathSync(os.tmpdir()))}`,
       headers
     );
     expect(outside.status).toBe(403);
 
-    /* A symlink that points out of the tree is caught after realpath. */
+    /*
+    | SE-SEC-08 — پاسخِ «پیدا نشد» نباید ریشهٔ سرور یا home کاربر را
+    | لو بدهد. پیش از این رفع، مسیرِ بیرونِ workspace که وجود هم نداشت
+    | 404 با `cwd` و `home` برمی‌گرداند — یعنی یک پرس‌وجوی ساده،
+    | نامِ کاربر و محلِ نصب را افشا می‌کرد.
+    */
+    expect(String(outside.text)).not.toContain(os.homedir());
+
+    const missingInside = await requestViaSocket(
+      socketPath,
+      'GET',
+      `/api/v1/fs/browse?path=${encodeURIComponent(path.join(workspace, 'nope'))}`,
+      headers
+    );
+    expect(missingInside.status).toBe(404);
+    expect(String(missingInside.text)).not.toContain(os.homedir());
+
+    /*
+    | یک symlink که از subtree بیرون می‌زند هم گرفته می‌شود.
+    | هدفِ `/etc` روی ویندوز وجود ندارد، پس چکِ presence اول کار
+    | 404 می‌داد و مسیرِ realpath تست نمی‌شد؛ اینجا پوشه‌ای واقعی
+    | بیرونِ workspace انتخاب می‌شود که روی هر دو پلتفرم هست.
+    */
     const link = path.join(workspace, 'escape');
-    fs.symlinkSync('/etc', link, 'dir');
+    fs.symlinkSync(fs.realpathSync(os.tmpdir()), link, 'dir');
     const viaLink = await requestViaSocket(
       socketPath,
       'GET',
