@@ -119,8 +119,19 @@ function createServer(runtime, options = {}) {
 
     const clients = new Set();
     const sseHub = new SseHub({ clients });
+    /*
+    | The limiter is a control-plane guard, so the production default (120
+    | requests/minute) is kept. Callers that legitimately exceed it in one
+    | window — the web suite drives ~125 API calls over a single shared
+    | server — can raise it explicitly via options.apiRateLimit.
+    */
     const apiRateLimiter =
-        new RateLimiter({ limit: 120, windowMs: 60_000 });
+        new RateLimiter({
+            limit: Number.isInteger(options.apiRateLimit) && options.apiRateLimit > 0
+                ? options.apiRateLimit
+                : 120,
+            windowMs: 60_000
+        });
 
     function allowApiRequest(req) {
         return apiRateLimiter.allow(req);

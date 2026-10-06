@@ -388,7 +388,7 @@ async function main() {
         require(path.join(REPO_ROOT, "web", "server.js"));
 
     consoleServer =
-        createServer(runtime, {});
+        createServer(runtime, { apiRateLimit: 1000 });
 
     const address =
         await consoleServer.listen(0, "127.0.0.1");
