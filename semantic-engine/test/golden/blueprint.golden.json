@@ -230,6 +230,18 @@
   "dependencyGraph": {
     "edges": [
       {
+        "from": "1e0bb4ec448995cf",
+        "kind": "imports",
+        "to": "52a81ebf47179edf",
+        "weight": 1
+      },
+      {
+        "from": "5b5b18e10937fee9",
+        "kind": "imports",
+        "to": "52a81ebf47179edf",
+        "weight": 1
+      },
+      {
         "from": "a992dd64a8c626fe",
         "kind": "imports",
         "to": "83d5eff7e322a682",
@@ -1610,9 +1622,9 @@
     },
     {
       "fileId": "0a68334964de39b3",
-      "id": "b2b1510d84175c2e",
+      "id": "5c172e72d9abe8b2",
       "importanceScore": 36,
-      "kind": "class",
+      "kind": "interface",
       "line": 5,
       "name": "Storage",
       "signature": "interface Storage"
@@ -1624,7 +1636,7 @@
       "kind": "method",
       "line": 7,
       "name": "get",
-      "signature": "get(string $id)"
+      "signature": "get($id: string)"
     },
     {
       "fileId": "0a68334964de39b3",
@@ -1642,7 +1654,7 @@
       "kind": "method",
       "line": 14,
       "name": "get",
-      "signature": "get(string $id)"
+      "signature": "get($id: string)"
     },
     {
       "fileId": "0a68334964de39b3",
@@ -1651,7 +1663,7 @@
       "kind": "method",
       "line": 19,
       "name": "put",
-      "signature": "put(string $id, $value)"
+      "signature": "put($id: string, $value): void"
     },
     {
       "fileId": "0c07f25ef331fb3f",
@@ -1764,7 +1776,7 @@
     {
       "fileId": "1f1241b6ea5dfe88",
       "id": "0ae092a0a8e347d1",
-      "importanceScore": 68,
+      "importanceScore": 100,
       "kind": "class",
       "line": 3,
       "name": "Logger",
@@ -1971,7 +1983,7 @@
     {
       "fileId": "52a81ebf47179edf",
       "id": "15a1bfdf94335a9e",
-      "importanceScore": 36,
+      "importanceScore": 56,
       "kind": "class",
       "line": 8,
       "name": "UserRepository",
@@ -1980,65 +1992,65 @@
     {
       "fileId": "52a81ebf47179edf",
       "id": "f695ce45376cb937",
-      "importanceScore": 38,
+      "importanceScore": 58,
       "kind": "method",
       "line": 11,
       "name": "__init__",
-      "signature": "__init__()"
+      "signature": "__init__(self, source: str)"
     },
     {
       "fileId": "52a81ebf47179edf",
       "id": "f9acf507efaffbaa",
-      "importanceScore": 40,
+      "importanceScore": 60,
       "kind": "method",
       "line": 15,
       "name": "load",
-      "signature": "load()"
+      "signature": "load(self): None"
     },
     {
       "fileId": "52a81ebf47179edf",
       "id": "12e940aad0c7189a",
-      "importanceScore": 42,
+      "importanceScore": 62,
       "kind": "method",
       "line": 20,
       "name": "find",
-      "signature": "find()"
+      "signature": "find(self, user_id: str): Optional[dict]"
     },
     {
       "fileId": "52a81ebf47179edf",
       "id": "e068129292430625",
-      "importanceScore": 40,
+      "importanceScore": 60,
       "kind": "function",
       "line": 27,
       "name": "build_repository",
-      "signature": "build_repository()"
+      "signature": "build_repository(source: str, eager: bool = False): UserRepository"
     },
     {
       "fileId": "52a81ebf47179edf",
       "id": "3a56223620ef76d9",
-      "importanceScore": 38,
+      "importanceScore": 58,
       "kind": "function",
       "line": 38,
       "name": "fetch_remote",
-      "signature": "fetch_remote()"
+      "signature": "fetch_remote(url)"
     },
     {
       "fileId": "52a81ebf47179edf",
       "id": "d58df094b94e3692",
-      "importanceScore": 40,
+      "importanceScore": 60,
       "kind": "function",
       "line": 42,
       "name": "outer",
-      "signature": "outer()"
+      "signature": "outer(values)"
     },
     {
       "fileId": "52a81ebf47179edf",
       "id": "cbc12bbda60a38f6",
-      "importanceScore": 40,
+      "importanceScore": 60,
       "kind": "function",
       "line": 46,
       "name": "inner",
-      "signature": "inner()"
+      "signature": "inner(value)"
     },
     {
       "fileId": "5b5b18e10937fee9",
@@ -2065,7 +2077,7 @@
       "kind": "method",
       "line": 9,
       "name": "add",
-      "signature": "add(String value)"
+      "signature": "add(value: String): void"
     },
     {
       "fileId": "603f5b91896bbebf",
@@ -2074,7 +2086,7 @@
       "kind": "method",
       "line": 13,
       "name": "get",
-      "signature": "get(int index)"
+      "signature": "get(index: int): String"
     },
     {
       "fileId": "603f5b91896bbebf",
@@ -2083,7 +2095,7 @@
       "kind": "method",
       "line": 17,
       "name": "get",
-      "signature": "get(String key)"
+      "signature": "get(key: String): String"
     },
     {
       "fileId": "62ebc1357d05148b",
@@ -2159,25 +2171,34 @@
     },
     {
       "fileId": "6307c0a08191b0db",
-      "id": "da08058b221e2c80",
+      "id": "7e42e47ef4944b81",
       "importanceScore": 16,
-      "kind": "class",
+      "kind": "namespace",
+      "line": 1,
+      "name": "App",
+      "signature": "namespace App"
+    },
+    {
+      "fileId": "6307c0a08191b0db",
+      "id": "794d8bfa31a8a244",
+      "importanceScore": 16,
+      "kind": "interface",
       "line": 3,
       "name": "IService",
       "signature": "public interface IService"
     },
     {
       "fileId": "6307c0a08191b0db",
-      "id": "c65e40e2ef2bacd1",
+      "id": "60ac960ad6adcbde",
       "importanceScore": 18,
       "kind": "method",
       "line": 5,
       "name": "Get",
-      "signature": "Get(string id)"
+      "signature": "Get(id: string): string"
     },
     {
       "fileId": "6307c0a08191b0db",
-      "id": "2453ae12ed79dd12",
+      "id": "cfcb6b1b0765fabe",
       "importanceScore": 16,
       "kind": "class",
       "line": 8,
@@ -2186,21 +2207,21 @@
     },
     {
       "fileId": "6307c0a08191b0db",
-      "id": "f1dea39fe3faf997",
+      "id": "08a61ee7982793f0",
       "importanceScore": 18,
       "kind": "method",
       "line": 10,
       "name": "Get",
-      "signature": "Get(string id)"
+      "signature": "Get(id: string): string"
     },
     {
       "fileId": "6307c0a08191b0db",
-      "id": "ecbaf5e7cd638090",
+      "id": "af7cb07d110e4501",
       "importanceScore": 18,
       "kind": "method",
       "line": 15,
       "name": "Get",
-      "signature": "Get(int id)"
+      "signature": "Get(id: int): string"
     },
     {
       "fileId": "69bbc8bb2b544799",
@@ -2466,7 +2487,7 @@
     {
       "fileId": "83d5eff7e322a682",
       "id": "85285d6e518dfcb7",
-      "importanceScore": 57,
+      "importanceScore": 72,
       "kind": "constant",
       "line": 3,
       "name": "path",
@@ -2475,7 +2496,7 @@
     {
       "fileId": "83d5eff7e322a682",
       "id": "47eb38e0d42cefbd",
-      "importanceScore": 59,
+      "importanceScore": 74,
       "kind": "function",
       "line": 5,
       "name": "resolveAll",
@@ -2484,7 +2505,7 @@
     {
       "fileId": "83d5eff7e322a682",
       "id": "3d21d57990054f39",
-      "importanceScore": 57,
+      "importanceScore": 80,
       "kind": "class",
       "line": 9,
       "name": "Cache",
@@ -2493,7 +2514,7 @@
     {
       "fileId": "83d5eff7e322a682",
       "id": "0747965f366f18e3",
-      "importanceScore": 59,
+      "importanceScore": 74,
       "kind": "method",
       "line": 10,
       "name": "constructor",
@@ -2502,7 +2523,7 @@
     {
       "fileId": "83d5eff7e322a682",
       "id": "840f8e9616805dc7",
-      "importanceScore": 59,
+      "importanceScore": 74,
       "kind": "method",
       "line": 15,
       "name": "get",
@@ -2511,7 +2532,7 @@
     {
       "fileId": "83d5eff7e322a682",
       "id": "425c15ae555a178f",
-      "importanceScore": 77,
+      "importanceScore": 92,
       "kind": "method",
       "line": 17,
       "name": "set",
@@ -2821,7 +2842,7 @@
       "kind": "function",
       "line": 18,
       "name": "New",
-      "signature": "New()"
+      "signature": "New(addr: string): *Server"
     },
     {
       "fileId": "9ae711be6ef7125a",
@@ -2830,7 +2851,7 @@
       "kind": "method",
       "line": 22,
       "name": "Serve",
-      "signature": "Serve()"
+      "signature": "Serve(ctx: context.Context = context.Context): error"
     },
     {
       "fileId": "9ae711be6ef7125a",
@@ -2839,7 +2860,7 @@
       "kind": "method",
       "line": 27,
       "name": "Name",
-      "signature": "Name()"
+      "signature": "Name(): string"
     },
     {
       "fileId": "a05d9167dc9da29b",
@@ -2911,7 +2932,7 @@
       "kind": "method",
       "line": 7,
       "name": "parse",
-      "signature": "parse(\"\\n\")"
+      "signature": "parse()"
     },
     {
       "fileId": "a695523a199c1519",
@@ -3163,7 +3184,7 @@
       "kind": "method",
       "line": 6,
       "name": "handle",
-      "signature": "handle()"
+      "signature": "handle(self = self, input: &str): String"
     },
     {
       "fileId": "de1716d2030fd3db",
@@ -3181,7 +3202,7 @@
       "kind": "method",
       "line": 12,
       "name": "handle",
-      "signature": "handle()"
+      "signature": "handle(self = self, input: &str): String"
     },
     {
       "fileId": "de1716d2030fd3db",
@@ -3190,7 +3211,7 @@
       "kind": "function",
       "line": 17,
       "name": "build",
-      "signature": "build()"
+      "signature": "build(port: u16): Config"
     },
     {
       "fileId": "e32bd0f6103caf96",
@@ -3258,7 +3279,7 @@
     {
       "fileId": "fc8d89e014891ad6",
       "id": "91f7f0c18487ab79",
-      "importanceScore": 40,
+      "importanceScore": 50,
       "kind": "class",
       "line": 4,
       "name": "BaseService",
@@ -3267,16 +3288,16 @@
     {
       "fileId": "fc8d89e014891ad6",
       "id": "153b82d5e0fa9e42",
-      "importanceScore": 40,
+      "importanceScore": 50,
       "kind": "property",
       "line": 5,
       "name": "items",
-      "signature": "items(): T[]"
+      "signature": "items()"
     },
     {
       "fileId": "fc8d89e014891ad6",
       "id": "b8bdf35f88470a35",
-      "importanceScore": 42,
+      "importanceScore": 52,
       "kind": "method",
       "line": 6,
       "name": "load",
@@ -3285,7 +3306,7 @@
     {
       "fileId": "fc8d89e014891ad6",
       "id": "377a47bfdf03fc7c",
-      "importanceScore": 40,
+      "importanceScore": 58,
       "kind": "class",
       "line": 9,
       "name": "UserService",
@@ -3294,7 +3315,7 @@
     {
       "fileId": "fc8d89e014891ad6",
       "id": "ba72243ed297f516",
-      "importanceScore": 40,
+      "importanceScore": 50,
       "kind": "property",
       "line": 10,
       "name": "log",
@@ -3303,7 +3324,7 @@
     {
       "fileId": "fc8d89e014891ad6",
       "id": "0fc4a7130649ec46",
-      "importanceScore": 42,
+      "importanceScore": 52,
       "kind": "method",
       "line": 12,
       "name": "load",
@@ -3312,7 +3333,7 @@
     {
       "fileId": "fc8d89e014891ad6",
       "id": "e414d8ed12c51e31",
-      "importanceScore": 42,
+      "importanceScore": 52,
       "kind": "method",
       "line": 17,
       "name": "find",

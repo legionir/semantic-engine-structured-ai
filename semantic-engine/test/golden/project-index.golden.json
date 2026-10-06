@@ -490,7 +490,7 @@
       "lines": 20,
       "metrics": {
         "blankLines": 3,
-        "classes": 2,
+        "classes": 1,
         "commentLines": 0,
         "cyclomaticComplexity": 3,
         "exports": 0,
@@ -504,7 +504,8 @@
       },
       "modified": "<volatile>",
       "outline": [
-        "class IService",
+        "namespace App",
+        "interface IService",
         "method Get",
         "class Service",
         "method Get",
@@ -514,11 +515,12 @@
       "role": "service",
       "size": "<volatile>",
       "symbolIds": [
-        "da08058b221e2c80",
-        "c65e40e2ef2bacd1",
-        "2453ae12ed79dd12",
-        "f1dea39fe3faf997",
-        "ecbaf5e7cd638090"
+        "7e42e47ef4944b81",
+        "794d8bfa31a8a244",
+        "60ac960ad6adcbde",
+        "cfcb6b1b0765fabe",
+        "08a61ee7982793f0",
+        "af7cb07d110e4501"
       ],
       "testFile": false
     },
@@ -844,26 +846,27 @@
           "factors": {
             "entryPointBonus": 0,
             "importCountWeight": 2,
-            "referenceCountWeight": 30
+            "referenceCountWeight": 40
           },
-          "hotness": 42,
-          "importance": 57,
-          "readPriority": 50
+          "hotness": 52,
+          "importance": 72,
+          "readPriority": 67
         },
         "businessDomains": [],
         "designPatterns": [],
         "estimatedTokenCost": 133,
         "frameworks": [],
         "keywords": [
-          "exports",
+          "all",
+          "cache",
           "helpers",
-          "module",
-          "path"
+          "path",
+          "resolve"
         ],
         "relatedFileIds": [
           "a992dd64a8c626fe"
         ],
-        "summary": "helpers.js provides module.exports. Depends on no local dependencies."
+        "summary": "helpers.js provides resolveAll, Cache. Depends on no local dependencies."
       },
       "binary": false,
       "diagnostics": [],
@@ -871,8 +874,14 @@
       "entryPoint": false,
       "exports": [
         {
-          "kind": "namespace",
-          "name": "module.exports"
+          "kind": "named",
+          "name": "resolveAll",
+          "symbolId": "47eb38e0d42cefbd"
+        },
+        {
+          "kind": "named",
+          "name": "Cache",
+          "symbolId": "3d21d57990054f39"
         }
       ],
       "generated": false,
@@ -1045,7 +1054,7 @@
         {
           "kind": "named",
           "name": "Storage",
-          "symbolId": "b2b1510d84175c2e"
+          "symbolId": "5c172e72d9abe8b2"
         },
         {
           "kind": "named",
@@ -1061,7 +1070,7 @@
       "lines": 23,
       "metrics": {
         "blankLines": 6,
-        "classes": 2,
+        "classes": 1,
         "commentLines": 0,
         "cyclomaticComplexity": 3,
         "exports": 0,
@@ -1075,7 +1084,7 @@
       },
       "modified": "<volatile>",
       "outline": [
-        "class Storage",
+        "interface Storage",
         "method get",
         "class Repository",
         "method get",
@@ -1085,7 +1094,7 @@
       "role": "repository",
       "size": "<volatile>",
       "symbolIds": [
-        "b2b1510d84175c2e",
+        "5c172e72d9abe8b2",
         "9423537c88cff277",
         "bc8c2732b90cee1c",
         "5af27d76ebf87c59",
@@ -1114,7 +1123,9 @@
           "py",
           "service"
         ],
-        "relatedFileIds": [],
+        "relatedFileIds": [
+          "52a81ebf47179edf"
+        ],
         "summary": "__init__.py is a support/utilities file at py/__init__.py."
       },
       "binary": false,
@@ -1128,7 +1139,7 @@
       "imports": [
         {
           "from": ".service",
-          "resolvedFileId": null,
+          "resolvedFileId": "52a81ebf47179edf",
           "specifiers": [
             {
               "imported": "UserRepository"
@@ -1170,11 +1181,11 @@
           "factors": {
             "entryPointBonus": 0,
             "importCountWeight": 6,
-            "referenceCountWeight": 0
+            "referenceCountWeight": 20
           },
-          "hotness": 26,
-          "importance": 36,
-          "readPriority": 26
+          "hotness": 46,
+          "importance": 56,
+          "readPriority": 46
         },
         "businessDomains": [],
         "designPatterns": [
@@ -1192,7 +1203,10 @@
           "service layer",
           "typing"
         ],
-        "relatedFileIds": [],
+        "relatedFileIds": [
+          "1e0bb4ec448995cf",
+          "5b5b18e10937fee9"
+        ],
         "summary": "service.py is a support/utilities file at py/service.py."
       },
       "binary": false,
@@ -1291,7 +1305,9 @@
           "service layer",
           "test"
         ],
-        "relatedFileIds": [],
+        "relatedFileIds": [
+          "52a81ebf47179edf"
+        ],
         "summary": "test_service.py is a support/utilities file at py/test_service.py."
       },
       "binary": false,
@@ -1305,13 +1321,13 @@
       "imports": [
         {
           "from": "py.service",
-          "resolvedFileId": null,
+          "resolvedFileId": "52a81ebf47179edf",
           "specifiers": [
             {
               "imported": "UserRepository"
             }
           ],
-          "type": "package"
+          "type": "local"
         }
       ],
       "language": "python",
@@ -3331,11 +3347,11 @@
           "factors": {
             "entryPointBonus": 0,
             "importCountWeight": 4,
-            "referenceCountWeight": 10
+            "referenceCountWeight": 20
           },
-          "hotness": 20,
-          "importance": 40,
-          "readPriority": 35
+          "hotness": 30,
+          "importance": 50,
+          "readPriority": 45
         },
         "businessDomains": [
           "User Management"
@@ -5024,6 +5040,23 @@
         }
       },
       {
+        "callee": "3d21d57990054f39",
+        "caller": "a5a8e56356e1b25a",
+        "callerKind": "symbol",
+        "id": "2752b2558b1f1556",
+        "kind": "direct",
+        "line": 4,
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "scripts/build.js",
+            "line": 4
+          }
+        }
+      },
+      {
         "callee": "425c15ae555a178f",
         "caller": "a992dd64a8c626fe",
         "callerKind": "file",
@@ -5381,6 +5414,23 @@
         }
       },
       {
+        "callee": "0ae092a0a8e347d1",
+        "caller": "9a944ee5daaf166a",
+        "callerKind": "symbol",
+        "id": "11158ff420bc1043",
+        "kind": "direct",
+        "line": 8,
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/app.ts",
+            "line": 8
+          }
+        }
+      },
+      {
         "callee": "803fe6663e25e260",
         "caller": "bd25b602347a98a4",
         "callerKind": "symbol",
@@ -5388,8 +5438,8 @@
         "kind": "direct",
         "line": 13,
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/app.ts",
@@ -5439,12 +5489,46 @@
         "kind": "direct",
         "line": 18,
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/app.ts",
             "line": 18
+          }
+        }
+      },
+      {
+        "callee": "8f69c6f68ebe4de5",
+        "caller": "71cc7715dab25058",
+        "callerKind": "symbol",
+        "id": "d4449322ff2e9b5f",
+        "kind": "direct",
+        "line": 23,
+        "provenance": {
+          "basis": "ast",
+          "confidence": 95,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/app.ts",
+            "line": 23
+          }
+        }
+      },
+      {
+        "callee": "377a47bfdf03fc7c",
+        "caller": "71cc7715dab25058",
+        "callerKind": "symbol",
+        "id": "023551aa46806e35",
+        "kind": "direct",
+        "line": 23,
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/app.ts",
+            "line": 23
           }
         }
       },
@@ -5462,6 +5546,23 @@
           "location": {
             "file": "src/config.ts",
             "line": 8
+          }
+        }
+      },
+      {
+        "callee": "0ae092a0a8e347d1",
+        "caller": "14c3534eda0a5a79",
+        "callerKind": "symbol",
+        "id": "58a55dc814430d27",
+        "kind": "direct",
+        "line": 15,
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/controller/user.controller.ts",
+            "line": 15
           }
         }
       },
@@ -5490,8 +5591,8 @@
         "kind": "direct",
         "line": 21,
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/controller/user.controller.ts",
@@ -5585,6 +5686,23 @@
         }
       },
       {
+        "callee": "0ae092a0a8e347d1",
+        "caller": "f4fcbc553f2e0c2e",
+        "callerKind": "symbol",
+        "id": "4902c091344e4fb0",
+        "kind": "direct",
+        "line": 9,
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/services/order.service.ts",
+            "line": 9
+          }
+        }
+      },
+      {
         "callee": "87d9b8c540018898",
         "caller": "7ced2d5edb905e08",
         "callerKind": "symbol",
@@ -5592,8 +5710,8 @@
         "kind": "conditional",
         "line": 13,
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/services/order.service.ts",
@@ -5619,6 +5737,23 @@
         }
       },
       {
+        "callee": "0ae092a0a8e347d1",
+        "caller": "ba72243ed297f516",
+        "callerKind": "symbol",
+        "id": "2f19ba0527eb72cf",
+        "kind": "direct",
+        "line": 10,
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/services/user.service.ts",
+            "line": 10
+          }
+        }
+      },
+      {
         "callee": "803fe6663e25e260",
         "caller": "0fc4a7130649ec46",
         "callerKind": "symbol",
@@ -5626,8 +5761,8 @@
         "kind": "direct",
         "line": 13,
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/services/user.service.ts",
@@ -5725,6 +5860,23 @@
         "caller": "9f54609c40853dc2",
         "callerKind": "file",
         "id": "005d8837ac49509b",
+        "kind": "direct",
+        "line": 5,
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/util/logger.test.ts",
+            "line": 5
+          }
+        }
+      },
+      {
+        "callee": "0ae092a0a8e347d1",
+        "caller": "9f54609c40853dc2",
+        "callerKind": "file",
+        "id": "ec221aa59b12fbb5",
         "kind": "direct",
         "line": 5,
         "provenance": {
@@ -6008,15 +6160,15 @@
         "from": "1e0bb4ec448995cf",
         "kind": "import",
         "provenance": {
-          "basis": "unresolved",
-          "confidence": 25,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "heuristic",
           "location": {
             "file": "py/__init__.py",
             "line": 0
           }
         },
-        "to": "pkg:.service"
+        "to": "52a81ebf47179edf"
       },
       {
         "from": "52a81ebf47179edf",
@@ -6062,17 +6214,17 @@
       },
       {
         "from": "5b5b18e10937fee9",
-        "kind": "package",
+        "kind": "import",
         "provenance": {
-          "basis": "declared",
-          "confidence": 90,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "heuristic",
           "location": {
             "file": "py/test_service.py",
             "line": 0
           }
         },
-        "to": "pkg:py.service"
+        "to": "52a81ebf47179edf"
       },
       {
         "from": "a992dd64a8c626fe",
@@ -6445,11 +6597,11 @@
     ],
     "reverseDependencyGraph": [
       {
-        "from": "pkg:.service",
+        "from": "52a81ebf47179edf",
         "kind": "imported-by",
         "provenance": {
-          "basis": "unresolved",
-          "confidence": 25,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "heuristic",
           "location": {
             "file": "py/__init__.py",
@@ -6457,6 +6609,20 @@
           }
         },
         "to": "1e0bb4ec448995cf"
+      },
+      {
+        "from": "52a81ebf47179edf",
+        "kind": "imported-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "heuristic",
+          "location": {
+            "file": "py/test_service.py",
+            "line": 0
+          }
+        },
+        "to": "5b5b18e10937fee9"
       },
       {
         "from": "83d5eff7e322a682",
@@ -6733,6 +6899,26 @@
         "to": "17577692954f298c"
       },
       {
+        "from": "cfcb6b1b0765fabe",
+        "kind": "extends",
+        "provenance": {
+          "basis": "ast",
+          "confidence": 95,
+          "extractor": "tree-sitter"
+        },
+        "to": "794d8bfa31a8a244"
+      },
+      {
+        "from": "bc8c2732b90cee1c",
+        "kind": "implements",
+        "provenance": {
+          "basis": "ast",
+          "confidence": 95,
+          "extractor": "tree-sitter"
+        },
+        "to": "5c172e72d9abe8b2"
+      },
+      {
         "from": "377a47bfdf03fc7c",
         "kind": "extends",
         "provenance": {
@@ -6779,6 +6965,20 @@
           }
         },
         "to": "425c15ae555a178f"
+      },
+      {
+        "from": "3d21d57990054f39",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "scripts/build.js",
+            "line": 4
+          }
+        },
+        "to": "a5a8e56356e1b25a"
       },
       {
         "from": "425c15ae555a178f",
@@ -6879,11 +7079,25 @@
         "to": "e32bd0f6103caf96"
       },
       {
+        "from": "0ae092a0a8e347d1",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/app.ts",
+            "line": 8
+          }
+        },
+        "to": "9a944ee5daaf166a"
+      },
+      {
         "from": "803fe6663e25e260",
         "kind": "called-by",
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/app.ts",
@@ -6910,8 +7124,8 @@
         "from": "803fe6663e25e260",
         "kind": "called-by",
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/app.ts",
@@ -6919,6 +7133,48 @@
           }
         },
         "to": "e199bbabd46df179"
+      },
+      {
+        "from": "8f69c6f68ebe4de5",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "ast",
+          "confidence": 95,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/app.ts",
+            "line": 23
+          }
+        },
+        "to": "71cc7715dab25058"
+      },
+      {
+        "from": "377a47bfdf03fc7c",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/app.ts",
+            "line": 23
+          }
+        },
+        "to": "71cc7715dab25058"
+      },
+      {
+        "from": "0ae092a0a8e347d1",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/controller/user.controller.ts",
+            "line": 15
+          }
+        },
+        "to": "14c3534eda0a5a79"
       },
       {
         "from": "143ab3d1c847770e",
@@ -6938,8 +7194,8 @@
         "from": "803fe6663e25e260",
         "kind": "called-by",
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/controller/user.controller.ts",
@@ -7005,11 +7261,25 @@
         "to": "ea9f3c98ff1594e8"
       },
       {
+        "from": "0ae092a0a8e347d1",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/services/order.service.ts",
+            "line": 9
+          }
+        },
+        "to": "f4fcbc553f2e0c2e"
+      },
+      {
         "from": "87d9b8c540018898",
         "kind": "called-by",
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/services/order.service.ts",
@@ -7019,11 +7289,25 @@
         "to": "7ced2d5edb905e08"
       },
       {
+        "from": "0ae092a0a8e347d1",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/services/user.service.ts",
+            "line": 10
+          }
+        },
+        "to": "ba72243ed297f516"
+      },
+      {
         "from": "803fe6663e25e260",
         "kind": "called-by",
         "provenance": {
-          "basis": "name-match",
-          "confidence": 40,
+          "basis": "import-resolved",
+          "confidence": 85,
           "extractor": "typescript-api",
           "location": {
             "file": "src/services/user.service.ts",
@@ -7048,6 +7332,20 @@
       },
       {
         "from": "803fe6663e25e260",
+        "kind": "called-by",
+        "provenance": {
+          "basis": "import-resolved",
+          "confidence": 85,
+          "extractor": "typescript-api",
+          "location": {
+            "file": "src/util/logger.test.ts",
+            "line": 5
+          }
+        },
+        "to": "9f54609c40853dc2"
+      },
+      {
+        "from": "0ae092a0a8e347d1",
         "kind": "called-by",
         "provenance": {
           "basis": "import-resolved",
@@ -7091,6 +7389,26 @@
     ],
     "typeGraph": [
       {
+        "child": "cfcb6b1b0765fabe",
+        "kind": "extends",
+        "parent": "794d8bfa31a8a244",
+        "provenance": {
+          "basis": "ast",
+          "confidence": 95,
+          "extractor": "tree-sitter"
+        }
+      },
+      {
+        "child": "bc8c2732b90cee1c",
+        "kind": "implements",
+        "parent": "5c172e72d9abe8b2",
+        "provenance": {
+          "basis": "ast",
+          "confidence": 95,
+          "extractor": "tree-sitter"
+        }
+      },
+      {
         "child": "377a47bfdf03fc7c",
         "kind": "extends",
         "parent": "91f7f0c18487ab79",
@@ -7119,7 +7437,7 @@
     },
     "csharp": {
       "callGraph": false,
-      "symbols": "heuristic"
+      "symbols": "structural"
     },
     "css": {
       "callGraph": false,
@@ -7163,7 +7481,7 @@
     },
     "php": {
       "callGraph": false,
-      "symbols": "heuristic"
+      "symbols": "structural"
     },
     "python": {
       "callGraph": false,
@@ -7171,7 +7489,7 @@
     },
     "ruby": {
       "callGraph": false,
-      "symbols": "heuristic"
+      "symbols": "structural"
     },
     "rust": {
       "callGraph": false,
@@ -7254,7 +7572,7 @@
     },
     "totalFiles": 58,
     "totalLoc": 963,
-    "totalSymbols": 200
+    "totalSymbols": 201
   },
   "root": "test-fixture",
   "rootPath": "<volatile>",
@@ -7511,34 +7829,54 @@
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": null,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 8,
+      "exported": false,
+      "extends": [],
       "fileId": "0a68334964de39b3",
       "fullyQualifiedName": "php/Repository.php::Storage",
-      "id": "b2b1510d84175c2e",
-      "kind": "class",
+      "generator": false,
+      "generics": [],
+      "id": "5c172e72d9abe8b2",
+      "implements": [],
+      "kind": "interface",
       "line": 5,
       "name": "Storage",
       "parameters": [],
       "parentId": null,
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
       "signature": "interface Storage",
-      "source": "heuristic",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 7,
+      "exported": false,
+      "extends": [],
       "fileId": "0a68334964de39b3",
       "fullyQualifiedName": "php/Repository.php::Storage.get",
+      "generator": false,
+      "generics": [],
       "id": "9423537c88cff277",
+      "implements": [],
       "kind": "method",
       "line": 7,
       "name": "get",
@@ -7550,40 +7888,66 @@
           "type": "string"
         }
       ],
-      "parentId": "b2b1510d84175c2e",
-      "signature": "get(string $id)",
-      "source": "heuristic",
+      "parentId": "5c172e72d9abe8b2",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
+      "signature": "get($id: string)",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": null,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 23,
+      "exported": false,
+      "extends": [],
       "fileId": "0a68334964de39b3",
       "fullyQualifiedName": "php/Repository.php::Repository",
+      "generator": false,
+      "generics": [],
       "id": "bc8c2732b90cee1c",
+      "implements": [
+        "Storage"
+      ],
       "kind": "class",
       "line": 10,
       "name": "Repository",
       "parameters": [],
       "parentId": null,
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
       "signature": "class Repository implements Storage",
-      "source": "heuristic",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 17,
+      "exported": false,
+      "extends": [],
       "fileId": "0a68334964de39b3",
       "fullyQualifiedName": "php/Repository.php::Repository.get",
+      "generator": false,
+      "generics": [],
       "id": "5af27d76ebf87c59",
+      "implements": [],
       "kind": "method",
       "line": 14,
       "name": "get",
@@ -7596,20 +7960,32 @@
         }
       ],
       "parentId": "bc8c2732b90cee1c",
-      "signature": "get(string $id)",
-      "source": "heuristic",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
+      "signature": "get($id: string)",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 22,
+      "exported": false,
+      "extends": [],
       "fileId": "0a68334964de39b3",
       "fullyQualifiedName": "php/Repository.php::Repository.put",
+      "generator": false,
+      "generics": [],
       "id": "0ff8338ea1a71c34",
+      "implements": [],
       "kind": "method",
       "line": 19,
       "name": "put",
@@ -7628,9 +8004,12 @@
         }
       ],
       "parentId": "bc8c2732b90cee1c",
+      "readonly": false,
       "referenceCount": 1,
-      "signature": "put(string $id, $value)",
-      "source": "heuristic",
+      "returnType": "void",
+      "signature": "put($id: string, $value): void",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
@@ -8018,7 +8397,12 @@
     {
       "abstract": false,
       "async": false,
-      "calledBy": [],
+      "calledBy": [
+        "14c3534eda0a5a79",
+        "9a944ee5daaf166a",
+        "ba72243ed297f516",
+        "f4fcbc553f2e0c2e"
+      ],
       "calls": [],
       "complexity": null,
       "confidence": 90,
@@ -8039,7 +8423,7 @@
       "parameters": [],
       "parentId": null,
       "readonly": false,
-      "referenceCount": null,
+      "referenceCount": 4,
       "returnType": null,
       "signature": "class Logger",
       "source": "tree-sitter",
@@ -8931,12 +9315,25 @@
       "kind": "method",
       "line": 11,
       "name": "__init__",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "optional": false,
+          "rest": false,
+          "type": null
+        },
+        {
+          "name": "source",
+          "optional": false,
+          "rest": false,
+          "type": "str"
+        }
+      ],
       "parentId": "15a1bfdf94335a9e",
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "__init__()",
+      "signature": "__init__(self, source: str)",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -8962,12 +9359,19 @@
       "kind": "method",
       "line": 15,
       "name": "load",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "optional": false,
+          "rest": false,
+          "type": null
+        }
+      ],
       "parentId": "15a1bfdf94335a9e",
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "load()",
+      "returnType": "None",
+      "signature": "load(self): None",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -8993,12 +9397,25 @@
       "kind": "method",
       "line": 20,
       "name": "find",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "optional": false,
+          "rest": false,
+          "type": null
+        },
+        {
+          "name": "user_id",
+          "optional": false,
+          "rest": false,
+          "type": "str"
+        }
+      ],
       "parentId": "15a1bfdf94335a9e",
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "find()",
+      "returnType": "Optional[dict]",
+      "signature": "find(self, user_id: str): Optional[dict]",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9024,12 +9441,26 @@
       "kind": "function",
       "line": 27,
       "name": "build_repository",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "source",
+          "optional": false,
+          "rest": false,
+          "type": "str"
+        },
+        {
+          "defaultValue": "False",
+          "name": "eager",
+          "optional": true,
+          "rest": false,
+          "type": "bool"
+        }
+      ],
       "parentId": null,
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "build_repository()",
+      "returnType": "UserRepository",
+      "signature": "build_repository(source: str, eager: bool = False): UserRepository",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9055,12 +9486,19 @@
       "kind": "function",
       "line": 38,
       "name": "fetch_remote",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "url",
+          "optional": false,
+          "rest": false,
+          "type": null
+        }
+      ],
       "parentId": null,
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "fetch_remote()",
+      "signature": "fetch_remote(url)",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9086,12 +9524,19 @@
       "kind": "function",
       "line": 42,
       "name": "outer",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "values",
+          "optional": false,
+          "rest": false,
+          "type": null
+        }
+      ],
       "parentId": null,
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "outer()",
+      "signature": "outer(values)",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9117,12 +9562,19 @@
       "kind": "function",
       "line": 46,
       "name": "inner",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "value",
+          "optional": false,
+          "rest": false,
+          "type": null
+        }
+      ],
       "parentId": "d58df094b94e3692",
       "readonly": false,
       "referenceCount": null,
       "returnType": null,
-      "signature": "inner()",
+      "signature": "inner(value)",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9212,17 +9664,17 @@
       "name": "add",
       "parameters": [
         {
-          "name": "String value",
+          "name": "value",
           "optional": false,
           "rest": false,
-          "type": null
+          "type": "String"
         }
       ],
       "parentId": "f06574b9ded08f2e",
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "add(String value)",
+      "returnType": "void",
+      "signature": "add(value: String): void",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9252,17 +9704,17 @@
       "name": "get",
       "parameters": [
         {
-          "name": "int index",
+          "name": "index",
           "optional": false,
           "rest": false,
-          "type": null
+          "type": "int"
         }
       ],
       "parentId": "f06574b9ded08f2e",
       "readonly": false,
       "referenceCount": 4,
-      "returnType": null,
-      "signature": "get(int index)",
+      "returnType": "String",
+      "signature": "get(index: int): String",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9290,17 +9742,17 @@
       "name": "get",
       "parameters": [
         {
-          "name": "String key",
+          "name": "key",
           "optional": false,
           "rest": false,
-          "type": null
+          "type": "String"
         }
       ],
       "parentId": "f06574b9ded08f2e",
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "get(String key)",
+      "returnType": "String",
+      "signature": "get(key: String): String",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -9576,34 +10028,85 @@
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": null,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
-      "endLine": 6,
+      "endLine": 20,
+      "exported": false,
+      "extends": [],
       "fileId": "6307c0a08191b0db",
-      "fullyQualifiedName": "cs/Service.cs::IService",
-      "id": "da08058b221e2c80",
-      "kind": "class",
-      "line": 3,
-      "name": "IService",
+      "fullyQualifiedName": "cs/Service.cs::App",
+      "generator": false,
+      "generics": [],
+      "id": "7e42e47ef4944b81",
+      "implements": [],
+      "kind": "namespace",
+      "line": 1,
+      "name": "App",
       "parameters": [],
       "parentId": null,
-      "signature": "public interface IService",
-      "source": "heuristic",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
+      "signature": "namespace App",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
+      "calledBy": [],
+      "calls": [],
+      "complexity": null,
+      "confidence": 85,
+      "deprecated": false,
+      "documentation": null,
+      "endLine": 6,
+      "exported": false,
+      "extends": [],
+      "fileId": "6307c0a08191b0db",
+      "fullyQualifiedName": "cs/Service.cs::App.IService",
+      "generator": false,
+      "generics": [],
+      "id": "794d8bfa31a8a244",
+      "implements": [],
+      "kind": "interface",
+      "line": 3,
+      "name": "IService",
+      "parameters": [],
+      "parentId": "7e42e47ef4944b81",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
+      "signature": "public interface IService",
+      "source": "tree-sitter",
+      "static": false,
+      "visibility": "public"
+    },
+    {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 5,
+      "exported": false,
+      "extends": [],
       "fileId": "6307c0a08191b0db",
-      "fullyQualifiedName": "cs/Service.cs::IService.Get",
-      "id": "c65e40e2ef2bacd1",
+      "fullyQualifiedName": "cs/Service.cs::App.IService.Get",
+      "generator": false,
+      "generics": [],
+      "id": "60ac960ad6adcbde",
+      "implements": [],
       "kind": "method",
       "line": 5,
       "name": "Get",
@@ -9615,40 +10118,66 @@
           "type": "string"
         }
       ],
-      "parentId": "da08058b221e2c80",
-      "signature": "Get(string id)",
-      "source": "heuristic",
+      "parentId": "794d8bfa31a8a244",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": "string",
+      "signature": "Get(id: string): string",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": null,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 19,
+      "exported": false,
+      "extends": [
+        "IService"
+      ],
       "fileId": "6307c0a08191b0db",
-      "fullyQualifiedName": "cs/Service.cs::Service",
-      "id": "2453ae12ed79dd12",
+      "fullyQualifiedName": "cs/Service.cs::App.Service",
+      "generator": false,
+      "generics": [],
+      "id": "cfcb6b1b0765fabe",
+      "implements": [],
       "kind": "class",
       "line": 8,
       "name": "Service",
       "parameters": [],
-      "parentId": null,
+      "parentId": "7e42e47ef4944b81",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
       "signature": "public class Service : IService",
-      "source": "heuristic",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 13,
+      "exported": false,
+      "extends": [],
       "fileId": "6307c0a08191b0db",
-      "fullyQualifiedName": "cs/Service.cs::Service.Get",
-      "id": "f1dea39fe3faf997",
+      "fullyQualifiedName": "cs/Service.cs::App.Service.Get",
+      "generator": false,
+      "generics": [],
+      "id": "08a61ee7982793f0",
+      "implements": [],
       "kind": "method",
       "line": 10,
       "name": "Get",
@@ -9660,21 +10189,33 @@
           "type": "string"
         }
       ],
-      "parentId": "2453ae12ed79dd12",
-      "signature": "Get(string id)",
-      "source": "heuristic",
+      "parentId": "cfcb6b1b0765fabe",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": "string",
+      "signature": "Get(id: string): string",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 18,
+      "exported": false,
+      "extends": [],
       "fileId": "6307c0a08191b0db",
-      "fullyQualifiedName": "cs/Service.cs::Service.Get#1",
-      "id": "ecbaf5e7cd638090",
+      "fullyQualifiedName": "cs/Service.cs::App.Service.Get#1",
+      "generator": false,
+      "generics": [],
+      "id": "af7cb07d110e4501",
+      "implements": [],
       "kind": "method",
       "line": 15,
       "name": "Get",
@@ -9686,9 +10227,13 @@
           "type": "int"
         }
       ],
-      "parentId": "2453ae12ed79dd12",
-      "signature": "Get(int id)",
-      "source": "heuristic",
+      "parentId": "cfcb6b1b0765fabe",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": "string",
+      "signature": "Get(id: int): string",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
@@ -10147,7 +10692,9 @@
       "abstract": false,
       "async": false,
       "calledBy": [],
-      "calls": [],
+      "calls": [
+        "0ae092a0a8e347d1"
+      ],
       "complexity": null,
       "confidence": 90,
       "deprecated": false,
@@ -10502,7 +11049,9 @@
     {
       "abstract": false,
       "async": false,
-      "calledBy": [],
+      "calledBy": [
+        "a5a8e56356e1b25a"
+      ],
       "calls": [],
       "complexity": null,
       "confidence": 85,
@@ -10523,7 +11072,7 @@
       "parameters": [],
       "parentId": null,
       "readonly": false,
-      "referenceCount": null,
+      "referenceCount": 1,
       "returnType": null,
       "signature": "class Cache",
       "source": "tree-sitter",
@@ -10663,7 +11212,9 @@
     {
       "abstract": false,
       "async": false,
-      "calledBy": [],
+      "calledBy": [
+        "71cc7715dab25058"
+      ],
       "calls": [],
       "complexity": null,
       "confidence": 90,
@@ -10695,7 +11246,9 @@
       "abstract": false,
       "async": false,
       "calledBy": [],
-      "calls": [],
+      "calls": [
+        "0ae092a0a8e347d1"
+      ],
       "complexity": null,
       "confidence": 90,
       "deprecated": false,
@@ -10841,7 +11394,10 @@
       "calledBy": [
         "fa7e3644cfc6813b"
       ],
-      "calls": [],
+      "calls": [
+        "377a47bfdf03fc7c",
+        "8f69c6f68ebe4de5"
+      ],
       "complexity": 1,
       "confidence": 90,
       "deprecated": false,
@@ -11559,12 +12115,19 @@
       "kind": "function",
       "line": 18,
       "name": "New",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "addr",
+          "optional": false,
+          "rest": false,
+          "type": "string"
+        }
+      ],
       "parentId": null,
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "New()",
+      "returnType": "*Server",
+      "signature": "New(addr: string): *Server",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -11590,12 +12153,20 @@
       "kind": "method",
       "line": 22,
       "name": "Serve",
-      "parameters": [],
+      "parameters": [
+        {
+          "defaultValue": "context.Context",
+          "name": "ctx",
+          "optional": false,
+          "rest": false,
+          "type": "context.Context"
+        }
+      ],
       "parentId": null,
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "Serve()",
+      "returnType": "error",
+      "signature": "Serve(ctx: context.Context = context.Context): error",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -11625,8 +12196,8 @@
       "parentId": null,
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "Name()",
+      "returnType": "string",
+      "signature": "Name(): string",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -11715,60 +12286,85 @@
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": null,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 15,
+      "exported": false,
+      "extends": [],
       "fileId": "a695523a199c1519",
       "fullyQualifiedName": "rb/parser.rb::Parsing",
+      "generator": false,
+      "generics": [],
       "id": "2b636af0497c3b31",
+      "implements": [],
       "kind": "module",
       "line": 1,
       "name": "Parsing",
       "parameters": [],
       "parentId": null,
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
       "signature": "module Parsing",
-      "source": "heuristic",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": null,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 14,
+      "exported": false,
+      "extends": [],
       "fileId": "a695523a199c1519",
       "fullyQualifiedName": "rb/parser.rb::Parsing.Parser",
+      "generator": false,
+      "generics": [],
       "id": "b4183bb724368f02",
+      "implements": [],
       "kind": "class",
       "line": 2,
       "name": "Parser",
-      "parameters": [
-        {
-          "name": "source",
-          "optional": false,
-          "rest": false,
-          "type": null
-        }
-      ],
+      "parameters": [],
       "parentId": "2b636af0497c3b31",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
       "signature": "class Parser",
-      "source": "heuristic",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 5,
+      "exported": false,
+      "extends": [],
       "fileId": "a695523a199c1519",
       "fullyQualifiedName": "rb/parser.rb::Parsing.Parser.initialize",
+      "generator": false,
+      "generics": [],
       "id": "ba2338e549abc5c6",
+      "implements": [],
       "kind": "method",
       "line": 3,
       "name": "initialize",
@@ -11781,46 +12377,63 @@
         }
       ],
       "parentId": "b4183bb724368f02",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
       "signature": "initialize(source)",
-      "source": "heuristic",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 9,
+      "exported": false,
+      "extends": [],
       "fileId": "a695523a199c1519",
       "fullyQualifiedName": "rb/parser.rb::Parsing.Parser.parse",
+      "generator": false,
+      "generics": [],
       "id": "5abb43527d530bc8",
+      "implements": [],
       "kind": "method",
       "line": 7,
       "name": "parse",
-      "parameters": [
-        {
-          "name": "\"\\n\"",
-          "optional": false,
-          "rest": false,
-          "type": null
-        }
-      ],
+      "parameters": [],
       "parentId": "b4183bb724368f02",
-      "signature": "parse(\"\\n\")",
-      "source": "heuristic",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
+      "signature": "parse()",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
+      "abstract": false,
+      "async": false,
       "calledBy": [],
       "calls": [],
       "complexity": 1,
-      "confidence": 65,
+      "confidence": 85,
+      "deprecated": false,
       "documentation": null,
       "endLine": 13,
+      "exported": false,
+      "extends": [],
       "fileId": "a695523a199c1519",
       "fullyQualifiedName": "rb/parser.rb::Parsing.Parser.build",
+      "generator": false,
+      "generics": [],
       "id": "4c633d4ec1608750",
+      "implements": [],
       "kind": "method",
       "line": 11,
       "name": "build",
@@ -11833,8 +12446,12 @@
         }
       ],
       "parentId": "b4183bb724368f02",
+      "readonly": false,
+      "referenceCount": null,
+      "returnType": null,
       "signature": "build(source)",
-      "source": "heuristic",
+      "source": "tree-sitter",
+      "static": false,
       "visibility": "public"
     },
     {
@@ -11872,7 +12489,9 @@
       "abstract": false,
       "async": false,
       "calledBy": [],
-      "calls": [],
+      "calls": [
+        "3d21d57990054f39"
+      ],
       "complexity": null,
       "confidence": 85,
       "deprecated": false,
@@ -12368,7 +12987,9 @@
       "abstract": false,
       "async": false,
       "calledBy": [],
-      "calls": [],
+      "calls": [
+        "0ae092a0a8e347d1"
+      ],
       "complexity": null,
       "confidence": 90,
       "deprecated": false,
@@ -12549,12 +13170,26 @@
       "kind": "method",
       "line": 6,
       "name": "handle",
-      "parameters": [],
+      "parameters": [
+        {
+          "defaultValue": "self",
+          "name": "self",
+          "optional": false,
+          "rest": false,
+          "type": null
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "rest": false,
+          "type": "&str"
+        }
+      ],
       "parentId": "16e22c32ae45433f",
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "handle()",
+      "returnType": "String",
+      "signature": "handle(self = self, input: &str): String",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12611,12 +13246,26 @@
       "kind": "method",
       "line": 12,
       "name": "handle",
-      "parameters": [],
+      "parameters": [
+        {
+          "defaultValue": "self",
+          "name": "self",
+          "optional": false,
+          "rest": false,
+          "type": null
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "rest": false,
+          "type": "&str"
+        }
+      ],
       "parentId": "09e810a4013dba16",
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "handle()",
+      "returnType": "String",
+      "signature": "handle(self = self, input: &str): String",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12642,12 +13291,19 @@
       "kind": "function",
       "line": 17,
       "name": "build",
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "port",
+          "optional": false,
+          "rest": false,
+          "type": "u16"
+        }
+      ],
       "parentId": null,
       "readonly": false,
       "referenceCount": null,
-      "returnType": null,
-      "signature": "build()",
+      "returnType": "Config",
+      "signature": "build(port: u16): Config",
       "source": "tree-sitter",
       "static": false,
       "visibility": "public"
@@ -12934,8 +13590,8 @@
       "parentId": "91f7f0c18487ab79",
       "readonly": false,
       "referenceCount": null,
-      "returnType": "T[]",
-      "signature": "items(): T[]",
+      "returnType": null,
+      "signature": "items()",
       "source": "tree-sitter",
       "static": false,
       "visibility": "protected"
@@ -12981,7 +13637,9 @@
     {
       "abstract": false,
       "async": false,
-      "calledBy": [],
+      "calledBy": [
+        "71cc7715dab25058"
+      ],
       "calls": [],
       "complexity": null,
       "confidence": 90,
@@ -13005,7 +13663,7 @@
       "parameters": [],
       "parentId": null,
       "readonly": false,
-      "referenceCount": null,
+      "referenceCount": 1,
       "returnType": null,
       "signature": "class UserService extends BaseService<User>",
       "source": "tree-sitter",
@@ -13016,7 +13674,9 @@
       "abstract": false,
       "async": false,
       "calledBy": [],
-      "calls": [],
+      "calls": [
+        "0ae092a0a8e347d1"
+      ],
       "complexity": null,
       "confidence": 90,
       "deprecated": false,
