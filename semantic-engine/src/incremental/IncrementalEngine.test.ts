@@ -318,6 +318,23 @@ describe('IncrementalEngine', () => {
     expect(mainFile?.imports?.[0]?.resolvedFileId).toBeNull();
   });
 
+  it('keeps every symbol of a file renamed with identical content (symbol parity)', async () => {
+    const projectIndex = createInitialProjectIndex(workspaceRoot);
+    engine.load(projectIndex);
+
+    const utilsId = projectIndex.files[0]!.id;
+    const before = projectIndex.symbols.filter(symbol => symbol.fileId === utilsId).map(symbol => symbol.id).sort();
+    expect(before.length).toBeGreaterThan(0);
+
+    fs.renameSync(path.join(workspaceRoot, 'src', 'utils.ts'), path.join(workspaceRoot, 'src', 'helpers.ts'));
+    const result = await engine.applyChanges([
+      { type: 'renamed', path: 'src/helpers.ts', oldPath: 'src/utils.ts' },
+    ]);
+
+    const after = result.projectIndex.symbols.filter(symbol => symbol.fileId === utilsId).map(symbol => symbol.id).sort();
+    expect(after).toEqual(before);
+  });
+
   it('should cleanup edges when a file is deleted', async () => {
     const projectIndex = createInitialProjectIndex(workspaceRoot);
     engine.load(projectIndex);

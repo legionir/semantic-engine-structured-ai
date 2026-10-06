@@ -466,6 +466,13 @@ async function searchStart(args, context) {
         id:
             `search_${sessionCounter}`,
 
+        /* The project that owns this session: another project's get / list /
+           stop must never reach it (null = the default/legacy project). */
+        project_id:
+            context && context.projectId
+                ? context.projectId
+                : null,
+
         /* The run that owns this session (modular mode); a run-scoped
            reset clears only its own sessions, never a concurrent
            run's. */
@@ -568,10 +575,34 @@ async function searchStart(args, context) {
 |--------------------------------------------------------------------------
 */
 
-async function searchGet(args) {
+/*
+| A session is visible only to the project that started it. A foreign handle
+| is reported exactly like an unknown one, so a project cannot even probe for
+| another project's search ids.
+*/
+function ownedSession(searchId, context) {
+
+    const session = SESSIONS.get(searchId);
+
+    if (!session) {
+        return undefined;
+    }
+
+    const caller =
+        context && context.projectId
+            ? context.projectId
+            : null;
+
+    return session.project_id === caller
+        ? session
+        : undefined;
+}
+
+
+async function searchGet(args, context) {
 
     const session =
-        SESSIONS.get(args.search_id);
+        ownedSession(args.search_id, context);
 
     if (!session) {
 
@@ -611,14 +642,24 @@ async function searchGet(args) {
 |--------------------------------------------------------------------------
 */
 
-async function searchList() {
+async function searchList(_args, context) {
+
+    const caller =
+        context && context.projectId
+            ? context.projectId
+            : null;
+
+    const own =
+        [...SESSIONS.values()].filter(
+            session => session.project_id === caller
+        );
 
     return {
         count:
-            SESSIONS.size,
+            own.length,
 
         searches:
-            [...SESSIONS.values()].map(
+            own.map(
                 session =>
                     describeSession(session, false)
             )
@@ -632,10 +673,10 @@ async function searchList() {
 |--------------------------------------------------------------------------
 */
 
-async function searchStop(args) {
+async function searchStop(args, context) {
 
     const session =
-        SESSIONS.get(args.search_id);
+        ownedSession(args.search_id, context);
 
     if (!session) {
 

@@ -13,6 +13,7 @@ import {
   createEmbeddingGeneratorFromArgs,
   embeddingFromArgs,
   embeddingRequested,
+  resolveVectorPlan,
 } from './embeddingFromArgs';
 import { HashingEmbeddingGenerator } from '../vector/HashingEmbeddingGenerator';
 import { RemoteEmbeddingGenerator } from '../vector/RemoteEmbeddingGenerator';
@@ -189,4 +190,37 @@ describe('--embedding-* flags', () => {
       fs.rmSync(base, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe("index and watch share one vectors/provider rule (resolveVectorPlan)", () => {
+  const plan = (argv: string[], hadVectors = false) => resolveVectorPlan(parseArgs(argv), hadVectors, {});
+
+  it("wants no vectors and no generator by default", () => {
+    expect(plan(["watch"])).toEqual({ wantsVectors: false, embeddingGenerator: undefined });
+  });
+
+  it("keeps vectors when the previous index had them, with the local generator", () => {
+    const result = plan(["watch"], true);
+    expect(result.wantsVectors).toBe(true);
+    expect(result.embeddingGenerator).toBeInstanceOf(HashingEmbeddingGenerator);
+  });
+
+  it("an explicit provider turns vectors on and builds THAT provider, not the hashing fallback", () => {
+    const result = plan([
+      "watch",
+      "--embedding-provider", "openai-compatible",
+      "--embedding-base-url", "http://127.0.0.1:11434",
+      "--embedding-model", "text-embedding-3-small",
+    ]);
+    expect(result.wantsVectors).toBe(true);
+    expect(result.embeddingGenerator).toBeInstanceOf(RemoteEmbeddingGenerator);
+  });
+
+  it("--vectors=false wins even when a provider is named", () => {
+    expect(plan(["watch", "--embedding-provider", "local", "--no-vectors"]).wantsVectors).toBe(false);
+  });
+
+  it("an unknown provider fails immediately", () => {
+    expect(() => plan(["watch", "--embedding-provider", "cohere"])).toThrow(/--embedding-provider must be one of/);
+  });
 });

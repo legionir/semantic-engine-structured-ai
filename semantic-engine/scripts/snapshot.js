@@ -67,10 +67,18 @@ const KEEP_ID_UNDER = new Set([
 ]);
 
 
-function normalise(value, key = null, parentKey = null) {
+/*
+| `keepIds` is the parent context and it is inherited by the whole subtree:
+| once inside `files`, `symbols`, `nodes`, ... every `id` is a stable
+| identifier. The previous version passed the child's own key as the parent
+| key, so an `id` that sat one level below a keep-container (an object
+| keyed by name, a nested entry) lost the context and was replaced by
+| "<volatile>" - the snapshot then could not notice an identity change.
+*/
+function normalise(value, keepIds = false) {
 
     if (Array.isArray(value)) {
-        return value.map(item => normalise(item, null, parentKey));
+        return value.map(item => normalise(item, keepIds));
     }
 
     if (value && typeof value === "object") {
@@ -81,12 +89,12 @@ function normalise(value, key = null, parentKey = null) {
 
             const isVolatile =
                 VOLATILE.has(name) &&
-                !(name === "id" && KEEP_ID_UNDER.has(parentKey));
+                !(name === "id" && keepIds);
 
             out[name] =
                 isVolatile
                     ? "<volatile>"
-                    : normalise(value[name], name, name);
+                    : normalise(value[name], keepIds || KEEP_ID_UNDER.has(name));
         }
 
         return out;
@@ -263,4 +271,8 @@ function main() {
 }
 
 
-main();
+if (require.main === module) {
+    main();
+}
+
+module.exports = { normalise, diff };

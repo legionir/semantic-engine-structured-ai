@@ -26,6 +26,7 @@ function bind(deps) {
     bound.tools = deps.tools;
     bound.eventstore = deps.eventstore;
     bound.cancelRun = deps.cancelRun;
+    bound.cancelAllRuns = deps.cancelAllRuns;
 
 }
 
@@ -52,7 +53,8 @@ async function main() {
     }
 
     lifecycle.installSignalHandlers({
-        cancelRun: bound.cancelRun,
+        /* every active and queued run, not only the current one */
+        cancelRun: bound.cancelAllRuns || bound.cancelRun,
         tools: bound.tools
     });
 

@@ -76,10 +76,10 @@ export function createAuthRoutes(apiKeyStore: ApiKeyStore): RouteDefinition[] {
   return [
     { method: 'GET', pattern: '/api/v1/roles', requireAuth: false, handler: getRolesHandler },
     { method: 'GET', pattern: '/api/v2/auth/roles', requireAuth: false, handler: getRolesHandler },
-    { method: 'GET', pattern: '/api/v1/auth/api-keys', requireAuth: true, handler: async () => ({ status: 200, json: { keys: apiKeyStore.listKeys() } }) },
+    { method: 'GET', pattern: '/api/v1/auth/api-keys', requireAuth: true, permission: 'auth:manage', handler: async () => ({ status: 200, json: { keys: apiKeyStore.listKeys() } }) },
     { method: 'GET', pattern: '/api/v2/auth/keys', requireAuth: true, permission: 'auth:manage', handler: async () => ({ status: 200, json: { keys: apiKeyStore.listKeys() } }) },
-    { method: 'POST', pattern: '/api/v1/auth/api-keys', requireAuth: true, handler: createKeyHandler },
-    { method: 'POST', pattern: '/api/v2/auth/keys', requireAuth: true, handler: createKeyHandler },
+    { method: 'POST', pattern: '/api/v1/auth/api-keys', requireAuth: true, permission: 'auth:manage', handler: createKeyHandler },
+    { method: 'POST', pattern: '/api/v2/auth/keys', requireAuth: true, permission: 'auth:manage', handler: createKeyHandler },
     {
       method: 'POST',
       pattern: '/api/v1/users',

@@ -156,10 +156,26 @@ function environmentDocument() {
 }
 
 
+/*
+| The workspace root is REQUIRED (plan phase 6 / step 3). Falling back to
+| process.cwd() silently read the first workspace's .mcp.json for every
+| project; the caller (McpManager, bound to a project) always knows its root.
+*/
+function requireRoot(workspaceRoot) {
+
+    if (typeof workspaceRoot !== "string" || workspaceRoot.trim() === "") {
+
+        throw new Error("MCP configuration needs an explicit workspaceRoot");
+    }
+
+    return workspaceRoot;
+}
+
+
 function load(workspaceRoot) {
 
     const root =
-        workspaceRoot || process.cwd();
+        requireRoot(workspaceRoot);
 
     const servers = new Map();
 
@@ -251,7 +267,7 @@ function load(workspaceRoot) {
 function persist(workspaceRoot, config) {
 
     const file =
-        workspaceFile(workspaceRoot || process.cwd());
+        workspaceFile(requireRoot(workspaceRoot));
 
     const document =
         readJsonFile(file) || { mcpServers: {} };
@@ -318,7 +334,7 @@ function persist(workspaceRoot, config) {
 function forget(workspaceRoot, name) {
 
     const file =
-        workspaceFile(workspaceRoot || process.cwd());
+        workspaceFile(requireRoot(workspaceRoot));
 
     const document =
         readJsonFile(file);

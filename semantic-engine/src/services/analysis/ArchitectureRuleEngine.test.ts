@@ -37,4 +37,21 @@ describe('ArchitectureRuleEngine (V2 Cycles & Layer Violations)', () => {
     expect(violations[0]?.ruleId).toBe('ARCH-001');
     expect(violations[0]?.severity).toBe('error');
   });
+
+  // F-0017 regression: in the real index node ids are opaque hex; the readable
+  // path lives in metadata.path. Layer rules must match on the path, not the id.
+  it('detects layer violations when node ids are opaque hex (real buildIndexGraph shape)', () => {
+    const graph = new AnalysisGraph();
+
+    graph.addNode({ id: 'a1b2c3d4e5f60718', type: 'file', label: 'src/web/payment.controller.ts', metadata: { path: 'src/web/payment.controller.ts' } });
+    graph.addNode({ id: '1122334455667788', type: 'file', label: 'src/data/payment.repository.ts', metadata: { path: 'src/data/payment.repository.ts' } });
+
+    graph.addEdge({ id: 'e1', source: 'a1b2c3d4e5f60718', target: '1122334455667788', relation: 'imports' });
+
+    const engine = new ArchitectureRuleEngine();
+    const violations = engine.detectLayerViolations(graph);
+
+    expect(violations.length).toBe(1);
+    expect(violations[0]?.ruleId).toBe('ARCH-001');
+  });
 });

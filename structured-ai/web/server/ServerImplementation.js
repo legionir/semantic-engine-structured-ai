@@ -497,6 +497,13 @@ function createServer(runtime, options = {}) {
 
             existing.wave = event.wave ?? existing.wave;
             existing.iteration = event.iteration ?? existing.iteration;
+
+            /* the executor knows when it actually started; the envelope only
+               says when the event was written, which is later for a call that
+               waited in the queue. `wave` stays the planned grouping. */
+            existing.started_at =
+                event.started_at ?? existing.started_at;
+
             existing.finished_at = event.at || Date.now();
             existing.duration_ms = event.duration_ms;
             existing.success = event.success;
@@ -896,9 +903,151 @@ function createServer(runtime, options = {}) {
     | whole run is scoped to that project (the project context is resolved before accepting). Legacy callers pass nothing
     | and the historical single-run behaviour is untouched.
     */
+    /*
+    | The plan lives in the run's PROJECT data root. Outside the run (before it
+    | starts and in the finally block that decides on auto-continue) there is no
+    | run context, so plan lookups must be made inside that project's frame;
+    | otherwise a project run is judged by the default project's plan and never
+    | continues (or continues on the wrong plan).
+    */
+    function inRunProject(runOptions, fn) {
+
+        if (
+            !runOptions.projectId ||
+            typeof runtime.runWithProject !== "function" ||
+            typeof runtime.resolveRunProjectContext !== "function"
+        ) {
+            return fn();
+        }
+
+        const context =
+            runtime.resolveRunProjectContext({ projectId: runOptions.projectId });
+
+        return runtime.runWithProject(context, fn);
+    }
+
+
+    /*
+    | Per-project run slots (plan phase 7 / step 3). The console has ONE
+    | foreground conversation (`state`), but that must not serialise the
+    | whole process: a run for project B may start while project A's run is in
+    | progress. Rules:
+    |   - a project with a run in progress refuses another (409) - the
+    |     "same project" policy, on top of the scheduler's MAX_RUNS_PER_PROJECT;
+    |   - a run for another project starts at once and, when the foreground is
+    |     busy, runs in the BACKGROUND (own slot, no clobbering of `state`);
+    |   - a run with no project keeps the historical single-run gate.
+    */
+    const projectSlots = new Map();
+
+    function projectSlotBusy(projectId) {
+
+        const slot = projectSlots.get(projectId);
+
+        return Boolean(slot && slot.status === "running");
+    }
+
+    function slotView(projectId) {
+
+        const slot = projectSlots.get(projectId);
+
+        if (!slot) {
+            return { project_id: projectId, status: "idle" };
+        }
+
+        return {
+            project_id: projectId,
+            status: slot.status,
+            task: slot.task,
+            answer: slot.answer,
+            error: slot.error,
+            started_at: slot.startedAt,
+            finished_at: slot.finishedAt,
+            background: slot.background
+        };
+    }
+
+
+    async function startBackgroundRun(task, runOptions) {
+
+        const projectId = runOptions.projectId;
+
+        const slot = {
+            projectId,
+            status: "running",
+            task,
+            answer: null,
+            error: null,
+            startedAt: Date.now(),
+            finishedAt: null,
+            background: true,
+            history: []
+        };
+
+        projectSlots.set(projectId, slot);
+
+        try {
+
+            const action =
+                await runtime.runAgent({
+                    task,
+                    history: slot.history,
+                    projectId
+                });
+
+            slot.answer = action.response ? action.response.content : null;
+            slot.error = action.error || null;
+            slot.status = action.error ? "failed" : "done";
+
+        } catch (error) {
+
+            const cancelled =
+                error.code === "RUN_CANCELLED" || /cancel/i.test(error.message);
+
+            slot.error = {
+                code: cancelled ? "CANCELLED" : error.name || "RUNTIME_ERROR",
+                message: error.message,
+                retryable: false
+            };
+
+            slot.status = cancelled ? "cancelled" : "failed";
+
+            if (!error.runTerminalEmitted) {
+
+                runtime.events.emit("run:error", {
+                    project_id: projectId,
+                    message: error.message,
+                    cancelled
+                });
+            }
+
+        } finally {
+
+            slot.finishedAt = Date.now();
+        }
+    }
+
+
     async function startTask(task, runOptions = {}) {
 
-        if (state.status === "running") {
+        if (runOptions.projectId) {
+
+            if (projectSlotBusy(runOptions.projectId)) {
+
+                throw Object.assign(
+                    new Error(`project ${runOptions.projectId} already has a run in progress`),
+                    { status: 409 }
+                );
+            }
+
+            /* the foreground is taken (by another project or the default
+               project): run in the background instead of refusing */
+            if (state.status === "running") {
+
+                return startBackgroundRun(task, runOptions);
+            }
+
+        } else if (state.status === "running") {
 
             throw Object.assign(
                 new Error("a task is already running"),
@@ -910,10 +1059,24 @@ function createServer(runtime, options = {}) {
         state.stopRequested = false;
         state.projectId = runOptions.projectId || null;
 
+        if (runOptions.projectId) {
+
+            projectSlots.set(runOptions.projectId, {
+                projectId: runOptions.projectId,
+                status: "running",
+                task,
+                answer: null,
+                error: null,
+                startedAt: Date.now(),
+                finishedAt: null,
+                background: false
+            });
+        }
+
         if (state.lastPlanSignature === null) {
 
             const before =
-                runtime.currentPlanSummary();
+                inRunProject(runOptions, () => runtime.currentPlanSummary());
 
             state.lastPlanSignature =
                 before.exists
@@ -1007,10 +1170,15 @@ function createServer(runtime, options = {}) {
                     ? "cancelled"
                     : "failed";
 
-            runtime.events.emit("run:error", {
-                message: error.message,
-                cancelled: runtime.isRunCancelled()
-            });
+            /* the runtime already ended a started run with run:error; only a
+               failure before the run started still needs its terminal event */
+            if (!error.runTerminalEmitted) {
+
+                runtime.events.emit("run:error", {
+                    message: error.message,
+                    cancelled: runtime.isRunCancelled()
+                });
+            }
 
             addMessage({
                 role: "assistant",
@@ -1022,6 +1190,19 @@ function createServer(runtime, options = {}) {
         } finally {
 
             state.finishedAt = Date.now();
+
+            const foregroundSlot =
+                runOptions.projectId
+                    ? projectSlots.get(runOptions.projectId)
+                    : null;
+
+            if (foregroundSlot && !foregroundSlot.background) {
+
+                foregroundSlot.status = state.status;
+                foregroundSlot.answer = state.answer;
+                foregroundSlot.error = state.error;
+                foregroundSlot.finishedAt = state.finishedAt;
+            }
 
             /* Record what this run changed in git — shown in the
                conversation and streamed as a git:report event. */
@@ -1037,7 +1218,7 @@ function createServer(runtime, options = {}) {
             */
 
             const plan =
-                runtime.currentPlanSummary();
+                inRunProject(runOptions, () => runtime.currentPlanSummary());
 
             /*
             | Progress is any movement of the plan: a step finished, a
@@ -1105,10 +1286,17 @@ function createServer(runtime, options = {}) {
                     next_step: plan.next_step
                 });
 
+                /*
+                | The continuation is the SAME run for the same project: it
+                | inherits the options (projectId, ...) of the run that just
+                | ended. Without them the next cycle silently fell back to the
+                | default project (audit F-002 / AUTO_CONTINUE drops project scope).
+                */
                 setTimeout(
                     () =>
                         startTask(
-                            "Continue the plan: read it, take the next open step, verify it, and record the result."
+                            "Continue the plan: read it, take the next open step, verify it, and record the result.",
+                            { ...runOptions }
                         ).catch(() => {}),
                     50
                 );
@@ -1757,10 +1945,14 @@ function createServer(runtime, options = {}) {
                                 name: call.name,
                                 graph_id: call.graph_id,
                                 shape: call.shape,
+                                /* planned grouping; the real concurrency is
+                                   rebuilt from the interval below */
                                 wave: call.wave,
                                 iteration: call.iteration,
                                 depends_on: call.depends_on,
                                 status: call.status,
+                                started_at: call.started_at ?? null,
+                                finished_at: call.finished_at ?? null,
                                 duration_ms: call.duration_ms
                             }))
                     });
@@ -2382,13 +2574,12 @@ function createServer(runtime, options = {}) {
                             return;
                         }
 
-                        if (busy()) {
+                        /* per-project gate: only THIS project's own run blocks it */
+                        if (projectSlotBusy(projectId)) {
 
                             sendJson(res, 409, {
-                                error:
-                                    state.status === "running"
-                                        ? "a task is already running"
-                                        : "a discussion is already running"
+                                error: `project ${projectId} already has a run in progress`,
+                                project_id: projectId
                             });
                             return;
                         }
@@ -2418,6 +2609,15 @@ function createServer(runtime, options = {}) {
                             project_id: record.id,
                             queued: admission === "queue"
                         });
+                        return;
+                    }
+
+                    if (suffix === "/run" && req.method === "GET") {
+
+                        requireAccess(projectId, "project:read");
+                        requireRecord(projectId);
+
+                        sendJson(res, 200, slotView(projectId));
                         return;
                     }
 

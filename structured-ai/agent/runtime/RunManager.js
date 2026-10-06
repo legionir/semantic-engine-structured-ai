@@ -38,6 +38,9 @@ class RunManager {
 
         this.active = new Map();
 
+        /* created and waiting for scheduler admission */
+        this.queued = new Map();
+
         this.finished = new Map();
 
         /* Ids handed out by createRun, including runs that have not
@@ -64,10 +67,67 @@ class RunManager {
 
         return (
             this.active.get(runId) ||
+            this.queued.get(runId) ||
             this.finished.get(runId) ||
             null
         );
 
+    }
+
+
+    queuedRuns() {
+
+        return [...this.queued.values()];
+
+    }
+
+
+    /* A run that exists (has an id) but is waiting for scheduler admission.
+       Tracking it separately from `active` is what makes it addressable by
+       id and cancellable before it ever starts. */
+    enqueue(context) {
+
+        context.status = "queued";
+
+        this.queued.set(context.runId, context);
+    }
+
+
+    /* The run will never execute (queue full, cancelled while queued,
+       rejected by the scheduler): settle its bookkeeping exactly once so no
+       id, context or queue entry stays behind. */
+    abandon(context, error) {
+
+        if (!this.queued.delete(context.runId)) {
+            return;
+        }
+
+        context.status =
+            context.cancellation.isCancelled ||
+            (error && error.code === "RUN_CANCELLED")
+                ? "cancelled"
+                : "failed";
+
+        context.finishedAt = Date.now();
+
+        this.finished.set(context.runId, context);
+
+        this.trimFinished();
+    }
+
+
+    trimFinished() {
+
+        while (
+            this.finished.size >
+            settings.get("RUN_HISTORY_LIMIT")
+        ) {
+
+            const oldest = this.finished.keys().next().value;
+
+            this.finished.delete(oldest);
+            this.issued.delete(oldest);
+        }
     }
 
 
@@ -137,6 +197,8 @@ class RunManager {
        lifetime, and settles its bookkeeping exactly once. */
     async execute(context, fn) {
 
+        this.queued.delete(context.runId);
+
         this.active.set(context.runId, context);
 
         context.status = "running";
@@ -186,17 +248,7 @@ class RunManager {
             /* Kept finished runs let a caller ask "what became of run
                X?" shortly after it settled, without growing memory for
                the process lifetime. */
-            while (
-                this.finished.size >
-                settings.get("RUN_HISTORY_LIMIT")
-            ) {
-
-                const oldest = this.finished.keys().next().value;
-
-                this.finished.delete(oldest);
-                this.issued.delete(oldest);
-
-            }
+            this.trimFinished();
 
         }
 

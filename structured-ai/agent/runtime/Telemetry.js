@@ -29,7 +29,32 @@ const STATE = {
 };
 
 
-function normalisePath(value) {
+/*
+| The workspace a piece of provenance belongs to. Every run bucket remembers
+| the root of ITS project; anything without one falls back to the active
+| project's root and, outside any project, to the process workspace (the
+| default project). Using the process WORKSPACE_ROOT for every project made
+| absolute paths of a project rooted elsewhere disappear and compared every
+| project's changes with the wrong Git repository (audit F-017).
+*/
+function activeProjectRoot() {
+
+    try {
+
+        const { effectiveProject } = require("./ProjectOverride");
+
+        const project = effectiveProject();
+
+        return (project && (project.workspaceRoot || project.rootPath)) || WORKSPACE_ROOT;
+
+    } catch {
+
+        return WORKSPACE_ROOT;
+    }
+}
+
+
+function normalisePath(value, root = WORKSPACE_ROOT) {
 
     if (typeof value !== "string") {
         return null;
@@ -37,7 +62,7 @@ function normalisePath(value) {
 
     const absolute =
         nodePath.isAbsolute(value)
-            ? nodePath.relative(WORKSPACE_ROOT, value)
+            ? nodePath.relative(root, value)
             : value;
 
     const path = absolute
@@ -58,7 +83,7 @@ function normalisePath(value) {
 }
 
 
-function gitStatusMap() {
+function gitStatusMap(root = WORKSPACE_ROOT) {
 
     try {
 
@@ -67,7 +92,7 @@ function gitStatusMap() {
                 "git",
                 ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
                 {
-                    cwd: WORKSPACE_ROOT,
+                    cwd: root,
                     encoding: "utf8",
                     timeout: settings.get("GIT_TIMEOUT_MS"),
                     windowsHide: true,
@@ -82,7 +107,7 @@ function gitStatusMap() {
 
             const record = records[index];
             const code = record.slice(0, 2);
-            const first = normalisePath(record.slice(3));
+            const first = normalisePath(record.slice(3), root);
 
             if (first) {
                 status.set(first, code);
@@ -90,7 +115,7 @@ function gitStatusMap() {
 
             if (/^[RC]/.test(code) && records[index + 1]) {
 
-                const second = normalisePath(records[++index]);
+                const second = normalisePath(records[++index], root);
 
                 if (second) {
                     status.set(second, code);
@@ -108,7 +133,7 @@ function gitStatusMap() {
 
 function rememberChangedPath(value, target = STATE) {
 
-    const path = normalisePath(value);
+    const path = normalisePath(value, target.root || WORKSPACE_ROOT);
 
     if (path) {
         target.changed_files.add(path);
@@ -153,6 +178,8 @@ function bucketFor(runId) {
     if (!bucket) {
 
         bucket = {
+            /* set from the first call / reset of the run: its project's workspace */
+            root: null,
             total_calls: 0,
             total_failures: 0,
             per_tool: new Map(),
@@ -191,6 +218,7 @@ function record({
     error,
     run_id,
     project_id,
+    project_root,
     arguments: args
 }) {
 
@@ -236,6 +264,11 @@ function record({
     if (run_id) {
 
         const bucket = bucketFor(run_id);
+
+        /* the tool context is authoritative for where this run works */
+        if (project_root) {
+            bucket.root = project_root;
+        }
 
         bucket.total_calls++;
 
@@ -293,7 +326,7 @@ function changedFiles(runId) {
     const bucket = runId ? RUN_BUCKETS.get(runId) : null;
     const changed = new Set(bucket ? bucket.changed_files : STATE.changed_files);
     const baseline = bucket ? bucket.baseline_git : STATE.baseline_git;
-    const current = gitStatusMap();
+    const current = gitStatusMap((bucket && bucket.root) || activeProjectRoot());
 
     for (const [file, code] of current) {
 
@@ -319,8 +352,8 @@ function dirtyFiles(runId) {
 
     /* runId is accepted so hook callers can use one provenance API; dirty
        files are the live repository view and do not depend on the bucket. */
-    void runId;
-    return [...gitStatusMap().keys()]
+    const bucket = runId ? RUN_BUCKETS.get(runId) : null;
+    return [...gitStatusMap((bucket && bucket.root) || activeProjectRoot()).keys()]
         .filter(file => file !== ".agent" && !file.startsWith(".agent/"))
         .sort();
 }
@@ -373,13 +406,14 @@ async function runtimeStats(args) {
 /* reset() with no argument is the historical process-wide reset; with a
    run id only that run's bucket is dropped, so concurrent modular runs
    never clear each other's tallies. */
-function reset(runId) {
+function reset(runId, root) {
 
     if (runId) {
 
         RUN_BUCKETS.delete(runId);
         const bucket = bucketFor(runId);
-        bucket.baseline_git = gitStatusMap();
+        bucket.root = root || activeProjectRoot();
+        bucket.baseline_git = gitStatusMap(bucket.root);
         return;
     }
 

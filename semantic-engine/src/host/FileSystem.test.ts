@@ -14,6 +14,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { EventEmitter } from 'events';
+import { Writable } from 'stream';
 import { NodeFileSystem, jsonChunks, stringifyToStream } from './FileSystem';
 
 let dir: string;
@@ -456,5 +458,55 @@ describe('the rest of the port', () => {
     fs.writeFileSync(target(), '{oops');
 
     await expect(port.readJson(target())).rejects.toThrow(target());
+  });
+});
+
+describe('async stream errors are never dropped or left unhandled', () => {
+  /** A writable whose write() reports success, then fails on the next tick (disk full). */
+  function failingStreamFactory(failAt: 'write' | 'final') {
+    return ((_file: unknown) =>
+      new Writable({
+        write(_chunk, _encoding, callback) {
+          if (failAt === 'write') process.nextTick(() => callback(new Error('disk full')));
+          else callback();
+        },
+        final(callback) {
+          callback(failAt === 'final' ? new Error('flush failed') : undefined);
+        },
+      })) as never;
+  }
+
+  it('stringifyToStream rejects when the stream errors although write() returned true', async () => {
+    const emitter = new EventEmitter() as EventEmitter & { write(chunk: string): boolean };
+    let emitted = false;
+    emitter.write = () => {
+      if (!emitted) {
+        emitted = true;
+        process.nextTick(() => emitter.emit('error', new Error('async failure')));
+      }
+      return true;
+    };
+    await expect(
+      stringifyToStream(Array.from({ length: 5000 }, (_, i) => i), emitter as never)
+    ).rejects.toThrow('async failure');
+    expect(emitter.listenerCount('error')).toBe(0);
+  });
+
+  it('writeJsonAtomic returns the write error to the caller and keeps the previous file', async () => {
+    await port.writeJsonAtomic(target(), { version: 1 });
+    const failing = new NodeFileSystem({ createWriteStream: failingStreamFactory('write') });
+
+    await expect(failing.writeJsonAtomic(target(), { version: 2, big: 'x'.repeat(1000) })).rejects.toThrow('disk full');
+
+    expect(JSON.parse(fs.readFileSync(target(), 'utf8'))).toEqual({ version: 1 });
+    expect(fs.readdirSync(dir).filter(n => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('an error raised while the stream is being ended is also returned, not swallowed', async () => {
+    await port.writeJsonAtomic(target(), { version: 1 });
+    const failing = new NodeFileSystem({ createWriteStream: failingStreamFactory('final') });
+
+    await expect(failing.writeJsonAtomic(target(), { version: 2 })).rejects.toThrow('flush failed');
+    expect(JSON.parse(fs.readFileSync(target(), 'utf8'))).toEqual({ version: 1 });
   });
 });

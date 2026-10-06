@@ -172,6 +172,42 @@ describe('MIG-41 — rename از unlink + add بازسازی می‌شود', () 
     expect(seen.map(e => `${e.type}:${e.path}`)).toEqual(['created:src/new.ts']);
   });
 
+  it('two files with identical content: both deletions are reported (none overwritten)', async () => {
+    write('src/twin1.ts', 'export const same = 1;\n');
+    write('src/twin2.ts', 'export const same = 1;\n');
+    const seen = await start({ previousHash: hashSnapshot() });
+
+    fs.rmSync(path.join(workspace, 'src/twin1.ts'));
+    fs.rmSync(path.join(workspace, 'src/twin2.ts'));
+    await settle(600);
+
+    expect(seen.map(e => `${e.type}:${e.path}`).sort()).toEqual(['deleted:src/twin1.ts', 'deleted:src/twin2.ts']);
+  });
+
+  it('two identical-content files renamed at once: two rename events, no lost file', async () => {
+    write('src/twin1.ts', 'export const same = 1;\n');
+    write('src/twin2.ts', 'export const same = 1;\n');
+    const seen = await start({ previousHash: hashSnapshot() });
+
+    fs.renameSync(path.join(workspace, 'src/twin1.ts'), path.join(workspace, 'src/moved1.ts'));
+    fs.renameSync(path.join(workspace, 'src/twin2.ts'), path.join(workspace, 'src/moved2.ts'));
+    await settle(700);
+
+    const renamed = seen.filter(e => e.type === 'renamed');
+    expect(renamed).toHaveLength(2);
+    expect(renamed.map(e => e.path).sort()).toEqual(['src/moved1.ts', 'src/moved2.ts']);
+    expect(renamed.map(e => e.oldPath).sort()).toEqual(['src/twin1.ts', 'src/twin2.ts']);
+    expect(seen.filter(e => e.type !== 'renamed')).toEqual([]);
+  });
+
+  it('two identical-content files created at once: both creations are reported', async () => {
+    const seen = await start();
+    write('src/new1.ts', 'export const n = 1;\n');
+    write('src/new2.ts', 'export const n = 1;\n');
+    await settle(700);
+    expect(seen.map(e => `${e.type}:${e.path}`).sort()).toEqual(['created:src/new1.ts', 'created:src/new2.ts']);
+  });
+
   it('فایلی که با محتوای متفاوت جایگزین شود، rename نیست', async () => {
     const seen = await start({ previousHash: hashSnapshot() });
 

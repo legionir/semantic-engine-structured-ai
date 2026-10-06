@@ -22,6 +22,7 @@
 import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
+import { netConnectOptions } from './workerTarget';
 import * as path from 'path';
 import type { Duplex } from 'stream';
 import { DurationSummary } from './metrics';
@@ -377,7 +378,12 @@ export class GatewayServer {
 
     const workerToken = this.supervisor.workerToken(projectId) ?? '';
 
-    const upstream = net.connect(worker.socketPath, () => {
+    /*
+    | F-0007 — upgrade هم transport را محترم می‌شمارد: `loopback` با
+    | host/port و وگرنه با نشانیِ سوکت (که خودش روی ویندوز به لولهٔ
+    | نام‌دار نگاشت می‌شود).
+    */
+    const upstream = net.connect(netConnectOptions(worker.target), () => {
       const lines = [`${req.method ?? 'GET'} /ws HTTP/1.1`, 'Host: gateway'];
 
       for (const [name, value] of Object.entries(req.headers)) {
@@ -821,7 +827,7 @@ export class GatewayServer {
     | گرفته نمی‌شود و هرگز در لاگ نمی‌آید.
     */
     const target = {
-      socketPath: worker.socketPath,
+      worker: worker.target,
       token: this.supervisor.workerToken(projectId) ?? '',
     };
 

@@ -114,16 +114,59 @@ class HookLoader {
             settingsStore || defaultSettings;
         this.project =
             projectProfile || defaultProject;
+        /* an injected profile (tests) keeps its single-file behaviour */
+        this.projectScoped = !projectProfile;
         this.registryPath =
             registryPath || path.join(registryDir, "hooks.json");
         this.toolsPath =
             toolsPath || path.join(registryDir, "tools.json");
         this.agentsPath =
             agentsPath || path.join(registryDir, "agents.json");
-        this.cache = {
-            signature: null,
-            config: null
-        };
+        /* one cache entry PER PROJECT: a hook config loaded for project A
+           must never be served to a run of project B */
+        this.caches = new Map();
+    }
+
+
+    /*
+    | The project whose hooks apply: the delegation frame's project, else
+    | the run's, else null (the default project, process workspace).
+    */
+    activeProject() {
+
+        if (!this.projectScoped) {
+            return null;
+        }
+
+        try {
+
+            const { effectiveProject } = require("../runtime/ProjectOverride");
+
+            return effectiveProject() || null;
+
+        } catch {
+
+            return null;
+        }
+    }
+
+
+    projectKey(project) {
+
+        return project ? String(project.projectId ?? project.id ?? "default") : "default";
+    }
+
+
+    projectHookConfig(project) {
+
+        if (!project) {
+            return this.project.loadProject()?.hooks;
+        }
+
+        return this.project.loadOverlay(
+            project.projectId ?? project.id,
+            project.workspaceRoot
+        )?.hooks;
     }
 
 
@@ -132,11 +175,27 @@ class HookLoader {
     }
 
 
-    signature() {
+    projectStamp(project) {
+
+        if (!project) {
+            return fileStamp(this.project.projectPath());
+        }
+
+        const { workspaceFile, centralFile } =
+            this.project.overlayFor(
+                project.projectId ?? project.id,
+                project.workspaceRoot
+            );
+
+        return `${fileStamp(workspaceFile)}+${centralFile ? fileStamp(centralFile) : "none"}`;
+    }
+
+
+    signature(project = this.activeProject()) {
 
         return [
             fileStamp(this.registryPath),
-            fileStamp(this.project.projectPath()),
+            this.projectStamp(project),
             fileStamp(this.toolsPath),
             fileStamp(this.agentsPath),
             this.settings.get("HOOKS_ON_FAILURE")
@@ -174,14 +233,21 @@ class HookLoader {
 
     load(validate, force = false) {
 
-        const stamp = this.signature();
+        const project = this.activeProject();
+
+        const key = this.projectKey(project);
+
+        const stamp = this.signature(project);
+
+        const cached = this.caches.get(key);
 
         if (
             !force &&
-            this.cache.config &&
-            this.cache.signature === stamp
+            cached &&
+            cached.config &&
+            cached.signature === stamp
         ) {
-            return this.cache.config;
+            return cached.config;
         }
 
         const base = readJson(this.registryPath, {
@@ -190,19 +256,15 @@ class HookLoader {
             after_task: []
         });
 
-        const projectConfig =
-            this.project.loadProject();
-
         const merged =
-            mergeConfig(base, projectConfig?.hooks);
+            mergeConfig(base, this.projectHookConfig(project));
 
         const config =
             typeof validate === "function"
                 ? validate(merged)
                 : merged;
 
-        this.cache.signature = stamp;
-        this.cache.config = config;
+        this.caches.set(key, { signature: stamp, config });
 
         return config;
     }

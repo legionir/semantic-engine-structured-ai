@@ -16,6 +16,7 @@ import {
   isEmbeddingProviderName,
 } from '../vector/createEmbeddingGenerator';
 import { IEmbeddingGenerator } from '../vector/EmbeddingGenerator';
+import { HashingEmbeddingGenerator } from '../vector/HashingEmbeddingGenerator';
 
 export interface EmbeddingArgs {
   readonly enabled: boolean;
@@ -96,4 +97,31 @@ export function createEmbeddingGeneratorFromArgs(
     ...(apiKey !== undefined ? { apiKey } : {}),
     normalize: parsed.normalize,
   });
+}
+
+/**
+ * The single rule that `index` and `watch` share for vectors + embedding provider
+ * (audit F-07: `watch` used to hard-code the hashing generator and ignore the provider
+ * that built the index).
+ *
+ *   - vectors are wanted when `--vectors` is given, when the previous index had vector
+ *     chunks, or when `--embedding-provider` is requested (unless `--vectors=false`);
+ *   - the generator comes from the `--embedding-*` flags, falling back to the local
+ *     hashing generator only when no provider was requested.
+ */
+export function resolveVectorPlan(
+  args: ParsedArgs,
+  previousIndexHadVectors: boolean,
+  env: Readonly<Record<string, string | undefined>> = process.env
+): { readonly wantsVectors: boolean; readonly embeddingGenerator: IEmbeddingGenerator | undefined } {
+  const wantsVectors =
+    boolOption(args.options, 'vectors', previousIndexHadVectors) ||
+    (embeddingRequested(args) && boolOption(args.options, 'vectors', true));
+
+  return {
+    wantsVectors,
+    embeddingGenerator: wantsVectors
+      ? createEmbeddingGeneratorFromArgs(args, env) ?? new HashingEmbeddingGenerator()
+      : undefined,
+  };
 }

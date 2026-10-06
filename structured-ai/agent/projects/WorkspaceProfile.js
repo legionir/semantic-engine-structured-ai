@@ -90,11 +90,17 @@ function centralProjectPath(projectId) {
 }
 
 
-/* The two physical layers of the overlay for a project id. */
-function overlayFor(projectId) {
+/* The two physical layers of the overlay for a project id. `workspaceRoot`
+   names the project's OWN workspace; without it the process workspace is
+   used (the default project). Reading the process workspace's file for
+   every project was audit F-015. */
+function overlayFor(projectId, workspaceRoot) {
 
     return {
-        workspaceFile: projectPath(),
+        workspaceFile:
+            workspaceRoot
+                ? path.join(workspaceRoot, ".agent", "project.json")
+                : projectPath(),
         centralFile: centralProjectPath(projectId)
     };
 }
@@ -175,16 +181,37 @@ function loadProject() {
 
 /* The overlay read: legacy floor with the central cap merged on top.
    Without a central layer this is exactly loadProject(). */
-function loadOverlay(projectId) {
+function loadOverlay(projectId, workspaceRoot) {
 
-    const { workspaceFile, centralFile } = overlayFor(projectId);
+    const { workspaceFile, centralFile } = overlayFor(projectId, workspaceRoot);
 
     const floor = normaliseProject(readProjectFile(workspaceFile));
-    const cap = normaliseProject(readProjectFile(centralFile));
+
+    const capRaw = readProjectFile(centralFile);
+
+    /* No central file: the floor is the answer. (Spreading a normalised
+       EMPTY cap over the floor used to overwrite the floor's own fields,
+       hooks included, with the empty defaults.) */
+    if (!capRaw || typeof capRaw !== "object") {
+
+        return floor;
+    }
+
+    const cap = normaliseProject(capRaw);
+
+    /* only what the central file actually says wins over the floor */
+    const stated = {};
+
+    for (const key of Object.keys(cap)) {
+
+        if (Object.prototype.hasOwnProperty.call(capRaw, key)) {
+            stated[key] = cap[key];
+        }
+    }
 
     return {
         ...floor,
-        ...cap,
+        ...stated,
 
         settings: {
             ...floor.settings,

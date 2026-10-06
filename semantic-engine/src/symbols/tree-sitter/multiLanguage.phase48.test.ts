@@ -278,7 +278,7 @@ describe('سطح پشتیبانی صریح است (SE-SYM-16)', () => {
   });
 
   it('زبانِ بدون گرامر، heuristic اعلام می‌شود', () => {
-    expect(supportLevelFor('ruby')).toBe('heuristic');
+    expect(supportLevelFor('zig')).toBe('heuristic');
     expect(supportLevelFor('swift')).toBe('heuristic');
   });
 

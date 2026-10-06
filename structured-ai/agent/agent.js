@@ -1289,6 +1289,14 @@ const RUN = {
     hook_started_at: 0,
     hook_deadline_at: null,
     hook_results: {},
+    /*
+    | The run-scoped verdict of a hook that failed with on_failure: stop.
+    | Later phases short-circuit on it, so it belongs to the run, not to
+    | the process: startRun() clears it exactly like hook_results, and the
+    | hooks lifecycle suite locks that contract.
+    */
+    hooks_stopped: null,
+    hooks_stopped_by: null,
     after_hooks_ran: false,
     main_agent_definition: null,
     task: "",
@@ -1368,6 +1376,8 @@ function startRun() {
     currentRun().hook_started_at = 0;
     currentRun().hook_deadline_at = null;
     currentRun().hook_results = {};
+    currentRun().hooks_stopped = null;
+    currentRun().hooks_stopped_by = null;
     currentRun().after_hooks_ran = false;
     currentRun().main_agent_definition = null;
     currentRun().task = "";
@@ -1455,6 +1465,18 @@ function cancelRunById(runId, reason) {
         return false;
     }
 
+    /* A run that is still waiting for admission has no controller yet: it
+       is cancelled by removing it from the scheduler queue, and the caller
+       of runAgent() gets RUN_CANCELLED. */
+    if (context.status === "queued") {
+
+        context.cancelled_reason = reason;
+
+        context.cancellation.abort();
+
+        return runScheduler.cancelQueuedRun(runId, reason) || true;
+    }
+
     if (
         !context.controller ||
         context.controller.signal.aborted
@@ -1481,6 +1503,22 @@ function cancelRunById(runId, reason) {
     context.cancellation.abort();
 
     return true;
+}
+
+
+/*
+| Signals must reach EVERY run: the legacy/global current run and each
+| modular run, active or still queued. `cancelRun` alone only touched
+| whichever run was current in the signal handler's (empty) scope.
+*/
+function cancelAllRuns(reason) {
+
+    cancelRun(reason);
+
+    for (const context of [...runManager.activeRuns(), ...runManager.queuedRuns()]) {
+
+        cancelRunById(context.runId, reason);
+    }
 }
 
 
@@ -3314,6 +3352,7 @@ function hookRunner() {
             currentRun,
             assertRunActive,
             cancelRun,
+            cancelAllRuns,
             currentPlanSummary,
             detectRepository,
             toolRuntime,
@@ -3516,6 +3555,10 @@ async function runAgentModular(options = {}) {
             ? projectContext.projectId
             : null;
 
+    runManager.enqueue(context);
+
+    try {
+
     return await runScheduler.schedule(projectId, () =>
         runManager.execute(context, async () => {
 
@@ -3547,13 +3590,48 @@ async function runAgentModular(options = {}) {
                 }
             }
 
+            /*
+            | Single terminal path (audit REL-013): a model / tool / cancel /
+            | hook exception ends the run with run:error - the event
+            | Observability, the journal and the event store count. Without
+            | it the run stays "active" forever and the failure never reaches
+            | metrics. A run that already emitted run:end is not ended twice.
+            */
+            if (context.run_open) {
+
+                context.run_open = false;
+
+                events.emit("run:error", {
+                    run_id: context.id,
+                    message: error.message,
+                    cancelled: isRunCancelled(),
+                    code: error.name || "RUNTIME_ERROR"
+                });
+            }
+
+            /* callers that emit their own terminal event must not double it */
+            if (context.started_at) {
+                error.runTerminalEmitted = true;
+            }
+
             throw error;
 
         }
 
         /* Leaving the async scopes restores the correlation context:
            run-local state is restored by RunManager's async scope. */
-    }));
+    }), { runId: context.runId });
+
+    } catch (error) {
+
+        /* rejected or cancelled before it ever started: settle its
+           bookkeeping (queue entry, id) exactly once */
+        if (context.status === "queued") {
+            runManager.abandon(context, error);
+        }
+
+        throw error;
+    }
 }
 
 
@@ -3586,7 +3664,7 @@ async function main() {
                     `\nReceived ${signalName}, cancelling run...`
                 );
 
-                cancelRun(signalName.toLowerCase());
+                cancelAllRuns(signalName.toLowerCase());
 
                 toolRuntime.shutdown();
 
@@ -3887,9 +3965,11 @@ module.exports = {
     runScheduler,
     observability,
     cancelRunById,
+    cancelAllRuns,
     effectiveProject,
     effectiveProjectId,
     runWithProject,
+    resolveRunProjectContext,
     isMultiProjectTask,
 
     settings,

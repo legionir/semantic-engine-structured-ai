@@ -53,7 +53,9 @@ export class WorkspaceScanner {
     private readonly workspaceRoot: string,
     config?: Partial<ScannerConfig>,
     contentHook?: FileContentHook,
-    private readonly logger: ILogger = defaultLogger
+    private readonly logger: ILogger = defaultLogger,
+    /** Directory the index is written to; ignored by its full relative path. */
+    outputDir?: string
   ) {
     this.config = createScannerConfig(config);
     this.idGenerator = new FileIdGenerator();
@@ -82,7 +84,11 @@ export class WorkspaceScanner {
     | `FileWatcher` هم استفاده می‌کند. تا فاز ۲۸ این منطق دو بار
     | نوشته شده بود و آن دو با هم نمی‌خواندند (SE-SCAN-03).
     */
-    this.ignoreMatcher = new IgnoreMatcher({ workspaceRoot, config: this.config });
+    this.ignoreMatcher = new IgnoreMatcher({
+      workspaceRoot,
+      config: this.config,
+      ...(outputDir !== undefined ? { outputDir } : {}),
+    });
 
   }
 

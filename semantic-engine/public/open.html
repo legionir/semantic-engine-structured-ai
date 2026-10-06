@@ -9,19 +9,42 @@
 </head>
 <body class="open-body">
 
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="7 4 20 12 7 20 7 4"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polygon points="16 8 13.5 13.5 8 16 10.5 10.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8M16 16l2-2M18 18l2-2"/></symbol>
+</svg>
+
 <header class="bar">
   <div class="brand">
-    <span class="dot" id="statusDot"></span>
-    <strong>Semantic Engine</strong>
-    <span class="muted" id="statusText">Connecting…</span>
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+    </span>
+    <strong class="brand-name">Semantic Engine</strong>
+    <span class="status">
+      <span class="dot" id="statusDot"></span>
+      <span class="muted" id="statusText" role="status" aria-live="polite">Connecting…</span>
+    </span>
   </div>
-  <div class="meta">
-    <label class="chip select" title="Access token (--token)">
-      token
-      <input type="password" id="tokenInput" placeholder="my-secret-token" autocomplete="off" style="width:150px;background:transparent;border:none;color:var(--text);outline:none;font:inherit;">
-    </label>
-    <button type="button" id="saveTokenBtn" class="chip button">Save token</button>
-    <a href="/visualizer.html" class="chip button" id="openVisualizerLink" title="Visualizer">Visualizer 🧭</a>
+  <div class="bar-tools">
+    <div class="bar-group">
+      <label class="chip select has-icon" title="Access token (--token)">
+        <svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>
+        <span class="chip-label">token</span>
+        <input type="password" id="tokenInput" placeholder="my-secret-token" autocomplete="off" style="width:150px;background:transparent;border:none;color:var(--text);outline:none;font:inherit;">
+      </label>
+      <button type="button" id="saveTokenBtn" class="chip button has-icon">
+        <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Save token</span>
+      </button>
+    </div>
+    <span class="bar-sep" aria-hidden="true"></span>
+    <nav class="bar-group bar-actions">
+      <a href="/visualizer.html" class="chip button has-icon" id="openVisualizerLink" title="Visualizer">
+        <svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg><span>Visualizer</span>
+      </a>
+    </nav>
   </div>
 </header>
 
@@ -214,9 +237,15 @@
     <!-- Actions -->
     <section class="card actions-card">
       <div class="run-row">
-        <button type="button" id="startIndexBtn" class="btn primary large" disabled>Start indexing</button>
-        <button type="button" id="cancelIndexBtn" class="btn ghost" hidden>Cancel</button>
-        <a href="/visualizer.html" id="gotoVisualizerBtn" class="btn ghost" hidden>Open Visualizer</a>
+        <button type="button" id="startIndexBtn" class="btn primary large has-icon" disabled>
+          <svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span>Start indexing</span>
+        </button>
+        <button type="button" id="cancelIndexBtn" class="btn ghost has-icon" hidden>
+          <svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span>Cancel</span>
+        </button>
+        <a href="/visualizer.html" id="gotoVisualizerBtn" class="btn ghost has-icon" hidden>
+          <svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg><span>Open Visualizer</span>
+        </a>
       </div>
 
       <div class="progress-wrap" id="progressWrap" hidden>

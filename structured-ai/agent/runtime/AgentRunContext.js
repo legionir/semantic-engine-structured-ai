@@ -62,6 +62,13 @@ class AgentRunContext {
            baggage carried across runs (background processes). */
         this.hookResults = {};
 
+        /* The run-scoped on_failure: stop verdict (reason + the hook that
+           produced it). Reset per run here, and by startRun() in the
+           legacy path, so a stop never silences a later run's hooks. */
+        this.hooksStopped = null;
+
+        this.hooksStoppedBy = null;
+
         this.afterHooksRan = false;
 
         this.mainAgentDefinition = null;
@@ -240,6 +247,32 @@ class AgentRunContext {
     set main_agent_definition(value) {
 
         this.mainAgentDefinition = value;
+
+    }
+
+
+    get hooks_stopped() {
+
+        return this.hooksStopped;
+
+    }
+
+    set hooks_stopped(value) {
+
+        this.hooksStopped = value;
+
+    }
+
+
+    get hooks_stopped_by() {
+
+        return this.hooksStoppedBy;
+
+    }
+
+    set hooks_stopped_by(value) {
+
+        this.hooksStoppedBy = value;
 
     }
 

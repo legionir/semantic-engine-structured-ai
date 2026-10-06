@@ -74,6 +74,45 @@ function defaultIsAlive(pid: number): boolean {
 }
 
 /**
+ * جانشینی اتمیکِ فایل lock — F-0026.
+ *
+ * `readLock` روی متنِ نیمه‌نوشته `null` می‌دهد، و «null» در این فایل
+ * نشانهٔ رهاشدن بود؛ پس heartbeatِ غیراتمی می‌توانست قفلِ یک صاحبِ
+ * زنده را قابل‌پاک‌کردن نشان بدهد و دو worker روی یک پروژه بسازد.
+ */
+function replaceAtomically(target: string, content: string): boolean {
+  const tmp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    fs.writeFileSync(tmp, content);
+    fs.renameSync(tmp, target);
+    return true;
+  } catch {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      /* فایل موقت خودش نمانده است. */
+    }
+    return false;
+  }
+}
+
+/**
+ * pid را از متنِ خام درمی‌آورد، حتی وقتی JSON کامل نیست.
+ *
+ * دقیقاً برای همان حالتِ بالا: JSONِ نیمه‌نوشته parse نمی‌شود ولی `"pid":`
+ * که اولِ شیء است معمولاً خوانده می‌شود، و همین کافی است تا بفهمیم صاحب
+ * هنوز زنده است یا نه.
+ */
+function pidFromRawLock(lockPath: string): number | null {
+  try {
+    const match = fs.readFileSync(lockPath, 'utf8').match(/"pid"\s*:\s*(\d+)/);
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * تلاش برای گرفتن lock.
  *
  * هرگز throw نمی‌کند: «کس دیگری آن را دارد» یک نتیجه است، نه خطا. تنها خطای
@@ -113,14 +152,15 @@ export function acquireLock(
         const current = readLock(lockPath);
         /* فقط صاحب lock heartbeat می‌نویسد؛ وگرنه یک پروسهٔ دیگر را زنده نگه می‌دارد. */
         if (!current || current.pid !== pid) return;
-        try {
-          fs.writeFileSync(
-            lockPath,
-            `${JSON.stringify({ ...current, heartbeatAt: now().toISOString() }, null, 2)}\n`
-          );
-        } catch {
-          /* از دست رفتن یک heartbeat نباید جریان کار را بشکند. */
-        }
+        /*
+        | F-0026 — heartbeat اتمیک جایگزین می‌شود، پس خواننده‌ای هرگز
+        | نیمه‌نوشته نمی‌بیند. اگر rename نشد، فایلِ قبلی دست‌نخورده
+        | می‌ماند: یک heartbeatِ از‌دست‌رفته بهتر از قفلِ دو‌صاحبی نیست.
+        */
+        replaceAtomically(
+          lockPath,
+          `${JSON.stringify({ ...current, heartbeatAt: now().toISOString() }, null, 2)}\n`
+        );
       },
       release: () => {
         const current = readLock(lockPath);
@@ -140,9 +180,22 @@ export function acquireLock(
   /*
   | فایل وجود دارد: صاحبش زنده است یا رها شده؟
   */
-  const holder = readLock(lockPath);
+  const holder = readLock(lockPath) ?? readLock(lockPath);
   if (!holder) {
-    /* فایل هست ولی خواندنی نیست — نیمه‌نویس مانده. یک بار پاک و دوباره تلاش. */
+    /*
+    | فایل هست ولی خواندنی نیست.
+    |
+    | F-0026 — این دیگر به‌خودی‌خود نشانهٔ رهاشدن نیست: تا پیش از این
+    | همین‌جا قفل را پاک و پس می‌گرفت، یعنی یک heartbeat نیمه‌نوشته
+    | می‌توانست صاحبِ زنده را بی‌قفل کند و دو worker روی یک پروژه
+    | بنشیند. اول دوباره می‌خوانیم (برشِ لحظه‌ای)، بعد اگر باز هم
+    | نشد pidِ خام را از متن بیرون می‌کشیم: صاحب زنده باشد، قفلِ او
+    | دست‌نخورده می‌ماند.
+    */
+    const rawPid = pidFromRawLock(lockPath);
+    if (rawPid !== null && isAlive(rawPid)) {
+      return { ok: false, holder: null, reason: 'held' };
+    }
     try {
       fs.rmSync(lockPath, { force: true });
     } catch {

@@ -15,6 +15,43 @@ const { HookLoader } = require("./HookLoader");
 | Validation, live loading and enabled-hook selection are kept together;
 | condition evaluation and rendering are pure sibling modules. The default
 | instance below is the compatibility facade used by legacy call sites.
+|
+| What on_failure promises, as the runner applies it:
+|
+|   "report" — the failure is recorded and shown to the model; the run goes on.
+|   "stop"   — the failure is recorded too, but nothing that has not started
+|             yet is allowed to run. Two mechanisms make that real: a hook
+|             declared after a stop hook is gated behind it, so it is skipped
+|             instead of racing it in the first wave, and the verdict is
+|             remembered for the whole run, so every later phase short-circuits
+|             and reports its hooks as skipped with skipped_by
+|             "on_failure_stop".
+|
+| Declaration order is the gate relation, not the dependency graph. A stop
+| hook may legitimately depend on a hook declared before it, and that earlier
+| hook is not gated by it — gating it would close a cycle, and a dependency
+| runs before its dependent anyway. The verdict belongs to one run: startRun()
+| clears it with the rest of the run state, so a stop never silences the
+| hooks of the next run in the same process.
+|
+| Read the phase report, do not re-derive it: a stopped phase exposes
+| report.stopped, report.stopped_by (the hook id) and report.stop_reason
+| (the sentence). Searching the phase results for a failed stop hook returns
+| nothing on a short-circuited phase, whose results are all skipped.
+|
+| Worked example, in the hooks section of .agent/project.json:
+|
+|   "after_task": [
+|     { "id": "verify",  "type": "tool", "tool": "terminal_exec",
+|       "arguments": { "command": "npm test" },
+|       "when": "always", "on_failure": "stop" },
+|     { "id": "release", "type": "tool", "tool": "terminal_exec",
+|       "arguments": { "command": "npm run publish" },
+|       "when": "always", "on_failure": "report", "depends_on": ["verify"] }
+|   ]
+|
+| If verify fails, release is skipped and says why. Declare release before
+| verify and it is already running when the verdict arrives — order gates.
 |--------------------------------------------------------------------------
 */
 

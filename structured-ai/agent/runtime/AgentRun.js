@@ -107,6 +107,11 @@ async function runAgentCore(options = {}) {
             options.history.length > 0
     });
 
+    /* Exactly one terminal event (run:end or run:error) must follow a
+       run:start; `run_open` is what lets the error path know whether one
+       is still owed. */
+    h.currentRun().run_open = true;
+
     const messages =
         Array.isArray(options.history)
             ? options.history
@@ -214,13 +219,21 @@ async function runAgentCore(options = {}) {
 
     if (beforeHooks.stopped) {
 
+        /* The report carries its own verdict: a phase that only
+           short-circuited has no failed entry to find, and dereferencing a
+           missing one would replace the real reason with a TypeError. */
         const failed =
             beforeHooks.results.find(
-                item => item.status === "failed" && item.on_failure === "stop"
-            );
+                item =>
+                    item &&
+                    item.status === "failed" &&
+                    item.on_failure === "stop"
+            ) || null;
 
         throw new Error(
-            `Required before_task hook "${failed.id}" failed: ${failed.summary}`
+            failed
+                ? `Required before_task hook "${failed.id}" failed: ${failed.summary}`
+                : `before_task hooks were stopped: ${beforeHooks.stop_reason || beforeHooks.stopped_by || "unknown stop"}`
         );
     }
 

@@ -12,12 +12,8 @@ import { createExtractors } from '../../pipeline/ExtractorFactory';
 import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { GitInfoCollector } from '../../core/git';
 import { VectorIndexer } from '../../vector/VectorIndexer';
-import { HashingEmbeddingGenerator as FallbackHashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
 import { IEmbeddingGenerator } from '../../vector/EmbeddingGenerator';
-import {
-  createEmbeddingGeneratorFromArgs,
-  embeddingRequested,
-} from '../embeddingFromArgs';
+import { resolveVectorPlan } from '../embeddingFromArgs';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { EXIT, ParsedArgs, boolOption, stringOption } from '../args';
 import { CommandContext, CommandResult } from './types';
@@ -85,9 +81,10 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
   | `--embedding-provider` صریح یعنی کاربر embedding می‌خواهد، پس vectorها هم
   | روشن می‌شوند؛ در غیر این صورت همان رفتار قبلی (flag یا ایندکس قبلی).
   */
-  const wantsVectors =
-    boolOption(args.options, 'vectors', Boolean(previousIndex?.vectorChunks)) ||
-    (embeddingRequested(args) && boolOption(args.options, 'vectors', true));
+  const { wantsVectors, embeddingGenerator: plannedGenerator } = resolveVectorPlan(
+    args,
+    Boolean(previousIndex?.vectorChunks)
+  );
   const pretty = boolOption(args.options, 'pretty', true);
   /*
   | diagnostics زبان‌سرور (فاز ۳۴) — پیش‌فرض خاموش، چون هزینه‌اش واقعی است:
@@ -101,9 +98,7 @@ export async function runIndex(args: ParsedArgs, context: CommandContext): Promi
   | یک بار و پیش از scan ساخته می‌شود تا خطای provider یا کلید API همان‌جا
   | دیده شود، نه بعد از خواندن کل مخزن.
   */
-  const embeddingGenerator: IEmbeddingGenerator | undefined = wantsVectors
-    ? createEmbeddingGeneratorFromArgs(args) ?? new FallbackHashingEmbeddingGenerator()
-    : undefined;
+  const embeddingGenerator: IEmbeddingGenerator | undefined = plannedGenerator;
 
   const extractors = createExtractors({
     workspaceRoot: root,

@@ -17,6 +17,7 @@ import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { VectorIndexer } from '../../vector/VectorIndexer';
 import { IEmbeddingGenerator } from '../../vector/EmbeddingGenerator';
 import { createEmbeddingGenerator } from '../../vector/createEmbeddingGenerator';
+import { assertResolvedFetchableUrl } from '../../services/providers/EmbeddingProviderService';
 import { ScannerConfig } from '../../core/config/ScannerConfig';
 import { VectorChunk } from '../../core/types/project-index.types';
 import * as path from 'path';
@@ -189,6 +190,13 @@ export function createJobRoutes(
         // بلافاصله (400) برگردد نه به‌صورت job.failed.
         let embeddingGenerator: IEmbeddingGenerator | null = null;
         try {
+          // F-0014: a remote embedding baseUrl comes from the request body; apply the
+          // same resolved-IP egress guard used by providers/chat — allows localhost
+          // (Ollama/LMStudio), blocks link-local/private/cloud-metadata pivots. Throw
+          // lands in this existing catch as a 400, before any job starts.
+          if (embedding.baseUrl && embedding.provider && embedding.provider !== 'local') {
+            await assertResolvedFetchableUrl(embedding.baseUrl);
+          }
           embeddingGenerator = buildEmbeddingGenerator(embedding);
         } catch (error) {
           return { status: 400, json: { error: error instanceof Error ? error.message : String(error) } };

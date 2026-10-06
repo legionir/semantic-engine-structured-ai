@@ -39,6 +39,7 @@ type TransformersModule = {
     model: string,
     options?: Record<string, unknown>
   ) => Promise<FeatureExtractionPipeline>;
+  env?: Record<string, unknown>;
 };
 
 /**
@@ -72,13 +73,16 @@ export class LocalEmbeddingGenerator implements IEmbeddingGenerator {
   private readonly batchSize: number;
   private readonly normalize: boolean;
   private readonly cacheDir?: string;
+  private readonly localModelPath?: string;
   private readonly maxInputLength: number;
 
   constructor(options: EmbeddingGeneratorOptions = {}) {
-    this.model = options.model ?? DEFAULT_MODEL;
+    this.model = options.model ?? process.env.SEMANTIC_ENGINE_LOCAL_MODEL ?? DEFAULT_MODEL;
     this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
     this.normalize = options.normalize ?? true;
     this.cacheDir = options.cacheDir;
+    // پوشهٔ محلی از option یا env؛ اگر نبود رفتار قبلی (آفلاین نبودن) می‌ماند.
+    this.localModelPath = options.localModelPath ?? process.env.SEMANTIC_ENGINE_LOCAL_MODEL_PATH;
     this.maxInputLength = Math.max(1, options.maxInputLength ?? DEFAULT_MAX_INPUT_LENGTH);
   }
 
@@ -172,13 +176,25 @@ export class LocalEmbeddingGenerator implements IEmbeddingGenerator {
 
   private async getExtractor(): Promise<FeatureExtractionPipeline> {
     if (!this.extractor) {
+      const transformers = loadTransformers();
       const options: Record<string, unknown> = {
         quantized: true, // مدل کوانتایز‌شده برای سرعت و حافظه کمتر
       };
       if (this.cacheDir) {
         options.cache_dir = this.cacheDir;
       }
-      this.extractor = await loadTransformers().pipeline('feature-extraction', this.model, options);
+      /*
+      | بارگذاری آفلاین از دیسک. بدون این، pipeline نام مدل را به‌عنوان یک
+      | شناسهٔ Hub می‌بیند و سعی می‌کند دانلود کند. محلی‌بودن یعنی
+      | `localModelPath` ریشهٔ پوشه و `model` نام پوشهٔ مدل داخل آن.
+      */
+      if (this.localModelPath && transformers.env) {
+        transformers.env.allowRemoteModels = false;
+        transformers.env.allowLocalModels = true;
+        transformers.env.localModelPath = this.localModelPath;
+        transformers.env.useBrowserCache = false;
+      }
+      this.extractor = await transformers.pipeline('feature-extraction', this.model, options);
     }
     return this.extractor;
   }

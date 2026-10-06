@@ -20,6 +20,7 @@
  */
 
 import * as http from 'http';
+import { targetConnectOptions, WorkerTarget } from './workerTarget';
 
 export const PROJECT_ID_HEADER = 'x-semantic-project-id';
 
@@ -35,7 +36,8 @@ const HOP_BY_HOP = new Set([
 ]);
 
 export interface ProxyTarget {
-  readonly socketPath: string;
+  /** F-0007 — هدفِ worker دیگر یک رشتهٔ socketPath نیست: transport خودش را دارد. */
+  readonly worker: WorkerTarget;
   readonly token: string;
 }
 
@@ -85,7 +87,7 @@ export function proxyRequest(
   return new Promise(resolve => {
     const upstream = http.request(
       {
-        socketPath: target.socketPath,
+        ...targetConnectOptions(target.worker),
         path: targetPath,
         method: req.method ?? 'GET',
         headers: buildHeaders(req, target),

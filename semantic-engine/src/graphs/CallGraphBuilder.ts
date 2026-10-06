@@ -143,6 +143,14 @@ export class CallGraphBuilder {
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node)) {
         this.processCallExpression(file, sourceFile, node);
+      } else if (ts.isNewExpression(node)) {
+        /*
+        | SE-GRAPH-13 — `new Foo()` یک CallExpression نیست، پس هرگز
+        | به‌عنوان محلِ فراخوان دیده نمی‌شد. نتیجه: کلاسی که فقط با
+        | new مصرف می‌شود هیچ caller نداشت و `simulate_mutation` یک
+        | rename را «safe» می‌گفت درحالی‌که سازنده‌اش در چند فایل هست.
+        */
+        this.processNewExpression(file, sourceFile, node);
       }
       ts.forEachChild(node, visit);
     };
@@ -200,7 +208,7 @@ export class CallGraphBuilder {
   private findCallerSymbol(
     file: FileEntry,
     sourceFile: ts.SourceFile,
-    node: ts.CallExpression
+    node: ts.Node
   ): SymbolEntry | undefined {
     const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
     const candidates = this.symbolIndex.findSymbolsAtLine(file.id, line);
@@ -224,8 +232,14 @@ export class CallGraphBuilder {
   }
 
   private resolveCallee(file: FileEntry, node: ts.CallExpression): CalleeResolution {
-    const expr = node.expression;
+    return this.resolveCalleeExpr(file, node.expression);
+  }
 
+  /**
+   * SE-GRAPH-13 — مشترک بین `f()` و `new F()`؛ مقصد از خودِ عبارت
+   * خوانده می‌شود، نه از نوع گره.
+   */
+  private resolveCalleeExpr(file: FileEntry, expr: ts.Expression): CalleeResolution {
     if (ts.isIdentifier(expr)) {
       return this.resolveIdentifierCallee(file, expr.text);
     }
@@ -235,6 +249,37 @@ export class CallGraphBuilder {
     }
 
     return { externalName: '' };
+  }
+
+  /** `new Foo(...)` — یک ارجاعِ سازنده به سمبلِ کلاس، اگر resolve شد. */
+  private processNewExpression(
+    file: FileEntry,
+    sourceFile: ts.SourceFile,
+    node: ts.NewExpression
+  ): void {
+    const resolution = this.resolveCalleeExpr(file, node.expression);
+    /*
+    | سازنده‌ای که به سمبل resolve نمی‌شود (کلاس خارجی/ناشناخته) فقط یک
+    | نام است؛ یالِ بی‌سمبل برای «چه می‌شکند» ارزشی ندارد و نویز می‌آورد.
+    */
+    if (!resolution.symbolId) return;
+
+    const caller = this.findCallerSymbol(file, sourceFile, node);
+    const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+    const from = caller?.id ?? file.id;
+    const identity = { from, to: resolution.symbolId, kind: 'direct', line };
+
+    const edge: CallEdge = {
+      id: makeEdgeId({ ...identity, occurrence: this.occurrenceOf(identity) }),
+      caller: from,
+      callerKind: caller ? 'symbol' : 'file',
+      callee: resolution.symbolId,
+      kind: 'direct',
+      line,
+      provenance: provenanceFor(resolution.basis ?? 'ast', 'typescript-api', { file: file.path, line }),
+    };
+
+    this.edges.push(edge);
   }
 
   private resolveIdentifierCallee(file: FileEntry, name: string): CalleeResolution {
@@ -309,16 +354,50 @@ export class CallGraphBuilder {
       return this.resolveImportedMember(binding, methodName, chain.fullName);
     }
 
-    // ۲. root this → متد کلاس جاری
+    // ۲. root این: یا متد کلاس جاری، یا فیلدی که کلاسی در آن `new` شده
     if (chain.root === 'this') {
       const caller = this.findCallerSymbolByFileLine(file, expr);
-      if (caller) {
-        const enclosingType = this.symbolIndex.findEnclosingTypeSymbol(caller);
-        if (enclosingType) {
-          const member = this.findMemberSymbol(enclosingType, [methodName]);
-          if (member) {
-            return { symbolId: member.symbol.id, externalName: chain.fullName, basis: member.basis };
+      const enclosingType = caller ? this.symbolIndex.findEnclosingTypeSymbol(caller) : undefined;
+      if (enclosingType) {
+        /*
+        | SE-GRAPH-14 — `this.field.method()` همان `this.method()` نیست.
+        |
+        | شکل قبلی فقط نامِ آخرِ زنجیره را داخل کلاس جاری می‌گشت، پس
+        | `this.ranker.rank(...)` یا به هیچ‌جا نمی‌رسید یا بدتر: با
+        | fallbackِ «همین فایل» به یک سمبل بی‌ربطِ هم‌نام وصل می‌شد و
+        | یالِ **غلط** با مبنای `ast` می‌ساخت. نتیجه‌اش در impact_analysis
+        | و simulate_mutation شد: کم‌گزارشِ callers واقعیِ یک متد، که برای
+        | agent تصمیم‌گیرندهٔ ویرایش خطرناک‌ترین خطاست.
+        |
+        | اینجا نوعِ فیلد از initializerِ `new X()` خوانده می‌شود و متد روی
+        | همان کلاس جستجو می‌شود. اگر فیلد به شکل دیگری مقدار بگیرد
+        | (factory، وراثت) undefined برمی‌گردد و رفتار قبلی دست‌نخورده
+        | می‌ماند — یعنی حدسِ تازه‌ای ساخته نمی‌شود.
+        */
+        if (chain.properties.length > 1) {
+          const fieldClass = this.findFieldNewInstanceClass(
+            expr.getSourceFile(),
+            enclosingType.name,
+            chain.properties[0]!
+          );
+          if (fieldClass) {
+            const classSymbol = this.resolveIdentifierCallee(file, fieldClass);
+            if (classSymbol.symbolId) {
+              const member = this.findMemberSymbolById(classSymbol.symbolId, [methodName]);
+              if (member) {
+                return {
+                  symbolId: member.symbol.id,
+                  externalName: chain.fullName,
+                  basis: this.weaker(classSymbol.basis ?? 'ast', member.basis),
+                };
+              }
+            }
           }
+        }
+
+        const member = this.findMemberSymbol(enclosingType, [methodName]);
+        if (member) {
+          return { symbolId: member.symbol.id, externalName: chain.fullName, basis: member.basis };
         }
       }
       return { externalName: chain.fullName };
@@ -468,6 +547,46 @@ export class CallGraphBuilder {
   /** ضعیف‌ترین مبنا برنده است — یک زنجیره از حدس هم حدس است. */
   private weaker(left: EdgeBasis, right: EdgeBasis): EdgeBasis {
     return left === 'name-match' || right === 'name-match' ? 'name-match' : left;
+  }
+
+  /**
+   * نوعِ فیلدی که با `new X()` مقدار گرفته — SE-GRAPH-14.
+   *
+   * فقط initializerِ مستقیمِ `new Identifier()` داخل همان کلاس خوانده می‌شود
+   * (نه factory، نه وراثت، نه تزریقِ constructor) و اگر شکلِ دیگری باشد
+   * `undefined` برمی‌گردد تا فراخوان مثل прежде رفتار کند.
+   */
+  private findFieldNewInstanceClass(
+    sourceFile: ts.SourceFile,
+    className: string,
+    fieldName: string
+  ): string | undefined {
+    let found: string | undefined;
+
+    const visit = (node: ts.Node): void => {
+      if (found !== undefined) return;
+      if (ts.isClassDeclaration(node) && node.name?.text === className) {
+        for (const member of node.members) {
+          if (
+            !ts.isPropertyDeclaration(member) ||
+            !ts.isIdentifier(member.name) ||
+            member.name.text !== fieldName
+          ) {
+            continue;
+          }
+          const initializer = member.initializer;
+          if (initializer && ts.isNewExpression(initializer) && ts.isIdentifier(initializer.expression)) {
+            found = initializer.expression.text;
+          }
+          return;
+        }
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+
+    visit(sourceFile);
+    return found;
   }
 
   private extractPropertyChain(expr: ts.PropertyAccessExpression): PropertyChain | null {

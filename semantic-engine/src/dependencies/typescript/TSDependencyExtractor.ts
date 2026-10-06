@@ -91,8 +91,7 @@ export class TSDependencyExtractor implements IDependencyExtractor {
         } else if (ts.isExportAssignment(node)) {
           exports.push(this.parseExportAssignment(node));
         } else if (this.hasExportModifier(node)) {
-          const entry = this.parseExportedDeclaration(node);
-          if (entry) exports.push(entry);
+          exports.push(...this.parseExportedDeclaration(node));
         } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
           const entry = this.parseDynamicImport(node);
           if (entry) imports.push(entry);
@@ -245,9 +244,17 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     const property = left.name.text;
 
     // module.exports = …
-    if (ts.isPropertyAccessExpression(object) === false &&
-        ts.isIdentifier(object) && object.text === 'module' && property === 'exports') {
-      return [{ name: 'module.exports', kind: 'namespace' }];
+    if (ts.isIdentifier(object) && object.text === 'module' && property === 'exports') {
+      /*
+      | SE-DEP-12 — `module.exports = { HookRunner, dirtyPathsFromStatus }` قبلاً
+      | یک entry به نام `module.exports` می‌داد، نه به‌ازای هر نام. نتیجه اینکه
+      | هیچ‌چیز سمبلِ `HookRunner` را به import‌کننده‌هایش وصل نمی‌کرد و
+      | `simulate_mutation` یک rename را «safe» گزارش می‌کرد درحالی‌که فایل
+      | با requireِ نام‌دار مصرف می‌شد. حالا هر کلیدِ object-literal یک
+      | exportِ نام‌دار می‌گیرد (هم‌راستا با ESM)؛ شکل غیر-آبجکت همان namespace می‌ماند.
+      */
+      const named = this.commonJsExportNames(expression.right);
+      return named.length > 0 ? named : [{ name: 'module.exports', kind: 'namespace' }];
     }
 
     // exports.name = …
@@ -261,6 +268,31 @@ export class TSDependencyExtractor implements IDependencyExtractor {
         object.expression.text === 'module' &&
         object.name.text === 'exports') {
       return [{ name: property, kind: 'named' }];
+    }
+
+    return [];
+  }
+
+  /**
+   * SE-DEP-12 — نام‌های صادرشده از مقدارِ سمت راستِ `module.exports = …`.
+   *
+   * فقط object-literal به تک‌تک نام‌ها باز می‌شود؛ spread (نام‌های ناشناخته)
+   * نادیده می‌رود تا export جعلی نسازیم. هر چیز دیگر [] برمی‌گرداند تا
+   * فراخوان همان namespace واحد را نگه دارد.
+   */
+  private commonJsExportNames(value: ts.Expression): ExportEntry[] {
+    if (ts.isObjectLiteralExpression(value)) {
+      const out: ExportEntry[] = [];
+      for (const prop of value.properties) {
+        if (ts.isSpreadAssignment(prop)) continue;
+        const nameNode = prop.name;
+        if (!nameNode) continue;
+        const name = ts.isStringLiteral(nameNode)
+          ? nameNode.text
+          : nameNode.getText().replace(/^['"]|['"]$/g, '');
+        if (name) out.push({ name, kind: 'named' });
+      }
+      return out;
     }
 
     return [];
@@ -310,8 +342,24 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     };
   }
 
-  private parseExportedDeclaration(node: ts.Node): ExportEntry | null {
+  /**
+   * One `ExportEntry` per exported name. `export const a = 1, b = 2;` used to
+   * be collapsed into a single entry named `"a, b"` (not a valid identifier,
+   * so nothing could ever match it); every declarator now gets its own entry,
+   * including names bound by destructuring (`export const { x, y: z } = o`).
+   */
+  private parseExportedDeclaration(node: ts.Node): ExportEntry[] {
     const isDefault = this.hasDefaultModifier(node);
+    const kind = isDefault ? 'default' : 'named';
+
+    if (ts.isVariableStatement(node)) {
+      const names: string[] = [];
+      for (const declaration of node.declarationList.declarations) {
+        this.collectBindingNames(declaration.name, names);
+      }
+      return names.map(name => ({ name, kind }));
+    }
+
     const name = this.getDeclarationName(node);
 
     /*
@@ -321,13 +369,20 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     | است که واردکننده با آن صدایش می‌زند.
     */
     if (!name) {
-      return isDefault ? { name: 'default', kind: 'default' } : null;
+      return isDefault ? [{ name: 'default', kind: 'default' }] : [];
     }
 
-    return {
-      name,
-      kind: isDefault ? 'default' : 'named',
-    };
+    return [{ name, kind }];
+  }
+
+  private collectBindingNames(binding: ts.BindingName, into: string[]): void {
+    if (ts.isIdentifier(binding)) {
+      into.push(binding.text);
+      return;
+    }
+    for (const element of binding.elements) {
+      if (ts.isBindingElement(element)) this.collectBindingNames(element.name, into);
+    }
   }
 
   private parseDynamicImport(node: ts.CallExpression): ImportEntry | null {
@@ -360,15 +415,6 @@ export class TSDependencyExtractor implements IDependencyExtractor {
     if (ts.isInterfaceDeclaration(node) && node.name) return node.name.text;
     if (ts.isEnumDeclaration(node) && node.name) return node.name.text;
     if (ts.isTypeAliasDeclaration(node) && node.name) return node.name.text;
-    if (ts.isVariableStatement(node)) {
-      const names: string[] = [];
-      for (const decl of node.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name)) {
-          names.push(decl.name.text);
-        }
-      }
-      return names.length > 0 ? names.join(', ') : null;
-    }
     return null;
   }
 

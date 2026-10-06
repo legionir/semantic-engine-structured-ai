@@ -7,7 +7,8 @@ import * as path from 'path';
 import { GitClient } from '../../core/git/GitClient';
 
 export interface GetRecentChangesInput extends AiToolInput {
-  readonly workspaceRoot: string;
+  /** اختیاری: پیش‌فرض ریشهٔ خودِ پروژهٔ ایندکس‌شده است. */
+  readonly workspaceRoot?: string;
   readonly path?: string;
   readonly limit?: number;
   readonly since?: string; // ISO date
@@ -19,12 +20,17 @@ export class GetRecentChangesTool implements AiTool<GetRecentChangesInput> {
   readonly inputSchema = {
     type: 'object',
     properties: {
-      workspaceRoot: { type: 'string', description: 'Workspace root path' },
+      /*
+      | این فیلد قبلاً `required` بود، درحالی‌که خودِ ابزار ریشهٔ پروژه را
+      | از رجیستری می‌دانست. نتیجه برای agent: پرس‌وجوی «تغییرات اخیر این
+      | پروژه» با خطای اعتبارسنجی رد می‌شد مگر مسیرِ مطلقِ مخزن را از قبل
+      | بداند — یعنی یک پارامترِ تنظیماتی به‌جای پرس‌وجو.
+      */
+      workspaceRoot: { type: 'string', description: 'Git repository root; defaults to the indexed project root' },
       path: { type: 'string', description: 'Optional relative file path' },
       limit: { type: 'integer', default: 10 },
       since: { type: 'string', description: 'ISO date to filter commits from' },
     },
-    required: ['workspaceRoot'],
   };
 
   constructor(private readonly defaultWorkspaceRoot?: string) {}
@@ -34,9 +40,11 @@ export class GetRecentChangesTool implements AiTool<GetRecentChangesInput> {
       /* MCP models commonly answer `workspaceRoot: "."`. Resolve that
          relative to the project selected by the server, not the process
          directory used to launch semantic-engine. */
-      const workspaceRoot = path.isAbsolute(input.workspaceRoot)
-        ? input.workspaceRoot
-        : path.resolve(this.defaultWorkspaceRoot ?? process.cwd(), input.workspaceRoot);
+      const requested = input.workspaceRoot ?? '.';
+      const base = this.defaultWorkspaceRoot ?? process.cwd();
+      const workspaceRoot = path.isAbsolute(requested)
+        ? requested
+        : path.resolve(base, requested);
       const git = new GitClient(workspaceRoot);
       const limit = input.limit ?? 10;
 
@@ -66,7 +74,8 @@ export class GetRecentChangesTool implements AiTool<GetRecentChangesInput> {
       return {
         success: true,
         items,
-        metadata: { count: items.length, path: input.path, since: input.since },
+        // کدام ریشه واقعاً خوانده شد، برای agent پنهان نمی‌ماند
+        metadata: { count: items.length, workspaceRoot, path: input.path, since: input.since },
       };
     } catch (error) {
       return {

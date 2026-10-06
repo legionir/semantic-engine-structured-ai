@@ -93,8 +93,20 @@ export class ArchitectureRuleEngine {
     const allEdges = graph.getAllEdges();
 
     for (const edge of allEdges) {
-      const src = edge.source.toLowerCase();
-      const tgt = edge.target.toLowerCase();
+      /*
+      | F-0017: node ids are opaque sha256 hex in the real index (buildIndexGraph
+      | stores the readable file path in metadata.path and the name in label).
+      | Matching layer keywords against the id never fires — resolve the readable
+      | text first. Falls back to id so hand-built graphs using readable ids (and
+      | the unit tests) still match.
+      */
+      const describe = (id: string): string => {
+        const node = graph.getNode(id);
+        const path = node?.metadata?.path;
+        return String(path ?? node?.label ?? id).toLowerCase();
+      };
+      const src = describe(edge.source);
+      const tgt = describe(edge.target);
 
       // Rule 1: Controller bypassing Service directly to Repository/DB
       if (src.includes('controller') && (tgt.includes('repository') || tgt.includes('dao') || tgt.includes('database'))) {

@@ -63,6 +63,65 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
 
       const visited = new Set<string>();
       const results: import('./types').AiToolResultItem[] = [];
+      /*
+      | F-0036 — همان خانوادهٔ SE-AI-12: یال‌های call سرِ **سمبلی** دارند.
+      | شکل قبلی با `level:'file'` آن گره‌ها را `continue` می‌کرد، پس یک
+      | متد با بیست فراخوان، بسته به شانس، یا فقط فایل‌هایِ سطح‌ماژول را
+      | می‌گفت یا هیچ. نتیجه: `get_dependencies` برای `ContextRanker.rank`
+      | یک آیتم می‌داد و `impact_analysis` برای همان هدف چهار — دو ابزار،
+      | دو جواب به یک سؤال.
+      |
+      | حالا سمبل به فایلِ مادرش جمع می‌شود و چند فراخوانِ یک فایل، یک
+      | سطر می‌گیرد با شمارش و نامِ سمبل‌های رابط. پیمایش برای عمق از همان
+      | سمبل ادامه می‌یابد تا رفتار `depth` عوض نشود.
+      */
+      const emitted = new Map<string, import('./types').AiToolResultItem>();
+      const counts = new Map<string, { dependents: number; viaSymbols: string[] }>();
+
+      const emit = (edgeKind: string, targetId: string): void => {
+        const targetFile = this.reader.getFileById(targetId);
+        const targetSymbol = this.reader.getSymbolById(targetId);
+        const externalPackage = targetId.startsWith('pkg:');
+
+        let outId = targetId;
+        let outFile = targetFile;
+        let outSymbol: import('../../core/types/project-index.types').SymbolEntry | undefined = targetSymbol;
+        let viaSymbol: string | undefined;
+
+        if (!targetFile && !externalPackage) {
+          if (!targetSymbol) return;
+          if (level === 'file') {
+            outId = targetSymbol.fileId;
+            outFile = this.reader.getFileById(outId);
+            outSymbol = undefined;
+            viaSymbol = targetSymbol.name;
+            if (!outFile) return;
+          }
+          // level='symbol' → خودِ سمبل با همان هویت منتشر می‌شود
+        }
+
+        if (level === 'symbol' && !outSymbol) return;
+
+        const tally = counts.get(outId);
+        if (tally) {
+          tally.dependents += 1;
+          if (viaSymbol && !tally.viaSymbols.includes(viaSymbol)) tally.viaSymbols.push(viaSymbol);
+          return;
+        }
+
+        counts.set(outId, { dependents: 1, viaSymbols: viaSymbol ? [viaSymbol] : [] });
+        const item: import('./types').AiToolResultItem = {
+          id: outId,
+          name: outSymbol?.name ?? outFile?.path ?? targetId.replace(/^pkg:/, ''),
+          kind: edgeKind,
+          path: outFile?.path,
+          line: outSymbol?.line,
+          source: 'index',
+        };
+        emitted.set(outId, item);
+        results.push(item);
+      };
+
       const traverse = (currentId: string, currentDepth: number): void => {
         if (currentDepth > depth || results.length >= limit || visited.has(currentId)) return;
         visited.add(currentId);
@@ -71,19 +130,26 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
           : this.reader.getReverseDependencies(currentId);
         for (const edge of edges) {
           if (kind !== 'all' && !this.matchesKind(edge.kind, kind)) continue;
-          const targetId = edge.to;
-          const targetFile = this.reader.getFileById(targetId);
-          const targetSymbol = this.reader.getSymbolById(targetId);
-          const externalPackage = targetId.startsWith('pkg:');
-          if (level === 'file' && !targetFile && !externalPackage) continue;
-          if (level === 'symbol' && !targetSymbol) continue;
-          results.push({ id: targetId, name: targetSymbol?.name ?? targetFile?.path ?? targetId.replace(/^pkg:/, ''), kind: edge.kind, path: targetFile?.path, line: targetSymbol?.line, source: 'index' });
-          traverse(targetId, currentDepth + 1);
+          emit(edge.kind, edge.to);
+          traverse(edge.to, currentDepth + 1);
           if (results.length >= limit) return;
         }
       };
       traverse(resolvedId, 1);
-      return { success: true, items: results.slice(0, limit) };
+
+      const withCounts = results
+        .filter(item => emitted.get(item.id) === item)
+        .map(item => {
+          const tally = counts.get(item.id)!;
+          return {
+            ...item,
+            metadata: {
+              dependents: tally.dependents,
+              ...(tally.viaSymbols.length > 0 ? { viaSymbols: tally.viaSymbols } : {}),
+            },
+          };
+        });
+      return { success: true, items: withCounts.slice(0, limit) };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error), items: [] };
     }

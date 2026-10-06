@@ -573,10 +573,27 @@ async function main() {
         assert.ok(thrown, "A must not read B's absolute path");
         assert.match(thrown.message, /outside workspace/i);
 
-        const pwd =
-            await tools.executeTool("terminal_exec", { command: "pwd" }, ctxB);
+        /*
+        | `pwd` and `sleep` are shell builtins of a POSIX shell only; on
+        | Windows the command printed nothing and the isolation check failed
+        | on the platform, not on the boundary. Node is the one command every
+        | run of this suite can count on.
+        */
+        const printCwd =
+            `"${process.execPath}" -p "process.cwd()"`;
 
-        assert.equal(pwd.stdout.trim(), fs.realpathSync(ROOT_B));
+        const pwd =
+            await tools.executeTool("terminal_exec", { command: printCwd }, ctxB);
+
+        const normalizePath =
+            value =>
+                String(value || "").trim().replace(/[\\/]+$/, "").toLowerCase();
+
+        assert.equal(
+            normalizePath(pwd.stdout),
+            normalizePath(fs.realpathSync(ROOT_B)),
+            `terminal cwd escaped project B: ${JSON.stringify(pwd.stdout)}`
+        );
 
         const log =
             await tools.executeTool("git_log", { limit: 5 }, ctxA);
@@ -587,7 +604,10 @@ async function main() {
         const started =
             await tools.executeTool(
                 "process_start",
-                { command: "sleep 30" },
+                {
+                    command:
+                        `"${process.execPath}" -e "setTimeout(() => {}, 30000)"`
+                },
                 ctxB
             );
 

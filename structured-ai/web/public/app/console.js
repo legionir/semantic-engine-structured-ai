@@ -180,6 +180,7 @@ function graphNode(event) {
             kind: "tools",
             shape: event.shape || "single",
             waves: event.waves || [],
+            waveBasis: event.wave_basis || "planned",
             maxParallel: event.max_parallel || null,
             iteration: event.iteration ?? null,
             order: [],
@@ -203,11 +204,76 @@ function graphNode(event) {
         graph.waves = event.waves;
     }
 
+    if (event.wave_basis) {
+        graph.waveBasis = event.wave_basis;
+    }
+
     if (event.iteration !== undefined && event.iteration !== null) {
         graph.iteration = event.iteration;
     }
 
     return graph;
+}
+
+
+/*
+| A wave index is what the scheduler planned, not what it did: items dispatch
+| continuously, so two calls sharing a wave need not overlap and two calls in
+| different waves may run together. The honest record of concurrency is the
+| interval every call carries, so "in parallel" and "ran alongside" are read
+| from those, and the planned grouping is only a fallback for a call that has
+| no timestamps (a replayed run from before they were recorded).
+*/
+function intervalOf(call) {
+
+    if (!call) {
+        return null;
+    }
+
+    const start =
+        call.startedAt ??
+        (
+            call.finishedAt && call.duration
+                ? call.finishedAt - call.duration
+                : null
+        );
+
+    if (start === null || start === undefined) {
+        return null;
+    }
+
+    /* a call still running has no end yet, so it overlaps everything open */
+    return {
+        start,
+        end: call.finishedAt ?? Number.MAX_SAFE_INTEGER
+    };
+}
+
+
+function ranAlongside(graph, call) {
+
+    const own = intervalOf(call);
+
+    if (!own) {
+        return (graph.waves[call.wave] || []).filter(id => id !== call.id);
+    }
+
+    const alongside = [];
+
+    for (const id of graph.order) {
+
+        if (id === call.id) {
+            continue;
+        }
+
+        const other = intervalOf(graph.calls.get(id));
+
+        if (other && other.start < own.end && own.start < other.end) {
+            alongside.push(id);
+        }
+    }
+
+    return alongside;
 }
 
 
@@ -481,16 +547,17 @@ function renderTree() {
 
                     lastWave = call.wave;
 
-                    const inWave =
-                        graph.waves[call.wave] || [];
+                    /* counted from the intervals, not from the planned
+                       grouping: this is who really ran with this call */
+                    const alongside = ranAlongside(graph, call);
 
                     group.appendChild(
                         node(
                             "div",
                             "wave-label",
                             `wave ${call.wave + 1}${
-                                inWave.length > 1
-                                    ? ` · ${inWave.length} in parallel`
+                                alongside.length > 0
+                                    ? ` · ${alongside.length + 1} in parallel`
                                     : ""
                             }`
                         )
@@ -738,10 +805,7 @@ async function openCallDetail(call, graph) {
             definition(list, "max parallel", graph.maxParallel);
         }
 
-        const siblings =
-            (graph.waves[call.wave] || []).filter(
-                id => id !== call.id
-            );
+        const siblings = ranAlongside(graph, call);
 
         if (siblings.length > 0) {
             definition(list, "ran alongside", siblings.join(", "));
@@ -4233,6 +4297,7 @@ function apply(event) {
                 argumentsPreview:
                     event.arguments_preview ??
                     JSON.stringify(event.arguments ?? {}, null, 2),
+                startedAt: event.at ?? null,
                 status: "running"
             };
 
@@ -4283,6 +4348,13 @@ function apply(event) {
             call.exitCode = event.exit_code ?? null;
             call.warning = event.warning || null;
             call.duration = event.duration_ms;
+
+            /* the interval is what "ran alongside" is measured on: prefer the
+               executor's own start, fall back to the envelope */
+            call.startedAt =
+                event.started_at ?? call.startedAt ?? event.at ?? null;
+            call.finishedAt = event.at ?? call.finishedAt ?? null;
+
             call.wave = event.wave ?? call.wave ?? null;
             call.iteration = event.iteration ?? call.iteration ?? null;
             call.resultPreview = event.result_preview ?? null;
@@ -4580,7 +4652,15 @@ function applySnapshot(snapshot) {
 
     el("workspace").textContent = snapshot.workspace;
     el("model").textContent = snapshot.model;
-    el("approvalMode").value = snapshot.approval_mode;
+
+    /* the policy controls live here while Settings is closed and inside the
+       modal while it is open; either way they are in the document, but a
+       render must never break because one of them is momentarily not */
+    const approvalMode = el("approvalMode");
+
+    if (approvalMode) {
+        approvalMode.value = snapshot.approval_mode;
+    }
 
     if (snapshot.settings) {
         state.settings = snapshot.settings;
@@ -4593,7 +4673,11 @@ function applySnapshot(snapshot) {
                 : ""
         }`;
 
-    el("autoContinue").checked = Boolean(snapshot.auto_continue);
+    const autoContinue = el("autoContinue");
+
+    if (autoContinue) {
+        autoContinue.checked = Boolean(snapshot.auto_continue);
+    }
 
     state.messages = normalizeConversationMessages(snapshot.messages);
 
@@ -4645,6 +4729,86 @@ const GROUP_ORDER = [
     "memory", "archive", "journal", "context", "budget", "delegation", "planning", "hooks",
     "persistence", "policy", "tools", "mcp", "output", "workspace"
 ];
+
+
+/*
+| The runtime policy controls (approval mode, auto continue) live in the
+| Settings modal rather than the header, but their ids must stay on the
+| page for the change handlers to find them. While the modal is closed
+| they rest in a hidden home; opening Settings borrows the labels the
+| same way the execution and events cards are borrowed, and closing it
+| returns them.
+|
+| Modal.close() detaches the backdrop before onClose runs, so an id
+| lookup at return time would find nothing — the borrowed nodes are
+| captured by reference here, exactly like the card homes do.
+*/
+
+const policyBorrow = { home: null, chips: [] };
+
+
+function borrowPolicyControls(container) {
+
+    const home = el("policyHome");
+
+    if (!home || !container) {
+        return;
+    }
+
+    const chips = [];
+
+    for (const id of ["approvalMode", "autoContinue"]) {
+
+        const control = el(id);
+        const chip = control && control.parentElement;
+
+        if (chip && chip.tagName === "LABEL") {
+            chips.push(chip);
+        }
+    }
+
+    /*
+    | Nothing moved, nothing to return: the borrow state stays as it was
+    | rather than recording a home with no chips, which would make the next
+    | open believe a borrow is already in flight.
+    */
+    if (chips.length === 0) {
+        return;
+    }
+
+    const row = node("div", "policy-row");
+
+    row.appendChild(node("span", "policy-title", "runtime policy"));
+
+    for (const chip of chips) {
+        row.appendChild(chip);
+    }
+
+    policyBorrow.home = home;
+    policyBorrow.chips = chips;
+
+    container.insertBefore(row, container.firstChild);
+}
+
+
+function returnPolicyControls() {
+
+    const home = policyBorrow.home;
+
+    if (!home) {
+        return;
+    }
+
+    for (const chip of policyBorrow.chips) {
+
+        if (chip.parentNode !== home) {
+            home.appendChild(chip);
+        }
+    }
+
+    policyBorrow.home = null;
+    policyBorrow.chips = [];
+}
 
 
 function settingsBody(list) {
@@ -4714,6 +4878,11 @@ function settingsBody(list) {
         }
     });
 
+    /*
+    | The caller decides when to borrow: settingsBody() is a pure builder, so
+    | a failed Modal.open() cannot strand the policy controls in a body that
+    | never reached the page.
+    */
     return container;
 }
 
@@ -4867,7 +5036,12 @@ async function loadSettings() {
 
     if (state.settingsModal && state.settingsModal.isOpen()) {
 
-        state.settingsModal.setBody(settingsBody(state.settings));
+        const body = settingsBody(state.settings);
+
+        /* borrow before the swap: setBody() empties the content slot, and the
+           chips resting in the old body would leave the document with it */
+        borrowPolicyControls(body);
+        state.settingsModal.setBody(body);
     }
 }
 
@@ -4878,12 +5052,14 @@ function openSettings() {
         return;
     }
 
+    const body = settingsBody(state.settings);
+
     state.settingsModal =
         Modal.open({
             title: "Settings",
             subtitle: "applied on next use, no restart",
             size: "large",
-            body: settingsBody(state.settings),
+            body,
 
             footer:
                 Modal.row(
@@ -4901,9 +5077,14 @@ function openSettings() {
 
             onClose: () => {
 
+                returnPolicyControls();
                 state.settingsModal = null;
             }
         });
+
+    /* the modal is on the page now, so the borrowed labels have a live home
+       and an onClose that will always put them back */
+    borrowPolicyControls(body);
 
     loadSettings();
 }

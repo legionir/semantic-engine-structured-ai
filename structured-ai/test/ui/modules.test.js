@@ -13,6 +13,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
@@ -36,6 +37,24 @@ async function test(name, fn) {
 
 function source(name) {
   return fs.readFileSync(path.join(APP_DIR, name), "utf8");
+}
+
+
+function idsRead(text) {
+
+  return new Set(
+    [...text.matchAll(/(?:\bel\(|getElementById\()"([A-Za-z0-9_-]+)"/g)].map(m => m[1])
+  );
+}
+
+
+function idsDeclaredTextually(text) {
+
+  return new Set([
+    ...[...text.matchAll(/\.id = "([A-Za-z0-9_-]+)"/g)].map(m => m[1]),
+    ...[...text.matchAll(/setAttribute\("id", "([A-Za-z0-9_-]+)"\)/g)].map(m => m[1]),
+    ...[...text.matchAll(/id="([A-Za-z0-9_-]+)"/g)].map(m => m[1])
+  ]);
 }
 
 
@@ -68,12 +87,84 @@ async function main() {
   });
 
   await test("native frontend modules pass syntax checking without a bundler", () => {
-    const checked = spawnSync(
-      process.execPath,
-      ["--experimental-default-type=module", "--check", path.join(APP_DIR, "main.js")],
-      { encoding: "utf8" }
-    );
-    assert.equal(checked.status, 0, checked.stderr || checked.stdout);
+    /*
+    | `node --check` reads a .js file as CommonJS, and the flag that used to
+    | change that default is gone from the Node that runs this app: the test
+    | was failing on the option, never on the module. A .mjs copy means the
+    | same thing on every version, so the check is a check again.
+    */
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "ui-syntax-"));
+
+    try {
+      for (const name of required) {
+
+        const target = path.join(scratch, name.replace(/\.js$/, ".mjs"));
+
+        fs.copyFileSync(path.join(APP_DIR, name), target);
+
+        const checked = spawnSync(
+          process.execPath,
+          ["--check", target],
+          { encoding: "utf8" }
+        );
+
+        assert.equal(
+          checked.status,
+          0,
+          `${name}: ${(checked.stderr || checked.stdout || "").trim()}`
+        );
+      }
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  await test("a page declares every id its script reads back", () => {
+
+    /*
+    | The console reaches the DOM almost entirely by id, and index.html is
+    | redesigned on its own. This is the contract that survives both edits:
+    | no id read by a script may vanish from the page it runs on, and no id
+    | may be declared twice, because then getElementById picks arbitrarily.
+    */
+    for (const [script, page] of [
+      [path.join("app", "console.js"), "index.html"],
+      [path.join("visualizer", "main.js"), "visualizer.html"]
+    ]) {
+
+      const text = fs.readFileSync(path.join(REPO, "web", "public", script), "utf8");
+      const html = fs.readFileSync(path.join(REPO, "web", "public", page), "utf8");
+      const declared = idsDeclaredTextually(html);
+      const built = idsDeclaredTextually(text);
+
+      const missing =
+        [...idsRead(text)].filter(id => !declared.has(id) && !built.has(id));
+
+      assert.deepEqual(
+        missing,
+        [],
+        `${script} reads ids ${page} does not declare: ${missing.join(", ")}`
+      );
+    }
+  });
+
+  await test("neither page declares an id twice", () => {
+
+    for (const page of ["index.html", "visualizer.html"]) {
+
+      const html = fs.readFileSync(path.join(REPO, "web", "public", page), "utf8");
+      const seen = new Map();
+
+      for (const id of [...html.matchAll(/id="([^"]+)"/g)].map(m => m[1])) {
+        seen.set(id, (seen.get(id) || 0) + 1);
+      }
+
+      assert.deepEqual(
+        [...seen].filter(([, count]) => count > 1).map(([id]) => id),
+        [],
+        `${page} declares these ids more than once`
+      );
+    }
   });
 
   await test("store.js declares isolated domain state and additive event reducers", () => {

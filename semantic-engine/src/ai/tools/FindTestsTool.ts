@@ -41,30 +41,70 @@ export class FindTestsTool implements AiTool<FindTestsInput> {
       const file = input.fileId ? this.reader.getFileById(input.fileId) : input.path ? this.reader.getFileByPath(input.path) : undefined;
       const symbol = input.symbolId ? this.reader.getSymbolById(input.symbolId) : undefined;
       const symbolFile = symbol ? this.reader.getFileById(symbol.fileId) : undefined;
-      const targetFile = file ?? symbolFile;
-      if (!targetFile && !symbol) return { success: false, error: 'No file or symbol found', items: [] };
+      const primary = file ?? symbolFile;
+      if (!primary) return { success: false, error: 'No file or symbol found', items: [] };
       const limit = input.limit ?? 20;
-      const matched = new Map<string, { file: import('../../core/types/project-index.types').FileEntry; reason: string; score: number }>();
-      if (symbol) for (const test of this.reader.getTestsForSymbol(symbol.id)) matched.set(test.id, { file: test, reason: `Mapped test for symbol ${symbol.name}`, score: 3 });
-      if (targetFile) for (const test of this.reader.getTestsForFile(targetFile.id)) if (!matched.has(test.id)) matched.set(test.id, { file: test, reason: `Mapped test for file ${targetFile.path}`, score: 2.5 });
-      const targetPaths: string[] = [];
-      if (file) targetPaths.push(file.path);
-      if (symbolFile && (!file || symbolFile.id !== file.id)) targetPaths.push(symbolFile.path);
-      if (targetPaths.length > 0) {
-        for (const test of this.reader.getAllFiles().filter(f => f.testFile)) {
-          if (matched.has(test.id)) continue;
-          let bestScore = 0;
-          let reason = '';
-          for (const path of targetPaths) {
-            const base = path.replace(/\.[^.]+$/, '').replace(/[/\\]/g, '_');
-            const testName = test.path.toLowerCase();
-            if (testName.includes(base.toLowerCase()) || testName.includes(path.replace(/\.[^.]+$/, '').toLowerCase())) { bestScore = Math.max(bestScore, 1); reason = `Filename matches ${path}`; }
-            if (test.imports?.some(imp => this.reader.getFileById(imp.resolvedFileId ?? '')?.path === path)) { bestScore = Math.max(bestScore, 2); reason = `Imports ${path}`; }
+
+      /*
+      | نگاشتِ TestMapper (unionِ symbol.testIds) عمداً شل است — قاعدهٔ سومِ
+      | آن «هم‌نام بودنِ specifier» است، بی‌آنکه ببیند از کدام فایل import
+      | شده. روی یک فایلِ واقعی با عضوهای هم‌نامِ پرکاربرد (execute/register/
+      | get/tools) این یعنی ده‌ها تستِ بی‌ربط. پس اینجا **شاهدِ مستقیم**
+      | می‌سنجیم، نه یونión شل: یک تست مربوط است اگر یا نامش مشتق از فایل
+      | باشد، یا خودِ فایل را import کرده باشد، یا (برای نماد) دقیقاً همان
+      | نماد را از همان فایل import کرده باشد.
+      */
+      const targetFiles = [primary];
+      if (symbolFile && symbolFile.id !== primary.id) targetFiles.push(symbolFile);
+
+      const stripExt = (p: string) => p.replace(/\.[^.]+$/, '');
+      const stripTestSuffix = (p: string) => p.replace(/\.(test|spec)$/, '');
+      const lastSegment = (p: string) => p.split(/[/\\]/).pop() ?? p;
+
+      const scored: { file: NonNullable<typeof file>; score: number; reason: string }[] = [];
+      for (const test of this.reader.getAllFiles()) {
+        if (!test.testFile) continue;
+        let best = 0;
+        let reason = '';
+        const bump = (score: number, why: string) => { if (score > best) { best = score; reason = why; } };
+
+        for (const tf of targetFiles) {
+          const targetBase = stripExt(tf.path).toLowerCase();
+          const testBase = stripTestSuffix(stripExt(test.path)).toLowerCase();
+
+          // ۱) نام فایلِ تست مستقیماً از فایل هدف ساخته شده باشد.
+          if (testBase === targetBase) bump(4, `Test file named for ${tf.path}`);
+          else if (lastSegment(testBase) === lastSegment(targetBase)) bump(3.5, `Test base name matches ${lastSegment(tf.path)}`);
+
+          // ۲) تست، خودِ فایل هدف را import کرده باشد (provenance).
+          const importsFile = (tf.id !== undefined) && (test.imports ?? []).some(imp => imp.resolvedFileId === tf.id);
+          if (importsFile) bump(3, `Imports ${tf.path}`);
+
+          // ۳) برای نماد: همان نماد از همان فایل import شده باشد.
+          if (symbol && importsFile) {
+            const importsSymbol = (test.imports ?? []).some(imp =>
+              imp.resolvedFileId === tf.id &&
+              (imp.specifiers ?? []).some(sp => sp.imported.toLowerCase() === symbol.name.toLowerCase())
+            );
+            if (importsSymbol) bump(3.75, `Imports ${symbol.name} from ${tf.path}`);
           }
-          if (bestScore > 0) matched.set(test.id, { file: test, reason, score: bestScore });
         }
+
+        if (best > 0) scored.push({ file: test, score: best, reason });
       }
-      const items = Array.from(matched.values()).sort((a, b) => b.score - a.score).slice(0, limit).map(m => ({ id: m.file.id, name: m.file.path, kind: 'test', path: m.file.path, source: m.reason, relevanceScore: m.score }));
+
+      const items = scored
+        .sort((a, b) => (b.score - a.score) || a.file.path.localeCompare(b.file.path))
+        .slice(0, limit)
+        .map(m => ({
+          id: m.file.id,
+          name: m.file.path,
+          kind: 'test',
+          path: m.file.path,
+          source: m.reason,
+          relevanceScore: m.score,
+        }));
+
       return { success: true, items };
     } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error), items: [] }; }
   }

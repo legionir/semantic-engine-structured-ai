@@ -16,6 +16,7 @@
 
 import { IEmbeddingGenerator } from './EmbeddingGenerator';
 import { HashingEmbeddingGenerator } from './HashingEmbeddingGenerator';
+import { LocalEmbeddingGenerator } from './LocalEmbeddingGenerator';
 import { RemoteEmbeddingGenerator, RemoteEmbeddingProvider } from './RemoteEmbeddingGenerator';
 
 export type EmbeddingProviderName = 'local' | RemoteEmbeddingProvider;
@@ -59,10 +60,23 @@ export function createEmbeddingGenerator(spec: EmbeddingGeneratorSpec): IEmbeddi
   if (provider === 'local') {
     /*
     | The production-safe local provider is deterministic hashing. The
-    | transformer/native stack is intentionally not bundled because its
+    | transformer/native stack is intentionally not bundled by default because its
     | transitive audit contained critical/high vulnerabilities and its model
     | download is not suitable for an unisolated worker.
+    |
+    | اما وقتی کاربر صراحتاً یک پوشهٔ مدل محلی می‌دهد
+    | (`SEMANTIC_ENGINE_LOCAL_MODEL_PATH`)، همان مدل ONNX آفلاین بارگذاری
+    | می‌شود و embedding معناییِ واقعی (نه hashing) تولید می‌کند. این مسیر
+    | opt-in است؛ نبودِ env دقیقاً همان رفتار قبلی را می‌دهد.
     */
+    const localModelPath = process.env.SEMANTIC_ENGINE_LOCAL_MODEL_PATH;
+    if (localModelPath) {
+      return new LocalEmbeddingGenerator({
+        ...(spec.model && spec.model.length > 0 ? { model: spec.model } : {}),
+        localModelPath,
+        normalize: spec.normalize ?? true,
+      });
+    }
     return new HashingEmbeddingGenerator();
   }
 

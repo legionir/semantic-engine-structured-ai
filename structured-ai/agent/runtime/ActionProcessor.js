@@ -501,6 +501,8 @@ async function finalize(ctx) {
             !finalAction.error
     });
 
+    h.currentRun().run_open = false;
+
     if (h.PRINT_FINAL) {
 
         h.LOG_STREAM(

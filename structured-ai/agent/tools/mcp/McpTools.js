@@ -114,18 +114,14 @@ async function mcpTools(args = {}) {
     const wanted =
         args.server ? String(args.server) : null;
 
+    /* the ACTIVE project: a delegated child's project, not the parent run's */
     let projectId = null;
 
     try {
 
-        const { runManager } = require("../../runtime");
+        const { effectiveProjectId } = require("../../runtime/ProjectOverride");
 
-        const run =
-            runManager && typeof runManager.current === "function"
-                ? runManager.current()
-                : null;
-
-        projectId = run && run.projectId ? run.projectId : null;
+        projectId = effectiveProjectId() || null;
 
     } catch {
         /* unscoped */

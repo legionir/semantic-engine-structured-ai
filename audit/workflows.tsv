@@ -1,0 +1,3 @@
+workflow	categories	sample_sources	status_summary
+http_routes	http_routes	semantic-engine/src/blueprint, structured-ai/test	Many entries resolved to DONE; noisy hits marked OUT_OF_SCOPE
+websocket_graphql	websocket_graphql	semantic-engine/src/gateway, semantic-engine/src/cli/commands	Core handlers mapped and marked DONE where applicable

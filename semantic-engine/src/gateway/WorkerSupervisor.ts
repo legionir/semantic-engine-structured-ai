@@ -34,6 +34,7 @@ import {
   WorkerHealthMonitor,
 } from './WorkerHealthMonitor';
 import { acquireLock, LockInfo, WORKER_LOCK_FILE } from './ProjectLock';
+import { allocateLoopbackPort, normalizeTransport, WorkerTarget } from './workerTarget';
 
 export const DEFAULT_MAX_WORKERS = 8;
 export const DEFAULT_MAX_CONCURRENT_INDEX_JOBS = 2;
@@ -78,6 +79,8 @@ export interface WorkerSummary {
   readonly state: WorkerState;
   readonly pid: number | null;
   readonly socketPath: string;
+  /** F-0007 — چیزی که worker واقعاً روی آن گوش می‌دهد. */
+  readonly target: WorkerTarget;
   readonly restartCount: number;
   readonly degraded: boolean;
   readonly health?: WorkerHealthSnapshot;
@@ -171,6 +174,19 @@ export class WorkerSupervisor {
   }
 
   socketPathFor(projectId: string): string {
+    /*
+    | F-0001 — روی Windows یک «socket path» فقط به شکلِ لولهٔ نام‌دار
+    | پذیرفته می‌شود؛ `…/sockets/<id>.sock` آن‌جا یک فایل است و `listen`
+    | می‌افتد، پس کل gateway روی ویندوز بی‌کارکرد بود و سه suite‌اش تا
+    | timeout جلو می‌رفتند.
+    |
+    | فقط نشانی عوض می‌شود: `net.connect(path)` و
+    | `http.request({ socketPath })` هر دو لولهٔ نام‌دار را دقیقاً مثل UDS
+    | کار می‌دهند، پس نه قراردادِ worker و نه proxy نیاز به شاخهٔ تازه ندارد.
+    */
+    if (process.platform === 'win32') {
+      return `\\\\.\\pipe\\semantic-engine-${projectId}`;
+    }
     return path.join(this.options.dataRoot, 'gateway', 'sockets', `${projectId}.sock`);
   }
 
@@ -219,6 +235,7 @@ export class WorkerSupervisor {
       state: entry.process.state,
       pid: entry.process.pid,
       socketPath: entry.process.socketPath,
+      target: entry.process.target,
       restartCount: this.monitor.restartCount(entry.config.projectId),
       degraded: this.monitor.isDegraded(entry.config.projectId),
     };
@@ -258,6 +275,18 @@ export class WorkerSupervisor {
     const projectId = config.projectId;
     const socketPath = this.socketPathFor(projectId);
 
+    /*
+    | F-0007 — transport واقعاً خوانده می‌شود. `loopback` یعنی supervisor
+    | یک پورتِ آزادِ loopback رزرو می‌کند و همان شماره را به worker
+    | می‌دهد؛ worker روی آن listen می‌کند و gateway همان‌جا وصل می‌شود.
+    | (پیش از این این شاخه وجود نداشت و هر پیکربندیِ loopback بی‌صدا روی
+    | سوکت می‌افتاد.)
+    */
+    const service = config.service;
+    const target: WorkerTarget = normalizeTransport(service.transport) === 'loopback'
+      ? { transport: 'loopback', host: service.host ?? '127.0.0.1', port: service.port ?? await allocateLoopbackPort(service.host ?? '127.0.0.1') }
+      : { transport: 'socket', socketPath };
+
     const lock = acquireLock(this.lockPathFor(projectId), projectId, 'worker', {
       ...(this.options.now ? { now: this.options.now } : {}),
     });
@@ -286,6 +315,7 @@ export class WorkerSupervisor {
     const processOptions: WorkerProcessOptions = {
       config,
       socketPath,
+      target,
       token,
       logFile: this.logFileFor(projectId),
       binary: this.options.binary ?? defaultBinaryPath(),

@@ -137,6 +137,23 @@ export interface RankOptions {
   readonly complexityCeiling?: number;
   /** `testCount` از این عدد به بالا، سیگنالِ اشباع‌شده است. */
   readonly testCountCeiling?: number;
+  /**
+   * سیگنال‌های «ربطِ اصلی» با **مخرجِ ثابت**.
+   *
+   * قاعدهٔ پیش‌فرضِ رتبه‌بند این است که «یک نامزدِ تک‌سیگنالی با آن
+   * سیگنالِ بیشینه، امتیازِ کامل می‌گیرد». برای جست‌وجوی صرفاً
+   * کلیدواژه‌ای درست است، اما در حالت hybrid فاجعه می‌سازد: یک
+   * برخوردِ سطحیِ نام (مثلاً `constant functions` روی واژهٔ «function»)
+   * با یک تطبیقِ معناییِ درست (مثلاً `MutationSimulator` برای «blast
+   * radius» ) تساوی می‌گیرد و نویزِ کلیدواژه، جوابِ درست را دفن می‌کند.
+   *
+   * با این گزینه، سیگنال‌های لیست‌شده مخرجِ ثابت می‌گیرند: نامزدی که یک
+   * سیگنالِ اصلیِ موجود در دسته را **ندارد**، جریمه می‌شود، پس
+   * تطبیقِ هر دو (کلیدواژه + بردار) بر تک‌سیگنالی غالب است. فقط وقتی
+   * اعمال می‌شود که آن سیگنال در دسته حضور داشته باشد؛ پس حالتِ
+   * تک‌مسیره (کلیدواژهٔ خالص) دقیقاً مثل قبل می‌ماند.
+   */
+  readonly coreRelevanceSignals?: readonly SignalName[];
 }
 
 /**
@@ -232,6 +249,19 @@ export class ContextRanker {
       options.churnRankOutOf ?? this.defaults.churnRankOutOf ?? maxChurnRank
     );
 
+    /*
+    | سیگنال‌های ربطِ اصلی که در این دسته «فعال»اند. فقط همین‌ها مخرجِ
+    | ثابت می‌گیرند؛ اگر بردار اصلاً در دسته نباشد (حالتِ کلیدواژه)،
+    | `vector` فعال نیست و رفتار مثلِ قبل می‌ماند.
+    */
+    const vectorActive = candidates.some(c => present(c.signals.vector));
+    const activeCoreSignals = (options.coreRelevanceSignals ?? this.defaults.coreRelevanceSignals ?? [])
+      .filter(signal =>
+        signal === 'keyword' ? maxKeyword > 0
+          : signal === 'vector' ? vectorActive
+            : false
+      );
+
     const ranked = candidates.map(candidate => {
       const s = candidate.signals;
       const normalized = new Map<SignalName, number>();
@@ -283,6 +313,16 @@ export class ContextRanker {
       let totalWeight = 0;
       for (const [signal] of normalized) {
         totalWeight += weights[signal] ?? 0;
+      }
+
+      /*
+      | مخرجِ ثابت برای سیگنال‌های ربطِ اصلیِ فعال: نامزدی که یکی از
+      | آن‌ها را ندارد، وزنِ آن سیگنال در مخرج می‌ماند و صورتِ‌اش صفر ⇒
+      | سقفِ امتیازش می‌آید پایین. این همان چیزی است که اجازه نمی‌دهد
+      | یک تک‌برخوردِ کلیدواژه‌ای با تطبیقِ معنایی برابر شود.
+      */
+      for (const signal of activeCoreSignals) {
+        if (!normalized.has(signal)) totalWeight += weights[signal] ?? 0;
       }
 
       const contributions: SignalContribution[] = [];

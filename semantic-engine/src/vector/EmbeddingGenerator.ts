@@ -13,6 +13,14 @@ export interface EmbeddingGeneratorOptions {
   /** مسیر کش مدل (default: کش پیش‌فرض @xenova/transformers) */
   readonly cacheDir?: string;
   /**
+   * پوشهٔ محلیِ مدل (transformers.js `env.localModelPath`).
+   *
+   * اگر ست شود، مدل **آفلاین** از روی دیسک خوانده می‌شود و هیچ درخواست
+   * شبکه‌ای به HuggingFace زده نمی‌شود (`allowRemoteModels=false`). برای
+   * مدل‌های ONNX که کاربر خودش دانلود/کپی کرده. نبودش یعنی رفتار قبلی.
+   */
+  readonly localModelPath?: string;
+  /**
    * حداکثر کاراکترِ ورودی — SE-VEC-08.
    *
    * `EmbeddingConfig.maxInputLength` از ابتدا تعریف شده بود و در کل

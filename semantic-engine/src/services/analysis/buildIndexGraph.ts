@@ -37,6 +37,82 @@ export interface BuildIndexGraphOptions {
    * واقعی در برابر ۴، که سه‌تای آخرش بازگشت درون‌فایلی بود).
    */
   readonly callEdges?: boolean;
+  /**
+   * یال‌های «imports» در سطحِ **سمبل** اضافه شوند؟
+   *
+   * یالِ فایل‌به‌فایلِ `depends_on` نمی‌گوید کدام نامِ خاص import شده؛ پس
+   * برای `simulate_mutation` که می‌پرسد «اگر این سمبل را عوض/حذف کنم چه
+   * می‌شکند» کافی نیست: یک کلاسِ exportشده که ۹ فایل آن را **با نام**
+   * import می‌کنند، هیچ یالِ ورودیِ `calls` ندارد، و بدون این یال‌ها
+   * rename آن «ایمن» گزارش می‌شد (خروجیِ واقعی: ۰ ارجاعِ شکسته در برابر
+   * ۹ واردکننده). این لایه از `FileEntry.imports[].specifiers[]` و
+   * `FileEntry.exports[].symbolId` همان ارجاعِ نام‌دار را به سمبلِ درست
+   * وصل می‌کند. فقط برای `simulate_mutation` روشن می‌شود؛ کشفِ معماری
+   * روی یال‌های فایل‌به‌فایل حرف می‌زند و نباید با یالِ سمبل نویز بگیرد.
+   */
+  readonly referenceEdges?: boolean;
+}
+
+/** نامِ import‌شده را به سمبلِ exportشدهٔ همان فایل مقصد می‌رساند. */
+function resolveImportedSymbol(
+  reader: ProjectIndexReader,
+  targetFile: { id: string; exports?: readonly { name: string; kind: string; symbolId?: string | null }[] },
+  spec: { imported: string; isDefault?: boolean; isNamespace?: boolean }
+): string | null {
+  const exportEntries = targetFile.exports ?? [];
+
+  // importِ namespace به کلِ ماژول اشاره می‌کند، نه به یک سمبل.
+  if (spec.isNamespace) return null;
+
+  const entry = spec.isDefault
+    ? exportEntries.find(e => e.kind === 'default') ?? exportEntries.find(e => e.name === spec.imported)
+    : exportEntries.find(e => e.name === spec.imported && (e.kind === 'named' || e.kind === 'default'));
+
+  if (entry?.symbolId) return entry.symbolId;
+
+  /*
+  | entry بدون symbolId: خودِ سمبل را در فایل مقصد پیدا کن. این جست‌وجو
+  | محدود به سمبل‌های **همان فایل** است، پس یک re-export (که سمبلش جای
+  | دیگری است) اشتباه مپ نمی‌شود.
+  */
+  const name = entry?.name ?? spec.imported;
+  const local = reader
+    .getSymbolsForFile(targetFile.id)
+    .find(s => s.name === name && (s.parentId ?? null) === null && s.exported !== false);
+  return local?.id ?? null;
+}
+
+/** یالِ فایلِ واردکننده → سمبلِ import‌شده، برای هر importِ نام‌دار. */
+function addSymbolImportEdges(graph: AnalysisGraph, reader: ProjectIndexReader): void {
+  let seq = 0;
+  const seen = new Set<string>();
+
+  for (const file of reader.getAllFiles()) {
+    if (!file.imports) continue;
+    for (const imp of file.imports) {
+      const targetFileId = imp.resolvedFileId;
+      if (!targetFileId) continue; // package/builtin/unresolved
+      const targetFile = reader.getFileById(targetFileId);
+      if (!targetFile) continue;
+      const specs = imp.specifiers;
+      if (!specs || specs.length === 0) continue;
+      for (const spec of specs) {
+        if (!spec || !spec.imported) continue;
+        const symbolId = resolveImportedSymbol(reader, targetFile, spec);
+        if (!symbolId) continue;
+        const key = `${file.id} ${symbolId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        graph.addEdge({
+          id: `imp_${seq++}`,
+          source: file.id,
+          target: symbolId,
+          relation: 'imports',
+          metadata: { confidence: imp.typeOnly ? 70 : 90, line: null },
+        });
+      }
+    }
+  }
 }
 
 /** شناسه‌های غیرسمبل (فایل/نام خارجی) هم node می‌گیرند، با label خوانا. */
@@ -87,20 +163,30 @@ export function buildIndexGraph(
   | فقط برای ابزاری که واقعاً فراخوان می‌پرسد؛ برای قاعدهٔ معماری خاموش است
   | (بالا، `callEdges` را ببینید).
   */
-  if (options.callEdges !== true) return graph;
+  if (options.callEdges === true) {
+    for (const [idx, call] of (index.graphs?.callGraph ?? []).entries()) {
+      graph.addEdge({
+        id: `call_${idx}`,
+        source: call.caller,
+        target: call.callee,
+        relation: 'calls',
+        /*
+        | `line` همان جایی است که می‌شکند. بدون آن، «۱۲ ارجاع شکسته» یعنی
+        | دوازده سطر یکسان که هیچ‌کس نمی‌تواند بینشان تمایزی قائل شود.
+        */
+        metadata: { confidence: call.provenance?.confidence ?? 0, line: call.line ?? null },
+      });
+    }
+  }
 
-  for (const [idx, call] of (index.graphs?.callGraph ?? []).entries()) {
-    graph.addEdge({
-      id: `call_${idx}`,
-      source: call.caller,
-      target: call.callee,
-      relation: 'calls',
-      /*
-      | `line` همان جایی است که می‌شکند. بدون آن، «۱۲ ارجاع شکسته» یعنی
-      | دوازده سطر یکسان که هیچ‌کس نمی‌تواند بینشان تمایزی قائل شود.
-      */
-      metadata: { confidence: call.provenance?.confidence ?? 0, line: call.line ?? null },
-    });
+  /*
+  | یال‌های import در سطح سمبل — همان چیزی که rename یک کلاسِ پرمصرف را از
+  | «ایمن» به «۹ فایل می‌شکند» درست می‌کند. جدا از call graph ساخته می‌شود
+  | تا `simulate_mutation` با `{ callEdges: true, referenceEdges: true }`
+  | هر دو را بخواهد.
+  */
+  if (options.referenceEdges === true) {
+    addSymbolImportEdges(graph, reader);
   }
 
   /*

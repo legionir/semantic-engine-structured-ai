@@ -14,12 +14,7 @@ import { OutputWriter, INDEX_FILE_NAME } from '../../pipeline/OutputWriter';
 import { WatchPipeline } from '../../pipeline/WatchPipeline';
 import { IncrementalEngine } from '../../incremental/IncrementalEngine';
 import { VectorIndexer } from '../../vector/VectorIndexer';
-import { HashingEmbeddingGenerator } from '../../vector/HashingEmbeddingGenerator';
-import { IEmbeddingGenerator } from '../../vector/EmbeddingGenerator';
-import {
-  createEmbeddingGeneratorFromArgs,
-  embeddingRequested,
-} from '../embeddingFromArgs';
+import { resolveVectorPlan } from '../embeddingFromArgs';
 import { projectPathsFromArgs } from '../projectPathsFromArgs';
 import { ProjectIndex } from '../../core/types/project-index.types';
 import { GitInfoCollector } from '../../core/git';
@@ -137,14 +132,15 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
     boolOption(args.options, 'skipInitialIndex', false) ||
     args.options['initialIndex'] === false;
   const wantsBlueprint = boolOption(args.options, 'blueprint', true);
-  const wantsVectors = boolOption(
-    args.options,
-    'vectors',
-    Boolean(existingIndex?.vectorChunks)
-  );
-  const vectorIndexer = wantsVectors
-    ? new VectorIndexer({ embeddingGenerator: new HashingEmbeddingGenerator() })
-    : null;
+  /*
+  | Same rule and same provider as `index` (audit F-07): `--embedding-provider`
+  | implies vectors, and the generator is built from the flags - it used to be a
+  | hard-coded HashingEmbeddingGenerator, so `watch` silently ignored the
+  | provider that built the index. Built once, before the scan, so a bad
+  | provider/API key fails immediately.
+  */
+  const { wantsVectors, embeddingGenerator } = resolveVectorPlan(args, Boolean(existingIndex?.vectorChunks));
+  const vectorIndexer = embeddingGenerator ? new VectorIndexer({ embeddingGenerator }) : null;
 
   try {
     let projectIndex: ProjectIndex;

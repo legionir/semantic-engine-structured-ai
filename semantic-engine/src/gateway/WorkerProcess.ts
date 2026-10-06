@@ -18,6 +18,8 @@ import * as http from 'http';
 import * as path from 'path';
 import { ProjectWorkerConfig } from './types';
 import { workerArgv } from './workerArgv';
+import { socketEndpoint, isNamedPipe } from '../server/socketEndpoint';
+import { targetConnectOptions, WorkerTarget } from './workerTarget';
 
 export type WorkerState = 'starting' | 'ready' | 'stopping' | 'stopped' | 'crashed' | 'degraded';
 
@@ -60,6 +62,13 @@ export interface WorkerEvent {
 export interface WorkerProcessOptions {
   readonly config: ProjectWorkerConfig;
   readonly socketPath: string;
+  /*
+  | F-0007 — وقتی transport واقعاً `loopback` است، worker روی یک پورتِ
+  | رزروشدهٔ supervisor گوش می‌دهد و `socketPath` بی‌مصرف می‌ماند.
+  | دادهٔ اختیاری است تا صدها فراخوانِ موجود (و تست‌ها) دست‌نخورده
+  | کار کنند: نبودنش یعنی همان رفتارِ سوکت.
+  */
+  readonly target?: WorkerTarget;
   readonly token: string;
   readonly logFile?: string;
   /** مسیر باینری CLI؛ پیش‌فرض `bin/semantic-engine.js` کنار dist. */
@@ -110,18 +119,35 @@ export class WorkerProcess {
     return this.options.socketPath;
   }
 
+  /** چیزی که worker روی آن گوش می‌دهد — F-0007. */
+  get target(): WorkerTarget {
+    return this.options.target ?? { transport: 'socket', socketPath: this.options.socketPath };
+  }
+
   get logFile(): string | undefined {
     return this.options.logFile;
   }
 
   /** آرگومان‌هایی که واقعاً اجرا می‌شوند — برای لاگ و تست. */
   argv(): readonly string[] {
-    return this.options.argv ?? [
-      'worker',
-      ...workerArgv(this.options.config),
-      '--socket',
-      this.options.socketPath,
-    ];
+    if (this.options.argv) return this.options.argv;
+
+    const target = this.target;
+    if (target.transport === 'loopback') {
+      // `workerArgv` خودش `--host/--port` را می‌فرستد و `--socket` را نمی‌زند
+      const config: ProjectWorkerConfig = {
+        ...this.options.config,
+        service: {
+          ...this.options.config.service,
+          transport: 'loopback',
+          host: target.host,
+          port: target.port,
+        },
+      };
+      return ['worker', ...workerArgv(config)];
+    }
+
+    return ['worker', ...workerArgv(this.options.config), '--socket', this.options.socketPath];
   }
 
   private emit(kind: WorkerEventKind, detail?: string, extra?: Partial<WorkerEvent>): void {
@@ -163,11 +189,15 @@ export class WorkerProcess {
     /*
     | یک فایل socket باقی‌مانده از crash قبلی یعنی `EADDRINUSE`. این فایل مال
     | ماست (مسیرش را supervisor می‌سازد)، پس پیش از spawn برداشته می‌شود.
+    | لولهٔ نام‌دار ویندوز فایلی نیست که بماند؛ نشانش هم نبودِ worker است،
+    | پس این پاک‌سازی مخصوص UDS است.
     */
-    try {
-      fs.rmSync(this.options.socketPath, { force: true });
-    } catch {
-      /* نبود فایل یعنی کاری نیست. */
+    if (this.target.transport === 'socket' && !isNamedPipe(socketEndpoint(this.options.socketPath))) {
+      try {
+        fs.rmSync(this.options.socketPath, { force: true });
+      } catch {
+        /* نبود فایل یعنی کاری نیست. */
+      }
     }
 
     const child = spawn(process.execPath, [binary, ...this.argv()], {
@@ -244,7 +274,7 @@ export class WorkerProcess {
       const payload = body === undefined ? undefined : JSON.stringify(body);
       const req = http.request(
         {
-          socketPath: this.options.socketPath,
+          ...targetConnectOptions(this.target),
           path: urlPath,
           method,
           headers: {

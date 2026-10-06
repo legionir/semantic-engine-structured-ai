@@ -88,9 +88,13 @@ export class FileWatcher {
   private closed = false;
 
   /** `unlink`هایی که منتظر `add` جفتشان‌اند. کلید: hash محتوا. */
-  private readonly pendingUnlinks = new Map<string, PendingEvent>();
+  /*
+  | FIFO queue per content hash. A single-valued map made two files with identical
+  | content overwrite each other's pending event (the first one was never emitted).
+  */
+  private readonly pendingUnlinks = new Map<string, PendingEvent[]>();
   /** `add`هایی که منتظر `unlink` جفتشان‌اند. کلید: hash محتوا. */
-  private readonly pendingAdds = new Map<string, PendingEvent>();
+  private readonly pendingAdds = new Map<string, PendingEvent[]>();
 
   constructor(private readonly options: FileWatcherOptions) {
     this.logger = options.logger ?? silentLogger;
@@ -150,8 +154,8 @@ export class FileWatcher {
     if (this.closed) return;
     this.closed = true;
 
-    for (const pending of [...this.pendingUnlinks.values(), ...this.pendingAdds.values()]) {
-      clearTimeout(pending.timer);
+    for (const queue of [...this.pendingUnlinks.values(), ...this.pendingAdds.values()]) {
+      for (const pending of queue) clearTimeout(pending.timer);
     }
     this.pendingUnlinks.clear();
     this.pendingAdds.clear();
@@ -193,10 +197,8 @@ export class FileWatcher {
     }
 
     // ترتیب unlink → add
-    const waitingUnlink = this.pendingUnlinks.get(hash);
+    const waitingUnlink = this.take(this.pendingUnlinks, hash);
     if (waitingUnlink) {
-      clearTimeout(waitingUnlink.timer);
-      this.pendingUnlinks.delete(hash);
       this.emit({ type: 'renamed', path: relativePath, oldPath: waitingUnlink.relativePath });
       return;
     }
@@ -220,10 +222,8 @@ export class FileWatcher {
     }
 
     // ترتیب add → unlink
-    const waitingAdd = this.pendingAdds.get(hash);
+    const waitingAdd = this.take(this.pendingAdds, hash);
     if (waitingAdd) {
-      clearTimeout(waitingAdd.timer);
-      this.pendingAdds.delete(hash);
       this.emit({ type: 'renamed', path: waitingAdd.relativePath, oldPath: relativePath });
       return;
     }
@@ -235,22 +235,39 @@ export class FileWatcher {
 
   /** نگه داشتن یک رویداد تا پایان پنجره، و بعد بیرون دادنش. */
   private hold(
-    table: Map<string, PendingEvent>,
+    table: Map<string, PendingEvent[]>,
     hash: string,
     relativePath: string,
     release: () => void
   ): void {
-    const existing = table.get(hash);
-    if (existing) clearTimeout(existing.timer);
-
-    const timer = setTimeout(() => {
-      table.delete(hash);
-      release();
-    }, this.renameWindowMs);
+    const entry: PendingEvent = {
+      relativePath,
+      timer: setTimeout(() => {
+        const queue = table.get(hash);
+        if (queue) {
+          const index = queue.indexOf(entry);
+          if (index !== -1) queue.splice(index, 1);
+          if (queue.length === 0) table.delete(hash);
+        }
+        release();
+      }, this.renameWindowMs),
+    };
 
     // تایمر نباید پروسه را زنده نگه دارد.
-    timer.unref?.();
-    table.set(hash, { relativePath, timer });
+    entry.timer.unref?.();
+
+    const queue = table.get(hash);
+    if (queue) queue.push(entry);
+    else table.set(hash, [entry]);
+  }
+
+  /** oldest pending event for this hash (FIFO), removed from the queue; its timer is cancelled. */
+  private take(table: Map<string, PendingEvent[]>, hash: string): PendingEvent | undefined {
+    const queue = table.get(hash);
+    const entry = queue?.shift();
+    if (queue && queue.length === 0) table.delete(hash);
+    if (entry) clearTimeout(entry.timer);
+    return entry;
   }
 
   private hashOf(absolute: string): string | undefined {
