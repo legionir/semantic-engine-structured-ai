@@ -22,6 +22,7 @@
 import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
+import { socketEndpoint } from '../server/socketEndpoint';
 import * as path from 'path';
 import type { Duplex } from 'stream';
 import { DurationSummary } from './metrics';
@@ -377,7 +378,7 @@ export class GatewayServer {
 
     const workerToken = this.supervisor.workerToken(projectId) ?? '';
 
-    const upstream = net.connect(worker.socketPath, () => {
+    const upstream = net.connect(socketEndpoint(worker.socketPath), () => {
       const lines = [`${req.method ?? 'GET'} /ws HTTP/1.1`, 'Host: gateway'];
 
       for (const [name, value] of Object.entries(req.headers)) {
@@ -821,7 +822,7 @@ export class GatewayServer {
     | گرفته نمی‌شود و هرگز در لاگ نمی‌آید.
     */
     const target = {
-      socketPath: worker.socketPath,
+      socketPath: socketEndpoint(worker.socketPath),
       token: this.supervisor.workerToken(projectId) ?? '',
     };
 

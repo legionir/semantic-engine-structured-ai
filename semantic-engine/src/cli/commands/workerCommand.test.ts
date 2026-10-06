@@ -15,6 +15,7 @@ import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 import { WORKER_METRIC_KEYS } from '../../gateway/metrics';
+import { socketEndpoint, socketEndpointExists } from '../../server/socketEndpoint';
 
 const PACKAGE_ROOT = path.join(__dirname, '..', '..', '..');
 const BIN = path.join(PACKAGE_ROOT, 'bin', 'semantic-engine.js');
@@ -35,7 +36,7 @@ function call(
   headers: Record<string, string> = {}
 ): Promise<Reply> {
   return new Promise((resolve, reject) => {
-    const req = http.request({ socketPath, path: urlPath, method, headers }, res => {
+    const req = http.request({ socketPath: socketEndpoint(socketPath), path: urlPath, method, headers }, res => {
       const chunks: Buffer[] = [];
       res.on('data', chunk => chunks.push(chunk as Buffer));
       res.on('end', () => {
@@ -59,7 +60,7 @@ async function waitForSocket(socketPath: string, timeoutMs = 60_000): Promise<vo
   let lastError: unknown = null;
 
   while (Date.now() < deadline) {
-    if (fs.existsSync(socketPath)) {
+    if (socketEndpointExists(socketPath)) {
       try {
         await call(socketPath, 'GET', '/internal/health', { Authorization: `Bearer ${TOKEN}` });
         return;
@@ -178,8 +179,13 @@ describeIfBuilt('semantic-engine worker', () => {
     expect(shutdown.json['shuttingDown']).toBe(true);
 
     expect(await exiting).toBe(0);
-    /* The socket file does not outlive the worker. */
-    expect(fs.existsSync(socketPath)).toBe(false);
+    /*
+    | فایلِ socket نباید از worker زنده‌تر بماند. روی ویندوز لولهٔ
+    | نام‌دار فایلی نیست که بماند، پس ادعا مخصوص UDS است.
+    */
+    if (process.platform !== 'win32') {
+      expect(fs.existsSync(socketPath)).toBe(false);
+    }
   }, 180_000);
 
   it('is not ready until an index exists', async () => {
@@ -187,10 +193,10 @@ describeIfBuilt('semantic-engine worker', () => {
 
     /* Wait for the socket itself, not for readiness. */
     const deadline = Date.now() + 60_000;
-    while (Date.now() < deadline && !fs.existsSync(socketPath)) {
+    while (Date.now() < deadline && !socketEndpointExists(socketPath)) {
       await new Promise(resolve => setTimeout(resolve, 200));
     }
-    expect(fs.existsSync(socketPath)).toBe(true);
+    expect(socketEndpointExists(socketPath)).toBe(true);
 
     const auth = { Authorization: `Bearer ${TOKEN}` };
     let ready: Reply | null = null;
@@ -215,7 +221,15 @@ describeIfBuilt('semantic-engine worker', () => {
     expect(await exiting).toBe(0);
   }, 180_000);
 
-  it('stops cleanly on SIGTERM too', async () => {
+  /*
+  | SIGTERM فقط روی POSIX قابل ارسال است؛ روی Windows `child.kill()`
+  | بی‌سیگنال کشته می‌شود و کدِ خروج صفر نمی‌شود. ادعایِ «خاموشِ تمیز
+  | با سیگنال» همان‌جا بی‌معناست، پس آزمون هم همان‌جا معنا دارد —
+  | مسیرِ خاموشیِ ویندوز همان `POST /internal/shutdown` است که آزمونِ
+  | بالا پوشش می‌دهد.
+  */
+  const itPosix = process.platform === 'win32' ? it.skip : it;
+  itPosix('stops cleanly on SIGTERM too', async () => {
     const spawned = startWorker();
     await waitForSocket(socketPath);
 

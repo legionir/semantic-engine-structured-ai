@@ -171,6 +171,19 @@ export class WorkerSupervisor {
   }
 
   socketPathFor(projectId: string): string {
+    /*
+    | F-0001 — روی Windows یک «socket path» فقط به شکلِ لولهٔ نام‌دار
+    | پذیرفته می‌شود؛ `…/sockets/<id>.sock` آن‌جا یک فایل است و `listen`
+    | می‌افتد، پس کل gateway روی ویندوز بی‌کارکرد بود و سه suite‌اش تا
+    | timeout جلو می‌رفتند.
+    |
+    | فقط نشانی عوض می‌شود: `net.connect(path)` و
+    | `http.request({ socketPath })` هر دو لولهٔ نام‌دار را دقیقاً مثل UDS
+    | کار می‌دهند، پس نه قراردادِ worker و نه proxy نیاز به شاخهٔ تازه ندارد.
+    */
+    if (process.platform === 'win32') {
+      return `\\\\.\\pipe\\semantic-engine-${projectId}`;
+    }
     return path.join(this.options.dataRoot, 'gateway', 'sockets', `${projectId}.sock`);
   }
 

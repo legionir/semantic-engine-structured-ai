@@ -18,6 +18,7 @@ import * as http from 'http';
 import * as path from 'path';
 import { ProjectWorkerConfig } from './types';
 import { workerArgv } from './workerArgv';
+import { socketEndpoint, isNamedPipe } from '../server/socketEndpoint';
 
 export type WorkerState = 'starting' | 'ready' | 'stopping' | 'stopped' | 'crashed' | 'degraded';
 
@@ -163,11 +164,15 @@ export class WorkerProcess {
     /*
     | یک فایل socket باقی‌مانده از crash قبلی یعنی `EADDRINUSE`. این فایل مال
     | ماست (مسیرش را supervisor می‌سازد)، پس پیش از spawn برداشته می‌شود.
+    | لولهٔ نام‌دار ویندوز فایلی نیست که بماند؛ نشانش هم نبودِ worker است،
+    | پس این پاک‌سازی مخصوص UDS است.
     */
-    try {
-      fs.rmSync(this.options.socketPath, { force: true });
-    } catch {
-      /* نبود فایل یعنی کاری نیست. */
+    if (!isNamedPipe(socketEndpoint(this.options.socketPath))) {
+      try {
+        fs.rmSync(this.options.socketPath, { force: true });
+      } catch {
+        /* نبود فایل یعنی کاری نیست. */
+      }
     }
 
     const child = spawn(process.execPath, [binary, ...this.argv()], {
@@ -244,7 +249,7 @@ export class WorkerProcess {
       const payload = body === undefined ? undefined : JSON.stringify(body);
       const req = http.request(
         {
-          socketPath: this.options.socketPath,
+          socketPath: socketEndpoint(this.options.socketPath),
           path: urlPath,
           method,
           headers: {

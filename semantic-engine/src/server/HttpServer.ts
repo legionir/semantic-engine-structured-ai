@@ -10,6 +10,7 @@ import { RouteDefinition, HttpRequestContext, PlatformConfig } from './types';
 import { AuthContext, PermissionScope, ROLE_DEFAULT_PERMISSIONS } from '../security/rbac/types';
 import { PermissionChecker } from '../security/rbac/PermissionChecker';
 import { SecurityPipeline } from './SecurityPipeline';
+import { socketEndpoint, isNamedPipe } from './socketEndpoint';
 import { SseManager } from './SseManager';
 import { WebSocketManager } from './WebSocketManager';
 import { JobManager } from '../runtime/JobManager';
@@ -231,8 +232,12 @@ export class HttpServer {
       };
 
       if (this.config.socketPath) {
-        fs.mkdirSync(path.dirname(this.config.socketPath), { recursive: true });
-        this.server.listen(this.config.socketPath, onListening);
+        // SE-PORT-02 — روی Windows این به لولهٔ نام‌دار نگاشت می‌شود؛ لوله پوشه ندارد.
+        const endpoint = socketEndpoint(this.config.socketPath);
+        if (!isNamedPipe(endpoint)) {
+          fs.mkdirSync(path.dirname(endpoint), { recursive: true });
+        }
+        this.server.listen(endpoint, onListening);
       } else {
         this.server.listen(this.config.port, this.config.host, onListening);
       }
