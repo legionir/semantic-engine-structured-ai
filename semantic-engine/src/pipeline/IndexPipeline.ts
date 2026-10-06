@@ -16,7 +16,6 @@
 import * as path from 'path';
 import { WorkspaceScanner, ScanResult } from '../scanner/WorkspaceScanner';
 import { ScannerConfig } from '../core/config/ScannerConfig';
-import { DEFAULT_IGNORE_DIRECTORIES } from '../core/config/defaultIgnorePatterns';
 
 import { SymbolExtractorManager } from '../symbols/SymbolExtractorManager';
 import { ConfigUsageMapper } from '../ai/ConfigUsageMapper';

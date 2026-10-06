@@ -168,3 +168,30 @@ describe('checkOrigin', () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe('authenticate — F-0005 (مقایسهٔ زمان‌ثابت)', () => {
+  function bearer(token: string): http.IncomingMessage {
+    return { headers: { authorization: `Bearer ${token}` } } as unknown as http.IncomingMessage;
+  }
+
+  it('توکن درست می‌پذیرد', () => {
+    const security = pipeline({ token: 'sk_plat_0123456789abcdef0123456789abcdef' });
+    expect(security.authenticate(bearer('sk_plat_0123456789abcdef0123456789abcdef')).authenticated).toBe(true);
+  });
+
+  it('توکن هم‌طولِ اشتباه رد می‌شود', () => {
+    const security = pipeline({ token: 'sk_plat_0123456789abcdef0123456789abcdef' });
+    expect(security.authenticate(bearer('sk_plat_ffffffffffffffffffffffffffffffff')).authenticated).toBe(false);
+  });
+
+  it('توکن کوتاه‌تر رد می‌شود و به timingSafeEqual نمی‌رسد', () => {
+    const security = pipeline({ token: 'sk_plat_0123456789abcdef0123456789abcdef' });
+    expect(security.authenticate(bearer('sk_plat_0123456789')).authenticated).toBe(false);
+  });
+
+  it('بدون هدر احراز، توکن تهی رد می‌شود', () => {
+    const security = pipeline({ token: 'x' });
+    const req = { headers: {} } as unknown as http.IncomingMessage;
+    expect(security.authenticate(req).authenticated).toBe(false);
+  });
+});

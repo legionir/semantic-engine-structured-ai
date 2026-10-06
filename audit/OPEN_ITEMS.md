@@ -42,10 +42,10 @@ Legend
 | 11 | c8a13 | F-0013 (LOW) | `direction: 'both'` behaves as forward. | Implement the union or remove the option. |
 | 12 | c8a16 | F-0016 (LOW) | Impact severity non-monotonic by depth (else-if clobber). | Fix the branch chain; property-test severity monotonicity. |
 | 13 | c8a18 | F-0018 (LOW) | Recursive Tarjan stack-overflows on deep graphs. | Convert to iterative; add a 20k-chain regression test. |
-| 14 | c8a21 | F-0021 (LOW) | `GET /config` hardcodes the `embedding.model` literal. | Report the real configured model. |
+| 14 | c8a21 | F-0021 (LOW) | `GET /config` hardcodes the `embedding.model` literal (`Qwen3-Embedding-0.6B` at `configRoutes.ts:25`). | ⏳ OPEN — the server is not handed the resolved embedding model: `PlatformConfig` has no embedding-model field (the real model lives in `EmbeddingProviderService`). Honest fix requires threading the configured model into `PlatformConfig` + `HttpServer` (a config-contract change), not a one-line edit. Left open deliberately rather than guess a value. |
 | 15 | c8a22 | F-0022 (LOW) | Unwired `query_index` / `queryPolicy` dead module. | Delete the module *or* lock its absence with a test that fails if it reappears. |
-| 16 | c8a5 | F-0005 (LOW) | `SecurityPipeline` token compare is not constant-time. | Use `crypto.timingSafeEqual` on fixed-width buffers. |
-| 17 | c8a3 | F-0003 (LOW) | Dead imports/vars (`loadSqlite`, `wantsVectors`, `DEFAULT_IGNORE_DIRECTORIES`). | Remove; eslint must stay exit 0. |
+| 16 | c8a5 | F-0005 (LOW) | `SecurityPipeline` token compare is not constant-time. | ✅ DONE 2026-10-06 — `crypto.timingSafeEqual` on equal-length buffers; length pre-checked; added `authenticate` regression suite (correct / same-length-wrong / shorter / empty). |
+| 17 | c8a3 | F-0003 (LOW) | Dead imports/vars (`loadSqlite`, `wantsVectors`, `DEFAULT_IGNORE_DIRECTORIES`). | ✅ DONE 2026-10-06 — removed `loadSqlite` + its dead `SqliteModule`/`SqliteDatabase` types, unused `wantsVectors` destructure, unused `DEFAULT_IGNORE_DIRECTORIES` import, and a stale eslint-disable. eslint now reports 0 warnings, exit 0. |
 | 18 | c8a15 | F-0015 (LOW) | 17 handler families undocumented in OpenAPI (BND-0006). | Bring the diff to zero code-only routes. |
 | 19 | c8a4 | F-0004 (INFO) | Bootstrap-token RBAC bypass. | Either document as an accepted risk with owner sign-off, or close the bypass. |
 

@@ -139,7 +139,7 @@ export async function runWatch(args: ParsedArgs, context: CommandContext): Promi
   | provider that built the index. Built once, before the scan, so a bad
   | provider/API key fails immediately.
   */
-  const { wantsVectors, embeddingGenerator } = resolveVectorPlan(args, Boolean(existingIndex?.vectorChunks));
+  const { embeddingGenerator } = resolveVectorPlan(args, Boolean(existingIndex?.vectorChunks));
   const vectorIndexer = embeddingGenerator ? new VectorIndexer({ embeddingGenerator }) : null;
 
   try {

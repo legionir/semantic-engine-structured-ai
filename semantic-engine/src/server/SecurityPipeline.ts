@@ -3,6 +3,7 @@
  */
 
 import * as http from 'http';
+import * as crypto from 'crypto';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { PlatformConfig } from './types';
@@ -146,7 +147,19 @@ export class SecurityPipeline {
       return { authenticated: false };
     }
 
-    const isMatch = candidateToken === this.config.token;
+    /*
+    | F-0005 — مقایسهٔ زمان‌ثابت. `===` روی رشته با short-circuit
+    | کار می‌کند و طولِ تطابقِ پیشازاولین اختلاف را از طریق زمان
+    | بیرون می‌دهد؛ برای یک bearer/API-key که فقط hash‌شده ذخیره
+    | می‌شود، این یک اوراکل قابل‌استفاده است. `timingSafeEqual` بافرهای
+    | هم‌طول می‌خواهد، پس اول طول سنجیده می‌شود (نشت طول مجاز است —
+    | توکن‌های هم‌طول از هم قابل‌تمدید نیستند) و در صورت اختلاف
+    | بدون مقایسهٔ بایت‌به‌بایت رد می‌شود.
+    */
+    const expected = Buffer.from(this.config.token, 'utf8');
+    const actual = Buffer.from(candidateToken, 'utf8');
+    const isMatch =
+      expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
     return { authenticated: isMatch, token: candidateToken };
   }
 

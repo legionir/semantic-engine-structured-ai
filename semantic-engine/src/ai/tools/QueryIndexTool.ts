@@ -147,30 +147,11 @@ export interface QueryIndexOptions {
 
 const DEFAULT_MAX_ROWS = 100;
 
-interface SqliteDatabase {
-  close(callback?: (err: Error | null) => void): void;
-  all(sql: string, params: unknown[], callback: (err: Error | null, rows: unknown[]) => void): void;
-}
-
-interface SqliteModule {
-  OPEN_READONLY: number;
-  Database: new (path: string, mode: number, callback?: (err: Error | null) => void) => SqliteDatabase;
-}
-
 /*
-| sqlite3 یک ماژول native است و ممکن است build نشود. با import ایستا،
-| شکست آن کل رجیستری ابزارها را از کار می‌انداخت (SE-BUILD-09). این
-| بارگذاری تنبل، خرابی را به همین یک ابزار محدود می‌کند.
+| بارگذاری sqlite3 اینجا مرده بود: مسیر زنده از `openSqlite` (لایهٔ
+| درایور SE-BUILD-10) می‌گذرد که خود node:sqlite/sqlite3 را انتخاب
+| می‌کند. F-0003 — typeهای بی‌مصرف بارگذاری هم حذف شدند.
 */
-function loadSqlite(): SqliteModule | null {
-  try {
-
-    return require('sqlite3') as SqliteModule;
-  } catch {
-    return null;
-  }
-}
-
 export class QueryIndexTool implements AiTool<QueryIndexInput> {
   readonly name = 'query_index';
   readonly description = `Run a read-only SQL query against project-index.sqlite. Only these tables and columns are allowed:\n${QUERY_INDEX_SCHEMA_DESCRIPTION}`;

@@ -4,7 +4,6 @@
  * when an identity changes.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { normalise, diff } = require('../../scripts/snapshot.js') as {
   normalise: (value: unknown) => any;
   diff: (expected: unknown, actual: unknown) => string[];
