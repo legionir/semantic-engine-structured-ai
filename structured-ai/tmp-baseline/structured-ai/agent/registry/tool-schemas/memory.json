@@ -1,0 +1,98 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "memory_get",
+      "description": "Read the working memory of this workspace: goals, decisions, requirements, constraints, facts, open tasks and finished work, plus how much history is kept in the archive behind it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only these memory lists. Defaults to all of them."
+          },
+          "include_archive": {
+            "type": "boolean",
+            "description": "Include archive statistics. Defaults to true."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "archive_search",
+      "description": "Search the event archive of earlier work: every tool call folded out of the conversation is kept here with its title, its error and a preview. Use it to recover something the conversation no longer contains instead of redoing the work.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Keywords, such as a file name, an error text or a command."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "failure",
+              "decision",
+              "mutation",
+              "command",
+              "inspection",
+              "rollup"
+            ],
+            "description": "Only events of this kind."
+          },
+          "agent": {
+            "type": "string",
+            "description": "Only events produced by this agent."
+          },
+          "tool": {
+            "type": "string",
+            "description": "Only events produced by this tool."
+          },
+          "min_importance": {
+            "type": "number",
+            "description": "Drop records below this importance, between 0 and 1."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many records to return."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "archive_get",
+      "description": "Read the full stored body of archived events by id, as returned by archive_search.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Record ids to open."
+          },
+          "id": {
+            "type": "string",
+            "description": "A single record id."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  }
+]

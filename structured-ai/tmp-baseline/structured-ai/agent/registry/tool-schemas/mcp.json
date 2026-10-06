@@ -1,0 +1,193 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_servers",
+      "description": "List the configured MCP servers with their transport, connection state, tool count and any error. Use this first when an MCP tool is missing or failing.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "description": "Reconnect and re-read every server's tool list before answering."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_tools",
+      "description": "List the tools the connected MCP servers offer, with their parameter names. Each one can be called with mcp_call, or directly by its mcp__<server>__<tool> name when it is declared.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Only list the tools of this server."
+          },
+          "refresh": {
+            "type": "boolean",
+            "description": "Ask the servers again instead of using the cached catalogue."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of tools to return."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_call",
+      "description": "Call a tool on an MCP server. Use this for any server tool, including one that is not declared as its own function. Name the server and the tool, or pass the full mcp__<server>__<tool> name as tool.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Server name, as reported by mcp_servers. Not needed when tool is a full mcp__<server>__<tool> name."
+          },
+          "tool": {
+            "type": "string",
+            "description": "Tool name on that server, or a full mcp__<server>__<tool> name."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "Arguments for the tool, matching the schema mcp_tools reports.",
+            "additionalProperties": true
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Override the call timeout for this one call."
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_add",
+      "description": "Connect a new MCP server and make its tools available for the rest of the run. Give a command for a local stdio server, or a url for an http, sse or websocket one. The connection is proved before the server is kept.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name to register the server under. Used as the prefix of its tool names."
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "stdio",
+              "http",
+              "sse",
+              "websocket"
+            ],
+            "description": "Transport to use. Inferred from command or url when omitted."
+          },
+          "command": {
+            "type": "string",
+            "description": "Executable or .js entry point for a stdio server."
+          },
+          "command_args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Arguments for the command."
+          },
+          "url": {
+            "type": "string",
+            "description": "Endpoint for an http, sse or websocket server."
+          },
+          "env": {
+            "type": "object",
+            "description": "Extra environment variables for a stdio server.",
+            "additionalProperties": true
+          },
+          "headers": {
+            "type": "object",
+            "description": "Extra HTTP headers for a remote server.",
+            "additionalProperties": true
+          },
+          "token": {
+            "type": "string",
+            "description": "Bearer token for a remote server."
+          },
+          "description": {
+            "type": "string",
+            "description": "What this server is for."
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only expose these tools of the server."
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Do not expose these tools of the server."
+          },
+          "trust": {
+            "type": "string",
+            "enum": [
+              "default",
+              "trusted",
+              "restricted"
+            ],
+            "description": "How much approval calling this server needs. restricted always asks, trusted never does."
+          },
+          "persist": {
+            "type": "boolean",
+            "description": "Save the server to .agent/mcp.json so it is there next time. Defaults to true."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_remove",
+      "description": "Disconnect an MCP server and withdraw its tools for the rest of the run.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the server to remove."
+          },
+          "persist": {
+            "type": "boolean",
+            "description": "Also remove it from .agent/mcp.json. Defaults to true."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

@@ -1,0 +1,36 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "discussion_start",
+      "description": "Start a multi-agent discussion with selected specialist personas. Each persona reasons from different priorities (security vs speed, etc.). Observer decides when to finish and produces final synthesis.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The task description to discuss, e.g. 'Design user session storage for Next.js app with JWT'"
+          },
+          "personas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of persona ids to include. Available: security, backend, database, frontend, architect, performance, qa, devops, cost, accessibility, data, compliance, mobile, ml, legacy"
+          },
+          "max_rounds": {
+            "type": "integer",
+            "description": "Maximum discussion rounds (1-10), default 5",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "task",
+          "personas"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

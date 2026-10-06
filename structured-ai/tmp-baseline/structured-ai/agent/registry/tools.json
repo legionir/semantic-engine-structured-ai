@@ -1,0 +1,2083 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_read",
+      "description": "Read a text file. Supports reading a window of lines instead of the whole file, which keeps large files out of the conversation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the workspace root."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "First line to read, 0-based. Defaults to 0."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of lines to read."
+          },
+          "tail": {
+            "type": "integer",
+            "description": "Read only the last N lines. Overrides offset and limit."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_read_many",
+      "description": "Read several text files in one call. Each file succeeds or fails independently.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File paths to read."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "First line to read from each file, 0-based."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of lines to read from each file."
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_list",
+      "description": "List the direct contents of one directory. Use fs_tree for a recursive view and search_start to find files by name.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory path."
+          },
+          "include_sizes": {
+            "type": "boolean",
+            "description": "Include size and modification time for each entry."
+          },
+          "sort_by": {
+            "type": "string",
+            "description": "Sort order.",
+            "enum": [
+              "name",
+              "size"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_tree",
+      "description": "Return a recursive directory tree up to a depth limit, ignoring dependency and build directories.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Root directory."
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Maximum depth to descend. Defaults to 3."
+          },
+          "include_files": {
+            "type": "boolean",
+            "description": "Include files as well as directories. Defaults to true."
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Extra directory names to skip."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_stat",
+      "description": "Return basic metadata for a path: type, size, timestamps, mode, and whether it is a symlink. Use fs_info when content metrics or a hash are needed.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Target path."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_info",
+      "description": "Return the complete metadata of a file or directory: size, timestamps, permissions, ownership, inode details, and for text files the character, word and line counts, line ending style, encoding and a sha256 hash. Use fs_stat when only the basic type and size are needed.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Target path."
+          },
+          "include_hash": {
+            "type": "boolean",
+            "description": "Compute a sha256 content hash. Defaults to true."
+          },
+          "include_preview": {
+            "type": "boolean",
+            "description": "Include the first and last lines of the file. Defaults to false."
+          },
+          "preview_lines": {
+            "type": "integer",
+            "description": "How many lines to include in each preview. Defaults to 5."
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Depth limit when summarising a directory. Defaults to 10."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_roots",
+      "description": "List the directories the filesystem tools are allowed to access.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_write",
+      "description": "Create, overwrite, or append to a text file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Target file path."
+          },
+          "content": {
+            "type": "string",
+            "description": "Content to write."
+          },
+          "mode": {
+            "type": "string",
+            "description": "Write mode. Defaults to overwrite.",
+            "enum": [
+              "overwrite",
+              "append"
+            ]
+          },
+          "create_parents": {
+            "type": "boolean",
+            "description": "Create missing parent directories. Defaults to true."
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_edit",
+      "description": "Replace an exact block of text in a file. Fails if the number of matches differs from expected_replacements, so an ambiguous edit is never applied silently.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Target file path."
+          },
+          "old_text": {
+            "type": "string",
+            "description": "Exact text to replace, including indentation."
+          },
+          "new_text": {
+            "type": "string",
+            "description": "Replacement text."
+          },
+          "expected_replacements": {
+            "type": "integer",
+            "description": "How many occurrences are expected. Defaults to 1."
+          }
+        },
+        "required": [
+          "path",
+          "old_text",
+          "new_text"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_mkdir",
+      "description": "Create a directory, including missing parents.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory path."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_move",
+      "description": "Move or rename a file or directory inside the workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Existing path."
+          },
+          "destination": {
+            "type": "string",
+            "description": "New path."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Replace the destination if it already exists. Defaults to false."
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_delete",
+      "description": "Delete a file or directory. This is destructive and cannot be undone by the runtime.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Target path."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Required to delete a non-empty directory."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_start",
+      "description": "Start a search over file contents or file names. Returns results directly when the search finishes within wait_ms, otherwise returns a search_id to poll.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Root directory to search."
+          },
+          "query": {
+            "type": "string",
+            "description": "Text, regular expression, or file name fragment depending on mode."
+          },
+          "mode": {
+            "type": "string",
+            "description": "Search file contents or file names. Defaults to content.",
+            "enum": [
+              "content",
+              "files"
+            ]
+          },
+          "file_pattern": {
+            "type": "string",
+            "description": "Only search files whose name matches this glob, such as *.js."
+          },
+          "is_regex": {
+            "type": "boolean",
+            "description": "Treat query as a regular expression."
+          },
+          "case_sensitive": {
+            "type": "boolean",
+            "description": "Match case exactly. Defaults to false."
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Extra directory names to skip."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Stop after this many matches. Defaults to 200."
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Maximum directory depth. Defaults to 20."
+          },
+          "wait_ms": {
+            "type": "integer",
+            "description": "How long to wait for completion before returning a handle. Defaults to 5000."
+          }
+        },
+        "required": [
+          "path",
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_get",
+      "description": "Fetch the results of a search started with search_start.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "search_id": {
+            "type": "string",
+            "description": "Identifier returned by search_start."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Skip this many results, for paging through a large result set."
+          },
+          "wait_ms": {
+            "type": "integer",
+            "description": "Wait up to this long for a still-running search to finish."
+          }
+        },
+        "required": [
+          "search_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_list",
+      "description": "List searches known to the runtime and their status.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_stop",
+      "description": "Stop a running search and keep the results collected so far.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "search_id": {
+            "type": "string",
+            "description": "Identifier returned by search_start."
+          }
+        },
+        "required": [
+          "search_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "terminal_exec",
+      "description": "Run a shell command to completion and return its exit code, stdout, and stderr. A non-zero exit code is returned as data, not as a tool failure. Use process_start for a command that does not finish on its own.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Command line to execute."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory. Defaults to the workspace root."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Kill the command after this many milliseconds. Defaults to 30000."
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_start",
+      "description": "Start a long-running command as a background session that can be read from, written to, and terminated. Use terminal_exec for commands that finish on their own.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Command line to execute."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory. Defaults to the workspace root."
+          },
+          "wait_ms": {
+            "type": "integer",
+            "description": "How long to collect initial output before returning. Defaults to 1000."
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_read",
+      "description": "Read output produced by a background process since the previous read.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "wait_ms": {
+            "type": "integer",
+            "description": "Wait up to this long for new output to arrive."
+          },
+          "peek": {
+            "type": "boolean",
+            "description": "Return the full buffered output without advancing the read cursor."
+          }
+        },
+        "required": [
+          "process_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_write",
+      "description": "Send input to the standard input of a running background process.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "input": {
+            "type": "string",
+            "description": "Text to send."
+          },
+          "append_newline": {
+            "type": "boolean",
+            "description": "Append a newline to the input. Defaults to true."
+          }
+        },
+        "required": [
+          "process_id",
+          "input"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_terminate",
+      "description": "Stop a background process with SIGTERM, escalating to SIGKILL if it does not exit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "grace_ms": {
+            "type": "integer",
+            "description": "How long to wait before escalating to SIGKILL. Defaults to 2000."
+          }
+        },
+        "required": [
+          "process_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_list",
+      "description": "List background processes started by the runtime.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "include_finished": {
+            "type": "boolean",
+            "description": "Include processes that already exited. Defaults to false."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_status",
+      "description": "Show the current Git repository status: branch, staged, unstaged, and untracked files, in short format.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_diff",
+      "description": "Show changes in the Git working tree or the staging area.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "staged": {
+            "type": "boolean",
+            "description": "Show staged changes instead of working tree changes."
+          },
+          "path": {
+            "type": "string",
+            "description": "Limit the diff to this path."
+          },
+          "context_lines": {
+            "type": "integer",
+            "description": "Number of context lines around each change."
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_log",
+      "description": "Show recent Git commits as one line each, with decorations such as branch and tag names.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of commits. Defaults to 10."
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_branch",
+      "description": "List local Git branches, or create a new one. Listing is read-only; creating changes the repository.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "action": {
+            "type": "string",
+            "description": "Branch action.",
+            "enum": [
+              "list",
+              "create"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Branch name when creating a branch."
+          }
+        },
+        "required": [
+          "cwd",
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_checkout",
+      "description": "Switch the working tree to an existing Git branch. This changes the files on disk.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Target branch."
+          }
+        },
+        "required": [
+          "cwd",
+          "branch"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_add",
+      "description": "Stage specific paths for the next commit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths to stage."
+          }
+        },
+        "required": [
+          "cwd",
+          "paths"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_commit",
+      "description": "Create a Git commit. When paths is supplied, commit only those paths and preserve unrelated staged changes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional path allowlist. Automatic hooks always provide this so unrelated staged files cannot enter the commit."
+          }
+        },
+        "required": [
+          "cwd",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "net_fetch",
+      "description": "Fetch a URL over HTTP or HTTPS and return the response body as text. Loopback, link-local, cloud metadata, and private network addresses are refused.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Absolute http or https URL."
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP method. Defaults to GET.",
+            "enum": [
+              "GET",
+              "POST"
+            ]
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Request headers."
+          },
+          "body": {
+            "type": "string",
+            "description": "Request body for POST."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Abort the request after this many milliseconds. Defaults to 15000."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "runtime_stats",
+      "description": "Report what the runtime has actually executed: per-tool call counts, failures, timings, and the most recent tool calls.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "include_recent": {
+            "type": "boolean",
+            "description": "Include the recent call list. Defaults to true."
+          },
+          "recent_limit": {
+            "type": "integer",
+            "description": "How many recent calls to include. Defaults to 10."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "plan_get",
+      "description": "Read the persistent real-work plan, assigned agents, next step, and the read-only runtime routine (before/after hooks).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "summary_only": {
+            "type": "boolean",
+            "description": "Return only the progress summary instead of every phase."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "plan_set",
+      "description": "Create or replace the real-work plan. Steps may name an agent profile. Runtime hooks are shown separately as routine and must not be copied into phases.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "objective": {
+            "type": "string",
+            "description": "What the whole plan achieves."
+          },
+          "phases": {
+            "type": "array",
+            "description": "Ordered phases. Each is an object with id, title, optional goal, and steps.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "goal": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Stable unique step id."
+                      },
+                      "title": {
+                        "type": "string",
+                        "description": "Concrete work item."
+                      },
+                      "agent": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Registered agent profile that owns this step, or null for the main agent."
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "in_progress",
+                          "done",
+                          "blocked",
+                          "skipped"
+                        ]
+                      },
+                      "evidence": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Runtime evidence for the current status."
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "agent"
+                    ]
+                  },
+                  "description": "Real work steps only. Each may assign an agent profile; runtime hooks do not belong in the plan."
+                }
+              }
+            }
+          },
+          "preserve_progress": {
+            "type": "boolean",
+            "description": "Keep the recorded status of steps that already exist. Defaults to true."
+          }
+        },
+        "required": [
+          "objective",
+          "phases"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "plan_update",
+      "description": "Record progress: set the status of phases or steps, attach the evidence for a finished step, and add steps to a phase before starting it. A step cannot be marked done without evidence.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "updates": {
+            "type": "array",
+            "description": "Status changes.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "done",
+                    "blocked",
+                    "skipped"
+                  ]
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "agent": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Change or clear the agent profile assigned to this step."
+                }
+              }
+            }
+          },
+          "add_steps": {
+            "type": "array",
+            "description": "New steps for an existing phase.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "phase_id": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Stable unique step id."
+                      },
+                      "title": {
+                        "type": "string",
+                        "description": "Concrete work item."
+                      },
+                      "agent": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Registered agent profile that owns this step, or null for the main agent."
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "in_progress",
+                          "done",
+                          "blocked",
+                          "skipped"
+                        ]
+                      },
+                      "evidence": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Runtime evidence for the current status."
+                      }
+                    },
+                    "required": [
+                      "title"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "id": {
+            "type": "string",
+            "description": "Flat form: id of one phase or step to update."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "blocked",
+              "skipped"
+            ],
+            "description": "Flat form: new status."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "Flat form: evidence for the update."
+          },
+          "title": {
+            "type": "string",
+            "description": "Flat form: replacement title."
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flat form: agent assignment for a step."
+          },
+          "phase_id": {
+            "type": "string",
+            "description": "Flat form: phase receiving new steps."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Stable unique step id."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Concrete work item."
+                },
+                "agent": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Registered agent profile that owns this step, or null for the main agent."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "done",
+                    "blocked",
+                    "skipped"
+                  ]
+                },
+                "evidence": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Runtime evidence for the current status."
+                }
+              },
+              "required": [
+                "title"
+              ]
+            },
+            "description": "Flat form: steps to add to phase_id."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "memory_get",
+      "description": "Read the working memory of this workspace: goals, decisions, requirements, constraints, facts, open tasks and finished work, plus how much history is kept in the archive behind it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only these memory lists. Defaults to all of them."
+          },
+          "include_archive": {
+            "type": "boolean",
+            "description": "Include archive statistics. Defaults to true."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "archive_search",
+      "description": "Search the event archive of earlier work: every tool call folded out of the conversation is kept here with its title, its error and a preview. Use it to recover something the conversation no longer contains instead of redoing the work.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Keywords, such as a file name, an error text or a command."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "failure",
+              "decision",
+              "mutation",
+              "command",
+              "inspection",
+              "rollup"
+            ],
+            "description": "Only events of this kind."
+          },
+          "agent": {
+            "type": "string",
+            "description": "Only events produced by this agent."
+          },
+          "tool": {
+            "type": "string",
+            "description": "Only events produced by this tool."
+          },
+          "min_importance": {
+            "type": "number",
+            "description": "Drop records below this importance, between 0 and 1."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many records to return."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "archive_get",
+      "description": "Read the full stored body of archived events by id, as returned by archive_search.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Record ids to open."
+          },
+          "id": {
+            "type": "string",
+            "description": "A single record id."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "skill_get",
+      "description": "Load the full text of a skill: what it is for, how to do it, what to avoid, and which tools it uses. The prompt lists only skill names and descriptions, so read a skill before starting that kind of work.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skill names to load."
+          },
+          "name": {
+            "type": "string",
+            "description": "A single skill name."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "skill_read",
+      "description": "Read one resource of a skill that carries data, such as a house style, a checklist or a table. skill_get lists which resources a skill has.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Skill name."
+          },
+          "resource": {
+            "type": "string",
+            "description": "Resource id, as listed by skill_get."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "First line to read, 0-based."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of lines to read."
+          }
+        },
+        "required": [
+          "name",
+          "resource"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_find_symbol",
+      "description": "Find symbols (functions, classes, interfaces, types, methods) in the semantic code index by name. Prefer this over search_start when looking for symbol definitions.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Symbol name or substring to search for."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Optional symbol kind filter (e.g. function, class, interface, method, type)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of symbols to return (capped at 50)."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_search",
+      "description": "Perform semantic or hybrid vector/keyword search across the codebase index. Best for finding code matching a concept or natural language description.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Natural language or technical query describing desired functionality."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hybrid",
+              "keyword",
+              "vector"
+            ],
+            "description": "Search mode. Defaults to hybrid."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of results (capped at 50)."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_file_summary",
+      "description": "Get architectural summary of a file from the semantic index: role, imports, exports, and symbol count.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Workspace relative file path."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_dependencies",
+      "description": "Query the file and symbol dependency graph. Returns incoming, outgoing, or bidirectional edges.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Workspace relative file path."
+          },
+          "depth": {
+            "type": "integer",
+            "description": "Traversal depth. Defaults to 1."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "in",
+              "out",
+              "both"
+            ],
+            "description": "Dependency direction. Defaults to both."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum edges to return (capped at 50)."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_impact",
+      "description": "Analyze the impact radius of modifying a symbol or file. Traces callers and dependents in the graph.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Symbol name to analyze."
+          },
+          "path": {
+            "type": "string",
+            "description": "Workspace relative file path."
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Maximum traversal depth in the graph. Defaults to 3."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum items to return (capped at 50)."
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_find_tests",
+      "description": "Find tests that cover or relate to a given source file or symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Source file path."
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Symbol name."
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_config_usage",
+      "description": "Find configuration keys and environment variables used across the codebase.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Config key or env var name (e.g. DATABASE_URL, PORT)."
+          },
+          "path": {
+            "type": "string",
+            "description": "Optional file path filter."
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_context",
+      "description": "Assemble a token-budgeted, relevance-ranked context bundle for a task or seed files.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "Description of the task to gather context for."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional seed files to anchor context."
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Token budget for the context bundle. Defaults to 2000."
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_index_status",
+      "description": "Check semantic index availability, staleness state (fresh, stale, missing), file count, and symbol count.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_index_start",
+      "description": "Start background generation or refresh of the semantic code index as a cancellable session.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "incremental": {
+            "type": "boolean",
+            "description": "Whether to perform an incremental update rather than full rebuild."
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_index_get",
+      "description": "Check status and outcome of an index generation session started with code_index_start.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Session ID returned by code_index_start."
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_diagnostics",
+      "description": "Query live LSP compiler diagnostics (syntax and type errors) without running a full build. Returns exact line numbers and error messages.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File paths to check for diagnostics."
+          },
+          "path": {
+            "type": "string",
+            "description": "Single file path to check."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum diagnostics to return."
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_callers",
+      "description": "Query compiler-accurate incoming calls / call hierarchy for a function or method from the live language server.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Target symbol name."
+          },
+          "path": {
+            "type": "string",
+            "description": "File path containing the symbol."
+          },
+          "line": {
+            "type": "integer",
+            "description": "0-based line number of symbol declaration."
+          },
+          "character": {
+            "type": "integer",
+            "description": "0-based character offset of symbol declaration."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum callers to return."
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_definition",
+      "description": "Jump to definition of a symbol at a given source location using the live language server.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Symbol name."
+          },
+          "path": {
+            "type": "string",
+            "description": "File path where symbol is referenced."
+          },
+          "line": {
+            "type": "integer",
+            "description": "0-based line number of reference."
+          },
+          "character": {
+            "type": "integer",
+            "description": "0-based character offset."
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_organize_imports",
+      "description": "Compute clean import organization edits for a file via the language server.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path to organize imports for."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_rename",
+      "description": "Perform a safe, compiler-backed symbol rename across all references in the workspace. Defaults to dry_run: true for preview.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path containing the symbol to rename."
+          },
+          "line": {
+            "type": "integer",
+            "description": "0-based line number of the symbol."
+          },
+          "character": {
+            "type": "integer",
+            "description": "0-based character offset of the symbol."
+          },
+          "new_name": {
+            "type": "string",
+            "description": "New identifier name."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "If true, only previews the planned WorkspaceEdit without changing files. Defaults to true."
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "Explicit confirmation to apply changes to disk. Requires approval."
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "character",
+          "new_name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_simulate_mutation",
+      "description": "Simulates a virtual refactoring action (e.g. deleting or renaming a symbol) in memory and identifies broken callers before modifying disk files.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action_type": {
+            "type": "string",
+            "enum": [
+              "rename_symbol",
+              "delete_symbol",
+              "move_symbol"
+            ],
+            "description": "Mutation type to simulate."
+          },
+          "target_symbol_id": {
+            "type": "string",
+            "description": "Identifier of symbol to mutate."
+          },
+          "new_name": {
+            "type": "string",
+            "description": "New symbol name for rename action."
+          }
+        },
+        "required": [
+          "action_type",
+          "target_symbol_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_architecture_violations",
+      "description": "Analyzes project dependencies to discover circular dependencies and layered architecture violations.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "code_git_hotspots",
+      "description": "Identifies codebase hotspots and high-risk files based on commit frequency, churn rate, and complexity.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of hotspots to return."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_servers",
+      "description": "List the configured MCP servers with their transport, connection state, tool count and any error. Use this first when an MCP tool is missing or failing.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "description": "Reconnect and re-read every server's tool list before answering."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_tools",
+      "description": "List the tools the connected MCP servers offer, with their parameter names. Each one can be called with mcp_call, or directly by its mcp__<server>__<tool> name when it is declared.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Only list the tools of this server."
+          },
+          "refresh": {
+            "type": "boolean",
+            "description": "Ask the servers again instead of using the cached catalogue."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of tools to return."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_call",
+      "description": "Call a tool on an MCP server. Use this for any server tool, including one that is not declared as its own function. Name the server and the tool, or pass the full mcp__<server>__<tool> name as tool.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Server name, as reported by mcp_servers. Not needed when tool is a full mcp__<server>__<tool> name."
+          },
+          "tool": {
+            "type": "string",
+            "description": "Tool name on that server, or a full mcp__<server>__<tool> name."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "Arguments for the tool, matching the schema mcp_tools reports.",
+            "additionalProperties": true
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Override the call timeout for this one call."
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_add",
+      "description": "Connect a new MCP server and make its tools available for the rest of the run. Give a command for a local stdio server, or a url for an http, sse or websocket one. The connection is proved before the server is kept.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name to register the server under. Used as the prefix of its tool names."
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "stdio",
+              "http",
+              "sse",
+              "websocket"
+            ],
+            "description": "Transport to use. Inferred from command or url when omitted."
+          },
+          "command": {
+            "type": "string",
+            "description": "Executable or .js entry point for a stdio server."
+          },
+          "command_args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Arguments for the command."
+          },
+          "url": {
+            "type": "string",
+            "description": "Endpoint for an http, sse or websocket server."
+          },
+          "env": {
+            "type": "object",
+            "description": "Extra environment variables for a stdio server.",
+            "additionalProperties": true
+          },
+          "headers": {
+            "type": "object",
+            "description": "Extra HTTP headers for a remote server.",
+            "additionalProperties": true
+          },
+          "token": {
+            "type": "string",
+            "description": "Bearer token for a remote server."
+          },
+          "description": {
+            "type": "string",
+            "description": "What this server is for."
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only expose these tools of the server."
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Do not expose these tools of the server."
+          },
+          "trust": {
+            "type": "string",
+            "enum": [
+              "default",
+              "trusted",
+              "restricted"
+            ],
+            "description": "How much approval calling this server needs. restricted always asks, trusted never does."
+          },
+          "persist": {
+            "type": "boolean",
+            "description": "Save the server to .agent/mcp.json so it is there next time. Defaults to true."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_remove",
+      "description": "Disconnect an MCP server and withdraw its tools for the rest of the run.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the server to remove."
+          },
+          "persist": {
+            "type": "boolean",
+            "description": "Also remove it from .agent/mcp.json. Defaults to true."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "discussion_start",
+      "description": "Start a multi-agent discussion with selected specialist personas. Each persona reasons from different priorities (security vs speed, etc.). Observer decides when to finish and produces final synthesis.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The task description to discuss, e.g. 'Design user session storage for Next.js app with JWT'"
+          },
+          "personas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of persona ids to include. Available: security, backend, database, frontend, architect, performance, qa, devops, cost, accessibility, data, compliance, mobile, ml, legacy"
+          },
+          "max_rounds": {
+            "type": "integer",
+            "description": "Maximum discussion rounds (1-10), default 5",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "task",
+          "personas"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

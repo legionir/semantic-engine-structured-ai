@@ -1,0 +1,25 @@
+{
+  "description": "MCP servers this runtime ships with. A workspace overrides any of them, and adds its own, in .mcp.json or .agent/mcp.json; the environment variable MCP_SERVERS wins over both. Four transports are available: stdio for a local process, http for Streamable HTTP, sse for the older HTTP+SSE pair, and websocket. The transport is inferred from a command or a url when it is not stated.",
+  "examples": {
+    "a_local_process": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/srv/data"]
+    },
+    "a_streamable_http_server": {
+      "transport": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "authorization": "Bearer ${env:EXAMPLE_TOKEN}" }
+    },
+    "an_sse_server": {
+      "transport": "sse",
+      "url": "https://mcp.example.com/sse"
+    },
+    "a_websocket_server": {
+      "transport": "websocket",
+      "url": "wss://mcp.example.com/ws",
+      "trust": "restricted"
+    }
+  },
+  "mcpServers": {}
+}
