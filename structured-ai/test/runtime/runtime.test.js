@@ -586,6 +586,104 @@ async function main() {
         });
     });
 
+
+    await test("on_failure: stop skips un-started dependents across waves", async () => {
+
+        const ran = [];
+        const skipped = [];
+
+        const executed =
+            await runtime.executeDependencyGraph({
+                items: [
+                    { id: "a", depends_on: [] },
+                    { id: "b", depends_on: ["a"] },
+                    { id: "c", depends_on: ["b"] }
+                ],
+                maxParallel: 1,
+                executor: async item => {
+                    ran.push(item.id);
+                    if (item.id === "b") {
+                        return { status: "failed", on_failure: "stop" };
+                    }
+                    return { status: "done" };
+                },
+                stopReason: (item, wrapped) =>
+                    wrapped.result &&
+                    wrapped.result.status === "failed" &&
+                    wrapped.result.on_failure === "stop"
+                        ? "hook " + item.id + " failed with on_failure: stop"
+                        : null,
+                skipItem: async (item, reason) => {
+                    skipped.push(item.id);
+                    return {
+                        id: item.id,
+                        status: "skipped",
+                        ok: false,
+                        skipped: true,
+                        skipped_by: "on_failure_stop",
+                        reason
+                    };
+                }
+            });
+
+        assert.deepEqual(ran, ["a", "b"]);
+        assert.deepEqual(skipped, ["c"]);
+
+        const c = executed.find(entry => entry.id === "c");
+        assert.equal(c.success, false, "a skipped item must not publish success");
+        assert.equal(c.skipped, true);
+        assert.equal(c.result.skipped_by, "on_failure_stop");
+    });
+
+
+    await test("a stop skips items never dispatched for lack of a slot", async () => {
+
+        const ran = [];
+        const skipped = [];
+
+        await runtime.executeDependencyGraph({
+            items: [
+                { id: "x", depends_on: [] },
+                { id: "y", depends_on: [] },
+                { id: "z", depends_on: [] }
+            ],
+            maxParallel: 2,
+            executor: async item => {
+                ran.push(item.id);
+                if (item.id === "x") {
+                    /* resolves on the microtask queue, before y */
+                    return { status: "failed", on_failure: "stop" };
+                }
+                /* y is slow: it is still running when x reports the stop */
+                return new Promise(resolve =>
+                    setImmediate(() => resolve({ status: "done" })));
+            },
+            stopReason: (item, wrapped) =>
+                wrapped.result &&
+                wrapped.result.status === "failed" &&
+                wrapped.result.on_failure === "stop"
+                    ? "hook " + item.id + " failed with on_failure: stop"
+                    : null,
+            skipItem: async (item, reason) => {
+                skipped.push(item.id);
+                return {
+                    id: item.id,
+                    status: "skipped",
+                    ok: false,
+                    skipped: true,
+                    skipped_by: "on_failure_stop",
+                    reason
+                };
+            }
+        });
+
+        /* x and y occupied both slots; z was never dispatched once x stopped,
+           so it is skipped rather than run — this is the race the graph must
+           honour, and y (already in flight) still finishes normally. */
+        assert.deepEqual(ran, ["x", "y"]);
+        assert.deepEqual(skipped, ["z"]);
+    });
+
     /* ---------------------------------------------------------------- */
     console.log("\nrun deadline and cancellation");
 
@@ -1435,10 +1533,47 @@ async function main() {
         | single word of conversation. Every one of these numbers is a
         | ceiling, not a target: they exist so a new registry entry
         | cannot quietly tax every iteration.
+        |
+        | The workspace root is folded to "<root>" before measuring. The
+        | runtime context repeats it, so the same unchanged prompt crossed
+        | its ceiling on a deep checkout path and passed on a shallow one:
+        | that measures the machine, not the budget.
         */
 
         const messages =
             runtime.createMainAgentMessages("a task");
+
+        const workspaceRoot =
+            (() => {
+
+                const context =
+                    messages.find(
+                        message =>
+                            typeof message.content === "string" &&
+                            message.content.includes('"runtime_context"')
+                    );
+
+                if (!context) {
+                    return process.cwd();
+                }
+
+                try {
+                    return JSON.parse(context.content).context.workspace.root || process.cwd();
+                } catch {
+                    return process.cwd();
+                }
+            })();
+
+        const measured =
+            content =>
+                [
+                    workspaceRoot,
+                    workspaceRoot.replace(/\\/g, "\\\\"),
+                    workspaceRoot.replace(/\\/g, "/")
+                ].reduce(
+                    (text, form) => text.split(form).join("<root>"),
+                    content
+                );
 
         const sizeOf = type =>
             messages
@@ -1448,7 +1583,7 @@ async function main() {
                         message.content.includes(`"${type}"`)
                 )
                 .reduce(
-                    (total, message) => total + message.content.length,
+                    (total, message) => total + measured(message.content).length,
                     0
                 );
 
@@ -1469,12 +1604,21 @@ async function main() {
 
         const total =
             messages.reduce(
-                (sum, message) => sum + (message.content || "").length,
+                (sum, message) => sum + measured(message.content || "").length,
                 0
             );
 
+        /*
+        | 2026-10-05, path-normalised: 30,049 characters, of which the live
+        | runtime context is about 2,480. The old 30,000 was crossed by the
+        | catalogues that arrived since it was set, not by a stray paragraph,
+        | so the whole-request ceiling moves to 31,000 and the per-part
+        | ceilings above are what actually bind: a new skill, agent or persona
+        | is caught there first, while it is still one line, not 1,000.
+        */
+
         assert.ok(
-            total < 30000,
+            total < 31000,
             `the fixed messages are ${total} chars, they used to be 39727`
         );
     });

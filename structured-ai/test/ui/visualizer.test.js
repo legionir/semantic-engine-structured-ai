@@ -40,9 +40,14 @@ function source(name) {
 
 
 function runModuleScript(script) {
+  /*
+  | --input-type is what makes -e an ES module; the extra flag that used to
+  | sit in front of it changed the default for files, is gone from the Node
+  | that runs this app, and the spawn failed on the option alone.
+  */
   return spawnSync(
     process.execPath,
-    ["--experimental-default-type=module", "--input-type=module", "-e", script],
+    ["--input-type=module", "-e", script],
     { encoding: "utf8" }
   );
 }

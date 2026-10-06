@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0e17">
 <title>Project Intelligence Visualizer</title>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/visualizer.css">
@@ -11,27 +12,15 @@
 
 <header class="bar visualizer-bar">
   <div class="brand">
-    <a href="/" class="chip button" title="Back to Console">← Console</a>
+    <a href="/" class="chip button" title="Back to Console">Console</a>
     <span class="dot live"></span>
     <strong>Project Intelligence</strong>
     <span class="muted" id="projectTitle">Loading project…</span>
   </div>
 
-  <!-- View Switcher Tabs -->
-  <nav class="views-nav">
-    <button type="button" class="view-tab active" data-view="architecture">🏗 Architecture</button>
-    <button type="button" class="view-tab" data-view="module">📦 Modules</button>
-    <button type="button" class="view-tab" data-view="dependencies">🔗 Dependencies & Calls</button>
-    <button type="button" class="view-tab" data-view="workflow">⚡ Workflows</button>
-    <button type="button" class="view-tab" data-view="impact">💥 Impact Analysis</button>
-    <button type="button" class="view-tab" data-view="business-mapping">💼 Business → Code</button>
-    <button type="button" class="view-tab" data-view="test-intelligence">🧪 Test Map</button>
-    <button type="button" class="view-tab" data-view="hotspots">🔥 Git Hotspots</button>
-  </nav>
-
   <!-- Search to Graph Bar -->
   <div class="search-box">
-    <input type="search" id="graphSearch" placeholder="🔍 Search symbols, files, concepts…" autocomplete="off">
+    <input type="search" id="graphSearch" placeholder="Search symbols, files, concepts…" autocomplete="off">
     <div id="searchResults" class="search-dropdown" hidden></div>
   </div>
 
@@ -50,6 +39,18 @@
     <button type="button" id="fitGraphBtn" class="chip button" title="Fit to screen">Fit</button>
     <button type="button" id="resetFocusBtn" class="chip button" title="Reset focus">Reset</button>
   </div>
+
+  <!-- View Switcher Tabs: own row under the brand bar -->
+  <nav class="views-nav" aria-label="Graph views">
+    <button type="button" class="view-tab active" data-view="architecture">Architecture</button>
+    <button type="button" class="view-tab" data-view="module">Modules</button>
+    <button type="button" class="view-tab" data-view="dependencies">Dependencies &amp; Calls</button>
+    <button type="button" class="view-tab" data-view="workflow">Workflows</button>
+    <button type="button" class="view-tab" data-view="impact">Impact Analysis</button>
+    <button type="button" class="view-tab" data-view="business-mapping">Business → Code</button>
+    <button type="button" class="view-tab" data-view="test-intelligence">Test Map</button>
+    <button type="button" class="view-tab" data-view="hotspots">Git Hotspots</button>
+  </nav>
 </header>
 
 <div class="visualizer-layout">

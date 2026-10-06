@@ -8,6 +8,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { SourceSecurityGuard } from './SourceSecurityGuard';
+import { assertResolvedFetchableUrl } from '../providers/EmbeddingProviderService';
 
 const execFileAsync = promisify(execFile);
 
@@ -90,6 +91,15 @@ export class SourceSyncService {
     if (options.commitHash && !/^[0-9a-f]{7,64}$/i.test(options.commitHash)) {
       throw new Error('commitHash must be a hexadecimal Git commit id.');
     }
+
+    /*
+    | F-0024: repoUrl is request-supplied and git-http reaches the network. The
+    | protocol allowlist above already blocks ext::/file::/ssh RCE; additionally
+    | resolve the host and reject link-local/private/cloud-metadata (localhost is
+    | allowed) so a clone can't be aimed at internal endpoints. This mirrors the
+    | egress guard used for providers/chat.
+    */
+    await assertResolvedFetchableUrl(options.repoUrl);
 
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });

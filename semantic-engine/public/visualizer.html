@@ -9,6 +9,15 @@
 </head>
 <body class="visualizer-body">
 
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.3L12 15l-1.8-4.7L5.5 9l4.7-1.3z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 14a2 2 0 0 1-2 2H8l-4 3V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h8M16 7h4M4 17h4M12 17h8"/><circle cx="14" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></symbol>
+</svg>
+
 <header class="bar visualizer-bar">
   <div class="brand">
     <a href="/" class="chip button" title="Back to Console">← Console</a>
@@ -31,27 +40,46 @@
 
   <!-- Search to Graph Bar -->
   <div class="search-box">
-    <input type="search" id="graphSearch" placeholder="🔍 Search symbols, files, concepts…" autocomplete="off">
+    <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+    <input type="search" id="graphSearch" placeholder="Search symbols, files, concepts…" aria-label="Search the graph" autocomplete="off">
     <div id="searchResults" class="search-dropdown" hidden></div>
   </div>
 
-  <div class="meta">
-    <label class="chip select" title="Focus depth around selected node">
-      depth
-      <select id="focusDepth">
-        <option value="1">1 hop</option>
-        <option value="2" selected>2 hops</option>
-        <option value="3">3 hops</option>
-      </select>
-    </label>
-    <label class="chip checkbox-label" title="Filter by edge provenance">
-      <input type="checkbox" id="filterResolvedOnly"> resolved only
-    </label>
-    <button type="button" id="autoArrangeBtn" class="chip button" title="Automatic layout">✦ Auto Arrange</button>
-    <button type="button" id="fitGraphBtn" class="chip button" title="Fit graph to screen">Fit</button>
-    <button type="button" id="resetFocusBtn" class="chip button" title="Clear selection and focus">Reset</button>
-    <button type="button" id="aiChatToggle" class="chip button" title="Ask the AI about this project">💬 AI Chat</button>
-    <a href="/open.html" class="chip button" id="settingsLink" title="Open settings: project, indexing, LLM">⚙ Settings</a>
+  <div class="bar-tools">
+    <div class="bar-group">
+      <label class="chip select" title="Focus depth around selected node">
+        <span class="chip-label">depth</span>
+        <select id="focusDepth">
+          <option value="1">1 hop</option>
+          <option value="2" selected>2 hops</option>
+          <option value="3">3 hops</option>
+        </select>
+      </label>
+      <label class="chip toggle" title="Filter by edge provenance">
+        <input type="checkbox" id="filterResolvedOnly">
+        <span>resolved only</span>
+      </label>
+    </div>
+
+    <span class="bar-sep" aria-hidden="true"></span>
+
+    <nav class="bar-group bar-actions" aria-label="Graph controls">
+      <button type="button" id="autoArrangeBtn" class="chip button has-icon" title="Automatic layout">
+        <svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg><span>Auto Arrange</span>
+      </button>
+      <button type="button" id="fitGraphBtn" class="chip button has-icon" title="Fit graph to screen">
+        <svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg><span>Fit</span>
+      </button>
+      <button type="button" id="resetFocusBtn" class="chip button has-icon" title="Clear selection and focus">
+        <svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Reset</span>
+      </button>
+      <button type="button" id="aiChatToggle" class="chip button has-icon" title="Ask the AI about this project">
+        <svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span>AI Chat</span>
+      </button>
+      <a href="/open.html" class="chip button has-icon" id="settingsLink" title="Open settings: project, indexing, LLM">
+        <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span>Settings</span>
+      </a>
+    </nav>
   </div>
 </header>
 

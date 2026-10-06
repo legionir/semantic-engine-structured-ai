@@ -12,8 +12,14 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
     {
       method: 'GET',
       pattern: '/api/v1/projects',
-      handler: async () => {
-        const projects = projectService.listProjects();
+      handler: async ctx => {
+        // F-0020: a project-scoped API key must not enumerate other projects
+        // (ids, names, stats, absolute rootPath). The list route derives no
+        // :id, so the dispatcher's resource-scope check is skipped; enforce it
+        // here against the caller's AuthContext.resourceScope ('*' = all).
+        const scope = ctx.auth?.resourceScope ?? '*';
+        const all = projectService.listProjects();
+        const projects = scope === '*' ? all : all.filter(p => `project:${p.id}` === scope);
         return {
           status: 200,
           json: {

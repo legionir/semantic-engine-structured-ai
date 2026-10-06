@@ -16,7 +16,8 @@
 | `semantic-engine/contracts/platform-v1.openapi.json` | کامل |
 | `semantic-engine/contracts/project-index.schema.json` | کامل |
 | `semantic-engine/docs/architecture/multi-project-gateway.md` | کامل |
-| `semantic-engine/docs/panel-archive.html` | کامل |
+| `semantic-engine/docs/architecture/vscode-panel-defects.md` | کامل |
+| `semantic-engine/docs/panel-archive.html` | حذف‌شده (فاز ۱۱، MIG-56)؛ یادداشت‌های نقص SE-UI-01/SE-UI-02 به `semantic-engine/docs/architecture/vscode-panel-defects.md` منتقل شد |
 | `semantic-engine/eslint.config.mjs` | کامل |
 | `semantic-engine/jest.config.js` | کامل |
 | `semantic-engine/package-lock.json` | کامل |

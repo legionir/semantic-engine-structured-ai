@@ -1289,6 +1289,14 @@ const RUN = {
     hook_started_at: 0,
     hook_deadline_at: null,
     hook_results: {},
+    /*
+    | The run-scoped verdict of a hook that failed with on_failure: stop.
+    | Later phases short-circuit on it, so it belongs to the run, not to
+    | the process: startRun() clears it exactly like hook_results, and the
+    | hooks lifecycle suite locks that contract.
+    */
+    hooks_stopped: null,
+    hooks_stopped_by: null,
     after_hooks_ran: false,
     main_agent_definition: null,
     task: "",
@@ -1368,6 +1376,8 @@ function startRun() {
     currentRun().hook_started_at = 0;
     currentRun().hook_deadline_at = null;
     currentRun().hook_results = {};
+    currentRun().hooks_stopped = null;
+    currentRun().hooks_stopped_by = null;
     currentRun().after_hooks_ran = false;
     currentRun().main_agent_definition = null;
     currentRun().task = "";

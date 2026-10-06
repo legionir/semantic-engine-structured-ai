@@ -1,0 +1,9 @@
+=== semantic-engine test run captured (partial) ===
+
+(Partial captured output from running `npm test --silent` in `semantic-engine`)
+
+RUNS  src/gateway/WorkerSupervisor.test.ts
+
+... (test runner output)
+
+Note: dependency install emitted deprecation warnings for some packages.

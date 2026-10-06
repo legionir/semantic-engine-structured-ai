@@ -347,12 +347,47 @@ async function main() {
                 success: true,
                 result: { content: "passed" }
             }],
-            executeDependencyGraph: async ({ items, executor }) => {
-                const results = [];
+            executeDependencyGraph: async ({
+                items,
+                executor,
+                stopReason,
+                skipItem
+            }) => {
+                const results = new Map();
+                const scheduled = [];
+                let stopping = null;
+
                 for (const item of items) {
-                    results.push({ id: item.id, result: await executor(item, new Map()) });
+
+                    if (stopping) {
+                        const skipped = await skipItem(item, stopping);
+                        const wrapped = {
+                            id: item.id,
+                            success: false,
+                            skipped: true,
+                            result: skipped,
+                            error: {
+                                code: "SKIPPED",
+                                message: stopping,
+                                retryable: false
+                            }
+                        };
+                        results.set(item.id, wrapped);
+                        scheduled.push(wrapped);
+                        continue;
+                    }
+
+                    const result = await executor(item, results);
+                    const wrapped = { id: item.id, success: true, result };
+                    results.set(item.id, wrapped);
+                    scheduled.push(wrapped);
+
+                    if (typeof stopReason === "function") {
+                        stopping = stopReason(item, wrapped) || null;
+                    }
                 }
-                return results;
+
+                return scheduled;
             },
             executeDelegations: async () => [],
             resolveDepthBudget: () => 1,
@@ -373,6 +408,196 @@ async function main() {
             emitted.map(item => item.type),
             ["hook:phase:start", "hook:start", "hook:end", "hook:phase:end"]
         );
+    });
+
+
+    await test("HookRunner stops dependents with the real dependency graph", async () => {
+
+        const { executeDependencyGraph } =
+            require(path.join(REPO, "agent", "runtime", "ToolGraphExecutor.js"));
+
+        const run = {
+            task: "verify",
+            hook_results: {},
+            inHook: false,
+            controller: null,
+            cancelled_reason: null,
+            after_hooks_ran: false,
+            main_agent_definition: { name: "main_agent" }
+        };
+
+        const verify = {
+            id: "verify",
+            type: "tool",
+            phase: "after_task",
+            when: "always",
+            on_failure: "stop",
+            tool: "fs_read",
+            arguments: { path: "README.md" },
+            depends_on: []
+        };
+        const record = {
+            id: "record",
+            type: "tool",
+            phase: "after_task",
+            when: "always",
+            on_failure: "report",
+            tool: "fs_read",
+            arguments: { path: "README.md" },
+            depends_on: []
+        };
+
+        const emitted = [];
+        const toolsCalled = [];
+
+        const registry = {
+            enabledHooks: () => [verify, record],
+            evaluateWhen: () => true,
+            render: value => value
+        };
+
+        const runner = new hooks.HookRunner({
+            settings: makeSettings(),
+            registry,
+            events: { emit: (type, value) => emitted.push({ type, value }) },
+            currentRun: () => run,
+            assertRunActive: () => {},
+            cancelRun: reason => { run.cancelled_reason = reason; },
+            currentPlanSummary: () => ({ objective: "verify" }),
+            detectRepository: () => ({ dirty: false }),
+            toolRuntime: {
+                telemetry: {
+                    changedFiles: () => [],
+                    changeTrackingComplete: () => true,
+                    dirtyFiles: () => []
+                }
+            },
+            executeToolGraph: async calls => {
+                toolsCalled.push(calls[0].id);
+                if (calls[0].id === "hook_verify") {
+                    throw new Error("verify tool failed");
+                }
+                return [{ success: true, result: { exit_code: 0, content: "ok" } }];
+            },
+            executeDependencyGraph,
+            executeDelegations: async () => [],
+            resolveDepthBudget: () => 1,
+            toolRegistryOf: () => new Map([["fs_read", {}]]),
+            mainAgentProfile: () => ({ name: "main_agent" })
+        });
+
+        const report = await runner.runHooks(
+            "after_task",
+            runner.executionContext(),
+            run.main_agent_definition
+        );
+
+        /* withStopBarriers pushed "record" into a later wave behind the stop
+           hook, so once verify failed with stop, record never reached the tool. */
+        assert.equal(report.stopped, true);
+        assert.deepEqual(toolsCalled, ["hook_verify"]);
+
+        const rec = run.hook_results.record;
+        assert.equal(rec.skipped, true);
+        assert.equal(rec.skipped_by, "on_failure_stop");
+
+        /* the reason is surfaced in the operator report text */
+        assert.match(runner.hookReportText(report), /record: skipped/);
+
+        const skipStart = emitted.find(
+            item => item.type === "hook:start" && item.value.id === "record"
+        );
+        assert.ok(skipStart, "a skipped hook still pairs hook:start with hook:end");
+    });
+
+
+    await test("a stop is run-scoped: later phases do not dispatch", async () => {
+
+        const { executeDependencyGraph } =
+            require(path.join(REPO, "agent", "runtime", "ToolGraphExecutor.js"));
+
+        const run = {
+            task: "verify",
+            hook_results: {},
+            inHook: false,
+            controller: null,
+            cancelled_reason: null,
+            after_hooks_ran: false,
+            main_agent_definition: { name: "main_agent" }
+        };
+
+        const before = {
+            id: "guard",
+            type: "tool",
+            phase: "before_task",
+            when: "always",
+            on_failure: "stop",
+            tool: "fs_read",
+            arguments: { path: "README.md" },
+            depends_on: []
+        };
+        const after = {
+            id: "commit",
+            type: "tool",
+            phase: "after_task",
+            when: "always",
+            on_failure: "report",
+            tool: "fs_read",
+            arguments: { path: "README.md" },
+            depends_on: []
+        };
+
+        const toolsCalled = [];
+        const registry = {
+            enabledHooks: phase => (phase === "before_task" ? [before] : [after]),
+            evaluateWhen: () => true,
+            render: value => value
+        };
+
+        const runner = new hooks.HookRunner({
+            settings: makeSettings(),
+            registry,
+            events: { emit() {} },
+            currentRun: () => run,
+            assertRunActive: () => {},
+            cancelRun: reason => { run.cancelled_reason = reason; },
+            currentPlanSummary: () => ({ objective: "verify" }),
+            detectRepository: () => ({ dirty: false }),
+            toolRuntime: {
+                telemetry: {
+                    changedFiles: () => [],
+                    changeTrackingComplete: () => true,
+                    dirtyFiles: () => []
+                }
+            },
+            executeToolGraph: async calls => {
+                toolsCalled.push(calls[0].id);
+                throw new Error("guard tool failed");
+            },
+            executeDependencyGraph,
+            executeDelegations: async () => [],
+            resolveDepthBudget: () => 1,
+            toolRegistryOf: () => new Map([["fs_read", {}]]),
+            mainAgentProfile: () => ({ name: "main_agent" })
+        });
+
+        const first = await runner.runHooks(
+            "before_task",
+            runner.executionContext(),
+            run.main_agent_definition
+        );
+        assert.equal(first.stopped, true);
+        assert.ok(run.hooks_stopped, "the stop verdict is recorded on the run");
+
+        /* a later phase must short-circuit instead of dispatching its hooks */
+        const second = await runner.runHooks(
+            "after_task",
+            runner.executionContext(),
+            run.main_agent_definition
+        );
+        assert.equal(second.stopped, true);
+        assert.deepEqual(toolsCalled, ["hook_guard"], "no after_task tool ran");
+        assert.equal(run.hook_results.commit.skipped_by, "on_failure_stop");
     });
 
 

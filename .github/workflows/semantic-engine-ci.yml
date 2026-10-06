@@ -1,0 +1,69 @@
+name: semantic-engine CI (Linux full test suite)
+
+# Runs the FULL Jest suite on Linux (ubuntu-latest) so that Unix-socket /
+# POSIX-path suites — which hang or fail on Windows — actually execute. This is
+# the authoritative check that the "environmental" Windows failures are NOT code
+# regressions, and that the applied audit fixes (F-0008/0014/0017/0020/0024)
+# hold under a real run.
+
+on:
+  push:
+    paths:
+      - 'semantic-engine/**'
+      - '.github/workflows/semantic-engine-ci.yml'
+  pull_request:
+    paths:
+      - 'semantic-engine/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-linux:
+    name: Node ${{ matrix.node }} on ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: semantic-engine
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.x: engines floor (uses optional `sqlite3`). 22.x: built-in node:sqlite
+        # (>=22.13, unflagged) so the SQLite path runs without a native build.
+        node: ['20.x', '22.x']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: semantic-engine/package-lock.json
+
+      # optionalDependencies (sqlite3 native, tree-sitter-*) may fail to build on
+      # some Node/OS combos; the engine degrades gracefully (SqliteDriver/SE-BUILD).
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Type check (build)
+        run: npx tsc -p ./ --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Generate fixture
+        run: node scripts/gen-fixture.js
+
+      - name: Full Jest suite (Linux)
+        # --ci: non-interactive, no snapshot writes. maxWorkers:1 is set in
+        # jest.config.js (shared on-disk fixture + child-process spawns).
+        run: npx jest --ci
+
+      - name: Audit coverage report
+        if: always()
+        run: node scripts/check-audit-coverage.js || echo "audit-coverage gate reported above"

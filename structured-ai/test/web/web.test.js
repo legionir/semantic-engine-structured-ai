@@ -22,6 +22,29 @@ fs.writeFileSync(
     "const value = 1;\n"
 );
 
+/*
+| The console records what the run did to the repository, so the fixture has
+| to be one: outside a repo the report says "not a git repository" and never
+| describes a file, and the conversation test asserts on a report it cannot
+| match. Identity travels per command, so no machine's global git config is a
+| dependency of this suite.
+*/
+(function seedRepository(dir) {
+
+    const { spawnSync } = require("child_process");
+
+    if (spawnSync("git", ["--version"], { cwd: dir }).status !== 0) {
+        return;
+    }
+
+    const identity =
+        ["-c", "user.email=fixture@invalid", "-c", "user.name=fixture"];
+
+    spawnSync("git", ["init", "-q"], { cwd: dir });
+    spawnSync("git", [...identity, "add", "-A"], { cwd: dir });
+    spawnSync("git", [...identity, "commit", "-qm", "fixture"], { cwd: dir });
+})(WORKSPACE);
+
 const results = [];
 
 
@@ -215,7 +238,21 @@ function collectEvents() {
 }
 
 
-async function waitFor(predicate, timeoutMs = 8000) {
+/*
+| A run keeps streaming after the assertion that started it, and every test
+| here shares one server. Two runs overlapping on one stream is what made this
+| suite fail a random tail of itself: a green run one minute, six unrelated
+| failures the next. The deadline is therefore tunable, and every test drains
+| its own run before the next one starts.
+*/
+const WAIT_MS =
+    Number(process.env.WEB_TEST_TIMEOUT_MS) || 15000;
+
+const BUSY =
+    new Set(["running", "queued", "starting", "cancelling"]);
+
+
+async function waitFor(predicate, timeoutMs = WAIT_MS) {
 
     const deadline =
         Date.now() + timeoutMs;
@@ -231,13 +268,84 @@ async function waitFor(predicate, timeoutMs = 8000) {
 
         if (Date.now() > deadline) {
 
-            throw new Error("timed out waiting for a condition");
+            throw new Error(`timed out after ${timeoutMs}ms waiting for a condition`);
         }
 
         await new Promise(
             resolve => setTimeout(resolve, 50)
         );
     }
+}
+
+
+/*
+| Waits for the run this test started to leave the server busy. A test that
+| deliberately leaves a run blocked (an approval nobody answers) must not be
+| failed for it, so this cancels after its own budget and reports, never
+| throws: the assertions inside the test are still the only verdict.
+*/
+async function settleRun() {
+
+    const patient =
+        Date.now() + WAIT_MS;
+
+    for (;;) {
+
+        const current =
+            await request("GET", "/api/state").catch(() => null);
+
+        if (!current || !BUSY.has(current.body.status)) {
+            return "settled";
+        }
+
+        if (Date.now() > patient) {
+
+            await request("POST", "/api/cancel", {}).catch(() => {});
+
+            try {
+                await waitFor(
+                    async () => {
+                        const state = await request("GET", "/api/state");
+                        return !BUSY.has(state.body.status) ? true : null;
+                    },
+                    5000
+                );
+            } catch {
+                /* the run is still live; say so, do not hide it */
+                return "stuck";
+            }
+
+            return "cancelled";
+        }
+
+        await new Promise(
+            resolve => setTimeout(resolve, 25)
+        );
+    }
+}
+
+
+const TERMINAL =
+    new Set(["done", "failed", "cancelled"]);
+
+
+/*
+| The run's events are all streamed before its terminal run:status, because
+| the stream is ordered. Waiting for the first run:status — the one that
+| OPENS a run — therefore asserts on events that may not have arrived yet,
+| which is exactly how this suite managed to fail a different test each run.
+*/
+async function waitForRunEnd(stream, timeoutMs = WAIT_MS) {
+
+    return waitFor(
+        () =>
+            stream.seen.some(
+                event =>
+                    event.type === "run:status" &&
+                    TERMINAL.has(event.status)
+            ),
+        timeoutMs
+    );
 }
 
 
@@ -257,6 +365,14 @@ async function test(name, fn) {
 
         console.log(`  FAIL ${name}`);
         console.log(`       ${error.message}`);
+    }
+
+    /* whatever just happened, the next test starts with an idle server */
+    const drained =
+        await settleRun();
+
+    if (drained !== "settled") {
+        console.log(`       (run ${drained} before the next test)`);
     }
 }
 
@@ -374,12 +490,8 @@ async function main() {
 
         assert.equal(accepted.status, 202);
 
-        await waitFor(
-            () =>
-                stream.seen.some(
-                    event => event.type === "run:status"
-                )
-        );
+        /* wait for the run to end, not for its first beat */
+        await waitForRunEnd(stream);
 
         const types =
             stream.seen.map(event => event.type);
@@ -480,12 +592,8 @@ async function main() {
             task: "inspect the workspace"
         });
 
-        await waitFor(
-            () =>
-                stream.seen.some(
-                    event => event.type === "run:status"
-                )
-        );
+        /* wait for the run to end, not for its first beat */
+        await waitForRunEnd(stream);
 
         const graph =
             stream.seen.find(
@@ -555,12 +663,8 @@ async function main() {
             task: "read the big file"
         });
 
-        await waitFor(
-            () =>
-                stream.seen.some(
-                    event => event.type === "run:status"
-                )
-        );
+        /* wait for the run to end, not for its first beat */
+        await waitForRunEnd(stream);
 
         const end =
             stream.seen.find(
@@ -641,13 +745,7 @@ async function main() {
             task: "read a file that is not there"
         });
 
-        await waitFor(
-            () =>
-                stream.seen.some(
-                    event => event.type === "run:status"
-                ),
-            15000
-        );
+        await waitForRunEnd(stream, 20000);
 
         const loops =
             stream.seen.filter(
@@ -1395,12 +1493,8 @@ async function main() {
 
         await request("POST", "/api/tasks", { task: "think about it" });
 
-        await waitFor(
-            () =>
-                stream.seen.some(
-                    event => event.type === "run:status"
-                )
-        );
+        /* wait for the run to end, not for its first beat */
+        await waitForRunEnd(stream);
 
         const thinking =
             stream.seen.filter(

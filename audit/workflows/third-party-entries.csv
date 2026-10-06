@@ -1,0 +1,7 @@
+id,category,source,handler_candidate,notes
+EP-00222,cli,semantic-engine/node_modules/@babel/core/node_modules/semver/bin/semver.js,semver-cli,third-party CLI (semver)
+EP-00223,cli,semantic-engine/node_modules/@babel/helper-compilation-targets/node_modules/semver/bin/semver.js,semver-cli,third-party CLI (semver)
+EP-00224,cli,semantic-engine/node_modules/@babel/parser/bin/babel-parser.js,babel-parser-cli,third-party CLI
+EP-00225,cli,semantic-engine/node_modules/@eslint/eslintrc/node_modules/argparse/argparse.js,(library),library module — OUT_OF_SCOPE
+EP-00226,cli,semantic-engine/node_modules/@eslint/eslintrc/node_modules/argparse/lib/textwrap.js,(library),library module — OUT_OF_SCOPE
+EP-00227,cli,semantic-engine/node_modules/@eslint/eslintrc/node_modules/js-yaml/bin/js-yaml.js,js-yaml-cli,third-party CLI

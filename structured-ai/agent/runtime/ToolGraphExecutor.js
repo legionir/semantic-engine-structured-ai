@@ -126,6 +126,80 @@ function normalizeToolCalls(
 }
 
 
+/*
+| A cycle used to be discovered only when the loop ran out of ready items,
+| after the rest of the graph had already executed and published results.
+| Finding it up front names the nodes and lets nothing run, which matters
+| most for hooks: a hook phase can commit or push before it notices.
+*/
+function findDependencyCycle(
+    items
+) {
+
+    const edges =
+        new Map(
+            items.map(
+                item =>
+                    [
+                        item.id,
+                        item.depends_on || []
+                    ]
+            )
+        );
+
+    const finished = new Set();
+    const visiting = new Set();
+    const trail = [];
+
+    const walk =
+        id => {
+
+            if (finished.has(id)) {
+                return null;
+            }
+
+            if (visiting.has(id)) {
+
+                const start = trail.indexOf(id);
+
+                return trail
+                    .slice(start < 0 ? trail.length - 1 : start)
+                    .concat(id);
+            }
+
+            visiting.add(id);
+            trail.push(id);
+
+            for (const dependency of edges.get(id)) {
+
+                const cycle = walk(dependency);
+
+                if (cycle) {
+                    trail.pop();
+                    return cycle;
+                }
+            }
+
+            visiting.delete(id);
+            trail.pop();
+            finished.add(id);
+
+            return null;
+        };
+
+    for (const item of items) {
+
+        const cycle = walk(item.id);
+
+        if (cycle) {
+            return cycle;
+        }
+    }
+
+    return null;
+}
+
+
 function validateDependencyGraph(
     items
 ) {
@@ -174,6 +248,16 @@ function validateDependencyGraph(
                 );
             }
         }
+    }
+
+    const cycle =
+        findDependencyCycle(items);
+
+    if (cycle) {
+
+        throw new Error(
+            `Dependency cycle: ${cycle.join(" -> ")}`
+        );
     }
 }
 
@@ -245,15 +329,44 @@ function describeGraph(items, maxParallel) {
 }
 
 
+/*
+| 'stopReason(item, wrapped)' (optional): called for every finished item; a
+| truthy return is a "stop the graph" signal (a hook that failed with
+| 'on_failure: stop'). The scheduler reads it before dispatching the NEXT
+| item, so once a stop is seen nothing that has not started yet runs; every
+| remaining item gets a result from 'skipItem(item, reason)'. Items already
+| in flight when the stop arrives finish normally. 'stopReason' REQUIRES
+| 'skipItem': there is no generic skipped envelope, because consumers key off
+| the exact shape 'skipItem' produces, and a half-built one would crash them.
+| A skipped item is published with success:false (plus skipped:true), so a
+| reference into it fails loudly instead of resolving a stub value.
+*/
 async function executeDependencyGraph({
     items,
     executor,
-    maxParallel
+    maxParallel,
+    stopReason,
+    skipItem
 }) {
 
     validateDependencyGraph(
         items
     );
+
+    if (
+        typeof stopReason === "function" &&
+        typeof skipItem !== "function"
+    ) {
+
+        throw new Error(
+            "executeDependencyGraph: stopReason requires skipItem."
+        );
+    }
+
+    const slots =
+        typeof maxParallel === "number" && maxParallel > 0
+            ? maxParallel
+            : Infinity;
 
     const remaining =
         new Map(
@@ -268,113 +381,216 @@ async function executeDependencyGraph({
     const results =
         new Map();
 
-    while (
-        remaining.size > 0
-    ) {
+    /* Items whose executor is still running, keyed by id. */
+    const inFlight =
+        new Map();
 
-        const ready = [];
+    let stopping =
+        null;
 
-        for (
-            const item
-            of remaining.values()
-        ) {
+    const isReady =
+        item =>
+            item.depends_on.every(
+                dependency =>
+                    results.has(
+                        dependency
+                    )
+            );
 
-            const dependenciesComplete =
-                item.depends_on.every(
-                    dependency =>
-                        results.has(
-                            dependency
-                        )
+    const launch =
+        item => {
+
+            /* Claim the item so it is never dispatched twice. */
+            remaining.delete(
+                item.id
+            );
+
+            /*
+            | The slot is reserved before any executor body can settle.
+            | Every executor today is async, so the first await defers the
+            | body; a synchronous executor that threw before that await would
+            | run its catch block inside this expression, deleting an inFlight
+            | entry that was never added and leaving a settled promise behind
+            | for the loop to race forever.
+            */
+            const running =
+                Promise.resolve().then(() => (async () => {
+
+                    let wrapped;
+
+                    try {
+
+                        const result =
+                            await executor(
+                                item,
+                                results
+                            );
+
+                        wrapped = {
+                            id:
+                                item.id,
+
+                            success:
+                                true,
+
+                            result
+                        };
+
+                    } catch (error) {
+
+                        wrapped = {
+                            id:
+                                item.id,
+
+                            success:
+                                false,
+
+                            result:
+                                null,
+
+                            error: {
+                                code:
+                                    error.name ||
+                                    "EXECUTION_ERROR",
+
+                                message:
+                                    error.message,
+
+                                retryable:
+                                    false
+                            }
+                        };
+                    }
+
+                    results.set(
+                        wrapped.id,
+                        wrapped
+                    );
+
+                    inFlight.delete(
+                        wrapped.id
+                    );
+
+                    /* Read the stop flag before the next dispatch. */
+                    if (
+                        !stopping &&
+                        typeof stopReason === "function"
+                    ) {
+
+                        stopping =
+                            stopReason(
+                                item,
+                                wrapped
+                            ) || null;
+                    }
+
+                    return wrapped;
+                })());
+
+            inFlight.set(
+                item.id,
+                running
+            );
+        };
+
+    const skipRemaining =
+        async () => {
+
+            for (
+                const item
+                of [...remaining.values()]
+            ) {
+
+                const skipped =
+                    await skipItem(
+                        item,
+                        stopping
+                    );
+
+                results.set(
+                    item.id,
+                    {
+                        id: item.id,
+                        success: false,
+                        skipped: true,
+                        result: skipped,
+                        error: {
+                            code: "SKIPPED",
+                            message: stopping,
+                            retryable: false
+                        }
+                    }
                 );
 
-            if (
-                dependenciesComplete
+                remaining.delete(
+                    item.id
+                );
+            }
+        };
+
+    for (
+        ;
+        ;
+    ) {
+
+        /* Fill every free slot, but stop dispatching once a stop is seen. */
+        if (
+            !stopping
+        ) {
+
+            for (
+                const item
+                of [...remaining.values()]
             ) {
-                ready.push(item);
+
+                if (
+                    inFlight.size >= slots
+                ) {
+                    break;
+                }
+
+                if (
+                    !isReady(item)
+                ) {
+                    continue;
+                }
+
+                launch(
+                    item
+                );
             }
         }
 
         if (
-            ready.length === 0
+            inFlight.size > 0
         ) {
 
-            throw new Error(
-                "Dependency graph contains a cycle or unresolved dependency."
+            await Promise.race(
+                [...inFlight.values()]
             );
+
+            continue;
         }
 
-        const batch =
-            ready.slice(
-                0,
-                maxParallel
-            );
+        /* Nothing running: the graph is finished, stopped, or cyclic. */
+        if (
+            remaining.size === 0
+        ) {
+            break;
+        }
 
-        const batchResults =
-            await Promise.all(
-                batch.map(
-                    async item => {
-
-                        try {
-
-                            const result =
-                                await executor(
-                                    item,
-                                    results
-                                );
-
-                            return {
-                                id:
-                                    item.id,
-
-                                success:
-                                    true,
-
-                                result
-                            };
-
-                        } catch (error) {
-
-                            return {
-                                id:
-                                    item.id,
-
-                                success:
-                                    false,
-
-                                result:
-                                    null,
-
-                                error: {
-                                    code:
-                                        error.name ||
-                                        "EXECUTION_ERROR",
-
-                                    message:
-                                        error.message,
-
-                                    retryable:
-                                        false
-                                }
-                            };
-                        }
-                    }
-                )
-            );
-
-        for (
-            const result
-            of batchResults
+        if (
+            stopping
         ) {
 
-            results.set(
-                result.id,
-                result
-            );
+            await skipRemaining();
 
-            remaining.delete(
-                result.id
-            );
+            break;
         }
+
+        throw new Error(
+            "Dependency graph contains a cycle or unresolved dependency."
+        );
     }
 
     return items.map(
@@ -648,8 +864,12 @@ async function executeToolGraph(
         `graph_${++GRAPH_SEQUENCE}`;
 
     /*
-    | Which wave a call belongs to is what makes "parallel" visible
-    | afterwards: two calls in the same wave really did run together.
+    | The wave index is what the scheduler PLANNED, not what it did: items
+    | are dispatched continuously, so a call starts the moment its own
+    | dependencies are published. Calls in one planned wave need not overlap,
+    | and calls in different planned waves may run together. What really ran
+    | alongside is recovered from the started_at/finished_at pair every
+    | tool:end carries — that is the only honest source for "in parallel".
     */
 
     const waveOf = new Map();
@@ -665,7 +885,7 @@ async function executeToolGraph(
         scope,
         `Executing tool graph (${calls.length} call(s), ${
             graph.shape
-        }, ${graph.waves.length} wave(s)).`
+        }, ${graph.waves.length} planned wave(s)).`
     );
 
     host().events.emit("tool:graph", {
@@ -686,6 +906,10 @@ async function executeToolGraph(
 
         shape:
             graph.shape,
+
+        /* planned grouping: see the note above the waveOf map */
+        wave_basis:
+            "planned",
 
         waves:
             graph.waves,
@@ -957,6 +1181,9 @@ async function executeToolGraph(
                                     ? result.warning
                                     : undefined,
 
+                            started_at:
+                                startedAt,
+
                             success: true,
 
                             duration_ms:
@@ -996,6 +1223,9 @@ async function executeToolGraph(
 
                             arguments:
                                 resolvedArguments,
+
+                            started_at:
+                                startedAt,
 
                             success: false,
 

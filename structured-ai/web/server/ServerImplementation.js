@@ -497,6 +497,13 @@ function createServer(runtime, options = {}) {
 
             existing.wave = event.wave ?? existing.wave;
             existing.iteration = event.iteration ?? existing.iteration;
+
+            /* the executor knows when it actually started; the envelope only
+               says when the event was written, which is later for a call that
+               waited in the queue. `wave` stays the planned grouping. */
+            existing.started_at =
+                event.started_at ?? existing.started_at;
+
             existing.finished_at = event.at || Date.now();
             existing.duration_ms = event.duration_ms;
             existing.success = event.success;
@@ -1938,10 +1945,14 @@ function createServer(runtime, options = {}) {
                                 name: call.name,
                                 graph_id: call.graph_id,
                                 shape: call.shape,
+                                /* planned grouping; the real concurrency is
+                                   rebuilt from the interval below */
                                 wave: call.wave,
                                 iteration: call.iteration,
                                 depends_on: call.depends_on,
                                 status: call.status,
+                                started_at: call.started_at ?? null,
+                                finished_at: call.finished_at ?? null,
                                 duration_ms: call.duration_ms
                             }))
                     });

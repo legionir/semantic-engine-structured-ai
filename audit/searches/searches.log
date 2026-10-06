@@ -1,0 +1,10 @@
+2026-09-20T18:30:58.925181Z | python_search:http_routes | hits=117 | 
+2026-09-20T18:31:03.996939Z | python_search:decorators | hits=0 | 
+2026-09-20T18:31:09.919262Z | python_search:websocket_graphql | hits=97 | 
+2026-09-20T18:31:18.245197Z | python_search:events_queues | hits=655 | 
+2026-09-20T18:31:42.609212Z | python_search:db_transactions | hits=78 | 
+2026-09-20T18:31:48.320718Z | python_search:config_env | hits=303 | 
+2026-09-20T18:31:55.297618Z | python_search:state_fields | hits=545 | 
+2026-09-20T18:32:03.024334Z | python_search:tests | hits=1679 | 
+2026-09-20T18:32:09.503067Z | python_search:cli | hits=175 | 
+INGEST: symbols=3649 entrypoints=389

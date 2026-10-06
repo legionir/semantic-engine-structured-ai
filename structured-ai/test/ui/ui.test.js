@@ -217,6 +217,17 @@ function createDocument() {
             return this.parent;
         }
 
+        /*
+        | Element.parentElement, the other half of the same contract: the
+        | settings renderer walks up from a control to the label that borrows
+        | it, so without this the borrow silently found nothing here while
+        | working in every browser.
+        */
+
+        get parentElement() {
+            return this.parent;
+        }
+
         get nextSibling() {
 
             if (!this.parent) {
@@ -789,6 +800,120 @@ async function main() {
             document.getElementById("execSummary").textContent,
             /2 agents · 3 calls · 1 failed/
         );
+    });
+
+    await test("a wave label counts real overlap, not the plan", () => {
+
+        const groups = () =>
+            document.getElementById("tree").querySelectorAll(".graph");
+
+        const send = (type, body) =>
+            console_.send({
+                type,
+                agent: "main_agent",
+                ...body
+            });
+
+        /* two calls planned in the same wave that never ran together */
+        send("tool:graph", {
+            graph_id: "graph_serial",
+            iteration: 7,
+            shape: "graph",
+            max_parallel: 2,
+            waves: [["s1", "s2"]],
+            calls: [
+                { id: "s1", name: "fs_read", depends_on: [] },
+                { id: "s2", name: "fs_list", depends_on: ["s1"] }
+            ]
+        });
+
+        for (const [id, name, start, end] of [
+            ["s1", "fs_read", 1000, 1100],
+            ["s2", "fs_list", 1100, 1200]
+        ]) {
+
+            send("tool:start", {
+                graph_id: "graph_serial",
+                iteration: 7,
+                id,
+                name,
+                wave: 0,
+                depends_on: [],
+                arguments_preview: "{}",
+                at: start
+            });
+
+            send("tool:end", {
+                graph_id: "graph_serial",
+                iteration: 7,
+                id,
+                name,
+                wave: 0,
+                success: true,
+                started_at: start,
+                duration_ms: end - start,
+                at: end
+            });
+        }
+
+        const serial =
+            groups().find(el => el.textContent.includes("iteration 7"));
+
+        assert.ok(serial, "the serial graph was not rendered");
+        assert.match(serial.textContent, /wave 1/, "the planned grouping still shows");
+        assert.doesNotMatch(
+            serial.textContent,
+            /in parallel/,
+            "two calls sharing a planned wave did not run together"
+        );
+
+        /* the same plan with overlapping intervals earns the claim back */
+        send("tool:graph", {
+            graph_id: "graph_together",
+            iteration: 8,
+            shape: "graph",
+            max_parallel: 2,
+            waves: [["p1", "p2"]],
+            calls: [
+                { id: "p1", name: "fs_read", depends_on: [] },
+                { id: "p2", name: "fs_list", depends_on: [] }
+            ]
+        });
+
+        for (const [id, name, start, end] of [
+            ["p1", "fs_read", 1000, 1300],
+            ["p2", "fs_list", 1100, 1200]
+        ]) {
+
+            send("tool:start", {
+                graph_id: "graph_together",
+                iteration: 8,
+                id,
+                name,
+                wave: 0,
+                depends_on: [],
+                arguments_preview: "{}",
+                at: start
+            });
+
+            send("tool:end", {
+                graph_id: "graph_together",
+                iteration: 8,
+                id,
+                name,
+                wave: 0,
+                success: true,
+                started_at: start,
+                duration_ms: end - start,
+                at: end
+            });
+        }
+
+        const together =
+            groups().find(el => el.textContent.includes("iteration 8"));
+
+        assert.ok(together, "the parallel graph was not rendered");
+        assert.match(together.textContent, /wave 1 · 2 in parallel/);
     });
 
     await test("a row opens the full detail of what was executed", async () => {
@@ -1577,6 +1702,67 @@ async function main() {
         );
     });
 
+    await test("Settings borrows the policy controls and gives them back", () => {
+
+        const home = document.getElementById("policyHome");
+
+        assert.equal(home.children.length, 2, "both chips start at home");
+
+        document.getElementById("settingsButton").dispatch("click");
+
+        const dialog =
+            document.body.children.filter(
+                child => child.classList.contains("modal-backdrop")
+            )[0].children[0];
+
+        /* moved into the modal, not copied: the home is empty while open */
+        assert.equal(home.children.length, 0, "the home is emptied on open");
+        assert.ok(
+            dialog.querySelectorAll(".policy-row").length === 1,
+            "the borrowed row is in the modal"
+        );
+        assert.ok(
+            document.getElementById("approvalMode"),
+            "a borrowed control is still reachable from the document"
+        );
+
+        Modal.closeTop("test");
+
+        assert.equal(home.children.length, 2, "close returns both chips");
+        assert.ok(
+            document.getElementById("autoContinue"),
+            "and the controls are on the page again, not detached"
+        );
+        assert.equal(
+            dialog.querySelectorAll(".policy-row")
+                .flatMap(row => row.children)
+                .filter(child => child.tagName === "LABEL")
+                .length,
+            0,
+            "the closed body no longer holds the chips"
+        );
+
+        /* reopening borrows again: a half-committed borrow used to leave the
+           controls stranded after the second open */
+        document.getElementById("settingsButton").dispatch("click");
+
+        const again =
+            document.body.children.filter(
+                child => child.classList.contains("modal-backdrop")
+            )[0].children[0];
+
+        assert.equal(home.children.length, 0, "the second open borrows again");
+        assert.equal(
+            again.querySelectorAll(".policy-row").length,
+            1,
+            "into its own row"
+        );
+
+        Modal.closeTop("test");
+
+        assert.equal(home.children.length, 2, "and returns them again");
+    });
+
     await test("execution and events open as modals from the header", () => {
 
         document.getElementById("executionButton").dispatch("click");
@@ -2352,14 +2538,33 @@ function loadConsole() {
     document.getElementById("discussionOptions").hidden = true;
     document.getElementById("runButton").textContent = "Run task";
 
-    for (const id of ["task", "logFilter", "autoContinue"]) {
+    for (const id of ["task", "logFilter"]) {
         document.register(id, "input");
     }
 
     document.register("logType", "select");
     document.register("logCount", "span");
 
-    document.register("approvalMode", "select");
+    /*
+    | index.html keeps the two runtime policy controls inside labels in a
+    | hidden #policyHome, and the Settings modal borrows those labels. The
+    | shim has to nest them the same way, otherwise the borrow is tested
+    | against a page structure that does not exist.
+    */
+    const policyHome = document.register("policyHome", "div");
+
+    const approvalChip = document.createElement("label");
+
+    approvalChip.classList.add("chip", "select");
+    approvalChip.appendChild(document.register("approvalMode", "select"));
+    policyHome.appendChild(approvalChip);
+
+    const continueChip = document.createElement("label");
+
+    continueChip.classList.add("chip", "checkbox");
+    continueChip.appendChild(document.register("autoContinue", "input"));
+    policyHome.appendChild(continueChip);
+
     document.register("projectSwitcher", "select");
     document.register("taskScopeProject", "select");
     document.register("gatewayHealth", "a");
