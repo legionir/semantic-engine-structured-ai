@@ -1,0 +1,10 @@
+
+test/e2e/e2e.test.js                           56/58 passed         FAIL independent tools in one action run in parallel;   FAIL every agent is told how the tool graph works
+test/e2e/interactive.test.js                   6/12 passed          FAIL history is carried from one task to the next;   FAIL /clear starts a new conversation;   FAIL commands typed after a task run in order;   FAIL an unknown command is reported without ending the session;   FAIL /save writes the last answer to a file;   FAIL Ctrl-C cancels the running task but keeps the session
+test/mcp/engine-paths.test.js                  3/6 passed           FAIL data home follows each platform convention;   FAIL an explicit data dir wins;   FAIL read order: data directory first, then the legacy locations
+test/mcp/gateway.integration.test.js           0/0 passed (skipped) 
+test/mcp/semantic.test.js                      13/14 passed         FAIL code_index_start and code_index_get manage index sessions
+test/runs/delegation-projects.test.js          5/5 passed         
+test/tools/project-tools.test.js               11/12 passed         FAIL terminal uses the project cwd and process sessions are per-project
+test/tools/tools.test.js                       48/56 passed         FAIL symlinks cannot escape the workspace;   FAIL terminal_exec times out instead of hanging;   FAIL process_start, read, write and terminate a session;   FAIL a timed out command does not leave its children running;   FAIL terminating a background process kills its whole tree;   FAIL the semantic-engine skill follows MCP availability;   FAIL a file search accepts a glob, not only a substring;   FAIL a command that cds out of the workspace is refused
+test/web/project-concurrency.test.js           2/3 passed           FAIL two different projects run at the same time (no process-wide busy gate)

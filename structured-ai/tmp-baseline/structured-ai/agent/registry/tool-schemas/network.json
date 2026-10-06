@@ -1,0 +1,43 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "net_fetch",
+      "description": "Fetch a URL over HTTP or HTTPS and return the response body as text. Loopback, link-local, cloud metadata, and private network addresses are refused.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Absolute http or https URL."
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP method. Defaults to GET.",
+            "enum": [
+              "GET",
+              "POST"
+            ]
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Request headers."
+          },
+          "body": {
+            "type": "string",
+            "description": "Request body for POST."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Abort the request after this many milliseconds. Defaults to 15000."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]

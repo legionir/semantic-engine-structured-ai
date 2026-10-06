@@ -1,0 +1,7 @@
+# Runtime state of a workspace, never source
+/.agent/
+**/.semantic-engine/
+
+# The event store is derived state, regenerable from sessions via
+# `npm run backfill:eventstore`; it is never committed.
+**/.agent/eventstore/

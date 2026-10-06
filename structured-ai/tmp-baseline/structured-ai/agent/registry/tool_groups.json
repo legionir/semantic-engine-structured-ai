@@ -1,0 +1,207 @@
+{
+  "filesystem.read": {
+    "description": "Inspect files and directories without changing them.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "fs_read",
+      "fs_read_many",
+      "fs_list",
+      "fs_tree",
+      "fs_stat",
+      "fs_info",
+      "fs_roots"
+    ]
+  },
+  "filesystem.write": {
+    "description": "Create and modify files and directories inside the workspace.",
+    "note": "Every path is confined to the workspace root, including through symlinks.",
+    "destructive": true,
+    "sensitive": true,
+    "default_policy": "require_approval",
+    "tools": [
+      "fs_write",
+      "fs_edit",
+      "fs_mkdir",
+      "fs_move",
+      "fs_delete"
+    ]
+  },
+  "search": {
+    "description": "Search file contents and file names as cancellable sessions.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "search_start",
+      "search_get",
+      "search_list",
+      "search_stop"
+    ]
+  },
+  "process": {
+    "description": "Run commands, either to completion or as interactive background sessions.",
+    "note": "Commands run in a shell, so this group can reach capabilities other groups gate. It is policy controlled.",
+    "destructive": true,
+    "sensitive": true,
+    "default_policy": "require_approval",
+    "tools": [
+      "terminal_exec",
+      "process_start",
+      "process_read",
+      "process_write",
+      "process_terminate",
+      "process_list"
+    ]
+  },
+  "git": {
+    "description": "Inspect and modify repository state.",
+    "destructive": true,
+    "sensitive": true,
+    "default_policy": "mixed: inspection is allowed, mutation needs approval",
+    "tools": [
+      "git_status",
+      "git_diff",
+      "git_log",
+      "git_branch",
+      "git_checkout",
+      "git_add",
+      "git_commit"
+    ]
+  },
+  "network": {
+    "description": "Retrieve remote resources over HTTP.",
+    "note": "Requests to loopback, link-local, cloud metadata, and private addresses are refused by the runtime.",
+    "sensitive": true,
+    "default_policy": "require_approval",
+    "tools": [
+      "net_fetch"
+    ]
+  },
+  "introspection": {
+    "description": "Inspect what the runtime itself has executed.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "runtime_stats"
+    ]
+  },
+  "planning": {
+    "description": "Keep the plan and its progress on disk so work survives the end of a run.",
+    "note": "The plan is the agent's own bookkeeping inside the workspace, so it is not treated as a destructive write.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "plan_get",
+      "plan_set",
+      "plan_update"
+    ]
+  },
+  "memory": {
+    "description": "Read the working memory and retrieve archived events from earlier in this run or from previous runs.",
+    "note": "Retrieval is selective: search returns titles and previews, and only archive_get loads a body into the conversation.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "memory_get",
+      "archive_search",
+      "archive_get"
+    ]
+  },
+  "knowledge": {
+    "description": "Load the procedures the runtime knows, when they are needed.",
+    "note": "Skills are instructions, not operations, so reading one changes nothing outside the conversation.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "skill_get",
+      "skill_read"
+    ]
+  },
+  "code.query": {
+    "description": "Query the semantic code index: symbols, dependencies, summaries, search, impact, tests, and config.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "code_find_symbol",
+      "code_search",
+      "code_file_summary",
+      "code_dependencies",
+      "code_impact",
+      "code_find_tests",
+      "code_config_usage",
+      "code_context",
+      "code_index_status",
+      "code_architecture_violations",
+      "code_git_hotspots"
+    ]
+  },
+  "code.index": {
+    "description": "Manage semantic index generation lifecycle sessions.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "code_index_start",
+      "code_index_get"
+    ]
+  },
+  "code.live": {
+    "description": "Live compiler and language server operations: diagnostics, call hierarchy, definition, organize imports.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "code_diagnostics",
+      "code_callers",
+      "code_definition",
+      "code_organize_imports"
+    ]
+  },
+  "code.write": {
+    "description": "Compiler-backed safe code refactorings across the workspace.",
+    "destructive": true,
+    "sensitive": true,
+    "default_policy": "require_approval",
+    "tools": [
+      "code_rename",
+      "code_simulate_mutation"
+    ]
+  },
+  "mcp.inspect": {
+    "description": "See which MCP servers are connected and what tools they offer.",
+    "note": "Reading the catalogue contacts a server but never asks it to do anything.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "mcp_servers",
+      "mcp_tools"
+    ]
+  },
+  "mcp.call": {
+    "description": "Call a tool on an MCP server, either through the gateway or by its mcp__<server>__<tool> name.",
+    "note": "What a server tool actually does is outside this runtime, so the workspace boundary does not cover it. A server marked restricted needs approval for every call.",
+    "sensitive": true,
+    "default_policy": "mixed: allowed by default, require_approval for a restricted server",
+    "tools": [
+      "mcp_call"
+    ]
+  },
+  "mcp.manage": {
+    "description": "Connect and disconnect MCP servers while the runtime is running.",
+    "note": "Adding a server grants capabilities this runtime did not ship with, and a stdio server is a process this runtime starts.",
+    "destructive": true,
+    "sensitive": true,
+    "default_policy": "require_approval",
+    "tools": [
+      "mcp_add",
+      "mcp_remove"
+    ]
+  },
+  "discussion": {
+    "description": "Run a structured multi-agent discussion: specialist personas deliberate in rounds and an observer decides when to finish and writes the final synthesis.",
+    "note": "Personas reason, they do not act on the workspace, so no approval is needed; the cost is in model calls, bounded by max_rounds.",
+    "sensitive": false,
+    "default_policy": "allow",
+    "tools": [
+      "discussion_start"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "runtime_stats",
+      "description": "Report what the runtime has actually executed: per-tool call counts, failures, timings, and the most recent tool calls.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "include_recent": {
+            "type": "boolean",
+            "description": "Include the recent call list. Defaults to true."
+          },
+          "recent_limit": {
+            "type": "integer",
+            "description": "How many recent calls to include. Defaults to 10."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  }
+]

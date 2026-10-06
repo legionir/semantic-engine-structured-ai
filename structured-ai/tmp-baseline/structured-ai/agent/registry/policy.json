@@ -1,0 +1,268 @@
+{
+  "default_action": "allow",
+  "description": "Evaluated for every tool call, after the Agent Profile allowlist and on the resolved arguments. The last matching rule wins, so a specific rule may follow a broad one. Approval behaviour is chosen with AGENT_APPROVAL: auto, prompt, or deny; prompt is the safe default. A call to an MCP server is additionally checked against that server's trust setting and MCP_APPROVAL, which can only make the answer stricter.",
+  "rules": [
+    {
+      "id": "destructive_filesystem",
+      "groups": [
+        "filesystem.write"
+      ],
+      "action": "require_approval",
+      "reason": "writes to the workspace"
+    },
+    {
+      "id": "read_only_filesystem_is_free",
+      "groups": [
+        "filesystem.read",
+        "search",
+        "introspection",
+        "code.query",
+        "code.index",
+        "code.live"
+      ],
+      "action": "allow",
+      "reason": "inspection only"
+    },
+    {
+      "id": "file_deletion",
+      "tools": [
+        "fs_delete"
+      ],
+      "action": "require_approval",
+      "reason": "deletes files"
+    },
+    {
+      "id": "protect_version_control_metadata",
+      "tools": [
+        "fs_delete",
+        "fs_move",
+        "fs_write",
+        "fs_edit"
+      ],
+      "when": {
+        "argument_matches": {
+          "path": [
+            "(^|/)\\.git(/|$)"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "the .git directory must not be modified through filesystem tools"
+    },
+    {
+      "id": "protect_version_control_metadata_move_source",
+      "tools": [
+        "fs_move"
+      ],
+      "when": {
+        "argument_matches": {
+          "source": [
+            "(^|/)\\.git(/|$)"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "the .git directory must not be moved through filesystem tools"
+    },
+    {
+      "id": "protect_version_control_metadata_move_destination",
+      "tools": [
+        "fs_move"
+      ],
+      "when": {
+        "argument_matches": {
+          "destination": [
+            "(^|/)\\.git(/|$)"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "nothing may be written into .git through filesystem tools"
+    },
+    {
+      "id": "runtime_configuration",
+      "tools": [
+        "fs_write",
+        "fs_edit",
+        "fs_delete",
+        "fs_move"
+      ],
+      "when": {
+        "argument_matches": {
+          "path": [
+            "agent/(registry|config|schema|policy|context)/",
+            "agent/agent\\.js$"
+          ]
+        }
+      },
+      "action": "require_approval",
+      "reason": "changes the agent runtime's own configuration or enforcement code"
+    },
+    {
+      "id": "protect_policy_definition",
+      "tools": [
+        "fs_write",
+        "fs_edit",
+        "fs_delete",
+        "fs_move"
+      ],
+      "when": {
+        "argument_matches": {
+          "path": [
+            "registry/policy\\.json$"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "the policy that governs the agent cannot be rewritten by the agent"
+    },
+    {
+      "id": "protect_policy_definition_move",
+      "tools": [
+        "fs_move"
+      ],
+      "when": {
+        "argument_matches": {
+          "source": [
+            "registry/policy\\.json$"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "the policy that governs the agent cannot be moved by the agent"
+    },
+    {
+      "id": "shell_execution",
+      "tools": [
+        "terminal_exec",
+        "process_start"
+      ],
+      "action": "require_approval",
+      "reason": "runs an arbitrary shell command"
+    },
+    {
+      "id": "irrecoverable_shell_commands",
+      "tools": [
+        "terminal_exec",
+        "process_start"
+      ],
+      "when": {
+        "argument_matches": {
+          "command": [
+            "(^|[;&|]\\s*)(sudo\\s+)?rm\\s+(-[a-zA-Z]+\\s+)*(/|~|\\$HOME|\\.\\.|[A-Za-z]:[\\\\/])",
+            "(^|[;&|]\\s*)(sudo\\s+)?rm\\s+[^|;&]*--no-preserve-root",
+            "(^|[;&|]\\s*)(sudo\\s+)?mkfs\\b",
+            "(^|[;&|]\\s*)(sudo\\s+)?dd\\s+if=",
+            ":\\(\\)\\s*\\{.*\\};:",
+            "(^|[;&|]\\s*)(sudo\\s+)?(shutdown|reboot|halt|poweroff)\\b",
+            "chmod\\s+-R\\s+777\\s+/(\\s|$)",
+            "chown\\s+-R[^|]*\\s+/(\\s|$)",
+            "(curl|wget)[^|]*\\|\\s*(ba|z|k)?sh\\b",
+            ">\\s*/dev/(sd|nvme|disk)",
+            "truncate\\s+-s\\s*0\\s+/"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "command destroys data outside the workspace or executes remote code"
+    },
+    {
+      "id": "history_rewriting_git",
+      "tools": [
+        "terminal_exec",
+        "process_start"
+      ],
+      "when": {
+        "argument_matches": {
+          "command": [
+            "git\\s+push[^\"']*--force",
+            "git\\s+reset\\s+--hard",
+            "git\\s+clean\\s+-[a-z]*f",
+            "git\\s+filter-branch",
+            "git\\s+checkout\\s+--\\s+\\.",
+            "git\\s+commit[^\"']*--amend"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "discards user work or rewrites published history"
+    },
+    {
+      "id": "repository_mutations",
+      "tools": [
+        "git_commit",
+        "git_checkout",
+        "git_branch",
+        "git_add"
+      ],
+      "action": "require_approval",
+      "reason": "changes repository state"
+    },
+    {
+      "id": "repository_inspection_is_free",
+      "tools": [
+        "git_status",
+        "git_diff",
+        "git_log"
+      ],
+      "action": "allow",
+      "reason": "inspection only"
+    },
+    {
+      "id": "branch_listing_is_free",
+      "tools": [
+        "git_branch"
+      ],
+      "when": {
+        "argument_matches": {
+          "action": [
+            "^list$"
+          ]
+        }
+      },
+      "action": "allow",
+      "reason": "inspection only"
+    },
+    {
+      "id": "outbound_network",
+      "groups": [
+        "network"
+      ],
+      "action": "require_approval",
+      "reason": "sends data to a remote host"
+    },
+    {
+      "id": "code_refactoring_mutations",
+      "groups": [
+        "code.write"
+      ],
+      "action": "require_approval",
+      "reason": "modifies code across multiple files via compiler rename"
+    },
+    {
+      "id": "mcp_inspection_is_free",
+      "groups": [
+        "mcp.inspect"
+      ],
+      "action": "allow",
+      "reason": "reads the server catalogue, changes nothing"
+    },
+    {
+      "id": "mcp_tool_calls",
+      "tools": [
+        "mcp_call",
+        "mcp__*"
+      ],
+      "action": "allow",
+      "reason": "an MCP tool is a capability the operator configured on purpose"
+    },
+    {
+      "id": "mcp_server_management",
+      "groups": [
+        "mcp.manage"
+      ],
+      "action": "require_approval",
+      "reason": "connects an external server and grants the run its capabilities"
+    }
+  ]
+}
