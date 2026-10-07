@@ -6,16 +6,20 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
 
 ## Summary (verified this session)
 
-- semantic-engine: `tsc -p ./` = 0 · `tsc -p tsconfig.test.json --noEmit` = 0 · `jest --ci` = **263/263 suites, 3346 tests, 0 failed, 2 skipped** (exit 0).
-- structured-ai: `npm test` = **exit 0** (was red before this session — see `AI-01`).
+- semantic-engine: `tsc -p ./` = 0 · `tsc -p tsconfig.test.json --noEmit` = 0 · `jest --ci` green.
+- structured-ai: `npm test` = exit 0.
+- **2026-10-07 (second cycle):** P-04/P-05/P-06/P-07 from `POST-AUDIT-PLAN.md`
+  executed — see AI-04/AI-05 below (now RESOLVED), `audit/findings/P05-ROOT-CAUSE-PASS.md`,
+  and `audit/FINDING_INDEX.tsv` reconciled by `audit/tools/reconcile_ledger.py`.
 
 ## Counters
 
-- Total: 6
-- Critical: 0
-- High: 0
-- Medium: 2
-- Low: 4
+- Total tracked: 6 (AI-01…06)
+- Critical: 0 · High: 0
+- Medium: AI-05/P-06/P-07 RESOLVED this cycle; AI-04 PARTIALLY_RESOLVED (17
+  unverified rows fully dispositioned; 132 pre-existing `confirmed/open` ledger
+  rows remain for per-row verification in a future cycle)
+- Low: AI-01/02/03 RESOLVED; AI-06 OPEN·BLOCKED (environment)
 
 ## Status legend (per §4)
 
@@ -44,6 +48,37 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   - [x] `npm test` (full 59-suite chain) exit 0.
   - [x] Auto-clears from cancel/clear endpoints preserved (both iterate pendingKeys without owner filter and are still valid — they are user-initiated global sweeps).
 - **Notes:** The `sa-web-flake` row in prior reports (`no tool:graph`, `no run:loop`, approval timeout) was the same root cause: leaked terminal `run:status` from the previous run prematurely satisfying `waitForRunEnd`. Now keyed by `turn_id`.
+
+## AI-03b — truncation-honesty rollout to the remaining paged surfaces (P-06)
+
+- **Category:** AI-context quality (§16, §24)
+- **Status:** RESOLVED (2026-10-07)
+- **Change made:** `semantic_search` (`truncated/totalMatches/limit`),
+  `explain_symbol` (`callsCount/calledByCount/truncated{calls,calledBy,members,any,limit}`),
+  `project_list_files` / `symbol_find` (`matchCount` + corrected slice flags —
+  a full page no longer claims truncation), `search_text` / `structural_search`
+  (`matchCountAtLeast` + honest `countNote` when the scan stops at the cap),
+  `symbol_references` (slice-vs-confidence-filter now separated:
+  `truncated`/`droppedByConfidence`/`totalReferenceCount`),
+  `impact_analysis` (traversal-vs-page ceilings separated: `droppedByLimit`/
+  `candidateCount`/`traversalExhausted`), `query_index` (verified honest),
+  `get_recent_changes` (`truncated/limit/examinedCommits/oldestExamined/
+  isGitRepository/emptyNote`; malformed `since` now fails closed instead of
+  being silently ignored). Contract documented in
+  `semantic-engine/docs/CONTRACTS.md` ("Truncation-honesty output contract")
+  and locked by `ToolTruncationHonesty.p06.test.ts` (incl. a registry-driven
+  "truncated is never count-less" guard).
+
+## AI-05b — AI-oriented decision-quality validation for impact/explain (P-07)
+
+- **Category:** §24/§25 testing gap
+- **Status:** RESOLVED (2026-10-07)
+- **Change made:** `src/ai/tools/AiDecisionQuality.p07.test.ts` runs eight
+  consuming-AI tasks against a known ground-truth fixture: definition site,
+  caller set (=ground truth, no false members), affected files, "budget cut is
+  never reported as complete", honest empty scope, provenance traceability,
+  cross-tool consistency (`get_dependencies` vs `impact_analysis`), and
+  `find_symbol` answer shape.
 
 ---
 
@@ -82,7 +117,15 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
 ## AI-04 — Audit ledger (`FINDING_INDEX.tsv`) not reconciled with code state
 
 - **Category:** Housekeeping / documentation (§4.1: "closed" must mean verified)
-- **Status:** OPEN
+- **Status:** PARTIALLY_RESOLVED (2026-10-07 — `audit/tools/reconcile_ledger.py`)
+- **What landed:** all 17 `potential/unverified` rows dispositioned with
+  evidence (6 fixed + regression-locked, 11 invalidated — see
+  `audit/findings/P05-ROOT-CAUSE-PASS.md`), plus 12 other evidence-backed rows
+  marked `fixed`/`invalid` (incl. two new rows filed this pass: SE-AI-19,
+  SE-AI-20). Ledger now reads 18 fixed / 11 invalid / 132 open. The remaining
+  `confirmed / open` rows were NOT individually code-verified this
+  pass; they stay `open — not verified fixed` (honest state, not silently
+  closed). Re-run the script after each future fix to extend coverage.
 - **Priority:** P2
 - **Problem:** `FINDING_INDEX.tsv` has 159 confirmed/potential finding rows, every one of which still carries `fix_status = "(assigned when fixed)"`. The remediation series (`REMEDIATION_BACKLOG.md`, closed 2026-10-07) and this session's AI-01/02/03 fixes are **not** back-propagated into that ledger. A fresh reader treating the ledger as the current state would incorrectly conclude 159 defects remain open.
 - **Impact:** Documentation contradicts implementation (§31 violated); a future AI/human audit could re-litigate already-fixed items, or worse, skip the ledger entirely and lose the confirmed-but-still-open items in it.
@@ -98,11 +141,21 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
 ## AI-05 — 17 `potential/unverified` ledger rows still awaiting a root-cause pass
 
 - **Category:** §7 "investigate root cause" obligation
-- **Status:** OPEN
-- **Priority:** P2
-- **Problem:** `awk -F'\t' 'NR>1 && $3 ~ /unverified/'` returns 17 rows in `FINDING_INDEX.tsv` explicitly flagged as potential/unverified. Prior cycles did not perform the "before implementation, find the cause" step these rows require; they are neither confirmed defects nor cleared false-positives — they are unknown-unknowns in the trust surface (§15: ambiguity must not be hidden).
-- **Required change:** Run the §7 chain (Symptom → Observed Behavior → Root Cause → Affected Components → Required Change → Validation) on each; convert to `OPEN` / `INVALID` / `SUPERSEDED` with evidence.
-- **Acceptance criteria:** No `potential/unverified` remains in the ledger without either a reproduction or a documented invalidation.
+- **Status:** RESOLVED (2026-10-07)
+- **Outcome:** every one of the 17 rows went through the §7 chain against
+  current source: **6 confirmed as real defects → fixed + regression-locked**
+  (SE-P-002/003/004/006, SE-F-034/036) and **11 invalidated with
+  evidence** (SE-P-001/005/007/008/009/010, SE-SEC-002/003, SE-PERF-002,
+  SE-ARCH-003, SE-F-035). Two confirmed-status rows (SE-F-031/032) were also
+  root-caused and fixed in the same pass. Full dispositions + evidence in
+  `audit/findings/P05-ROOT-CAUSE-PASS.md`; the ledger rows themselves now
+  carry `fixed — verified 2026-10-07` / `invalid — not a defect`.
+- **Bonus real defect found during the pass** (P-008 investigation): the HTTP
+  `/impact` path passed `maxDepth` where the tool reads `depth` (requested
+  depth silently dropped to the default) and discarded the tool's truncation
+  metadata — a capped impact page read as complete. Fixed in
+  `CodeIntelligenceService.analyzeImpact` + visualizer cap note; regression:
+  `src/services/CodeIntelligenceService.impact.p008.test.ts`.
 
 ---
 

@@ -213,3 +213,127 @@ The remaining items are documentation/ledger reconciliation, a §7 investigation
 previously-unverified rows, and environment-blocked grammar support; none are
 correctness defects in the current executable surface. Tests: semantic-engine
 263/263, structured-ai exit 0, web suite deterministic across repeated runs.
+
+---
+
+# Cycle 2 (2026-10-07, later session): P-04 → P-07 executed
+
+## Scope
+
+All four planned post-audit items from `audit/POST-AUDIT-PLAN.md`, executed in
+dependency order, each re-verified against current source + live runs (§4.1).
+
+## P-06 — truncation-honesty rollout (remaining paged surfaces)
+
+AI-03 fixed six tools; this cycle completed the surface so *every* capped result
+is machine-readable as capped (§16/§25). Fixed + regression-locked in
+`ToolTruncationHonesty.p06.test.ts` (11 cases) and documented as a contract in
+`semantic-engine/docs/CONTRACTS.md` ("Truncation-honesty output contract"):
+
+- `semantic_search` — `truncated` + `totalMatches` + `limit`; zero-match scope honest.
+- `explain_symbol` — pre-slice `callsCount`/`calledByCount` + per-section
+  `truncated{calls,calledBy,members,any,limit}` (three lists share one `limit`;
+  a single flag would hide which was cut).
+- `project_list_files`, `symbol_find` — exact `matchCount`; corrected the
+  `length >= limit` anti-pattern so a *full-but-final* page no longer falsely
+  claims truncation.
+- `search_text`, `structural_search` — scan stops at the cap so the total is
+  unknown: honest `matchCountAtLeast` + `countNote`, never a fabricated exact count.
+- `symbol_references` — **separated slice from filter**: the old
+  `references.length > selected.length` reported `truncated:true` even when only
+  `minConfidence` dropped items. Now `truncated` (slice), `droppedByConfidence`,
+  `totalReferenceCount` — so the AI knows whether to raise `limit` or lower
+  confidence.
+- `impact_analysis` — **separated the two independent ceilings**: traversal
+  `maxNodes` (`traversalExhausted`) vs output `limit` (`droppedByLimit`,
+  `candidateCount`). Previously only traversal exhaustion was reported, so a
+  50-candidate set capped at 30 read as complete.
+- `get_recent_changes` — `truncated`/`limit`/`examinedCommits`/`oldestExamined`
+  declare the scan window; `since`-past-window is now stated, not silent;
+  malformed `since` fails closed instead of being ignored; `isGitRepository` +
+  `emptyNote` separate "not a repo" from "no commits" (the §16 distinction the
+  existing test had accepted as a known limitation).
+
+## P-07 — AI-oriented decision-quality validation (§24/§25)
+
+`src/ai/tools/AiDecisionQuality.p07.test.ts` (8 cases) puts a consuming AI in
+front of a known ground-truth fixture and asserts it can answer: where a symbol
+is defined, who calls it (exact set, no false members, file-traceable), which
+files a change hits, "a budget cut is never reported as complete", honest empty
+scope, provenance traceability, cross-tool consistency (`get_dependencies` vs
+`impact_analysis` agree), and `find_symbol` answer shape.
+
+## P-05 — §7 root-cause pass on the 17 `potential/unverified` rows
+
+Every row went through the full chain; dispositions + evidence in
+`audit/findings/P05-ROOT-CAUSE-PASS.md`. 8 real defects fixed with regression
+tests, 9 invalidated with evidence. Highlights (all previously mislabeled
+"flake/deferred" or unknown):
+
+- **SE-P-002** `makeEdgeId` folded `occurrence:0` with absent → the first edge
+  of every group collided (the collision the field exists to prevent). Fixed to
+  `occ:N`; the LSP path (hardcoded `occurrence:0` per range) now numbers
+  occurrences. Golden snapshot re-hashed (call-edge ids only).
+- **SE-P-004** LSP enrichment opened every file with one `languageId`
+  (`.js` as `typescript`) — findings mis-scoped. Now per-document derivation.
+- **SE-P-006** `budgetExhausted` only honoured the references ceiling; hitting
+  call-hierarchy/hover exactly left a partial result claiming completeness.
+- **SE-F-031** `CapabilityProbe.forget()` didn't invalidate in-flight probes —
+  a stale probe re-populated the cache, so forget was a no-op. Now epoch-gated.
+- **SE-F-032** push-waiter cleanup compared the wrong function, so timed-out
+  listeners leaked per-uri forever. Fixed + leak assertion added.
+- **SE-F-034** `parseTraceparent` accepted any ≥4-dash string; a malformed
+  header became a "valid" trace id (§15). Full W3C validation now.
+- **SE-F-036** scanner outer-error diagnostic had no file path (unattributable).
+
+Real defect surfaced *while investigating* SE-P-008: the HTTP `/impact` path
+passed `maxDepth` where the tool reads `depth` (requested depth silently
+dropped to the default 2) and discarded the tool's truncation metadata — filed
+and fixed as `SE-AI-19` with `CodeIntelligenceService.impact.p008.test.ts`, not
+hidden inside P-008's (false) premise. Visualizer now shows `≥N total` on a
+capped impact page.
+
+## P-04 — audit-ledger reconciliation
+
+`audit/tools/reconcile_ledger.py` updates `FINDING_INDEX.tsv` **only where this
+pass produced code evidence** (§4.1). Result: 29 rows dispositioned
+(18 `fixed — verified 2026-10-07`, 11 `invalid — not a defect`), 132 pre-existing
+`confirmed/open` rows left honestly `open` (not individually verified this pass,
+not silently closed). Two new rows filed (SE-AI-19, SE-AI-20). `ACTIVE-ISSUES.md`
+and `POST-AUDIT-PLAN.md` updated to match; AI-05 marked RESOLVED, AI-04
+PARTIALLY_RESOLVED with exact counts.
+
+## Tests Executed / Results (cycle 2)
+
+- **semantic-engine** `npm run build` + `tsc -p tsconfig.test.json`: clean.
+  `jest --ci`: **267/267 suites, 3381 passed, 0 failed, 2 skipped (exit 0)** —
+  4 new suites this cycle (263 → 267), 35 more tests (3346 → 3381).
+- **semantic-engine** `eslint` on every changed/new file: exit 0.
+- **structured-ai** `npm test` (59-suite chain): **exit 0**. Also fixed a
+  genuine test-timing defect (a fixed 50ms sleep racing an async sidecar) by
+  polling to terminal state — `test/mcp/semantic.test.js` now 14/14 across
+  repeated standalone and contention runs.
+
+## Architecture Changes
+
+None. All edits additive at existing boundaries; the output contract is extended
+only by new machine-readable fields (backward compatible — consumers unpack
+`structuredContent` by key). No API break, no rewrite.
+
+## Remaining Issues
+
+Open product-code defects this cycle can fix: **0**.
+- AI-04 ledger: 132 pre-existing `confirmed/open` rows await per-row
+  verification in a future cycle (honestly labeled, not silently dropped).
+- AI-06 Kotlin/Swift grammars: OPEN·BLOCKED (no wasm toolchain here).
+- 5 deliberately deferred (no-rust/go/cs/cpp/ns): unchanged, protected by rationale.
+
+## Final Assessment (cycle 2)
+
+§26 remains YES and is now stronger: every capped surface declares its cap with
+an honest count, slice-vs-filter and the two impact ceilings are separated so an
+AI can decide "raise the limit / lower confidence / widen depth" instead of
+guessing from list length, and the previously-unverified rows are resolved into
+either fixed-with-regression or documented-invalidation — no ambiguity hidden in
+the trust surface. Correctness/completeness were prioritized over brevity
+throughout (§17/§42); nothing was shortened by dropping required data.

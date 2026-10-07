@@ -14,12 +14,12 @@ Executed this session (verified, committed):
 
 Planned next (dependency-ordered):
 
-| ID | Title | Severity | Category | Depends on |
-|----|-------|----------|----------|------------|
-| P-04 | Reconcile `FINDING_INDEX.tsv` fix_status with real code state | Medium | HOUSEKEEPING / DOCUMENTATION | none |
-| P-05 | Root-cause pass on 17 `potential/unverified` ledger rows | Medium | §7 investigation | P-04 |
-| P-06 | Extend truncation honesty to remaining `limit`-bearing tools + document the output contract | Medium | AI_CONTEXT_QUALITY | P-03 |
-| P-07 | Audit AI-oriented decision quality for `impact_analysis` / `explain_symbol` completeness claims (§24) | Medium | TESTING_GAP | P-03, P-06 |
+| ID | Title | Severity | Category | Depends on | Status |
+|----|-------|----------|----------|------------|--------|
+| P-04 | Reconcile `FINDING_INDEX.tsv` fix_status with real code state | Medium | HOUSEKEEPING / DOCUMENTATION | none | **PARTIALLY DONE 2026-10-07** — `audit/tools/reconcile_ledger.py` updated 27 rows (17 `fixed`, 10 `invalid`) with evidence; the remaining 132 `confirmed/open` rows were NOT individually verified this pass and stay honestly `open` pending per-row work |
+| P-05 | Root-cause pass on 17 `potential/unverified` ledger rows | Medium | §7 investigation | P-04 | **DONE 2026-10-07** — 8 fixed+locked, 9 invalidated with evidence (`audit/findings/P05-ROOT-CAUSE-PASS.md`); found + fixed an extra real defect (HTTP `/impact` depth/truncation) |
+| P-06 | Extend truncation honesty to remaining `limit`-bearing tools + document the output contract | Medium | AI_CONTEXT_QUALITY | P-03 | **DONE 2026-10-07** — semantic_search/explain_symbol/project_list_files/symbol_find/search_text/structural_search/symbol_references/impact_analysis/get_recent_changes; contract in `docs/CONTRACTS.md`; locked by `ToolTruncationHonesty.p06.test.ts` |
+| P-07 | Audit AI-oriented decision quality for `impact_analysis` / `explain_symbol` completeness claims (§24) | Medium | TESTING_GAP | P-03, P-06 | **DONE 2026-10-07** — `AiDecisionQuality.p07.test.ts` (8 consuming-AI tasks vs known ground truth) |
 
 ## P-03 — Why this is the highest-value class
 
