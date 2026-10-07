@@ -73,7 +73,18 @@ export class GetFileSummaryTool implements AiTool<GetFileSummaryInput> {
         excerpt: sym.signature ?? sym.documentation ?? undefined,
       }));
 
-      return { success: true, items, context };
+      /*
+      | SE-AI-HONESTY — `items` carries at most 20 symbols even though the
+      | context line already counts the full public API. Expose that cap as a
+      | machine-readable signal so the AI does not treat the item list as the
+      | complete public surface.
+      */
+      return {
+        success: true,
+        items,
+        context,
+        metadata: { truncated: publicSymbols.length > 20, publicSymbolCount: publicSymbols.length },
+      };
     } catch (error) {
       return {
         success: false,

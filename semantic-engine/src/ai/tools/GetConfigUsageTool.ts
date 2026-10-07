@@ -55,7 +55,8 @@ export class GetConfigUsageTool implements AiTool<GetConfigUsageInput> {
         }
       }
       items.sort((a, b) => b.relevanceScore - a.relevanceScore);
-      return { success: true, items: items.slice(0, limit) };
+      /* SE-AI-HONESTY — flag the limit slice (see FindSymbolTool). */
+      return { success: true, items: items.slice(0, limit), metadata: { truncated: items.length > limit, matchCount: items.length, limit } };
     } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error), items: [] }; }
   }
 }

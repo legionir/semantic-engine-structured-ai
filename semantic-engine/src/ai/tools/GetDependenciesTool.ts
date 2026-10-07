@@ -64,6 +64,13 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
       const visited = new Set<string>();
       const results: import('./types').AiToolResultItem[] = [];
       /*
+      | SE-AI-HONESTY — the traversal stops as soon as `limit` rows are
+      | collected, so `results` may be a prefix of the true dependency set
+      | (the guard `results.length >= limit` is what ends the walk). Reporting
+      | that a full page was produced lets the AI ask for more instead of
+      | treating a capped list as the complete set of dependents/dependencies.
+      */
+      /*
       | F-0036 — همان خانوادهٔ SE-AI-12: یال‌های call سرِ **سمبلی** دارند.
       | شکل قبلی با `level:'file'` آن گره‌ها را `continue` می‌کرد، پس یک
       | متد با بیست فراخوان، بسته به شانس، یا فقط فایل‌هایِ سطح‌ماژول را
@@ -149,7 +156,7 @@ export class GetDependenciesTool implements AiTool<GetDependenciesInput> {
             },
           };
         });
-      return { success: true, items: withCounts.slice(0, limit) };
+      return { success: true, items: withCounts.slice(0, limit), metadata: { truncated: results.length >= limit, limit } };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error), items: [] };
     }

@@ -40,7 +40,7 @@ export class GetGitHotspotsTool implements AiTool {
     miner.recordCommit(files.slice(0, 10).map(f => f.path));
     const hotspots = miner.getHotspots(limit);
 
-    return this.format(hotspots, 'in-memory');
+    return this.format(hotspots, 'in-memory', Math.min(files.length, 10));
   }
 
   private async executeFromRepository(limit: number): Promise<AiToolOutput> {
@@ -53,7 +53,7 @@ export class GetGitHotspotsTool implements AiTool {
         ])
       );
 
-      const hotspots = [...history.statsByPath.entries()]
+      const ranked = [...history.statsByPath.entries()]
         .filter(([filePath]) => this.reader.getFileByPath(filePath) !== undefined)
         .map(([filePath, stats]) => {
           const complexity = complexityByPath.get(filePath) ?? 1;
@@ -72,10 +72,14 @@ export class GetGitHotspotsTool implements AiTool {
           right.hotspotScore - left.hotspotScore ||
           right.commitsCount - left.commitsCount ||
           left.filePath.localeCompare(right.filePath)
-        )
-        .slice(0, limit);
+        );
 
-      return this.format(hotspots, 'git-history');
+      /*
+      | SE-AI-HONESTY — `ranked.length` (candidate count before the cap) is
+      | passed to `format` so a sliced hotspot list reports itself as
+      | truncated rather than the complete set.
+      */
+      return this.format(ranked.slice(0, limit), 'git-history', ranked.length);
     } catch (error) {
       return {
         success: false,
@@ -93,10 +97,11 @@ export class GetGitHotspotsTool implements AiTool {
     churnScore: number;
     complexity: number;
     hotspotScore: number;
-  }[], source: string): AiToolOutput {
+  }[], source: string, candidateCount: number): AiToolOutput {
     return {
       success: true,
-      metadata: { hotspots, source },
+      /* SE-AI-HONESTY — `truncated` says the ranked list was capped. */
+      metadata: { hotspots, source, truncated: candidateCount > hotspots.length, candidateCount },
       items: hotspots.map(h => ({
         id: h.filePath,
         name: h.filePath,

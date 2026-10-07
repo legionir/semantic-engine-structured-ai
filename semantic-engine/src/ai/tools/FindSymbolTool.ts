@@ -97,6 +97,7 @@ export class FindSymbolTool implements AiTool<FindSymbolInput> {
         });
       }
 
+      const matched = symbols.length;
       const items = symbols.slice(0, limit).map(sym => {
         const file = this.reader.getFileById(sym.fileId);
         return {
@@ -110,7 +111,17 @@ export class FindSymbolTool implements AiTool<FindSymbolInput> {
         };
       });
 
-      return { success: true, items };
+      /*
+      | SE-AI-HONESTY — a `limit` slice is not "all matches". Without a
+      | truncation signal the AI reads `items` as the complete result set
+      | and concludes the (uncounted) remainder does not exist. Report the
+      | real match count and whether the slice dropped any.
+      */
+      return {
+        success: true,
+        items,
+        metadata: { truncated: matched > limit, matchCount: matched, limit },
+      };
     } catch (error) {
       return {
         success: false,

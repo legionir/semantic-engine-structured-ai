@@ -105,7 +105,12 @@ export class FindTestsTool implements AiTool<FindTestsInput> {
           relevanceScore: m.score,
         }));
 
-      return { success: true, items };
+      /*
+      | SE-AI-HONESTY — `scored` may hold more candidates than `limit`;
+      | a slice must be flagged so the AI does not read the returned set as
+      | "these are all the related tests".
+      */
+      return { success: true, items, metadata: { truncated: scored.length > limit, matchCount: scored.length, limit } };
     } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error), items: [] }; }
   }
 }
