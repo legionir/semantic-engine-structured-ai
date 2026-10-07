@@ -110,6 +110,41 @@ describe('SE-INC-01 — شناسهٔ فایل پس از rename پایدار می
     const ids = edited.projectIndex.files.map(f => f.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it('SE-F-028 — rename هم‌محتوا symbolها را زنده نگه می‌دارد (parity با rebuild)', async () => {
+    write('src/a.ts', 'export const a = 1;\nexport function fn() { return a; }\n');
+    write('src/keep.ts', 'export const k = 2;\n');
+
+    const index = await fullIndex();
+    const aSymbols = index.symbols.filter(s => s.fileId === index.files.find(f => f.path === 'src/a.ts')!.id);
+    expect(aSymbols.length).toBeGreaterThan(0);
+
+    const first = engine();
+    first.load(index);
+    fs.renameSync(path.join(workspace, 'src/a.ts'), path.join(workspace, 'src/b.ts'));
+    const renamed = await first.applyChanges([
+      { type: 'renamed', path: 'src/b.ts', oldPath: 'src/a.ts' },
+    ]);
+
+    /*
+    | مسیر هم‌محتوا قبلاً `removeFile` + `upsertFile` می‌کرد؛
+    | `removeFile` symbolها را پاک می‌کرد و هیچ re-extract نداشت، پس
+    | فایل در index می‌ماند ولی بی‌symbol — برخلاف rebuild کامل.
+    | `renameFile` باید مسیر را عوض کند و symbolها را نگه دارد.
+    */
+    const renamedFile = renamed.projectIndex.files.find(f => f.path === 'src/b.ts')!;
+    const surviving = renamed.projectIndex.symbols.filter(s => s.fileId === renamedFile.id);
+    expect(surviving.map(s => s.id).sort()).toEqual(aSymbols.map(s => s.id).sort());
+    expect((renamedFile.symbolIds ?? []).length).toBe(aSymbols.length);
+
+    /* parity: incremental-after-rename == full rebuild of the renamed tree */
+    const rebuilt = await fullIndex();
+    const rebuiltIds = rebuilt.symbols
+      .filter(s => s.fileId === rebuilt.files.find(f => f.path === 'src/b.ts')!.id)
+      .map(s => s.name)
+      .sort();
+    expect(surviving.map(s => s.name).sort()).toEqual(rebuiltIds);
+  });
 });
 
 describe('SE-INC-11 — removeFile آرایهٔ symbols را هم همگام می‌کند', () => {

@@ -45,6 +45,11 @@ function makeStub() {
     isDegraded: () => false,
     workerToken: () => undefined,
     diagnostics: () => ({}),
+    /* SE-F-058 — the stats surface: no live worker in this stub, so no
+       snapshot is ever available and refreshes are inert. */
+    lastStatsObservedAt: () => undefined,
+    recordStats: () => undefined,
+    refreshStats: async () => undefined,
   };
   return stub;
 }

@@ -232,12 +232,14 @@ export class BlueprintGenerator {
           framework: route.framework,
           derivedFrom: 'static-analysis',
           /*
-          | تشخیصِ اینکه یک مسیر احراز هویت می‌خواهد، از نحو
-          | برنمی‌آید. `false` اینجا یعنی «شواهدی ندیدم»، نه «باز
-          | است» — و چون قرارداد این فیلد را اجباری کرده، جای دیگری
-          | برای گفتنش نیست.
+          | SE-SEC-001: تشخیصِ اینکه یک مسیر احراز هویت می‌خواهد، از نحو
+          | برنمی‌آید. `false` قدیمی به AI می‌گفت «این route باز است» در
+          | حالی که منظور «شواهدی ندیدم» بود — یعنی evidence of absence
+          | جا زده می‌شد با absence of evidence (§15). حالا `null` یعنی
+          | «بررسی نشد» و فقط وقتی واقعاً middleware احراز هویت روی route
+          | دیده شده true/false صادر می‌شود.
           */
-          authRequired: false,
+          authRequired: null,
         });
       }
     }

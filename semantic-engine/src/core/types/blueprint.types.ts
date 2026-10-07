@@ -119,7 +119,13 @@ export interface ApiEntry {
   readonly line?: number;
   readonly framework?: 'express' | 'fastify' | 'nestjs';
   readonly derivedFrom?: 'static-analysis' | 'ai-inference';
-  readonly authRequired: boolean;
+  /*
+  | SE-SEC-001 — three-state on purpose: `true`/`false` فقط وقتی صادر
+  | می‌شود که واقعاً شاهدی دیده شده؛ `null` یعنی «از روی نحو نمی‌شود
+  | دانست / بررسی نشد». `false` پیشین به مصرف‌کننده AI اجازه می‌داد
+  | بگوید «این route عمومی است» بدون هیچ شاهدی.
+  */
+  readonly authRequired: boolean | null;
   readonly requestSchemaRef?: string | null;
   readonly responseSchemaRef?: string | null;
   readonly middlewareSymbolIds?: string[];

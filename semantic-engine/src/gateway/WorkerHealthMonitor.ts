@@ -16,7 +16,7 @@
  * tests drive five crashes without waiting five real intervals.
  */
 
-import { WorkerEvent, WorkerProcess } from './WorkerProcess';
+import { WorkerEvent, WorkerHealthSnapshot, WorkerProcess } from './WorkerProcess';
 
 export interface RestartPolicy {
   /** تأخیر هر restart؛ از آخرین مقدار به بعد ثابت می‌ماند. */
@@ -64,6 +64,17 @@ interface RestartState {
   crashes: number;
   degraded: boolean;
   lastCrashAt: number;
+  /*
+  | SE-F-058: the last snapshot the periodic health check collected. The
+  | gateway answers `/projects` synchronously; without a cache it had
+  | nothing real to report and printed fabricated zeros. The health loop
+  | (`startHealthLoop` → `checkAll` → `check`) already fetches this exact
+  | snapshot on every cycle — storing it here makes the true counts
+  | available where the list payload is built, with no extra requests.
+  */
+  lastSnapshot?: WorkerHealthSnapshot;
+  /** SE-F-058 — زمان برداشت snapshot (برای اعلام staleness). */
+  lastSnapshotAt?: number;
 }
 
 export class WorkerHealthMonitor {
@@ -95,6 +106,25 @@ export class WorkerHealthMonitor {
     return this.states.get(projectId)?.degraded ?? false;
   }
 
+  /** SE-F-058 — آخرین snapshot جمع‌آوری‌شده توسط حلقهٔ سلامت (یا undefined). */
+  lastSnapshot(projectId: string): WorkerHealthSnapshot | undefined {
+    return this.states.get(projectId)?.lastSnapshot;
+  }
+
+  /** SE-F-058 — زمان برداشت آخرین snapshot (ms epoch؛ undefined اگر هیچ). */
+  lastSnapshotAt(projectId: string): number | undefined {
+    const state = this.states.get(projectId);
+    return state?.lastSnapshot ? state.lastSnapshotAt : undefined;
+  }
+
+  /** SE-F-058 — ثبت snapshot گرفته‌شده بیرون از حلقه (مثلاً درخواست list). */
+  recordSnapshot(projectId: string, snapshot: WorkerHealthSnapshot | undefined): void {
+    const state = this.states.get(projectId);
+    if (!state) return;
+    state.lastSnapshot = snapshot;
+    state.lastSnapshotAt = (this.options.now ?? (() => new Date()))().getTime();
+  }
+
   delayFor(restartNumber: number): number {
     const delays = this.policy.delaysMs;
     if (delays.length === 0) return 0;
@@ -113,6 +143,7 @@ export class WorkerHealthMonitor {
     this.states.set(projectId, state);
 
     if (state.degraded) {
+      state.lastSnapshot = undefined;
       return {
         projectId,
         action: 'none',
@@ -136,6 +167,8 @@ export class WorkerHealthMonitor {
       if (state.crashes !== 0 && now().getTime() - state.lastCrashAt >= healthyResetMs) {
         state.crashes = 0;
       }
+      state.lastSnapshot = snapshot ?? undefined;
+      state.lastSnapshotAt = now().getTime();
       return {
         projectId,
         action: 'none',
@@ -145,6 +178,13 @@ export class WorkerHealthMonitor {
       };
     }
 
+    /*
+    | SE-F-058: a worker that stopped answering is not healthy — the
+    | snapshot behind it is stale, and a stale count shown as current is
+    | exactly the "old cache read as fresh" failure. Drop it so consumers
+    | see `available: false` instead of last-known numbers.
+    */
+    state.lastSnapshot = undefined;
     state.crashes += 1;
     state.lastCrashAt = (this.options.now ?? (() => new Date()))().getTime();
 

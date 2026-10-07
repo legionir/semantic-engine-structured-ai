@@ -84,6 +84,11 @@ export interface WorkerSummary {
   readonly restartCount: number;
   readonly degraded: boolean;
   readonly health?: WorkerHealthSnapshot;
+  /*
+  | SE-F-058 — آخرین snapshot که حلقهٔ periodic health جمع کرده. بر خلاف
+  | `health` (که در این مسیر هرگز مقدار نمی‌گیرد)، این واقعاً پر می‌شود.
+  */
+  readonly lastHealthSnapshot?: WorkerHealthSnapshot;
 }
 
 export interface WorkerSupervisorOptions {
@@ -238,6 +243,7 @@ export class WorkerSupervisor {
       target: entry.process.target,
       restartCount: this.monitor.restartCount(entry.config.projectId),
       degraded: this.monitor.isDegraded(entry.config.projectId),
+      lastHealthSnapshot: this.monitor.lastSnapshot(entry.config.projectId),
     };
   }
 
@@ -421,6 +427,33 @@ export class WorkerSupervisor {
   async health(projectId: string): Promise<WorkerHealthSnapshot | null> {
     const entry = this.workers.get(projectId);
     return entry ? entry.process.health() : null;
+  }
+
+  /**
+   * SE-F-058 — آمار واقعی را تازه کن و در حافظهٔ monitor بنشان، تا
+   * `projectEntry` (که synchronous است) عدد ساختگی لازم نسازد. اگر
+   * worker نبود یا جواب نداد، snapshot پاک می‌شود: نبودِ داده با دادهٔ
+   * صفر اشتباه گرفته نشود.
+   */
+  async refreshStats(projectId: string): Promise<WorkerHealthSnapshot | undefined> {
+    const entry = this.workers.get(projectId);
+    if (!entry) {
+      this.monitor.recordSnapshot(projectId, undefined);
+      return undefined;
+    }
+    const snapshot = await entry.process.health();
+    this.monitor.recordSnapshot(projectId, snapshot ?? undefined);
+    return snapshot ?? undefined;
+  }
+
+  /** SE-F-058 — زمان برداشت آخرین آمار (برای staleness در payload). */
+  lastStatsObservedAt(projectId: string): number | undefined {
+    return this.monitor.lastSnapshotAt(projectId);
+  }
+
+  /** SE-F-058 — ثبت snapshot گرفته‌شده در مسیر دیگر (health detail). */
+  recordStats(projectId: string, snapshot: WorkerHealthSnapshot | undefined): void {
+    this.monitor.recordSnapshot(projectId, snapshot);
   }
 
   /** یک دور بررسی سلامت؛ هم تایمر صدا می‌زند هم تست. */

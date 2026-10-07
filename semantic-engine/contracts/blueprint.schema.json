@@ -354,7 +354,8 @@
             ]
           },
           "authRequired": {
-            "type": "boolean"
+            "type": ["boolean", "null"],
+            "description": "SE-SEC-001: true/false فقط با شاهد؛ null یعنی «بررسی‌نشده از روی نحو» — نبودِ شاهد، شاهدِ باز بودن نیست."
           },
           "middlewareSymbolIds": {
             "type": "array",

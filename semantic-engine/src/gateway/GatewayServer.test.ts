@@ -167,6 +167,32 @@ describeIfBuilt('Semantic Gateway', () => {
     }
   });
 
+  it('SE-F-058 — the gateway project LIST reports real counts, not fabricated zeros', async () => {
+    /* `/api/v1/gateway/projects` is built by the gateway itself (not
+       proxied), so this is where the old hard-coded zeros appeared.
+       A ready worker has indexed its project, so its list entry must
+       carry `available:true` with real counts and an observedAt. */
+    const deadline = Date.now() + 60_000;
+    let entry: Record<string, unknown> | undefined;
+    let stats: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
+      const reply = await request(port, 'GET', '/api/v1/gateway/projects', { token });
+      expect(reply.status).toBe(200);
+      const projects = reply.body['projects'] as Record<string, unknown>[];
+      entry = projects.find(p => p['id'] === idA);
+      stats = entry?.['stats'] as Record<string, unknown> | undefined;
+      if (stats?.['available'] === true && (stats['filesCount'] as number) >= 1) break;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    expect(stats).toBeDefined();
+    if (!(stats?.['available'] === true && (stats?.['filesCount'] as number) >= 1)) {
+      throw new Error(`list stats never became real: ${JSON.stringify(stats)}`);
+    }
+    expect(stats?.['symbolsCount']).toBeGreaterThanOrEqual(1);
+    expect(typeof stats?.['observedAt']).toBe('string');
+  }, 120_000);
+
   it('routes each project to its own worker and says whose answer it is', async () => {
     const answerA = await request(port, 'GET', `/api/v1/projects/${idA}`, { token });
     const answerB = await request(port, 'GET', `/api/v1/projects/${idB}`, { token });

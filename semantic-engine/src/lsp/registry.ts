@@ -284,13 +284,32 @@ export class LspServerRegistry {
         exists: this.options.exists,
         overrides: this.options.overrides,
       });
-      if (resolved) return resolved;
+      if (resolved) return this.applyArgsOverride(resolved, override);
       return null;
     }
 
     const found = this.findOnPath(spec.binaries);
     if (!found) return null;
-    return { id: spec.id, command: found, args: spec.args, source: 'path' };
+    return this.applyArgsOverride({ id: spec.id, command: found, args: spec.args, source: 'path' }, override);
+  }
+
+  /**
+   * SE-F-027 — an args-only override (no `command`) is a documented,
+   * normalized shape (`ServerOverride` keeps args independent of command),
+   * but the old code consumed `override.args` only inside the
+   * `override.command` branch. A configured `{ args: [...] }` without a
+   * command was silently dropped at resolution — the user waited to learn
+   * their settings did nothing. The override now applies on every path
+   * that produced a server, without changing which server was picked.
+   */
+  private applyArgsOverride(
+    resolved: ResolvedLspServer,
+    override: { args?: readonly string[] } | undefined
+  ): ResolvedLspServer {
+    if (override?.args && Array.isArray(override.args)) {
+      return { ...resolved, args: [...override.args] };
+    }
+    return resolved;
   }
 
   /**

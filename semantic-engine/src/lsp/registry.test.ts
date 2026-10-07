@@ -206,6 +206,55 @@ describe('LSP-04 — override از پیکربندی', () => {
     fakeBinary('pyright-langserver');
     expect(registry({ overrides: { pyright: { disabled: true } } }).resolveSpec(pyright)).toBeNull();
   });
+
+  it('SE-F-027 — override بدون command، فقط args را اعمال می‌کند (نه دور ریختن)', () => {
+    fakeBinary('pyright-langserver');
+    const resolved = registry({
+      overrides: { pyright: { args: ['--stdio', '--verbose'] } },
+    }).resolveSpec(pyright);
+
+    /*
+    | قبلاً `override.args` فقط داخل شاخهٔ `override.command` خوانده
+    | می‌شد؛ این شکلِ مستندِ ServerOverride بود که بی‌صدا نادیده
+    | گرفته می‌شد: کاربر args را تنظیم می‌کرد و سرور با args پیش‌فرض
+    | بالا می‌آمد.
+    */
+    expect(resolved).not.toBeNull();
+    expect(resolved!.command).toContain('pyright-langserver');
+    expect(resolved!.args).toEqual(['--stdio', '--verbose']);
+  });
+
+  it('SE-F-027 — args-only override روی مسیر resolveCommand هم اعمال می‌شود', () => {
+    /*
+    | همان نقص روی specهایی با resolver اختصاصی: خروجی resolver دیگر
+    | آخرین کلمه نیست؛ overrideِ args پس از resolve اعمال می‌شود و
+    | سرور عوض نمی‌شود.
+    */
+    const spec = {
+      id: 'custom-resolved',
+      languages: ['text'],
+      binaries: ['never-on-path'],
+      args: ['--default'],
+      install: 'n/a (test fixture)',
+      rootMarkers: [],
+      needsWarmup: false,
+      resolveCommand: () => ({
+        id: 'custom-resolved',
+        command: '/opt/bin/custom-lsp',
+        args: ['--from-resolver'],
+        source: 'bundled' as const,
+      }),
+    };
+    const resolved =
+      new LspServerRegistry({
+        specs: [spec],
+        env: { PATH: binDir },
+        overrides: { 'custom-resolved': { args: ['--override'] } },
+      }).resolveSpec(spec);
+
+    expect(resolved!.command).toBe('/opt/bin/custom-lsp');
+    expect(resolved!.args).toEqual(['--override']);
+  });
 });
 
 describe('LSP-04 — گزارش برای doctor', () => {

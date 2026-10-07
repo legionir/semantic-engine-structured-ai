@@ -460,6 +460,12 @@ function createUser() {}
     expect(health.handlerSymbolId).toBeNull();
   });
 
+  it('SE-SEC-001 — بدون شاهد، authRequired:null نه false (نبودِ شاهد ≠ شاهدِ باز بودن)', () => {
+    for (const entry of generate().apiMap) {
+      expect(entry.authRequired).toBeNull();
+    }
+  });
+
   it('هر ورودی شناسه و منشأ دارد', () => {
     for (const entry of generate().apiMap) {
       expect(entry.id).toMatch(/^api-[a-z0-9-]+$/);

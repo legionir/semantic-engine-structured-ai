@@ -21,8 +21,24 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 
 export default async function globalSetupDataDir(): Promise<void> {
+  /*
+  | The on-disk test fixture is generated, not committed (scripts/gen-fixture
+  | -js). `npm test` makes it via `pretest`, but a direct `jest`/`npx jest`
+  | invocation skipped that step and several suites (cli, scanner, export,
+  | blueprint) then failed with empty indexes — a broken first impression
+  | that looks like product regressions. Generate it here, which every jest
+  | entry point runs.
+  */
+  const fixtureRoot = path.resolve(__dirname, '..', '..', 'test-fixture');
+  if (!fs.existsSync(path.join(fixtureRoot, 'src', 'app.ts'))) {
+    execFileSync(process.execPath, [
+      path.resolve(__dirname, '..', '..', 'scripts', 'gen-fixture.js'),
+    ], { stdio: 'inherit' });
+  }
+
   if (process.env['SEMANTIC_ENGINE_DATA_DIR']) return;
 
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'se-jest-data-'));

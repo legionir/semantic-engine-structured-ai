@@ -30,6 +30,7 @@ import { GatewayAuth } from './GatewayAuth';
 import { proxyRequest } from './GatewayProxy';
 import { ProjectRegistry } from '../core/config/ProjectRegistry';
 import { CapacityError, LockHeldError, WorkerSupervisor, WorkerSummary } from './WorkerSupervisor';
+import type { WorkerHealthSnapshot } from './WorkerProcess';
 import { createWorkerConfig, validateWorkerConfig } from './WorkerConfigSchema';
 import { ProjectWorkerConfig } from './types';
 import { ApiKeyRecord, PermissionScope } from '../security/rbac/types';
@@ -289,7 +290,7 @@ export class GatewayServer {
     /* ── مدیریت پروژه‌ها ─────────────────────────────────────────────── */
     if (pathname === '/api/v1/gateway/projects' || pathname === '/api/v1/projects') {
       if (method === 'GET') {
-        this.send(res, 200, this.projectListPayload(record));
+        this.send(res, 200, await this.projectListPayload(record));
         return;
       }
       if (method === 'POST') {
@@ -550,6 +551,17 @@ export class GatewayServer {
     const worker = this.summarize(id);
     const running = worker?.state === 'ready';
 
+    /*
+    | SE-F-058: the old code emitted hard-coded zeros here — a `ready`
+    | project claiming 0 files / 0 symbols is information that makes an
+    | AI (or a human) decide the index is empty when it is not. Now the
+    | payload carries the worker's real health snapshot when one has been
+    | collected, and declares `available: false` when it has not, so
+    | "we have no measurement" can never read as "the measurement is 0".
+    */
+    const snapshot = worker?.lastHealthSnapshot;
+    const observedAt = this.supervisor.lastStatsObservedAt(id);
+
     return {
       id,
       name: registered?.name ?? id,
@@ -559,20 +571,51 @@ export class GatewayServer {
       restartCount: worker?.restartCount ?? 0,
       degraded: worker?.degraded ?? false,
       stats: {
-        filesCount: 0,
-        symbolsCount: 0,
-        dependenciesCount: 0,
+        available: snapshot !== undefined,
+        filesCount: snapshot?.files ?? null,
+        symbolsCount: snapshot?.symbols ?? null,
+        dependenciesCount: snapshot?.dependencies ?? null,
+        ...(snapshot && observedAt !== undefined
+          ? { observedAt: new Date(observedAt).toISOString() }
+          : {
+              note:
+                'no worker health snapshot collected yet — counts are NOT measurements of an empty index',
+            }),
       },
     };
   }
 
-  private projectListPayload(record: ApiKeyRecord) {
+  /**
+   * SE-F-058: a synchronous entry builder cannot fetch fresh stats.
+   * Routes that answer about a project first give the health loop's
+   * cache a chance to be real: when the project has a worker, refresh it
+   * (one internal HTTP request, same one the monitor makes every 10s).
+   */
+  private async projectEntryFresh(id: string): Promise<Record<string, unknown>> {
+    await this.supervisor.refreshStats(id);
+    return this.projectEntry(id);
+  }
+
+  private async projectListPayload(record: ApiKeyRecord) {
     const projects = this.registry
       .list()
-      .filter(entry => this.auth.canAccessProject(record, entry.id))
-      .map(entry => this.projectEntry(entry.id));
+      .filter(entry => this.auth.canAccessProject(record, entry.id));
 
-    return { total: projects.length, projects };
+    /*
+    | SE-F-058: refresh the projects that actually have a live worker —
+    | the same internal health request the periodic monitor makes. A
+    | cold list must not claim zero counts for ready projects.
+    */
+    await Promise.all(
+      projects
+        .filter(entry => this.summarize(entry.id) !== undefined)
+        .map(entry => this.supervisor.refreshStats(entry.id))
+    );
+
+    return {
+      total: projects.length,
+      projects: projects.map(entry => this.projectEntry(entry.id)),
+    };
   }
 
   private async registerProject(
@@ -680,7 +723,10 @@ export class GatewayServer {
 
     if (!action) {
       if (method === 'GET') {
-        this.send(res, 200, this.projectEntry(projectId));
+        /* SE-F-058 — یک تازه‌سازی هدفمند: همان درخواستی که حلقهٔ health
+           هر ۱۰ ثانیه می‌زند؛ این‌جا در لحظهٔ پرسش تکرار می‌شود تا
+           آمارِ پاسخ، آخرین اندازه‌گیری باشد نه قدیمی‌ترین. */
+        this.send(res, 200, await this.projectEntryFresh(projectId));
         return;
       }
       if (method === 'DELETE') {
@@ -778,7 +824,6 @@ export class GatewayServer {
       return;
     }
 
-    const summary = this.projectEntry(projectId);
     const diagnostics = this.supervisor.diagnostics(projectId);
     const worker = this.supervisor.get(projectId);
 
@@ -791,6 +836,18 @@ export class GatewayServer {
         workerHealth = null;
       }
     }
+
+    /*
+    | SE-F-058: the snapshot fetched just below IS the freshest possible
+    | source for the stats block — record it before building the entry so
+    | this route makes exactly one health request and its `stats` mirror
+    | the `health` payload instead of fabricated zeros.
+    */
+    this.supervisor.recordStats(
+      projectId,
+      (workerHealth ?? undefined) as WorkerHealthSnapshot | undefined
+    );
+    const summary = this.projectEntry(projectId);
 
     this.send(res, 200, {
       projectId,
