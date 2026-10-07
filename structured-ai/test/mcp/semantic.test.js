@@ -489,10 +489,22 @@ function customHandler(req, send) {
         assert.ok(startRes.session_id);
         assert.equal(startRes.status, "started");
 
-        // Wait a tick for mock completion
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        const getRes = await run("code_index_get", { session_id: startRes.session_id });
+        /*
+        | Poll to the terminal state instead of sleeping a fixed 50ms.
+        | The background `index_workspace` call crosses into a spawned
+        | sidecar process; on an idle box 50ms was enough, under parallel
+        | load (other suites sharing the CPU) it was not, and `code_index_get`
+        | raced ahead and returned `running`. That was a test-timing
+        | assumption, not a product bug — indexing is intentionally async.
+        */
+        let getRes;
+        const deadline = Date.now() + 4000;
+        for (;;) {
+            getRes = await run("code_index_get", { session_id: startRes.session_id });
+            if (getRes.status === "completed" || getRes.status === "failed") break;
+            if (Date.now() > deadline) break;
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
         assert.equal(getRes.session_id, startRes.session_id);
         assert.equal(getRes.status, "completed");
 
