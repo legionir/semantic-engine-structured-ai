@@ -14,8 +14,6 @@ import { socketEndpoint, isNamedPipe } from './socketEndpoint';
 import { SseManager } from './SseManager';
 import { WebSocketManager } from './WebSocketManager';
 import { JobManager } from '../runtime/JobManager';
-import { InMemoryQueueAdapter } from '../runtime/queue/InMemoryQueueAdapter';
-import { IndexingWorker } from '../runtime/workers/IndexingWorker';
 import { ApiKeyStore } from '../security/rbac/ApiKeyStore';
 import { AuditLogger } from '../security/audit/AuditLogger';
 import { MetricsCollector } from '../observability/MetricsCollector';
@@ -64,8 +62,10 @@ export class HttpServer {
   readonly auditLogger: AuditLogger;
   readonly metricsCollector: MetricsCollector;
   readonly tracer: OpenTelemetryTracer;
-  readonly jobQueue: InMemoryQueueAdapter;
-  readonly indexingWorker: IndexingWorker;
+  // F-0012 — removed dead `jobQueue` (InMemoryQueueAdapter) and
+  // `indexingWorker` (IndexingWorker): they were constructed but never
+  // started or enqueued into, and `/ready` advertised a subsystem that did
+  // not exist. The real job engine is `jobs` (JobManager).
   readonly jobs: JobManager;
   readonly projects: ProjectService;
   readonly searchService: SearchService;
@@ -91,7 +91,6 @@ export class HttpServer {
     this.auditLogger = new AuditLogger();
     this.metricsCollector = new MetricsCollector();
     this.tracer = new OpenTelemetryTracer();
-    this.jobQueue = new InMemoryQueueAdapter();
     /*
     | state پروسه هرگز داخل checkout نوشته نمی‌شود (قبلاً
     | `<projectsRoot>/.agent/jobs.json` بود و ریپو را dirty می‌کرد). جای آن
@@ -113,7 +112,6 @@ export class HttpServer {
         ...(config.artifactLocation ? { artifactLocation: config.artifactLocation } : {}),
       }
     );
-    this.indexingWorker = new IndexingWorker(this.jobQueue, this.projects);
     this.searchService = new SearchService();
     this.codeService = new CodeIntelligenceService();
     this.contextService = new ContextService();
@@ -136,7 +134,13 @@ export class HttpServer {
     const checks = {
       process: true,
       projectsRoot: !this.config.projectsRoot || fs.existsSync(this.config.projectsRoot),
-      jobQueue: Boolean(this.jobQueue),
+      /*
+      | F-0012 — honest readiness. The old key was `jobQueue` backed by a
+      | dead InMemoryQueueAdapter that nothing ever started; it always read
+      | `true` while advertising a subsystem that did not process work. The
+      | real job subsystem is the JobManager, so report that.
+      */
+      jobManager: Boolean(this.jobs),
       projectRegistry: Boolean(this.projects),
       sseManager: Boolean(this.sse),
     };
@@ -178,6 +182,15 @@ export class HttpServer {
 
   addRoute(route: RouteDefinition): void {
     this.routes.push(route);
+  }
+
+  /**
+   * F-0011 — surface the registered routes for the repo-wide security scan
+   * test (asserting every mutating/admin route declares an explicit
+   * permission). Read-only; not a runtime endpoint.
+   */
+  getRegisteredRoutes(): readonly RouteDefinition[] {
+    return [...this.routes];
   }
 
   async start(): Promise<{ port: number; host: string; url: string }> {
@@ -278,12 +291,31 @@ export class HttpServer {
           role: record.role,
           permissions: record.permissions,
           resourceScope: record.resourceScope,
+          // F-0010 — فهرست صریح پروژه‌ها باید از gateway به پلتفرم هم برسد،
+          // وگرنه پلتفرم فقط resourceScope تک‌پروژه را می‌بیند.
+          ...(record.allowedProjects ? { allowedProjects: record.allowedProjects } : {}),
         };
       }
     }
 
     /* A locally constructed server without a token is an explicit local
-       profile. The CLI always supplies a bootstrap token. */
+       profile. The CLI always supplies a bootstrap token.
+
+       F-0004 — ACCEPTED RISK (documented, not silently bypassed): when no
+       `token` is configured the server grants a local Admin profile with
+       `resourceScope:'*'`. This is deliberate and safe *because* of how the
+       surface is bounded: the loopback guard (`SecurityPipeline` + `allowRemote
+       = false` default) means only a process already on this machine can reach
+       it, and the CLI/Gateway path always passes a real token so it never takes
+       this branch. A `gatewayManaged` worker is explicitly denied the tokenless
+       profile (see `requiresAuthentication` — every route needs the token).
+       Owner has accepted this as a local-dev convenience; do NOT relax the
+       loopback/managed bounds that make it safe.
+    */
+    if (this.config.gatewayManaged) {
+      // Belt-and-braces: a managed worker must never fall back to Admin.
+      return { authenticated: false, permissions: [], resourceScope: '*' };
+    }
     return {
       authenticated: true,
       role: 'Admin',

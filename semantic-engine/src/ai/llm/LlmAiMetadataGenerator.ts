@@ -141,6 +141,9 @@ export class LlmAiMetadataGenerator {
       const completion = await this.options.llmClient.complete(messages, {
         temperature: 0.2,
         maxTokens: 512,
+        // F-0030 — لغو باید درخواستِ در-flight را هم بکشد، نه فقط
+        // درخواست‌های بعدی را. سیگنال به fetch منتقل می‌شود.
+        signal: this.options.signal,
       });
 
       const parsed = this.parseJsonResponse(completion.content);

@@ -14,6 +14,9 @@ export function createSearchRoutes(
     {
       method: 'POST',
       pattern: '/api/v1/projects/:id/search',
+      // F-0011 — search is a read; explicit semantic:query instead of the
+      // POST method default (project:write).
+      permission: 'semantic:query',
       schema: {
         type: 'object',
         properties: {

@@ -133,7 +133,7 @@ export class UserController {
     const ready = await api('GET', '/ready');
     expect(ready.status).toBe(200);
     expect(ready.json.ready).toBe(true);
-    expect(ready.json.checks.jobQueue).toBe(true);
+    expect(ready.json.checks.jobManager).toBe(true);
     expect(ready.json.checks.projectRegistry).toBe(true);
   });
 

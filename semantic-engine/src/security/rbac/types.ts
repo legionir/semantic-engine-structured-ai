@@ -48,6 +48,13 @@ export interface AuthContext {
   readonly role?: PlatformRole;
   readonly permissions: readonly PermissionScope[];
   readonly resourceScope: string;
+  /**
+   * F-0010 — فهرست صریح پروژه‌های مجاز. gateway با `canAccessProject` این را
+   * رعایت می‌کرد ولی مسیر platform آن را دور می‌زد؛ حالا در AuthContext حمل
+   * می‌شود تا `PermissionChecker` همان مجموعه را اعمال کند و دو مسیر هم‌رفتار
+   * بمانند. نبودش یعنی فقط `resourceScope` معتبر است.
+   */
+  readonly allowedProjects?: readonly string[];
 }
 
 export const ROLE_DEFAULT_PERMISSIONS: Record<PlatformRole, readonly PermissionScope[]> = {

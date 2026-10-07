@@ -58,7 +58,21 @@ describe('Platform Core V1 — OpenAPI Specification Sync', () => {
       for (const file of fs.readdirSync(ROUTES_DIR)) {
         if (!file.endsWith('.ts') || file.includes('.test.')) continue;
         const source = fs.readFileSync(path.join(ROUTES_DIR, file), 'utf8');
-        const re = /method:\s*'(GET|POST|PATCH|PUT|DELETE)',\s*\r?\n\s*pattern:\s*'([^']+)'/g;
+        /*
+        | F-0015 — the extractor must catch BOTH shapes: a route object written
+        | across lines (method: … \n pattern: …) AND a single-line route literal
+        | ({ method: 'POST', pattern: '/api/v1/…', handler: … }). The old regex
+        | required a newline between `method` and `pattern`, so every one-line
+        | route was invisible to the parity gate — undocmented routes "passed".
+        |
+        | `method` precedes `pattern` in every route file in this repo. A small
+        | non-greedy gap tolerates intervening fields (requireAuth, permission,
+        | schema) without letting one route's method grab the NEXT route's
+        | pattern (patterns and methods alternate per object, and a route never
+        | spans >~200 bytes before its pattern here).
+        */
+        const re =
+          /method:\s*'(GET|POST|PATCH|PUT|DELETE)'[\s\S]{0,200}?pattern:\s*'([^']+)'/g;
         let match: RegExpExecArray | null;
         while ((match = re.exec(source)) !== null) {
           ops.push(`${match[1]} ${match[2].replace(/:([A-Za-z]+)/g, '{$1}')}`);

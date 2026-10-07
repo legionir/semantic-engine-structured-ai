@@ -23,6 +23,26 @@ interface ProjectHistory {
 
 const DEFAULT_PROJECT = '__default__';
 
+/**
+ * F-0019 — cap how many co-churn partners each file records. The full
+ * co-churn graph is the dominant unbounded cost (per-file map grows with
+ * every distinct file ever committed alongside it). Reads already return the
+ * top-`limit` partners by count, so keeping the map trimmed to a generous
+ * top-N is observably lossless for the public surface while bounding memory.
+ */
+const MAX_CO_CHURN_PARTNERS = 200;
+
+/** Trim a partner-count map to its top-N entries by count (descending). */
+function trimPartners(map: Map<string, number>, keep: number): void {
+  if (map.size <= keep) return;
+  const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  map.clear();
+  for (let i = 0; i < keep; i++) {
+    const entry = sorted[i]!;
+    map.set(entry[0], entry[1]);
+  }
+}
+
 export class GitHistoryMiner {
   private readonly histories = new Map<string, ProjectHistory>();
 
@@ -78,6 +98,18 @@ export class GitHistoryMiner {
         this.addCoChurnPair(state, filesChanged[i]!, filesChanged[j]!);
         this.addCoChurnPair(state, filesChanged[j]!, filesChanged[i]!);
       }
+    }
+
+    /*
+    | F-0019 — bound per-file co-churn growth. Without this, each file's
+    | partner map grows with every distinct file ever committed alongside it
+    | (unbounded over a long-lived project). Keep only the top-N partners;
+    | reads already rank by count and slice, so the public surface is
+    | unchanged for any limit ≤ N.
+    */
+    for (const filePath of filesChanged) {
+      const map = state.coChurn.get(filePath);
+      if (map) trimPartners(map, MAX_CO_CHURN_PARTNERS);
     }
   }
 

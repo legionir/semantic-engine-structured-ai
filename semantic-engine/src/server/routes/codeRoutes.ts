@@ -32,6 +32,10 @@ export function createCodeRoutes(
     {
       method: 'POST',
       pattern: '/api/v1/projects/:id/impact',
+      // F-0011 — impact is a read; explicit semantic:query instead of the
+      // POST method default (project:write), so a query-only token can use it
+      // and a mutation token is not required.
+      permission: 'semantic:query',
       schema: {
         type: 'object',
         properties: {
@@ -74,6 +78,8 @@ export function createCodeRoutes(
     {
       method: 'POST',
       pattern: '/api/v1/projects/:id/context',
+      // F-0011 — context assembly is a read; explicit semantic:context.
+      permission: 'semantic:context',
       schema: {
         type: 'object',
         properties: {

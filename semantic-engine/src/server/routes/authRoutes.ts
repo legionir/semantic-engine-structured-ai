@@ -5,8 +5,12 @@
 import { RouteDefinition, HttpRequestContext } from '../types';
 import { ApiKeyStore } from '../../security/rbac/ApiKeyStore';
 import { ROLE_DEFAULT_PERMISSIONS, PlatformRole } from '../../security/rbac/types';
+import { RateLimiter } from '../RateLimiter';
 
-export function createAuthRoutes(apiKeyStore: ApiKeyStore): RouteDefinition[] {
+export function createAuthRoutes(
+  apiKeyStore: ApiKeyStore,
+  verifyLimiter: RateLimiter = new RateLimiter({ limit: 10, windowMs: 60_000 })
+): RouteDefinition[] {
   const getRolesHandler = async () => ({
     status: 200,
     json: {
@@ -54,6 +58,22 @@ export function createAuthRoutes(apiKeyStore: ApiKeyStore): RouteDefinition[] {
   };
 
   const verifyHandler = async (ctx: HttpRequestContext) => {
+    /*
+    | F-0009 — این مسیر `requireAuth: false` است و پاسخ معتبر/نامعتبر را
+    | متمایز می‌کند، پس یک اوراکل شمارشِ توکن است. با rate-limit per-client
+    | (429) غیرمعمول‌سازی خودکار بی‌فایده می‌شود. کلید = آدرس peer; روی
+    | UDS که undefined است، یک bucket مشترک (ترکیب socketPath در limiter).
+    */
+    const clientIp = ctx.req?.socket?.remoteAddress ?? 'uds';
+    const budget = verifyLimiter.check(clientIp);
+    if (!budget.allowed) {
+      return {
+        status: 429,
+        headers: { 'Retry-After': String(Math.ceil(budget.retryAfterMs / 1000)) },
+        json: { error: 'Too many verification attempts; try again later' },
+      };
+    }
+
     const body = (ctx.body || {}) as { token?: string };
     const token = body.token || ctx.token || '';
     const record = apiKeyStore.verifyToken(token);
@@ -85,44 +105,34 @@ export function createAuthRoutes(apiKeyStore: ApiKeyStore): RouteDefinition[] {
       pattern: '/api/v1/users',
       requireAuth: true,
       permission: 'auth:manage',
-      handler: async ctx => {
-        const body = (ctx.body || {}) as { username?: string; role?: PlatformRole };
-        return {
-          status: 201,
-          json: {
-            id: `user_${Date.now()}`,
-            username: body.username || 'user',
-            role: body.role || 'Developer',
-            createdAt: Date.now(),
-          },
-        };
-      },
+      // F-0023 — no user store exists; a 201 was a fake success with no side
+      // effect. Answer 501 until persistence lands.
+      handler: async () => ({
+        status: 501,
+        json: { error: 'User management is not implemented; no store persists these records' },
+      }),
     },
     {
       method: 'POST',
       pattern: '/api/v1/roles',
       requireAuth: true,
       permission: 'auth:manage',
-      handler: async ctx => {
-        const body = (ctx.body || {}) as { roleName?: string; permissions?: string[] };
-        return {
-          status: 201,
-          json: { roleName: body.roleName, permissions: body.permissions || [] },
-        };
-      },
+      // F-0023 — roles are a fixed enum in code; nothing to persist. 501, not 201.
+      handler: async () => ({
+        status: 501,
+        json: { error: 'Role creation is not implemented; roles are a fixed set' },
+      }),
     },
     {
       method: 'POST',
       pattern: '/api/v1/permissions',
       requireAuth: true,
       permission: 'auth:manage',
-      handler: async ctx => {
-        const body = (ctx.body || {}) as { permission?: string };
-        return {
-          status: 201,
-          json: { permission: body.permission, active: true },
-        };
-      },
+      // F-0023 — permissions are a fixed enum in code; nothing to persist. 501, not 201.
+      handler: async () => ({
+        status: 501,
+        json: { error: 'Permission creation is not implemented; permissions are a fixed set' },
+      }),
     },
     {
       method: 'DELETE',

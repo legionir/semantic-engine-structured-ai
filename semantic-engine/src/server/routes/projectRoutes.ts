@@ -32,6 +32,10 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
     {
       method: 'POST',
       pattern: '/api/v1/projects',
+      // F-0011 — registering a project mutates the registry: explicit
+      // least-privilege admin permission, not the method-based default.
+      requireAuth: true,
+      permission: 'project:admin',
       schema: {
         type: 'object',
         properties: { path: { type: 'string' }, name: { type: 'string' }, id: { type: 'string' } },
@@ -75,7 +79,10 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
     {
       method: 'PATCH',
       pattern: '/api/v1/projects/:id',
+      // F-0011 — registry mutation (enabled/autoStart/name): explicit admin
+      // permission rather than the POST/PATCH method default.
       requireAuth: true,
+      permission: 'project:admin',
       handler: async ctx => {
         if (!find(ctx.params.id)) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
         const project = find(ctx.params.id)!;
@@ -103,7 +110,9 @@ export function createProjectRoutes(projectService: ProjectService): RouteDefini
     {
       method: 'DELETE',
       pattern: '/api/v1/projects/:id',
+      // F-0011 — deleting a project is destructive: explicit admin permission.
       requireAuth: true,
+      permission: 'project:admin',
       handler: async ctx => {
         if (!find(ctx.params.id)) return { status: 404, json: { error: `Project not found: ${ctx.params.id}` } };
         const project = find(ctx.params.id)!;

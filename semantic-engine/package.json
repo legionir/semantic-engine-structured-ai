@@ -35,6 +35,7 @@
   },
   "scripts": {
     "build": "tsc -p ./",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src",

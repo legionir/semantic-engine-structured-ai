@@ -120,6 +120,9 @@ export function createVisualizationRoutes(
     {
       method: 'POST',
       pattern: '/api/v1/projects/:id/visualization/neighborhood',
+      // F-0011 — graph reads; explicit semantic:query instead of the POST
+      // method default (project:write).
+      permission: 'semantic:query',
       schema: {
         type: 'object',
         properties: {
@@ -152,6 +155,8 @@ export function createVisualizationRoutes(
     {
       method: 'POST',
       pattern: '/api/v1/projects/:id/visualization/path',
+      // F-0011 — read; explicit semantic:query.
+      permission: 'semantic:query',
       schema: {
         type: 'object',
         properties: { from: { type: 'string', minLength: 1 }, to: { type: 'string', minLength: 1 } },

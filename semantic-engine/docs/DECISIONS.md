@@ -499,3 +499,25 @@
   decision). Thresholds untouched.
 - **Status:** DECIDED. Ordered path D-0021 complete: resolution → persisted store → re-run
   goldens → re-gate → Phase 3 → Phase 4, all with executed evidence.
+
+## D-0028 — F-0004 bootstrap/tokenless Admin fallback: ACCEPTED RISK (documented)
+
+- **Date:** 2026-10-07
+- **Decision:** The tokenless-local-Admin fallback in `HttpServer.authContext` is
+  kept as a deliberate local-dev convenience, **not** a silent RBAC bypass. It is
+  safe only because of the surrounding bounds, which must not be relaxed:
+  1. Default `allowRemote = false` + the loopback guard in `SecurityPipeline`
+     restrict the server to same-machine clients; a remote attacker cannot reach
+     the tokenless branch.
+  2. The CLI and Gateway always pass a real token (`generateToken`/bootstrap), so
+     production paths never hit this branch.
+  3. A `gatewayManaged` worker is now **explicitly denied** the tokenless profile
+     (`authContext` returns unauthenticated in managed mode; every route already
+     requires the token via `requiresAuthentication`).
+- **Why not fully close it:** removing the fallback would break the documented
+  "construct a server locally for testing" flow (many suites build an HttpServer
+  without a token and rely on Admin). The honest, low-risk fix is to make the
+  assumption explicit in code + tests rather than pretend it is closed.
+- **Owner sign-off:** accepted under the standing remediation delegation; the
+  bypass is now a **guarded** behaviour, not an undocumented hole.
+- **Status:** DECIDED (accepted risk, guarded).

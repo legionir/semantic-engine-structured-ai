@@ -26,6 +26,18 @@ export class OpenAILlmClient implements ILlmClient {
     const baseUrl = (this.config.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '');
     const url = `${baseUrl}/chat/completions`;
 
+    /*
+    | F-0030 — یک provider که پاسخ نمی‌دهد نباید اجرای index/watch را
+    | بخواباند. سه لایه: (۱) تایم‌اوت داخلی با `AbortSignal.timeout`،
+    | (۲) سیگنال caller اگر داده شود، (۳) ترکیب هر دو. مسیر قبلی هیچ
+    | signalی نداشت؛ generator فقط *بین* درخواست‌ها signal را چک می‌کرد،
+    | پس یک درخواست آویزان تا ابد نگهش می‌داشت.
+    */
+    const timeoutSignal = AbortSignal.timeout(this.config.timeoutMs ?? 60000);
+    const signal = options.signal
+      ? AbortSignal.any([timeoutSignal, options.signal])
+      : timeoutSignal;
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -39,6 +51,7 @@ export class OpenAILlmClient implements ILlmClient {
         max_tokens: options.maxTokens ?? this.config.maxTokens ?? 1024,
         top_p: options.topP ?? 1,
       }),
+      signal,
     });
 
     if (!response.ok) {

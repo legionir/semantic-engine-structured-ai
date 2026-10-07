@@ -53,6 +53,12 @@ jobs:
       - name: Type check (build)
         run: npx tsc -p ./ --noEmit
 
+      # F-0002 — typecheck *.test.ts too, so a green build cannot hide a
+      # non-compiling test (ts-jest would surface it only at run time, and a
+      # suite that never runs would stay invisible).
+      - name: Type check (tests)
+        run: npx tsc -p tsconfig.test.json --noEmit
+
       - name: Lint
         run: npm run lint
 

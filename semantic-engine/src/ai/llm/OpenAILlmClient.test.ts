@@ -86,4 +86,47 @@ describe('OpenAILlmClient', () => {
 
     await expect(client.complete([{ role: 'user', content: 'hi' }])).rejects.toThrow('401');
   });
+
+  // F-0030 — fetch باید signal بگیرد تا provider آویزان اجرا را نخواباند.
+  describe('F-0030 abort/timeout', () => {
+    /*
+    | fetch جعلی که هرگز resolve نمی‌شود مگر اینکه signal aborted شود؛
+    | آن‌وقت reject می‌کند — همان رفتار یک پاسخ‌ندهنده واقعی.
+    */
+    const hangingFetch = () =>
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) return; // آویزان می‌ماند اگر signal وصل نباشد
+          if (signal.aborted) reject(new Error('aborted'));
+          else signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+
+    it('passes a signal to fetch', async () => {
+      mockedFetch.mockImplementation(hangingFetch());
+      const client = new OpenAILlmClient({
+        apiKey: 'k',
+        model: 'm',
+        timeoutMs: 5,
+      });
+      await expect(client.complete([{ role: 'user', content: 'hi' }])).rejects.toThrow(/abort/i);
+      const [, init] = mockedFetch.mock.calls[0] as [string, { signal?: AbortSignal }];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('times out a hung provider via timeoutMs', async () => {
+      mockedFetch.mockImplementation(hangingFetch());
+      const client = new OpenAILlmClient({ apiKey: 'k', model: 'm', timeoutMs: 10 });
+      await expect(client.complete([{ role: 'user', content: 'hi' }])).rejects.toThrow(/abort/i);
+    });
+
+    it('honors caller cancellation during the request', async () => {
+      mockedFetch.mockImplementation(hangingFetch());
+      const controller = new AbortController();
+      const client = new OpenAILlmClient({ apiKey: 'k', model: 'm', timeoutMs: 60000 });
+      const p = client.complete([{ role: 'user', content: 'hi' }], { signal: controller.signal });
+      controller.abort();
+      await expect(p).rejects.toThrow(/abort/i);
+    });
+  });
 });

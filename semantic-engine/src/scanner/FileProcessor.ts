@@ -203,25 +203,33 @@ export class FileProcessor {
     const wantsUtf16 = encoding === 'utf16le' || encoding === 'utf16be';
 
     /*
-    | SE-PORT-01 — برای فایل‌های بزرگِ استریم‌شده هم باید hash روی
-    | محتوای نرمال‌شده (LF) باشد تا با نسخهٔ کاملِ حافظه‌ای و بین OSها
-    | یکسان بماند. بایت CR (0x0D) پیش از hash از جریان حذف می‌شود؛ این
-    | معادلِ بایتیِ `replace(/\r\n?/g, '\n')` برای UTF-8 است. برای
-    | UTF-16 (استثنای نادر) نرمال‌سازی رد می‌شود و همان بایت خام می‌ماند.
+    | SE-PORT-01 / F-0029 — برای فایل‌های بزرگِ استریم‌شده هم باید hash روی
+    | محتوای نرمال‌شده (LF) باشد تا با نسخهٔ کاملِ حافظه‌ای و بین OSها یکسان
+    | بماند. CRLF→LF و CR تنها→LF، دقیقاً مثل `normalizeLineEndings`. یک CR
+    | روی مرز chunk با `pendingCR` نگه داشته می‌شود تا با chunk بعدی درست
+    | ترکیب شود، و در `end` فلاش می‌گردد. برای UTF-16 (استثنای نادر)
+    | نرمال‌سازی رد می‌شود و همان بایت خام می‌ماند.
     */
+    const crState = { pendingCR: false };
     await new Promise<void>((resolve, reject) => {
       const stream = fs.createReadStream(absolutePath);
-      stream.on('data', (chunk: string | Buffer) => {
-        const raw = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
-        const buffer = wantsUtf16 ? raw : stripCarriageReturns(raw);
+      const consume = (buffer: Buffer): void => {
         hasher.update(buffer);
         for (let index = 0; index < buffer.length; index++) {
           if (buffer[index] === 0x0a) newlines++;
         }
-        lastByte = buffer[buffer.length - 1];
+        if (buffer.length > 0) lastByte = buffer[buffer.length - 1];
+      };
+      stream.on('data', (chunk: string | Buffer) => {
+        const raw = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+        consume(wantsUtf16 ? raw : normalizeLineEndingsChunk(raw, crState));
       });
       stream.on('error', reject);
-      stream.on('end', () => resolve());
+      stream.on('end', () => {
+        // فلاش CR نگه‌داشتهٔ انتهایی: CR تنها در انتهای فایل → LF.
+        if (!wantsUtf16 && crState.pendingCR) consume(Buffer.from([0x0a]));
+        resolve();
+      });
     });
 
     if (wantsUtf16) newlines = Math.round(newlines);
@@ -439,21 +447,61 @@ export class FileProcessor {
 }
 
 /**
- * حذف بایت‌های CR (0x0D) از یک buffer — معادلِ بایتیِ نرمال‌سازی
- * CRLF/CR → LF برای متنِ UTF-8، بدون نگه‌داشتن state بین chunkها
- * (SE-PORT-01). فقط در مسیر استریمِ فایل‌های بزرگ استفاده می‌شود.
+ * نرمال‌سازی پایان خط روی بایت، معادلِ دقیق `normalizeLineEndings`
+ * (`/\r\n?/g → '\n'`) برای UTF-8 — SE-PORT-01 / F-0029.
+ *
+ * چرا «دقیق» مهم است: پیاده‌سازی قبلی (`stripCarriageReturns`) صرفاً بایت
+ * CR را حذف می‌کرد. برای CRLF درست است (CR حذف، LF می‌ماند)، ولی برای یک
+ * CR تنها ( CR بدون LF بعدش) با مسیرِ کاملِ حافظه‌ای واگرا می‌شد:
+ * `normalizeLineEndings` آن CR را به LF تبدیل می‌کند، پس hash و شمارش خط
+ * فرق می‌کرد. یک فایل بزرگ با CR تنها (فایل‌های قدیمی macOS) hash
+ * متفاوتی نسبت به نسخهٔ کوچکِ همان فایل می‌گرفت.
+ *
+ * تابع stateful است و یک CR در انتهای chunk را نگه می‌دارد تا بداند آیا
+ * chunk بعدی با LF شروع می‌شود (CRLF روی مرز chunk) یا نه (CR تنها → LF).
+ * `pendingCR` بیرونی است تا بین chunkها زنده بماند.
  */
-function stripCarriageReturns(buffer: Buffer): Buffer {
-  let crCount = 0;
-  for (let i = 0; i < buffer.length; i++) {
-    if (buffer[i] === 0x0d) crCount++;
-  }
-  if (crCount === 0) return buffer;
-  const out = Buffer.allocUnsafe(buffer.length - crCount);
+function normalizeLineEndingsChunk(
+  input: Buffer,
+  state: { pendingCR: boolean }
+): Buffer {
+  if (input.length === 0 && !state.pendingCR) return input;
+
+  const out = Buffer.allocUnsafe(input.length + (state.pendingCR ? 1 : 0));
   let j = 0;
-  for (let i = 0; i < buffer.length; i++) {
-    const b = buffer[i]!;
-    if (b !== 0x0d) out[j++] = b;
+  let i = 0;
+
+  // CR نگه‌داشته از chunk قبل: همیشه به LF ترجمه می‌شود مگر اینکه این
+  // chunk با LF شروع شود، که آن‌وقت CRLF است و همان LF کفایت می‌کند.
+  if (state.pendingCR) {
+    if (input[0] === 0x0a) {
+      // LF پایین‌تر در حلقه نوشته می‌شود؛ CR را دور می‌اندازیم.
+    } else {
+      out[j++] = 0x0a; // CR تنها → LF
+    }
+    state.pendingCR = false;
   }
-  return out;
+
+  for (; i < input.length; i++) {
+    const b = input[i]!;
+    if (b === 0x0d) {
+      // CR: یا CRLF است (LF بعدی) یا CR تنها. تا ندیده‌ایم نگهش می‌داریم؛
+      // اگر آخرین بایت chunk باشد، state بعدی مشخص می‌کند.
+      const next = i + 1 < input.length ? input[i + 1] : undefined;
+      if (next !== undefined) {
+        if (next === 0x0a) {
+          out[j++] = 0x0a; // CRLF → LF، LF را هم مصرف کن
+          i++;
+        } else {
+          out[j++] = 0x0a; // CR تنها → LF
+        }
+      } else {
+        state.pendingCR = true;
+      }
+    } else {
+      out[j++] = b;
+    }
+  }
+
+  return out.subarray(0, j);
 }

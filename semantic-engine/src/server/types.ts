@@ -86,6 +86,14 @@ export interface PlatformConfig {
   /** مسیر Unix socket؛ وقتی ست باشد سرور روی socket گوش می‌دهد نه TCP. */
   readonly socketPath?: string;
   /**
+   * F-0021 — مدل embedding پیکربندی‌شده که واقعاً در این پروسه استفاده
+   * می‌شود. `/config` دیگر یک مقدارِ ثابتِ حدسی (`Qwen3-Embedding-0.6B`) را
+   * گزارش نمی‌کند؛ یا مدل واقعی از caller (CLI/worker که embedding را resolve
+   * می‌کنند) اینجا ریخته می‌شود، یا `null` می‌ماند و صادقانه «ناشناخته»
+   * گزارش می‌شود. نبودش هیچ‌وقت مجوز اختراع یک مدل نیست.
+   */
+  readonly embeddingModel?: string | null;
+  /**
    * هندلر رویداد `upgrade` برای WebSocket (فاز ۱۱). بدون آن هر upgrade رد
    * می‌شود، چون handshake نیمه‌انجام‌شده از نبودِ WebSocket بدتر است:
    * کلاینت منتظر `101` می‌ماند.

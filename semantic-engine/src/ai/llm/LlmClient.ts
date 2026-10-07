@@ -15,6 +15,12 @@ export interface LlmCompletionOptions {
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly topP?: number;
+  /**
+   * F-0030 — لغو در-flight. provider ای که answer نمی‌دهد نباید کل
+   * اجرای index/watch را بخواباند؛ caller سیگنال خودش را می‌دهد و
+   * client آن را با تایم‌اوت داخلی ترکیب می‌کند.
+   */
+  readonly signal?: AbortSignal;
 }
 
 export interface LlmCompletionResult {
@@ -33,6 +39,8 @@ export interface LlmClientConfig {
   readonly model: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
+  /** F-0030 — سقف هر درخواست کامل؛ پیش‌فرض ۶۰ ثانیه. */
+  readonly timeoutMs?: number;
 }
 
 export interface ILlmClient {

@@ -165,6 +165,15 @@ async function runPlatform(
   }
   const token = provided ?? generateToken();
 
+  /*
+  | F-0021 — مدل embedding واقعی که این پروسه استفاده می‌کند را از flag
+  | `--embedding-model` می‌خوانیم تا `/config` همان را گزارش دهد. هیچ
+  | generator نمی‌سازیم (ساختن potentialاً مدل دانلود می‌کند). اگر کاربر مدلی
+  | نداده باشد null است و `/config` صادقانه null نشان می‌دهد — دیگر مقدار
+  | ثابتِ حدسی (`Qwen3-Embedding-0.6B`) در سرور نوشته نمی‌شود.
+  */
+  const embeddingModel = stringOption(args.options, 'embeddingModel') ?? null;
+
 
   const { HttpServer } = require('../../server/HttpServer') as typeof import('../../server/HttpServer');
   const server = new HttpServer({
@@ -173,6 +182,7 @@ async function runPlatform(
     token,
     allowRemote: boolOption(args.options, 'allowRemote', false),
     projectsRoot: workspaceRoot,
+    embeddingModel,
     /*
     | state پروسه (صف jobها و telemetry) دیگر داخل checkout نوشته نمی‌شود؛
     | جای آن data directory کاربر است. `resolveDataRoot` چیزی روی دیسک

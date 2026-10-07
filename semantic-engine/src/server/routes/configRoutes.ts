@@ -22,7 +22,13 @@ export function createConfigRoutes(platformConfig: PlatformConfig): RouteDefinit
             projectsRoot: platformConfig.projectsRoot,
             tokenConfigured: Boolean(platformConfig.token),
             embedding: {
-              model: 'Qwen3-Embedding-0.6B',
+              /*
+              | F-0021 — دیگر یک مدل ثابتِ حدسی (`Qwen3-Embedding-0.6B`) نیست.
+              | مدلِ واقعاً پیکربندی‌شده از PlatformConfig خوانده می‌شود؛ اگر
+              | هیچ مدلی داده نشده، `null` صادقانه گزارش می‌شود به‌جای جعل یک
+              | مقدار.
+              */
+              model: platformConfig.embeddingModel ?? null,
             },
             database: {
               password: '***',

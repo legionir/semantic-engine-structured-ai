@@ -79,10 +79,25 @@ export class ImpactAnalysisEngine {
             affectedTests.add(callerId);
           }
 
-          let severity: 'critical' | 'high' | 'medium' | 'low' = 'low';
-          if (type === 'api' || nextDepth === 1) severity = 'high';
-          if (type === 'api' && nextDepth === 1) severity = 'critical';
-          else if (nextDepth === 2) severity = 'medium';
+          /*
+          | F-0016 — severity must be monotonic by depth for a given node
+          | type. The old chain read:
+          |     if (api || depth===1) sev = high
+          |     if (api && depth===1) sev = critical
+          |     else if (depth===2) sev = medium
+          | Because the last two form one if/else-if, an **api** node at depth
+          | 2 matched the `else if` and was *downgraded to medium*, while an
+          | api node at depth 3 fell through to `high` — so a nearer impact
+          | (d2) scored lower than a farther one (d3).
+          |
+          | Correct model: a base tier by depth (1→high, 2→medium, ≥3→low) and
+          | an api escalation of exactly one tier. Both are non-increasing with
+          | depth, so severity never rises as you move away from the change.
+          */
+          const SEVERITY_ORDER: readonly AffectedEntity['severity'][] = ['low', 'medium', 'high', 'critical'];
+          const baseByDepth = nextDepth === 1 ? 2 : nextDepth === 2 ? 1 : 0; // index into SEVERITY_ORDER
+          const rank = type === 'api' ? Math.min(baseByDepth + 1, SEVERITY_ORDER.length - 1) : baseByDepth;
+          const severity = SEVERITY_ORDER[rank]!;
 
           affectedEntities.push({
             id: callerId,

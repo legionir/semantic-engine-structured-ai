@@ -83,12 +83,36 @@ export class CodeIntelligenceService {
 
     const tool = new GetDependenciesTool(project.reader);
 
-    const result = await tool.execute({
-      id: `dep-${filePath}`,
-      path: filePath,
-      depth,
-      direction: direction === 'in' ? 'backward' : 'forward',
-    });
+    /*
+    | F-0013 — `direction:'both'` must be the union of forward (`out`) and
+    | backward (`in`), not silently forward-only. The tool only understands
+    | forward/backward, so run both traversals and de-duplicate by item id.
+    | The tool resolves its target from `id`, which may be a path, so pass
+    | `filePath` directly (the old `dep-${filePath}` never resolved).
+    */
+    const runOnce = (dir: 'forward' | 'backward') =>
+      tool.execute({
+        id: filePath,
+        path: filePath,
+        depth,
+        direction: dir,
+      });
+
+    if (direction === 'both') {
+      const [fwd, bwd] = await Promise.all([runOnce('forward'), runOnce('backward')]);
+      if (!fwd.success) throw new Error(fwd.error || 'Failed to extract dependencies');
+      if (!bwd.success) throw new Error(bwd.error || 'Failed to extract dependencies');
+
+      const merged = new Map<string, unknown>();
+      for (const item of [...fwd.items, ...bwd.items]) {
+        const id = (item as { id?: string }).id;
+        if (id !== undefined && !merged.has(id)) merged.set(id, item);
+      }
+      const edges = [...merged.values()];
+      return { path: filePath, total: edges.length, edges };
+    }
+
+    const result = await runOnce(direction === 'in' ? 'backward' : 'forward');
 
     if (!result.success) {
       throw new Error(result.error || 'Failed to extract dependencies');

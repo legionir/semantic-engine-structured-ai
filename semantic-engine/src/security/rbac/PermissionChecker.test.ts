@@ -42,4 +42,56 @@ describe('PermissionChecker (V2 Scoped RBAC)', () => {
     expect(res.allowed).toBe(false);
     expect(res.reason).toContain('Missing required permission');
   });
+
+  // F-0010 — allowedProjects باید روی مسیر پلتفرم هم اعمال شود (parity با gateway).
+  describe('F-0010 allowedProjects enforcement', () => {
+    it('allows a target listed in allowedProjects even when resourceScope is *', () => {
+      const auth: AuthContext = {
+        authenticated: true,
+        role: 'Agent',
+        permissions: ['project:read'],
+        resourceScope: '*',
+        allowedProjects: ['p1', 'p2'],
+      };
+      expect(PermissionChecker.hasPermission(auth, 'project:read', 'p2').allowed).toBe(true);
+    });
+
+    it('rejects a target NOT in allowedProjects even when resourceScope is *', () => {
+      const auth: AuthContext = {
+        authenticated: true,
+        role: 'Agent',
+        permissions: ['project:read'],
+        resourceScope: '*',
+        allowedProjects: ['p1', 'p2'],
+      };
+      const res = PermissionChecker.hasPermission(auth, 'project:read', 'p-secret');
+      expect(res.allowed).toBe(false);
+      expect(res.reason).toContain('allowedProjects');
+    });
+
+    it('matches gateway canAccessProject: explicit list wins over resourceScope', () => {
+      // gateway صادرکننده توکن چندپروژه‌ای: resourceScope=project:p1 ولی
+      // allowedProjects=['p1','p2'] — مسیر platform باید p2 را بپذیرد.
+      const auth: AuthContext = {
+        authenticated: true,
+        role: 'Agent',
+        permissions: ['project:read'],
+        resourceScope: 'project:p1',
+        allowedProjects: ['p1', 'p2'],
+      };
+      expect(PermissionChecker.hasPermission(auth, 'project:read', 'p2').allowed).toBe(true);
+      expect(PermissionChecker.hasPermission(auth, 'project:read', 'p3').allowed).toBe(false);
+    });
+
+    it('honors allowedProjects=["*"] as all projects', () => {
+      const auth: AuthContext = {
+        authenticated: true,
+        role: 'Agent',
+        permissions: ['project:read'],
+        resourceScope: '*',
+        allowedProjects: ['*'],
+      };
+      expect(PermissionChecker.hasPermission(auth, 'project:read', 'anything').allowed).toBe(true);
+    });
+  });
 });
