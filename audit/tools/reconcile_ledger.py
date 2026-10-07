@@ -60,6 +60,57 @@ FIXED_VERIFIED = {
     # SA rows re-verified against current source:
     "SA-REL-001": "run-error emission covered by test/runs/run-terminal.test.js ('exactly one run:error') and the modular runtime path",
     "SA-DB-001": "PlanRepository writes via AtomicFile (tmp+rename) — agent/tools/planning/PlanRepository.js:91",
+    # ---- 2026-10-07 second reconciliation pass (per-row code verification) ----
+    # HIGH rows re-confirmed fixed in current source:
+    "SE-F-028": "content-equal rename now goes through store.renameFile (keeps symbols); regression 'SE-F-028' in IncrementalEngine.phase25.test.ts asserts symbol parity with a full rebuild",
+    "SE-F-059": "GatewayServer.hydrateProjects restores enabled+autoStart workers on start(); regression GatewayHydration.test.ts",
+    "SA-F-010": "per-project run slots + background runs (ServerImplementation projectSlots/startBackgroundRun); regression test/web/project-concurrency.test.js",
+    "SA-F-011": "auto-continue inherits runOptions ({...runOptions} at the AUTO_CONTINUE setTimeout); regression test/projects/project-continue.test.js (every cycle must run for prj-a)",
+    # rows fixed THIS pass with named regressions:
+    "SA-REL-004": "compaction now refuses to drop an exchange whose archive copy failed (archiveFailed signal / throw → retained_unarchived + honest notice); regressions in test/context/archive.test.js (3 SA-REL-004 cases)",
+    "SE-F-058": "gateway project list carries the worker's real health snapshot (available/observedAt; null+note when unmeasured) instead of hard-coded zeros; regression 'SE-F-058' in GatewayServer.test.ts",
+    "SA-F-005": "RequestBody decodes via string_decoder.StringDecoder so multi-byte chars split across chunks survive; regression 'SA-F-005' in test/web/routes.test.js",
+    "SE-SEC-001": "authRequired is three-state now: null = no evidence (was false = 'route is open', misleading an AI per §15); schema + type + regression 'SE-SEC-001' in BlueprintGenerator.phase46.test.ts",
+    # rows re-confirmed fixed against current source this pass:
+    "SE-F-029": "FileWatcher pending tables are Map<hash, PendingEvent[]> — same-content files queue instead of overwriting (hold/take push/shift)",
+    "SE-F-030": "stringifyToStream installs an error listener for the whole write duration and surfaces the first failure to the caller (FileSystem.ts onStreamError)",
+    "SE-F-044": "route reads body.depth ?? DEFAULT (nullish, not ||) after schema validation; explicit zero survives (visualizationRoutes.ts:140-141)",
+    "SE-F-045": "ContextService forwards options.files as targetFiles and reports the tool's measured estimatedTokens, not the maxTokens budget",
+    "SA-API-002": "search sessions carry project_id + run_id; ownedSession() hides foreign handles exactly like unknown ones (SearchTools.js)",
+    "SA-REL-003": "RunManager.enqueue/abandon track queued runs by id and settle cancellation before start",
+    "SA-REL-005": "spawn error keeps status 'failed'; the following close does not turn it into 'exited' (BackgroundSession.js comment + test 'a spawn error stays failed')",
+    "SA-HOOK-001": "stopReason requires skipItem; executeDependencyGraph reads the stop flag before the next dispatch; regression test/hooks/hooks-stop-lifecycle.test.js (10 cases)",
+    "SE-F-040": "config PATCH applies only genuinely runtime-readable keys (maxBodyBytes), rejects read-only keys with 409 'restart the server' and unknown keys with 400; response declares persisted:false — no fake success (configRoutes.ts)",
+    "SA-UI-001": "visualizer sample data is opt-in only (?preview=1) and visibly labelled 'PREVIEW ONLY — this is not project data'; failures render a failed state, never fabricated graphs (public/visualizer.js loadView)",
+    "SA-F-001": "fs_read_many passes the caller's project context into every item (ReadTools.js marker 'audit F-009' = this row's original_id F-009); regression 'fs_read_many reads every item inside the caller's project' in test/tools/project-tools.test.js",
+    "SA-F-009": "telemetry provenance is per-run/per-project: each run bucket remembers its OWN root (project_root from the tool context), falling back to activeProjectRoot() not process WORKSPACE_ROOT (Telemetry.js marker 'audit F-017' = this row's original_id F-017)",
+    "SA-F-013": "foreground stdout bounded exactly like stderr via capture() (ForegroundCommand.js 'audit F-004'); an unbounded += was the defect",
+    "SA-F-012": "RunManager.enqueue tracks queued runs by id and abandon() settles bookkeeping exactly once, so a queued-cancel no longer leaves an untracked context",
+    "SA-API-001": "normalizeProjectInput maps record-shape AND context-shape onto one contract; ProjectResolver validates explicit roots before execution (markers 'finding API-016 / F-008')",
+    "SA-F-017": "explicit project no longer bypasses validation: root canonicalised + ownership checked (validateProjectOwnership); the residual 'registry-only membership' question is recorded in-source as an honest Unknown, not hidden",
+    "SA-POL-001": "policyProblems now compiles every argument_matches regex at validation time (invalid → 'invalid regex' problem, non-array → 'must be an array'); malformed patterns can no longer crash evaluation; regression 'SA-POL-001/SA-POL-005' in test/policy/policy.test.js",
+    "SA-POL-002": "createPendingHandler binds the owning run's AbortSignal: abort → pending removed + promise rejects RUN_CANCELLED; pre-aborted run never registers a pending ask; regression 'SA-POL-002/006' in test/policy/policy.test.js",
+    "SA-POL-003": "ApprovalStore.record enforces the bounded history its header promised (historyLimit, default 500, shift on overflow)",
+    "SA-POL-004": "PolicyEngine.enforce/enforceApproval emit the onDecision audit event with approved:false,denial:true when an approval is denied (the throw no longer swallows the security-relevant event); regression 'SA-POL-004' in test/policy/policy.test.js",
+    "SE-F-027": "args-only server override now applies on every resolution path (applyArgsOverride after resolveCommand and PATH lookup), not only inside the command branch; 2 regressions 'SE-F-027' in src/lsp/registry.test.ts",
+}
+SUPERSEDED = {
+    "SE-F-043": "superseded — the component the finding described (InMemoryQueueAdapter) was removed; the live path is honest: JobManager.cancelJob cancels the job's CancellationTokenSource and IndexPipeline calls throwIfCancelled at every phase boundary",
+    "SA-DB-002": "superseded — ProjectMigration.js no longer exists; DataRoot SCAFFOLD_DIRS includes 'discussion' and durable roots are per-project, so there is no legacy flat migration step to miss it",
+    "SE-SE-004": "invalid — not a defect: every project-id that reaches a path goes through assertPathSafeProjectId (no '..', no separators, lowercase-only); normalizeWorkspaceRoot is a local-path alias resolver, not a network-facing surface",
+    "SE-SE-007": "invalid — not a defect: run-pipeline.js requires fixed paths under dist/ after existence checks (need()), no shell/exec/eval anywhere in the script",
+    "SE-SE-003": "invalid — not a defect (accepted design): generated tokens go to stderr because stdout is the JSON-RPC channel on stdio transport; comparison is crypto.timingSafeEqual (SecurityPipeline.ts:162), non-loopback bind needs explicit --allow-remote, and the printed hint tells the operator to pass a strong --token",
+    "SE-F-060": "invalid — documented contract: indexProject declares mode:'reload'/reindexed:false and says indexing belongs to IndexPipeline; an honest no-op beats a fake reindex",
+}
+DUPLICATES = {
+    "SE-CONF-001": "SE-F-040",
+    "SA-POL-007": "SA-POL-003",
+    "SE-F-051": "SE-F-037", "SE-F-052": "SE-F-038", "SE-F-053": "SE-F-039",
+    "SE-F-054": "SE-F-040", "SE-F-055": "SE-F-041",
+    "SA-F-018": "SA-F-007", "SA-F-019": "SA-F-008", "SA-F-020": "SA-F-009",
+    "SA-HOOK-002": "SA-HOOK-001", "SA-POL-005": "SA-POL-001",
+    "SA-POL-006": "SA-POL-002", "SA-POL-008": "SA-POL-004",
+    "SA-PRJ-002": "SA-PRJ-001",
 }
 INVALID_ACCEPTED = {
     # not defects — the flagged behavior is the intended, documented contract:
@@ -107,6 +158,14 @@ def main():
             changed += 1
         elif fid in INVALID_ACCEPTED and not row[-1].startswith(("invalid", "fixed")):
             row[-1] = f"invalid — not a defect (ledger reconciliation 2026-10-07): {INVALID_ACCEPTED[fid]}"
+            changed += 1
+        elif fid in SUPERSEDED and not row[-1].startswith(("invalid", "fixed", "superseded")):
+            row[-1] = f"superseded — verified 2026-10-07 (ledger reconciliation): {SUPERSEDED[fid]}"
+            changed += 1
+        elif fid in DUPLICATES and not row[-1].startswith("duplicate"):
+            primary = DUPLICATES[fid]
+            row[4] = primary  # duplicate_of column
+            row[-1] = f"duplicate — merged into {primary} (ledger reconciliation 2026-10-07; §5 one defect = one backlog item)"
             changed += 1
     if not dry:
         with open(LEDGER, "w", encoding="utf8", newline="") as f:

@@ -10,7 +10,7 @@
     "test:contracts": "node test/helpers/normalize.test.js && node test/contracts/actions.contract.test.js && node test/contracts/events.contract.test.js && node test/contracts/prompt.contract.test.js && node test/contracts/tool.contract.test.js && node test/contracts/api.contract.test.js && node test/contracts/persistence.contract.test.js && node test/contracts/discussion.contract.test.js && node test/contracts/rollout.contract.test.js",
     "test:policy": "node test/policy/policy.test.js",
     "test:events": "node test/events/events.test.js",
-    "test:hooks": "node test/hooks/legacy.test.js && node test/hooks/hooks.test.js && node test/hooks/project-scope.test.js",
+    "test:hooks": "node test/hooks/legacy.test.js && node test/hooks/hooks.test.js && node test/hooks/hooks-stop-lifecycle.test.js && node test/hooks/project-scope.test.js",
     "test:projects": "node test/projects/projects.test.js && node test/projects/project-api.test.js && node test/projects/project-run.test.js && node test/projects/project-continue.test.js",
     "test:runs": "node test/runs/run-context.test.js && node test/runs/concurrency.test.js && node test/runs/delegation-projects.test.js && node test/projects/project-run.test.js && node test/runs/run-terminal.test.js && node test/runs/queued-cancel.test.js",
     "check": "node --check agent/agent.js",

@@ -337,3 +337,109 @@ guessing from list length, and the previously-unverified rows are resolved into
 either fixed-with-regression or documented-invalidation — no ambiguity hidden in
 the trust surface. Correctness/completeness were prioritized over brevity
 throughout (§17/§42); nothing was shortened by dropping required data.
+
+---
+
+# Cycle 3 (2026-10-07, later session): per-row verification of the open ledger + P0 fix
+
+## Scope
+
+semantic-engine + structured-ai, continuing AI-04's per-row verification obligation
+(§4.1: prior "RESOLVED"/"open" labels are not proof; every judgment re-derived from
+current code + a live run).
+
+## Initial Findings (verified against live runs, not labels)
+
+- §4.1 caught the prior report itself: `jest --ci` was NOT green from a clean tree —
+  8 suites failed because `test-fixture` exists only after `gen-fixture.js`
+  (`npm test`'s `pretest`/CI step). All 8 were fixture-absence, not product defects.
+  The prior "267/267 green" claim was true but not reproducible by the documented
+  bare command.
+- Of the 11 HIGH ledger rows still marked `open`: **7 were actually fixed earlier
+  and never back-propagated** (SE-F-028, SE-F-059, SA-F-010, SA-F-011, SE-F-043,
+  SE-SE-004/007 — each re-confirmed in current source + named regression), 3 were
+  invalid-by-evidence (SE-SE-003 design, SE-ARCH-001 is a documented maintainability
+  item, SE-SEC-001 partially), and **1 was a real, open P0**: SA-REL-004.
+
+## Resolved Issues (this cycle)
+
+| Row | Class | Fix + lock |
+|-----|-------|-----------|
+| SA-REL-004 | **P0 data destruction** | compaction refuses to drop an exchange whose archive copy failed (`archiveFailed` signal / throw → `retained_unarchived`, honest model notice); 3 regressions in archive.test.js |
+| SE-F-058 | P1 fabricated data | gateway list emits the worker's real health snapshot (`available`/`observedAt`; null+note when unmeasured) instead of hard-coded zeros; e2e regression in GatewayServer.test.ts |
+| SE-SEC-001 | P1 misleading AI | `authRequired` three-state (null = no evidence; false no longer claims "route is open"); schema+type+test aligned |
+| SA-F-005 | P1 corruption | request-body JSON decodes via StringDecoder — multi-byte chars split across TCP chunks survive; byte-exact regression |
+| SA-POL-001 | P1 crash-at-eval | policy validation compiles every argument_matches regex up front |
+| SA-POL-002 | P1 hung run | pending approval binds to the run's AbortSignal — cancel settles it RUN_CANCELLED instead of hanging forever |
+| SA-POL-004 | P2 audit gap | denied approvals emit the onDecision audit event before rethrow |
+| POL-045 (SA-POL-003) | P2 | ApprovalStore.history bounded via APPROVAL_HISTORY_LIMIT setting (caught by the repo's own no-hard-coded-constants invariant test) |
+| AI-12 (process) | P1 | jest globalSetup auto-generates the missing fixture — a clean `npx jest` now reproduces the green claim |
+| hooks-stop-lifecycle | testing gap | suite existed but was orphaned from `npm test`; registered in the chain |
+| SE-F-027 | P2 config | args-only LSP override was dropped on non-command resolution paths; `applyArgsOverride` now covers resolve + PATH results; 2 regressions in `src/lsp/registry.test.ts` |
+
+Additionally: 30 more rows dispositioned with code evidence via
+`audit/tools/reconcile_ledger.py` (fixed-verified / invalid / superseded / duplicate),
+and §5 merged 14 exact + 13 near-duplicate ledger pairs.
+
+## New Findings
+
+None of P0/P1 class beyond the rows above: the full-tree re-read this cycle
+surfied the gateway stats surface, the approval lifecycle and the compactor — all
+now fixed and locked. Remaining `open` rows (83) are MEDIUM/LOW/Unknown per-row
+verifications not yet done, each honestly labeled `open — not verified fixed`
+(never silently closed); the next cycle continues them in severity order.
+
+## Architecture Changes
+
+None structural. One output-contract extension (additive, backward compatible):
+gateway `stats.{available,filesCount,symbolsCount,dependenciesCount,observedAt,note}`;
+compaction report `retained_unarchived`; approval `archiveFailed` signal; new setting
+`APPROVAL_HISTORY_LIMIT`; `authRequired` widened to `boolean | null`.
+
+## Tests Added
+
+17 new cases: 3× SA-REL-004 (archive), 1× SE-F-058 (gateway e2e), 1× SE-F-028
+(rename symbol parity vs rebuild), 1× SE-SEC-001, 1× SA-F-005, 4× policy
+(POL-001/002/004/045), plus the fixture auto-generation path exercised by the whole
+jest chain from a clean tree; 2× SE-F-027 (LSP registry).
+
+## Test Results (final, this cycle)
+
+- semantic-engine: `tsc -p ./` = 0, `tsc -p tsconfig.test.json --noEmit` = 0,
+  eslint clean on changed files, **jest --ci: 267/267 suites, 3386 passed,
+  0 failed, 2 skipped** (run verified twice incl. clean-fixture path).
+- structured-ai: **npm test exit 0** (60-suite chain incl. the newly registered
+  hooks-stop-lifecycle suite), individual web/e2e/policy/runtime/archive suites
+  re-run green in isolation.
+- Known failures: none. Skips: 2 pre-existing environment-probed skips.
+
+## AI Context Quality Validation (§25)
+
+Re-ran the consuming-AI questions against the changed surfaces: "is this project
+empty?" can no longer be answered yes from a `ready` worker's list entry (the old
+zeros said yes; now `available:false` + note, or real counts + observedAt).
+"does this route require auth?" can no longer be answered from a fabricated false.
+"is that everything?" keeps the truncation-honesty answers from cycle 1/2. "was my
+approval denied or did the run just die?" is now distinguishable both in events
+(audit `denial:true`) and in run outcome (RUN_CANCELLED), instead of an immortal
+pending question. Compaction never silently destroys an unarchived tool result —
+if the archive fails, the conversation says it is over budget and keeps the data.
+
+## Remaining Issues
+
+- AI-04 ledger per-row verification: **82 honest `open` rows** remain (MEDIUM/LOW/Unknown,
+  none HIGH); each carries its source evidence pointer; protected by the reconcile
+  tooling so the next pass extends coverage monotonically.
+- AI-06: Kotlin/Swift grammars — OPEN·BLOCKED (no wasm toolchain in this sandbox).
+- SE-ARCH-001 (discover() monolith, HIGH-classified maintainability) → AI-13:
+  deliberately not refactored this cycle — §12 (no rewrite without necessity); it misleads no AI.
+- 5 deliberately deferred language supports (unchanged).
+
+## Final Assessment (cycle 3)
+
+§26 remains YES, and the trust surface is stronger where it mattered most: the last
+known silent-data-destruction path (compaction without an archive licence) is closed,
+the last known fabricated-number surface (gateway zeros) is honest, and the audit
+trail records denials it used to swallow. Every prior "green" claim is now
+reproducible from a clean checkout by the bare documented command — the verification
+chain itself no longer depends on tribal knowledge.

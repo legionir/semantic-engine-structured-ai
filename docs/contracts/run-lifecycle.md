@@ -30,6 +30,10 @@ A terminal state (`completed`, `failed`, `cancelled`) is final: nothing overwrit
 
 * `cancelRunById(id)` works for queued and active runs.
 * `cancelAllRuns(reason)` (SIGINT / SIGTERM) cancels the legacy current run, every active run and every queued run.
+* A pending approval is bound to the owning run's cancellation signal (SA-POL-002): when the run is cancelled the
+  pending request is removed and the approval promise rejects with `RUN_CANCELLED`. A run already cancelled before the
+  ask never registers a pending approval. A denied or cancelled approval is still emitted through the policy audit
+  callback with `approved:false` before the throw (SA-POL-004).
 
 ## Processes and sessions
 
