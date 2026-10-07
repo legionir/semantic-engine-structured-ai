@@ -334,16 +334,33 @@ const TERMINAL =
 | the stream is ordered. Waiting for the first run:status — the one that
 | OPENS a run — therefore asserts on events that may not have arrived yet,
 | which is exactly how this suite managed to fail a different test each run.
+|
+| The terminal run:status is correlated to the run that started in THIS test by
+| its turn_id. A run finishing on the shared server leaks one last run:status
+| into the next test's stream (its finally drains after /api/state already
+| reads done); keying on turn_id means that leaked status — from a different
+| run — never ends the wait early.
 */
 async function waitForRunEnd(stream, timeoutMs = WAIT_MS) {
 
     return waitFor(
-        () =>
-            stream.seen.some(
+        () => {
+            const started =
+                stream.seen.filter(event => event.type === "run:start");
+
+            if (started.length === 0) {
+                return null;
+            }
+
+            const current = started[started.length - 1].turn_id;
+
+            return stream.seen.some(
                 event =>
                     event.type === "run:status" &&
-                    TERMINAL.has(event.status)
-            ),
+                    TERMINAL.has(event.status) &&
+                    event.turn_id === current
+            );
+        },
         timeoutMs
     );
 }
@@ -995,14 +1012,7 @@ async function main() {
             task: "analyse the repository"
         });
 
-        await waitFor(
-            () =>
-                stream.seen.some(
-                    event =>
-                        event.type === "run:status" &&
-                        event.status === "done"
-                )
-        );
+        await waitForRunEnd(stream);
 
         const delegation =
             stream.seen.find(

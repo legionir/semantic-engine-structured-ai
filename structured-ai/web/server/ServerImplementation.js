@@ -701,6 +701,17 @@ function createServer(runtime, options = {}) {
                 null,
             onRequest: (request, args) => {
 
+                /*
+                | Stamp the run that owns this pending approval. A run's
+                | end-of-life cleanup may only resolve approvals it created;
+                | otherwise a finishing run (whose finally is still draining
+                | the git report / eventstore) silently auto-denies an
+                | approval a newer run has already surfaced. `request` is the
+                | same object the store holds, so this mutation is visible to
+                | the sweep below.
+                */
+                request.ownerTurnId = state.currentTurnId || null;
+
                 runtime.events.emit("approval:request", {
                     id: request.id,
                     agent: request.agent,
@@ -708,7 +719,8 @@ function createServer(runtime, options = {}) {
                     reason: request.reason,
                     groups: request.groups,
                     arguments: args,
-                    project_id: request.project_id
+                    project_id: request.project_id,
+                    turn_id: request.ownerTurnId
                 });
             }
         })
@@ -1313,16 +1325,25 @@ function createServer(runtime, options = {}) {
                 );
             }
 
-            /* nothing may stay pending once the run is over */
+            /*
+            | Nothing may stay pending once THIS run is over — but only the
+            | approvals this run created. A finishing run used to resolve every
+            | pending approval, including one a newer run had already surfaced
+            | during the git-report/eventstore drain, silently auto-denying it.
+            */
 
             for (const id of approvalStore.pendingKeys()) {
-                resolveApproval(id, false);
+                const owned = approvalStore.getPending(id);
+                if (owned && owned.ownerTurnId === turn_id) {
+                    resolveApproval(id, false);
+                }
             }
 
             runtime.events.emit("run:status", {
                 status: state.status,
                 answer: state.answer,
-                error: state.error
+                error: state.error,
+                turn_id
             });
 
             state.session.turns =
