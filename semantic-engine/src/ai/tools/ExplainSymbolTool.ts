@@ -80,6 +80,24 @@ export interface SymbolExplanation {
   readonly returnType: string | null;
   readonly calls: readonly RelatedSymbol[];
   readonly calledBy: readonly RelatedSymbol[];
+  /*
+  | SE-AI-HONESTY (P-06) — `calls`/`calledBy`/`members` هر سه به `limit`
+  | می‌خورند. بدون اعلامِ برش، AI لیستِ سقف‌خورده را «همهٔ فراخوانی‌ها»
+  | می‌خواند و مثلاً برای refactor دامنهٔ اثر را کوچک‌ازحد می‌گیرد. این
+  | سه فیلد، شمارشِ کامل (پیش از برش) و خودِ پرچم برش را می‌آورند.
+  */
+  /** شمارش کامل یال‌های منحصربه‌فرد call، پیش از برش `limit`. */
+  readonly callsCount: number;
+  /** شمارش کامل یال‌های منحصربه‌فرد caller، پیش از برش `limit`. */
+  readonly calledByCount: number;
+  /** آیا برشِ `limit` چیزی از بین برد؟ + سقفِ اعمال‌شده. */
+  readonly truncated: {
+    readonly calls: boolean;
+    readonly calledBy: boolean;
+    readonly members: boolean;
+    readonly any: boolean;
+    readonly limit: number;
+  };
   /**
    * اعضای یک سمبل اعلانی (کلاس/اینترفیس/…), با همان امضا و پیچیدگی هر عضو.
    *
@@ -337,6 +355,17 @@ export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
 
     const calls = callUnion.edges.slice(0, limit).map(edge => this.related(edge.to, edge));
     const calledBy = callerUnion.edges.slice(0, limit).map(edge => this.related(edge.from, edge));
+    /* SE-AI-HONESTY (P-06) — members بعد از این متغیر برش می‌خورد؛ flag
+       همین‌جا با شمارش کاملِ اعضا محاسبه می‌شود. */
+    const truncation = {
+      calls: callUnion.edges.length > calls.length,
+      calledBy: callerUnion.edges.length > calledBy.length,
+      members: members.length > limit,
+      any: callUnion.edges.length > calls.length
+        || callerUnion.edges.length > calledBy.length
+        || members.length > limit,
+      limit,
+    };
 
     const referencedBy = (() => {
       const sources = new Set<string>();
@@ -367,6 +396,10 @@ export class ExplainSymbolTool implements AiTool<ExplainSymbolInput> {
     return {
       id: symbol.id,
       symbol: displaySymbolName(symbol),
+      /* SE-AI-HONESTY (P-06) — counts before the `limit` slice + slice flags. */
+      callsCount: callUnion.edges.length,
+      calledByCount: callerUnion.edges.length,
+      truncated: truncation,
       kind: symbol.kind,
       file: file?.path,
       line: symbol.line,

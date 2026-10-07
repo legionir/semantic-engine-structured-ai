@@ -1006,11 +1006,16 @@ async function analyzeImpact(nodeId) {
     box.classList.remove("loading");
     const affected = data.affected || data.items || data.impactedSymbols || [];
     if (Array.isArray(affected) && affected.length) {
-      box.innerHTML = `<strong>Impact radius (${affected.length}):</strong>\n` +
+      // SE-VIZ-05 honesty: a capped page is not the whole impact radius.
+      const capNote = data.truncated
+        ? ` ≥${data.candidateCount ?? "?"} total`
+        : "";
+      box.innerHTML = `<strong>Impact radius (${affected.length}${capNote}):</strong>\n` +
         affected
           .slice(0, 25)
           .map(a => "• " + escapeHtml(a.name || a.label || a.id || JSON.stringify(a)))
-          .join("\n");
+          .join("\n") +
+        (data.truncated ? "\n… more dependents exist beyond this page." : "");
     } else {
       box.textContent = data.targetType === "module"
         ? "No indexed dependents were found for this module."

@@ -47,23 +47,46 @@ export class GetRecentChangesTool implements AiTool<GetRecentChangesInput> {
         : path.resolve(base, requested);
       const git = new GitClient(workspaceRoot);
       const limit = input.limit ?? 10;
-
-      let log = input.path
-        ? await git.getFileLog(input.path, limit)
-        : await git.getLog(limit);
-
-      // Filter by 'since' date if provided (ISO format, e.g. "2026-01-01")
-      if (input.since) {
-        const sinceDate = new Date(input.since);
-        if (!isNaN(sinceDate.getTime())) {
-          log = log.filter(entry => {
-            const entryDate = new Date(entry.date);
-            return !isNaN(entryDate.getTime()) && entryDate >= sinceDate;
-          });
+      if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1)) {
+        return { success: false, error: 'limit must be a positive integer', items: [] };
+      }
+      let sinceDate: Date | undefined;
+      if (input.since !== undefined) {
+        sinceDate = new Date(input.since);
+        if (isNaN(sinceDate.getTime())) {
+          /*
+          | گذشته: `since` بد بدون هیچ اعلامی نادیده گرفته می‌شد و نتیجه
+          | «انگار فیلتر اعمال شده» برمی‌گشت. حالا صریح رد می‌شود تا AI
+          | بازهٔ اعمال‌شده را با بازهٔ درخواستی اشتباه نگیرد.
+          */
+          return { success: false, error: 'since must be a valid ISO date', items: [] };
         }
       }
 
-      const items = log.map(entry => ({
+      /*
+      | تفکیکِ «مخزن نیست» از «کامیتی نیست» (§16): خالی‌بودنِ log هر دو
+      | حالت را یکسان نشان می‌داد. حالا خودِ مخزن بودن پرسیده و اعلام
+      | می‌شود؛ اگر نبود، نتیجهٔ خالی «شواهدی پیدا نشد» است نه «شواهدی
+      | وجود ندارد».
+      */
+      const isRepo = await git.isGitRepository();
+
+      const log = input.path
+        ? await git.getFileLog(input.path, limit)
+        : await git.getLog(limit);
+
+      /*
+      | پنجرهٔ بررسی = دقیقاً `limit` کامیتِ آخر. اگر `since` بعد از
+      | این برش اعمال شود و پنجره پر باشد، کامیت‌های منطبقِ بازه که
+      | کهنه‌تر از ابتدای پنجره‌اند هرگز دیده نشده‌اند؛ «خالی» در آن
+      | حالت یعنی «در پنجرهٔ بررسی‌شده پیدا نشد»، نه «تغییری نیست»
+      | (§16). این محدودیت حالا machine-readable اعلام می‌شود.
+      */
+      const windowFilled = log.length >= limit;
+      const filtered = sinceDate ? log.filter(e => new Date(e.date) >= sinceDate) : log;
+      const sinceMayReachBeyondWindow = windowFilled && sinceDate !== undefined;
+
+      const items = filtered.map(entry => ({
         id: entry.hash,
         name: entry.message.split('\n')[0] ?? entry.hash,
         kind: 'commit',
@@ -75,7 +98,25 @@ export class GetRecentChangesTool implements AiTool<GetRecentChangesInput> {
         success: true,
         items,
         // کدام ریشه واقعاً خوانده شد، برای agent پنهان نمی‌ماند
-        metadata: { count: items.length, workspaceRoot, path: input.path, since: input.since },
+        metadata: {
+          count: items.length,
+          workspaceRoot,
+          path: input.path,
+          since: input.since,
+          limit,
+          isGitRepository: isRepo,
+          examinedCommits: log.length,
+          ...(log.length > 0 ? { oldestExamined: log[log.length - 1]!.date } : {}),
+          truncated: windowFilled,
+          ...(isRepo ? {} : { emptyNote: 'path is not a git repository — an empty result means history could not be read, not that no changes exist' }),
+          ...(windowFilled
+            ? {
+                countNote: sinceMayReachBeyondWindow
+                  ? 'since-filter applied to the newest limit commits only; matching commits older than oldestExamined were not examined'
+                  : 'scan stopped at limit; older commits may exist beyond oldestExamined',
+              }
+            : {}),
+        },
       };
     } catch (error) {
       return {

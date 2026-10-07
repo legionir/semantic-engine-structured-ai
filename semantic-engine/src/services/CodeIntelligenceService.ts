@@ -42,7 +42,7 @@ export class CodeIntelligenceService {
     project: ManagedProject,
     symbol: string,
     maxDepth = 3
-  ): Promise<{ symbol: string; targetType: 'module' | 'package' | 'file_or_symbol'; impactedCount: number; items: unknown[] }> {
+  ): Promise<{ symbol: string; targetType: 'module' | 'package' | 'file_or_symbol'; impactedCount: number; truncated: boolean; candidateCount: number; items: unknown[] }> {
     if (!project.reader) {
       throw new Error(`Project ${project.id} has no valid index loaded.`);
     }
@@ -51,11 +51,21 @@ export class CodeIntelligenceService {
       ...(project.blueprint ? { blueprint: project.blueprint } : {}),
     });
 
-    const result = await tool.execute({ id: symbol, maxDepth });
+    /*
+    | P-008/§16 — دو باگ در این مسیر:
+    | ۱) نام پارامتر: ابزار `depth` می‌خواند؛ پاس‌دادن `{ maxDepth }`
+    |    بی‌صدا در `depth: 2` پیش‌فرض فروریخت، پس پرس‌وجوهای عمیق‌تر
+    |    از پنجره‌ای کوچک‌تر جواب می‌دادند تا حدِ عمیقِ درخواستی.
+    | ۲) برش `limit` در metadata ابزار بود و اینجا دور ریخته می‌شد؛
+    |    مصرف‌کننده HTTP فقط `impactedCount` (تعداد صفحه) می‌دید و
+    |    «۳۰ از ۵۰۰» با «۳۰ تا، تمام» یکسان به نظر می‌رسید.
+    */
+    const result = await tool.execute({ id: symbol, depth: maxDepth });
     if (!result.success) {
       throw new Error(result.error || 'Impact analysis failed');
     }
 
+    const meta = result.metadata as { truncated?: boolean; candidateCount?: number } | undefined;
     return {
       symbol,
       targetType: result.metadata?.targetType === 'module'
@@ -64,6 +74,8 @@ export class CodeIntelligenceService {
           ? 'package'
           : 'file_or_symbol',
       impactedCount: result.items.length,
+      truncated: meta?.truncated === true,
+      candidateCount: meta?.candidateCount ?? result.items.length,
       items: [...result.items],
     };
   }

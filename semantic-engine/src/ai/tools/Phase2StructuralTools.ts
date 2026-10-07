@@ -34,7 +34,13 @@ export class StructuralSearchTool extends StructuralTool implements AiTool {
       items.push(...result.matches.map(m => ({ id: m.id, name: m.path, kind: 'structural_match', path: m.path, line: m.line, source: 'structural-search', excerpt: m.text, metadata: { start: m.start, end: m.end, column: m.column, captures: m.captures, language: m.language, ruleId: m.ruleId } })));
       if (items.length >= max) { truncated = true; break; }
     }
-    return ok(items.slice(0, max), { returnedTokens: items.reduce((n, i) => n + Math.ceil((i.excerpt ?? '').length / 4), 0), truncated });
+    /*
+    | SE-AI-HONESTY (P-06) — صفحه پر شد و اسکن قطع شد؛ پس شمارشِ کل
+    | موجود نیست. `matchesAtLeast` به AI می‌گوید حداقل همین‌قدر تطبیق
+    | هست و ممکن است بیشتر باشد — نه اینکه لیست کامل است.
+    */
+    const capped = items.length >= max;
+    return ok(items.slice(0, max), { returnedTokens: items.reduce((n, i) => n + Math.ceil((i.excerpt ?? '').length / 4), 0), truncated, max, ...(capped || truncated ? { matchesAtLeast: items.length } : { matchCount: items.length }) });
   }
 }
 

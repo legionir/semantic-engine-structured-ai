@@ -92,3 +92,42 @@ unchanged `StructuralSearchRequest`/`StructuralSearchResult` contract in
   errors verbatim (never wrapped/mislabelled) and reports read failures as
   `IO_ERROR`; `structural_rule_test` propagates a failing rule's error
   instead of reporting `passed: true`.
+
+## Truncation-honesty output contract (SE-AI-HONESTY, P-03/P-06, executed 2026-10-07)
+
+Any AI-facing tool that caps or slices its result set MUST make the cap
+machine-readable so a partial page never reads as a complete answer (§16:
+"no result exists" ≠ "no result was found"). This is the central
+correctness rule of the semantic layer; it is not satisfied by the tool
+"executing successfully" (§13).
+
+- **Flag + count together.** A capped result carries `metadata.truncated`
+  AND an honest total. Exact total (the scan counted everything before
+  slicing): `matchCount` / `totalMatches` / `publicSymbolCount` /
+  `candidateCount` / `callsCount` / `calledByCount` / `totalReferenceCount`.
+  When the scan itself stops at the cap so the total is unknown, the tool
+  emits `matchCountAtLeast` (or `examinedCommits` + `countNote`) rather
+  than a fabricated exact count — never silence.
+- **Slice ≠ filter.** Two different reasons a result is smaller than the
+  universe must not collapse into one flag. `symbol_references` reports
+  `truncated` for the `limit` slice and `droppedByConfidence` for the
+  `minConfidence` filter separately, so an AI knows whether to raise the
+  limit or lower the confidence bar. `impact_analysis` likewise separates
+  the traversal node-cap (`traversalExhausted`) from the output
+  `limit` slice (`droppedByLimit`, `candidateCount`).
+- **Empty scope honesty.** Zero matches still sets `truncated: false` and
+  the count to `0`, distinguishing "searched, none found" from a silent
+  empty list. `get_recent_changes` additionally distinguishes "path is not
+  a git repository" from "no commits" via `isGitRepository`/`emptyNote`.
+- **`explain_symbol`** puts its per-section slice state in
+  `truncated.{calls,calledBy,members,any,limit}` plus the pre-slice
+  `callsCount`/`calledByCount`, because `limit` caps three independent
+  lists at once and a single top-level flag would hide which one was cut.
+- **Contract lock.** `src/ai/tools/ToolTruncationHonesty.test.ts` (AI-03,
+  six tools) and `ToolTruncationHonesty.p06.test.ts` (P-06 rollout + a
+  registry-driven "truncated is never count-less" guard) fail the build if
+  a tool slices without declaring it, preventing silent regression.
+- **Transport.** These signals reach the consuming AI through MCP
+  `structuredContent` (`SemanticEngineMcpServer`), unpacked unchanged on the
+  structured-ai side (`JsonRpcCodec`), so the honesty survives the
+  integration boundary (§28).

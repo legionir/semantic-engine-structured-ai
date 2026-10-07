@@ -108,7 +108,7 @@ export class ProjectListFilesTool implements AiTool {
   readonly name = 'project_list_files'; readonly description = 'List indexed files in deterministic path order.';
   readonly inputSchema = { type: 'object', properties: { language: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 10000 } } };
   constructor(private readonly reader: ProjectIndexReader) {}
-  async execute(input: AiToolInput): Promise<AiToolOutput> { const language = typeof input.language === 'string' ? input.language : undefined; const limit = typeof input.limit === 'number' ? input.limit : 1000; const files = [...this.reader.getAllFiles()].filter(f => !language || f.language === language).sort((a, b) => a.path.localeCompare(b.path)).slice(0, limit); return { success: true, items: files.map(f => ({ id: f.id, name: f.path, kind: 'file', path: f.path, line: 1, source: 'project-index', metadata: { language: f.language, size: f.size, lines: f.lines, hash: f.hash, generated: f.generated, binary: f.binary } })), metadata: { returnedTokens: files.reduce((n, f) => n + tokens(f.path), 0), truncated: files.length >= limit } }; }
+  async execute(input: AiToolInput): Promise<AiToolOutput> { const language = typeof input.language === 'string' ? input.language : undefined; const limit = typeof input.limit === 'number' ? input.limit : 1000; const all = [...this.reader.getAllFiles()].filter(f => !language || f.language === language).sort((a, b) => a.path.localeCompare(b.path)); const files = all.slice(0, limit); /* SE-AI-HONESTY (P-06) — truncated + honest totals: an AI deciding "raise the limit or narrow the query" needs the real count, not just the flag. */ return { success: true, items: files.map(f => ({ id: f.id, name: f.path, kind: 'file', path: f.path, line: 1, source: 'project-index', metadata: { language: f.language, size: f.size, lines: f.lines, hash: f.hash, generated: f.generated, binary: f.binary } })), metadata: { returnedTokens: files.reduce((n, f) => n + tokens(f.path), 0), truncated: all.length > files.length, matchCount: all.length, limit } }; }
 }
 
 export class SearchTextTool extends SourceTool implements AiTool {
@@ -127,7 +127,13 @@ export class SearchTextTool extends SourceTool implements AiTool {
       const lines = source.text.split(/\r\n|\r|\n/u);
       lines.forEach((line, i) => { if (items.length < limit && line.toLowerCase().includes(query.toLowerCase())) { const owner = this.reader.getSymbolsForFile(file.id).find(s => s.line <= i + 1 && s.endLine >= i + 1); items.push(this.item(file, line.trim(), { line: i + 1, column: Math.max(0, line.toLowerCase().indexOf(query.toLowerCase())), enclosingSymbol: owner?.id, returnedTokens: tokens(line) })); } });
     }
-    return { success: true, items, metadata: { returnedTokens: items.reduce((n, i) => n + tokens(i.excerpt ?? ''), 0), truncated: items.length >= limit } };
+    /*
+    | SE-AI-HONESTY (P-06) — وقتی صفحه پر شد از اسکنِ بقیه فایل‌ها
+    | می‌بینیم (تعهدِ عملکردی)، پس شمارشِ کل موجود نیست؛ اما AI باید
+    | بداند «حداقل limit تطبیق وجود دارد»، نه فقط اینکه برش خورده.
+    */
+    const capped = items.length >= limit;
+    return { success: true, items, metadata: { returnedTokens: items.reduce((n, i) => n + tokens(i.excerpt ?? ''), 0), truncated: capped, limit, ...(capped ? { matchCountAtLeast: items.length, countNote: 'scan stopped at limit; more matches may exist in unscanned files' } : { matchCount: items.length }) } };
   }
 }
 
@@ -168,8 +174,8 @@ export class SymbolFindTool implements AiTool {
     const query = typeof input.query === 'string' ? input.query.trim().toLowerCase() : ''; if (!query) return fail('INVALID_ARGUMENT: query is required');
     const kind = typeof input.kind === 'string' ? input.kind : undefined; const pathFilter = typeof input.path === 'string' ? this.reader.getFileByPath(input.path)?.id : undefined;
     const limit = typeof input.limit === 'number' ? input.limit : 100;
-    const symbols = [...this.reader.getAllSymbols()].filter(s => s.name.toLowerCase().includes(query) && (!kind || s.kind === kind) && (!pathFilter || s.fileId === pathFilter)).sort((a, b) => a.name.localeCompare(b.name) || a.fileId.localeCompare(b.fileId) || a.line - b.line).slice(0, limit);
-    return { success: true, items: symbols.map(s => { const f = this.reader.getFileById(s.fileId); return { id: s.id, name: s.name, kind: s.kind, path: f?.path, line: s.line, source: s.source, excerpt: s.signature ?? s.name, metadata: { endLine: s.endLine, confidence: s.confidence } }; }), metadata: { returnedTokens: symbols.reduce((n, s) => n + tokens(s.name), 0), truncated: symbols.length >= limit } };
+    const symbols = [...this.reader.getAllSymbols()].filter(s => s.name.toLowerCase().includes(query) && (!kind || s.kind === kind) && (!pathFilter || s.fileId === pathFilter)).sort((a, b) => a.name.localeCompare(b.name) || a.fileId.localeCompare(b.fileId) || a.line - b.line); const limited = symbols.slice(0, limit);
+    return { success: true, items: limited.map(s => { const f = this.reader.getFileById(s.fileId); return { id: s.id, name: s.name, kind: s.kind, path: f?.path, line: s.line, source: s.source, excerpt: s.signature ?? s.name, metadata: { endLine: s.endLine, confidence: s.confidence } }; }), metadata: { returnedTokens: limited.reduce((n, s) => n + tokens(s.name), 0), truncated: symbols.length > limit, matchCount: symbols.length, limit } };
   }
 }
 

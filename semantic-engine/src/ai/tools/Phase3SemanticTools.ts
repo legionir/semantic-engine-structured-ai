@@ -60,18 +60,29 @@ export class SymbolReferencesTool implements AiTool {
         const references: readonly SymbolReference[] = symbol ? pilot.referencesWithin(record.graph, symbol) : [];
         const min = typeof input.minConfidence === 'string' && input.minConfidence in confidenceRank ? input.minConfidence as ResolutionConfidence : 'unresolved';
         const limit = typeof input.limit === 'number' ? input.limit : 1000;
-        const selected = references.filter(r => confidenceRank[r.provenance.confidence] >= confidenceRank[min]).slice(0, limit);
+        /*
+        | SE-AI-HONESTY (P-06) — دو علتِ متفاوت برای «کمتر از همه» یکی
+        | نبودنِ نتیجه: (۱) فیلترِ minConfidence و (۲) برشِ limit.
+        | محاسبهٔ قبلی `references.length > selected.length` این دو را
+        | قاطی می‌کرد: اگر فیلتر نصفِ رفرنس‌ها را حذف می‌کرد ولی برشی
+        | رخ نمی‌داد، باز هم `truncated: true` گزارش می‌شد — یعنی ابزار
+        | ادعای برش می‌کرد آنجا که برشی نبود. حالا هر دو جدا اعلام
+        | می‌شوند و AI می‌فهمد باید سقف را بالا ببرد یا اطمینان را پایین.
+        */
+        const confidenceFiltered = references.filter(r => confidenceRank[r.provenance.confidence] >= confidenceRank[min]);
+        const selected = confidenceFiltered.slice(0, limit);
         return {
           success: true,
           items: selected.map(r => ({ id: r.id, name: r.targetSymbolKey, kind: 'symbol_reference', path: r.sourcePath, line: r.line, source: 'phase3-semantic-graph', excerpt: r.text, metadata: { start: r.start, end: r.end, targetSymbolId: r.targetSymbolId, targetSymbolKey: r.targetSymbolKey, confidence: r.provenance.confidence, via: r.provenance.via, candidates: r.provenance.candidates, snapshotId: record.graph.snapshotId } })),
-          metadata: { ...referencesMetadata(record.graph, record, reused), referenceCount: selected.length, truncated: references.length > selected.length, trust: 'untrusted-source-content' },
+          metadata: { ...referencesMetadata(record.graph, record, reused), referenceCount: selected.length, totalReferenceCount: references.length, aboveMinConfidence: confidenceFiltered.length, truncated: confidenceFiltered.length > selected.length, droppedByConfidence: references.length - confidenceFiltered.length, limit, trust: 'untrusted-source-content' },
         };
       }
       const result = await pilot.referencesFor(target);
       const min = typeof input.minConfidence === 'string' && input.minConfidence in confidenceRank ? input.minConfidence as ResolutionConfidence : 'unresolved';
       const limit = typeof input.limit === 'number' ? input.limit : 1000;
-      const selected = result.references.filter(r => confidenceRank[r.provenance.confidence] >= confidenceRank[min]).slice(0, limit);
-      return { success: true, items: selected.map(r => ({ id: r.id, name: r.targetSymbolKey, kind: 'symbol_reference', path: r.sourcePath, line: r.line, source: 'phase3-semantic-graph', excerpt: r.text, metadata: { start: r.start, end: r.end, targetSymbolId: r.targetSymbolId, targetSymbolKey: r.targetSymbolKey, confidence: r.provenance.confidence, via: r.provenance.via, candidates: r.provenance.candidates, snapshotId: result.graph.snapshotId } })), metadata: { ...referencesMetadata(result.graph, undefined, undefined), referenceCount: selected.length, truncated: result.references.length > selected.length, trust: 'untrusted-source-content' } };
+      const confidenceFiltered = result.references.filter(r => confidenceRank[r.provenance.confidence] >= confidenceRank[min]);
+      const selected = confidenceFiltered.slice(0, limit);
+      return { success: true, items: selected.map(r => ({ id: r.id, name: r.targetSymbolKey, kind: 'symbol_reference', path: r.sourcePath, line: r.line, source: 'phase3-semantic-graph', excerpt: r.text, metadata: { start: r.start, end: r.end, targetSymbolId: r.targetSymbolId, targetSymbolKey: r.targetSymbolKey, confidence: r.provenance.confidence, via: r.provenance.via, candidates: r.provenance.candidates, snapshotId: result.graph.snapshotId } })), metadata: { ...referencesMetadata(result.graph, undefined, undefined), referenceCount: selected.length, totalReferenceCount: result.references.length, aboveMinConfidence: confidenceFiltered.length, truncated: confidenceFiltered.length > selected.length, droppedByConfidence: result.references.length - confidenceFiltered.length, limit, trust: 'untrusted-source-content' } };
     } catch (error) {
       if (error instanceof GraphSnapshotStoreError) return storeError(error);
       return fail(`IO_ERROR: ${error instanceof Error ? error.message : String(error)}`);

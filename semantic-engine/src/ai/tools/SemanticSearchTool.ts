@@ -363,7 +363,14 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
         }
       );
 
-      const ranked = this.ranker
+      /*
+      | SE-AI-HONESTY (P-06) — برشِ `limit` باید اعلام شود. قبلاً یک
+      | پرس‌وجوی ۵۰۰نامزدی با `limit: 20` دقیقاً همان شکلِ «۲۰ پاسخ، همه
+      | چیز» را برمی‌گرداند و AI نمی‌فهمید که باید سقف را بالا ببرد یا
+      | پرس‌وجو را باریک‌تر کند. `totalMatches` کلِ رتبه‌بندی‌شدهٔ منطبق
+      | با minScore است (پیش از برش)، نه اندازهٔ صفحه.
+      */
+      const scoredPool = this.ranker
         .rank<ScoredEntity>(candidates, {
           ...(churnRanks.length > 0 ? { churnRankOutOf: Math.max(...churnRanks) } : {}),
           /*
@@ -375,8 +382,9 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
           coreRelevanceSignals: ['keyword', 'vector'],
           weights: { vector: 2, keyword: 1 },
         })
-        .filter(r => input.minScore == null || r.score >= input.minScore)
-        .slice(0, limit);
+        .filter(r => input.minScore == null || r.score >= input.minScore);
+      const totalMatches = scoredPool.length;
+      const ranked = scoredPool.slice(0, limit);
 
       const items = ranked.map(r => {
         const entity = r.payload as ScoredEntity;
@@ -403,6 +411,10 @@ export class SemanticSearchTool implements AiTool<SemanticSearchInput> {
         metadata: {
           keywordCandidates: keywordCandidates.length,
           embeddingCandidates: embeddingCandidates.length,
+          /* SE-AI-HONESTY (P-06) — `limit` slice honesty. */
+          truncated: totalMatches > ranked.length,
+          totalMatches,
+          limit,
           /*
           | SE-VEC-02 — قبلاً این فقط می‌گفت «chunk داریم و کاربر
           | مخالفت نکرده»، نه «واقعاً از بردار استفاده شد». کاربر

@@ -150,12 +150,26 @@ export class ImpactAnalysisTool implements AiTool<ImpactAnalysisInput> {
         .sort((left, right) => right.relevanceScore - left.relevanceScore)
         .slice(0, limit);
 
+      /*
+      | SE-AI-HONESTY (P-06) — دو سقفِ مستقل در این ابزار وجود دارد:
+      | (۱) سقف *گره* پیمایش (`maxNodes`) و (۲) برش خروجی به `limit`
+      | پس از مرتب‌سازی. محاسبهٔ قبلی فقط (۱) را گزارش می‌کرد؛ یعنی
+      | اگر ۵۰ کاندید وجود داشت و ۳۰ تا برمی‌گشت، خروجی «کامل» به نظر
+      | می‌رسید. حالا `truncated` اتحادِ هر دو است و شمارشِ کاندیدها
+      | همراهش می‌آید تا AI بداند سقف را بالا ببرد یا depth را کم کند.
+      */
+      const droppedByLimit = candidates.length > items.length;
+
       return {
         success: true,
         items,
         metadata: {
           visited: visitedCount,
-          truncated: traversal.truncated,
+          truncated: traversal.truncated || droppedByLimit,
+          candidateCount: candidates.length,
+          droppedByLimit,
+          traversalExhausted: traversal.truncated,
+          limit,
           cyclic,
           minConfidence: input.minConfidence ?? 70,
           targetType: this.isModule(input.id)
