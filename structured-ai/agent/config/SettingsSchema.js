@@ -1326,6 +1326,14 @@ const DEFINITIONS = [
         description: "How many settled runs the RunManager keeps queryable after they finish."
     },
     {
+        key: "APPROVAL_HISTORY_LIMIT",
+        group: "runtime",
+        type: NUMBER,
+        default: 500,
+        min: 1,
+        description: "How many settled approval decisions the ApprovalStore keeps in its bounded in-process history (POL-045)."
+    },
+    {
         key: "MAX_CONCURRENT_PROJECT_RUNS",
         group: "runtime",
         type: NUMBER,

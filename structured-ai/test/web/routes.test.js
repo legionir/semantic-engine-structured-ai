@@ -188,6 +188,26 @@ async function main() {
     });
 
 
+    await test("SA-F-005: a multi-byte character split across chunks decodes intact", async () => {
+
+        /* "日本語" is 9 UTF-8 bytes; slice the buffer so a 3-byte
+           character is cut in half between two incoming chunks. */
+
+        const payload = Buffer.from(JSON.stringify({ task: "日本語" }), "utf8");
+        const cut = payload.indexOf(Buffer.from([0x96])) + 1; /* mid-character */
+
+        const splitRequest = () => Readable.from([
+            payload.subarray(0, cut),
+            payload.subarray(cut)
+        ]);
+
+        const parsed = await body.readBody(splitRequest());
+
+        assert.deepEqual(parsed, { task: "日本語" });
+        assert.ok(!JSON.stringify(parsed).includes("\uFFFD"), "no replacement char");
+    });
+
+
     await test("Response and SseHub preserve JSON and SSE wire shapes", async () => {
 
         const json = fakeResponse();

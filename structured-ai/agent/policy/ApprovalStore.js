@@ -12,14 +12,18 @@
 |--------------------------------------------------------------------------
 */
 
+const settings = require("../config");
+
 const gatewayApprovals = new Map();
 
 
 class ApprovalStore {
 
-    constructor({ pending, gateway } = {}) {
+    constructor({ pending, gateway, historyLimit } = {}) {
 
         this.history = [];
+        /* resolved per-record below; an explicit limit (tests) wins */
+        this.historyLimit = historyLimit;
         this.pending = pending instanceof Map ? pending : new Map();
         this.gateway = gateway instanceof Map ? gateway : gatewayApprovals;
     }
@@ -27,6 +31,17 @@ class ApprovalStore {
 
     record(value) {
         this.history.push(value);
+
+        /* POL-045: the header promised a bounded-in-process history but
+           `record` was an unbounded push. The limit lives in the settings
+           store (read at call time, never captured at module load) so it is
+           a real configuration, not a constant in hiding. */
+        const limit =
+            this.historyLimit ?? settings.get("APPROVAL_HISTORY_LIMIT");
+
+        while (this.history.length > limit) {
+            this.history.shift();
+        }
         return value;
     }
 

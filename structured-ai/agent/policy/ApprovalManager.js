@@ -270,7 +270,7 @@ class ApprovalManager {
             store || this.store;
 
         return (evaluation, args) =>
-            new Promise(resolve => {
+            new Promise((resolve, reject) => {
 
                 const projectId =
                     typeof projectIdOf === "function"
@@ -282,6 +282,73 @@ class ApprovalManager {
                         ? createId(evaluation, args, pendingStore)
                         : `approval_${pendingStore.pendingSize() + 1}_${Date.now()}`;
 
+                /*
+                | SA-POL-002/SA-POL-006: the pending promise used to settle
+                | ONLY on an operator answer. A run cancelled or aborted
+                | while its approval was pending stayed `pending:1,
+                | settled:false` forever — the run's finally could never
+                | complete and the operator kept seeing a question nobody
+                | would ever answer. The approval now binds to the owning
+                | run's cancellation signal: when the run is cancelled the
+                | request is removed from pending and the promise rejects
+                | with RUN_CANCELLED, so the waiting stack unwinds honestly.
+                */
+                const settle = (answer) => {
+
+                    if (signal && onAbort) {
+                        signal.removeEventListener("abort", onAbort);
+                    }
+                    resolve(answer);
+                };
+
+                let signal = null;
+                let onAbort = null;
+
+                try {
+
+                    const runtime = require("../runtime");
+                    const context =
+                        runtime.runManager &&
+                        typeof runtime.runManager.current === "function"
+                            ? runtime.runManager.current()
+                            : null;
+
+                    signal = context?.cancellation?.signal || null;
+
+                    if (signal && signal.aborted) {
+
+                        reject(
+                            Object.assign(
+                                new Error("run cancelled before approval was answered"),
+                                { code: "RUN_CANCELLED" }
+                            )
+                        );
+                        return;
+                    }
+
+                    if (signal) {
+
+                        onAbort = () => {
+
+                            pendingStore.removePending(id);
+
+                            reject(
+                                Object.assign(
+                                    new Error("run cancelled while the approval was pending"),
+                                    { code: "RUN_CANCELLED" }
+                                )
+                            );
+                        };
+
+                        signal.addEventListener("abort", onAbort, { once: true });
+                    }
+
+                } catch {
+                    /* runtime not wired (unit contexts): keep the legacy
+                       operator-only settlement rather than failing the ask */
+                    signal = null;
+                }
+
                 const request = {
                     id,
                     agent: evaluation.agent,
@@ -291,7 +358,7 @@ class ApprovalManager {
                     arguments: args,
                     project_id: projectId,
                     requested_at: Date.now(),
-                    resolve
+                    resolve: settle
                 };
 
                 pendingStore.addPending(request);

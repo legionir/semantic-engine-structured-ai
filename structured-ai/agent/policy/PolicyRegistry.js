@@ -64,6 +64,42 @@ function policyProblems({ policy, toolGroups, tools } = {}) {
                 `Policy rule "${rule.id}" has an unknown action "${rule.action}".`
             );
         }
+
+        /*
+        | SA-POL-001/SA-POL-005: `argument_matches` patterns are compiled
+        | with `new RegExp` at evaluation time. A malformed pattern like
+        | "[" used to pass validation and then throw SyntaxError inside a
+        | running tool decision — a policy authoring typo became a runtime
+        | crash far from its cause. Validate them where they are written.
+        */
+        const when = rule.when || rule.condition;
+        for (
+            const [argumentPath, patterns]
+            of Object.entries(when?.argument_matches || {})
+        ) {
+
+            if (!Array.isArray(patterns)) {
+
+                problems.push(
+                    `Policy rule "${rule.id}" argument_matches."${argumentPath}" must be an array of regex sources.`
+                );
+                continue;
+            }
+
+            for (const pattern of patterns) {
+
+                try {
+
+                    new RegExp(String(pattern), "i");
+
+                } catch (error) {
+
+                    problems.push(
+                        `Policy rule "${rule.id}" argument_matches."${argumentPath}" has an invalid regex (${error.message}).`
+                    );
+                }
+            }
+        }
     }
 
     return problems;

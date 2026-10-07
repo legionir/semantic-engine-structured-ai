@@ -272,8 +272,28 @@ class PolicyEngine {
 
         if (evaluation.decision === DECISIONS.REQUIRE_APPROVAL) {
 
-            const approval =
-                await this.requestApproval(evaluation, args);
+            /*
+            | SA-POL-004/SA-POL-008: a denied approval used to throw out of
+            | `requestApproval` before any decision event was emitted — the
+            | audit trail only ever saw approvals that were granted. The
+            | denial IS the security-relevant event; emit it (with
+            | approved:false) before rethrowing.
+            */
+            let approval;
+
+            try {
+
+                approval = await this.requestApproval(evaluation, args);
+
+            } catch (error) {
+
+                this.onDecision({
+                    ...evaluation,
+                    approved: false,
+                    denial: true
+                });
+                throw error;
+            }
 
             this.onDecision({
                 ...evaluation,
@@ -295,8 +315,22 @@ class PolicyEngine {
        same boundary as ordinary policy approvals. */
     async enforceApproval(evaluation, args) {
 
-        const approval =
-            await this.requestApproval(evaluation, args);
+        /* SA-POL-004: same denial-audit contract as `enforce` above. */
+        let approval;
+
+        try {
+
+            approval = await this.requestApproval(evaluation, args);
+
+        } catch (error) {
+
+            this.onDecision({
+                ...evaluation,
+                approved: false,
+                denial: true
+            });
+            throw error;
+        }
 
         this.onDecision({
             ...evaluation,

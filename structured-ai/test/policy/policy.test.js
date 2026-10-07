@@ -197,11 +197,53 @@ async function main() {
             () => new policy.PolicyRegistry({
                 policy: {
                     rules: [{ id: "bad", tools: ["missing"], action: "allow" }]
-                },
-                toolGroups: {}
+                },                toolGroups: {}
             }).validate([{ type: "function", function: { name: "fs_read" } }]),
             /Registry validation failed/
         );
+
+    });
+
+
+    await test("SA-POL-001/SA-POL-005: malformed argument_matches regex fails validation, not evaluation", async () => {
+
+        const problems = policy.policyProblems({
+            policy: {
+                rules: [
+                    {
+                        id: "bad-regex",
+                        tools: ["fs_read"],
+                        when: { argument_matches: { path: ["["] } },
+                        action: "deny"
+                    },
+                    {
+                        id: "not-an-array",
+                        tools: ["fs_read"],
+                        when: { argument_matches: { path: "[" } },
+                        action: "deny"
+                    },
+                    {
+                        id: "good-regex",
+                        tools: ["fs_read"],
+                        when: { argument_matches: { path: ["^secret"] } },
+                        action: "deny"
+                    }
+                ]
+            },
+            toolGroups: {},
+            tools: [{ type: "function", function: { name: "fs_read" } }]
+        });
+
+        assert.equal(problems.length, 2, `expected two problems, got: ${JSON.stringify(problems)}`);
+        assert.match(problems[0], /bad-regex.*invalid regex/);
+        assert.match(problems[1], /not-an-array.*must be an array/);
+
+        /* evaluation no longer sees a SyntaxError from an authored pattern */
+        const ok = policy.conditionMatches(
+            { argument_matches: { path: ["^secret"] } },
+            { args: { path: "secret.txt" }, agent: "main_agent" }
+        );
+        assert.equal(ok, true);
 
     });
 
@@ -339,6 +381,67 @@ async function main() {
     });
 
 
+    await test("SA-POL-002/006: cancelling the run settles the pending approval with RUN_CANCELLED", async () => {
+
+        const runtime = require("../../agent/runtime");
+        const original = runtime.runManager.current;
+
+        const controller = new AbortController();
+        const fakeContext = { cancellation: { controller, signal: controller.signal } };
+
+        try {
+
+            runtime.runManager.current = () => fakeContext;
+
+            const pendingStore = new policy.ApprovalStore();
+            const manager = new policy.ApprovalManager();
+
+            const handler = manager.createPendingHandler({
+                store: pendingStore,
+                createId: () => "approval-cancel-1"
+            });
+
+            const answer = handler(
+                { tool: "fs_write", agent: "main_agent", reason: "write", groups: [] },
+                { path: "x.txt" }
+            );
+
+            assert.equal(pendingStore.pendingSize(), 1);
+
+            controller.abort();
+
+            await assert.rejects(() => answer, error => {
+
+                assert.equal(error.code, "RUN_CANCELLED");
+                return true;
+            });
+
+            /* the question a cancelled run can never answer is gone */
+            assert.equal(pendingStore.pendingSize(), 0);
+
+            /* a run cancelled BEFORE the ask never adds a pending entry */
+
+            controller.abort(); /* already aborted; new controller below */
+            const done = new AbortController();
+            done.abort();
+            runtime.runManager.current = () => ({ cancellation: { controller: done, signal: done.signal } });
+
+            const second = handler(
+                { tool: "fs_write", agent: "main_agent", reason: "write", groups: [] },
+                { path: "y.txt" }
+            );
+
+            await assert.rejects(() => second, /cancelled before approval/);
+            assert.equal(pendingStore.pendingSize(), 0);
+
+        } finally {
+
+            runtime.runManager.current = original;
+        }
+
+    });
+
+
     await test("PolicyEngine sends every decision through the audit callback", async () => {
 
         const seen = [];
@@ -370,6 +473,58 @@ async function main() {
         assert.equal(seen[1].rule, "deny-probe");
         assert.equal(seen.length, 2);
 
+    });
+
+
+    await test("SA-POL-004: a DENIED approval emits an audit decision before the throw", async () => {
+
+        const seen = [];
+        const engine = new policy.PolicyEngine({
+            policy: {
+                default_action: "allow",
+                rules: [{
+                    id: "needs-approval",
+                    tools: ["fs_delete"],
+                    action: "require_approval",
+                    reason: "destructive"
+                }]
+            },
+            toolGroups: {},
+            onDecision: decision => seen.push(decision)
+        });
+
+        /* approval mode = deny → requestApproval throws ApprovalDenied */
+        const previousMode = engine.approvalManager.getMode();
+        engine.approvalManager.setMode("deny");
+
+        await assert.rejects(
+            () => engine.enforce("fs_delete", { path: "x" }, "main_agent"),
+            error =>
+                error instanceof policy.PolicyErrors.ApprovalDeniedError ||
+                (error && error.code === policy.PolicyErrors.CODES.APPROVAL_UNAVAILABLE)
+        );
+
+        /* the denial must be visible in the audit trail (approved:false),
+           not swallowed by the throw — SA-POL-004's defect */
+        assert.equal(seen.length, 1);
+        assert.equal(seen[0].rule, "needs-approval");
+        assert.equal(seen[0].approved, false);
+        assert.equal(seen[0].denial, true);
+
+        engine.approvalManager.setMode(previousMode);
+    });
+
+
+    await test("POL-045: the approval history is bounded, oldest-first eviction", async () => {
+
+        const store = new policy.ApprovalStore({ historyLimit: 3 });
+
+        for (const id of ["a", "b", "c", "d", "e"]) {
+            store.record({ tool: id, approved: true });
+        }
+
+        assert.equal(store.count(), 3);
+        assert.deepEqual(store.records().map(item => item.tool), ["c", "d", "e"]);
     });
 
 

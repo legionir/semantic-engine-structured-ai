@@ -612,6 +612,112 @@ async function main() {
         );
     });
 
+    await test("SA-REL-004: a failed archive keeps the exchange instead of destroying it", async () => {
+
+        reset();
+
+        const { compactConversation, findExchanges: find } =
+            require("../../agent/context");
+
+        const messages =
+            buildRun({ count: 6, size: 4000 });
+
+        const before = find(messages).length;
+
+        const report =
+            compactConversation(messages, {
+                maxChars: 2000,
+                keepRecentExchanges: 1,
+
+                onDrop: () => {
+
+                    throw new Error("disk on fire");
+                }
+            });
+
+        /* the throw must no longer be followed by a destructive splice */
+
+        assert.equal(report.dropped_exchanges, 0);
+        assert.equal(report.retained_unarchived, 1);
+        assert.equal(find(messages).length, before);
+
+        /* the over-budget condition is declared, not hidden */
+
+        const notice = messages.find(
+            message =>
+                message.role === "system" &&
+                typeof message.content === "string" &&
+                message.content.includes("context_compaction")
+        );
+
+        assert.ok(notice);
+        assert.equal(
+            JSON.parse(notice.content).retained_unarchived,
+            1
+        );
+
+        reset();
+    });
+
+    await test("SA-REL-004: an explicit archiveFailed signal also keeps the exchange", async () => {
+
+        reset();
+
+        const { compactConversation, findExchanges: find } =
+            require("../../agent/context");
+
+        const messages =
+            buildRun({ count: 6, size: 4000 });
+
+        const before = find(messages).length;
+
+        const report =
+            compactConversation(messages, {
+                maxChars: 2000,
+                keepRecentExchanges: 1,
+
+                onDrop: () => ({ archiveFailed: true, error: "no" })
+            });
+
+        assert.equal(report.dropped_exchanges, 0);
+        assert.equal(report.retained_unarchived, 1);
+        assert.equal(find(messages).length, before);
+
+        reset();
+    });
+
+    await test("SA-REL-004: archiveExchanges reports failure as a machine-readable signal", async () => {
+
+        reset();
+
+        const contextKit = require("../../agent/context");
+        const contextHost = require("../../agent/context/contextHost");
+
+        /* archiveExchanges needs a bound host (run id + logging). */
+        contextHost.bind({
+            currentRun: () => ({ id: "run-rel004" }),
+            logLine: () => {}
+        });
+
+        const messages = buildRun({ count: 3, size: 500 });
+
+        const exchanges = findExchanges(messages).slice(0, 1);
+
+        /* make the archive write fail: index path becomes a directory */
+
+        fs.mkdirSync(archive.archiveDirectory(), { recursive: true });
+        fs.mkdirSync(archive.indexPath(), { recursive: true });
+
+        const outcome =
+            contextKit.archiveExchanges(messages, exchanges, "test");
+
+        assert.ok(outcome, "failure must be distinguishable from 'nothing fresh'");
+        assert.equal(outcome.archiveFailed, true);
+        assert.ok(typeof outcome.error === "string");
+
+        reset();
+    });
+
     /* ---------------------------------------------------------------- */
     console.log("\nretrieval tools");
 

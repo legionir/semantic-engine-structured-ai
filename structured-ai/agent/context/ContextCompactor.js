@@ -211,7 +211,14 @@ function compactConversation(
         medium: 0,
         heavy: 0,
         elided_results: 0,
-        dropped_exchanges: 0
+        dropped_exchanges: 0,
+        /*
+        | Exchange(s) kept even though the conversation stayed over the
+        | budget, because the archive copy refused to land (SA-REL-004).
+        | Dropping without a surviving copy is silent data destruction;
+        | staying over budget is a loud, recoverable condition.
+        */
+        retained_unarchived: 0
     };
 
     if (before <= budget) {
@@ -321,18 +328,39 @@ function compactConversation(
         | Dropping an exchange is the only compaction step that destroys
         | material outright, so the caller gets a chance to keep a copy
         | of it somewhere that is not the conversation.
+        |
+        | SA-REL-004: that copy is the drop's licence to exist. When the
+        | archiving callback reports failure (or throws), the exchange is
+        | retained and the loop stops — staying over budget is a loud,
+        | recoverable condition, while deleting the only surviving copy
+        | of a tool result is unrecoverable data loss. The report says so
+        | in `retained_unarchived`, and the model is told in the
+        | compaction notice, so nothing is hidden.
         */
+
+        let archived = true;
 
         if (typeof options.onDrop === "function") {
 
             try {
 
-                options.onDrop(messages, oldest);
+                const outcome = options.onDrop(messages, oldest);
+
+                archived =
+                    outcome === undefined ||
+                    outcome === null ||
+                    outcome.archiveFailed !== true;
 
             } catch {
 
-                /* archiving must never block staying inside the budget */
+                archived = false;
             }
+        }
+
+        if (!archived) {
+
+            report.retained_unarchived++;
+            break;
         }
 
         messages.splice(
@@ -343,7 +371,7 @@ function compactConversation(
         report.dropped_exchanges++;
     }
 
-    if (report.dropped_exchanges > 0) {
+    if (report.dropped_exchanges > 0 || report.retained_unarchived > 0) {
 
         const firstUser =
             messages.findIndex(
@@ -366,8 +394,13 @@ function compactConversation(
                         dropped_exchanges:
                             report.dropped_exchanges,
 
+                        retained_unarchived:
+                            report.retained_unarchived,
+
                         note:
-                            "The earliest tool exchanges were removed to stay within the context budget. Re-run a tool if you need that detail again."
+                            report.retained_unarchived > 0
+                                ? "The earliest tool exchanges were removed to stay within the context budget, but archiving of the rest failed, so they were kept and the conversation is over budget. Re-run a tool if you need dropped detail again."
+                                : "The earliest tool exchanges were removed to stay within the context budget. Re-run a tool if you need that detail again."
                     })
             }
         );

@@ -10,11 +10,23 @@
 
 const defaultMaxBytes = 1_000_000;
 
+/*
+| SA-F-005: a multi-byte UTF-8 character can be split across incoming
+| chunks. `chunk.toString("utf8")` per chunk replaces each orphaned
+| continuation byte with U+FFFD, corrupting the body (a non-ASCII task
+| string becomes mojibake, or the JSON parse fails outright).
+| StringDecoder keeps the incomplete tail of one chunk and prepends it
+| to the next, so decoding is correct across boundaries.
+*/
+
+const { StringDecoder } = require("string_decoder");
+
 
 function readBody(req, { maxBytes = defaultMaxBytes } = {}) {
 
     return new Promise((resolve, reject) => {
 
+        const decoder = new StringDecoder("utf8");
         let body = "";
         let size = 0;
         let rejected = false;
@@ -47,7 +59,7 @@ function readBody(req, { maxBytes = defaultMaxBytes } = {}) {
                 return;
             }
 
-            body += chunk.toString("utf8");
+            body += decoder.write(chunk);
         });
 
         req.on("end", () => {
@@ -55,6 +67,8 @@ function readBody(req, { maxBytes = defaultMaxBytes } = {}) {
             if (rejected) {
                 return;
             }
+
+            body += decoder.end();
 
             if (body.trim() === "") {
                 resolve({});

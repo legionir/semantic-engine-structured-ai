@@ -71,7 +71,19 @@ function archiveExchanges(messages, exchanges, scope) {
             `Could not archive exchanges: ${error.message}`
         );
 
-        return null;
+        /*
+        | SA-REL-004: `null` here used to be ambiguous — it also means
+        | "nothing fresh to archive", which IS safe to drop. Callers
+        | that destroy material after archiving (compaction) must be
+        | able to tell a landed copy from a failed one, so failure is
+        | now an explicit, machine-readable signal instead of a swallowed
+        | exception.
+        */
+
+        return {
+            archiveFailed: true,
+            error: error.message
+        };
     }
 }
 
