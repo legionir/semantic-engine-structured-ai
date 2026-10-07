@@ -159,10 +159,13 @@ export class WorkspaceScanner {
             /*
             | SE-SCAN-08 — قبلاً فقط `errorCount++` بود. بدون مسیر و
             | دلیل، کاربر هیچ راهی ندارد بفهمد چه چیزی ایندکس نشده.
+            | P-05/SE-F-036 — مسیرِ onSkip («Could not read <path>: …»)
+            | در این شاخه نبود؛ diagnostic قابل نسبت‌دادن به فایل نبود.
+            | حالا هر دو شاخهٔ skip/error یک شکل دارند.
             */
             this.diagnostics.push({
               severity: 'warning',
-              message: `Could not process file: ${error instanceof Error ? error.message : String(error)}`,
+              message: `Could not process file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
               line: 1,
               source: 'scanner',
             });

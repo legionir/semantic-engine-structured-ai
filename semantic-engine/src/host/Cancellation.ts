@@ -165,7 +165,18 @@ export function toAbortSignal(token: CancellationToken | undefined): AbortSignal
   if (token.isCancellationRequested) {
     controller.abort();
   } else {
-    token.onCancellationRequested(() => controller.abort());
+    /*
+    | P-05/SE-P-003 — ثبتِ خام، disposable را دور می‌ریخت: تا لغو شدن
+    |ِ source (که ممکن است هرگز رخ ندهد) closure متعلق به signalِ
+    | دورریخته‌شده روی tokenِ طولانی‌عمر می‌ماند. حالا شنونده پس از
+    | یک بار fire، اشتراکش را آزاد می‌کند؛ رفتار abort یکسان است و
+    | رشدِ listener در مصرفِ پرتعدادِ sourceهای طولانی‌عمر بسته می‌شود.
+    */
+    let registration: Disposable | undefined;
+    registration = token.onCancellationRequested(() => {
+      registration?.dispose();
+      controller.abort();
+    });
   }
 
   return controller.signal;

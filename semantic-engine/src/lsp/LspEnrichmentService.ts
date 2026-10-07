@@ -205,6 +205,21 @@ export class LspEnrichmentService {
     */
     const opened = new Set<string>();
     const linesOf = new Map<string, string[]>();
+    /*
+    | P-05/continuation-9-P-1 — دامنهٔ پیش‌فرض یک *خانواده* است
+    | (ts-server هم TS و هم JS را سرو می‌کند)، ولی `languageId` اعلامی در
+    | didOpen برای هر فایل باید واقعیِ خودش باشد: باز کردن `.js` با
+    | `typescript` معنای بررسی را عوض می‌کند (checkJs/JS-specific) و
+    | یافته‌های سرور به فایلِ اشتباه نسبت داده می‌شود. یک سرور، یک
+    | languageId به‌ازای هر سند — نه برای همه.
+    */
+    const languageIdFor = (filePath: string): string => {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.tsx') return 'typescriptreact';
+      if (ext === '.jsx') return 'javascriptreact';
+      if (ext === '.js' || ext === '.mjs' || ext === '.cjs') return 'javascript';
+      return languageId;
+    };
     const openFor = (symbol: SymbolEntry): string | null => {
       const file = fileById.get(symbol.fileId);
       if (!file) return null;
@@ -222,7 +237,7 @@ export class LspEnrichmentService {
           | فقط برای همان چند صد فایلی که در بودجه‌اند.
           */
           const content = input.contentOf?.(file.id) ?? readFileOrNull(absolute);
-          client.openDocument(absolute, languageId, content ?? undefined);
+          client.openDocument(absolute, languageIdFor(file.path), content ?? undefined);
           if (content !== undefined && content !== null) linesOf.set(absolute, content.split('\n'));
           opened.add(absolute);
         } catch (error) {
@@ -286,7 +301,15 @@ export class LspEnrichmentService {
     for (const absolute of opened) client.closeDocument(absolute);
 
     if (outOfTime()) exhausted = true;
+    /*
+    | P-05/continuation-9-P-3 — `budgetExhausted` فقط references را صریحاً
+    | علامت می‌زد؛ برخورد دقیق با `maxCallHierarchyQueries` یا
+    | `maxHoverQueries` (بودجه‌های سفارشی) flag را set نمی‌کرد، یعنی
+    | مصرف‌کننده «کامل» می‌خواند درحالی‌که یک بودجه تمام شده بود (§16).
+    */
     if (counters.references >= this.budget.maxReferenceQueries) exhausted = true;
+    if (counters.callHierarchy >= this.budget.maxCallHierarchyQueries) exhausted = true;
+    if (this.budget.maxHoverQueries > 0 && counters.hover >= this.budget.maxHoverQueries) exhausted = true;
 
     const symbols = input.symbols.map(symbol => {
       const count = referenceCounts.get(symbol.id);
@@ -427,6 +450,14 @@ export class LspEnrichmentService {
       }
 
       const edges: CallEdge[] = [];
+      /*
+      | P-05/continuation-9-P-2 — نسخهٔ اول برای همهٔ rangeها `occurrence: 0`
+      | می‌داد؛ دو `fromRanges` با یک خطِ یکسان (سناریوی طراحی‌شدهٔ
+      | قرارداد occurrence: `f(g(), g())`) یک شناسه می‌گرفتند و هر نگاشتی
+      | کلیدش شناسهٔ یال باشد، دومی را روی اولی می‌نوشت. حالا مثل
+      | `CallGraphBuilder.occurrenceOf` از صفر شمارش می‌شود.
+      */
+      const occurrences = new Map<string, number>();
       for (const call of calls) {
         const fromPath = safeFsPath(call.from?.uri);
         if (!fromPath) continue;
@@ -456,8 +487,11 @@ export class LspEnrichmentService {
             line: callLine,
           };
           const file = fileById.get(fileId);
+          const occKey = `${identity.from}\u0000${identity.to}\u0000${identity.kind}\u0000${identity.line}`;
+          const occurrence = occurrences.get(occKey) ?? 0;
+          occurrences.set(occKey, occurrence + 1);
           edges.push({
-            id: makeEdgeId({ ...identity, occurrence: 0 }),
+            id: makeEdgeId({ ...identity, occurrence }),
             caller: identity.from,
             callerKind: caller ? 'symbol' : 'file',
             callee: symbol.id,

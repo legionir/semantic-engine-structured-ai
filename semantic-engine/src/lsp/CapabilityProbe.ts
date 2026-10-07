@@ -107,6 +107,17 @@ const DEFAULT_PROBE_BUDGET_MS = 15_000;
 export class CapabilityProbe {
   private readonly cache = new Map<string, CapabilityReport>();
   private readonly inFlight = new Map<string, Promise<CapabilityReport>>();
+  /*
+  | P-05/SE-F-031 — `forget()` قبلاً فقط `cache` را پاک می‌کرد؛ کاوشِ
+  | درحال‌پرواز در `inFlight` می‌ماند، فراخوان‌های هم‌زمانِ بعدی همان
+  | promise کهنه را تحویل می‌گرفتند و در پایان نتیجه را دوباره در
+  | cache می‌نوشت — یعنی forget عملاً بی‌اثر بود. حالا یک epoch
+  | سراسری هست: هر forget epoch را بالا می‌برد و inFlightها را دور
+  | می‌ریزد، و یک کاوش فقط وقتی نتیجه‌اش را می‌نویسد که epochِ شروع
+  | با epochِ فعلی برابر باشد. (re-probe بعداً اتفاق می‌افتد؛ forget
+  | رویداد کمیابی است، پس conservative-invalidation هزینه‌ای ندارد.)
+  */
+  private epoch = 0;
   private readonly logger: ILogger;
   private readonly timeoutMs: number;
   private readonly budgetMs: number;
@@ -123,13 +134,17 @@ export class CapabilityProbe {
   }
 
   forget(serverId?: string): void {
+    this.epoch++;
     if (!serverId) {
       this.cache.clear();
       this.inFlight.clear();
       return;
     }
     for (const key of Array.from(this.cache.keys())) {
-      if (key.startsWith(`${serverId}:`)) this.cache.delete(key);
+      if (key.startsWith(`${serverId}:`) || key.startsWith(`${serverId}@`)) this.cache.delete(key);
+    }
+    for (const key of Array.from(this.inFlight.keys())) {
+      if (key.startsWith(`${serverId}:`) || key.startsWith(`${serverId}@`)) this.inFlight.delete(key);
     }
   }
 
@@ -152,13 +167,23 @@ export class CapabilityProbe {
     const running = this.inFlight.get(key);
     if (running) return running;
 
+    const epochAtStart = this.epoch;
     const started = this.run(client, languageId, probeFile, probeText)
       .then(report => {
-        this.cache.set(key, report);
+        /*
+        | P-05/SE-F-031 — اگر وسط کاوش `forget()` اجرا شده باشد (epoch
+        | عوض شده)، نتیجه متعلق به دنیای قبل است: آن را در cache
+        | نمی‌نویسیم تا کاوشِ جدیدِ همان سرور با پاسخ کهنه پر نشود.
+        */
+        if (this.epoch === epochAtStart) {
+          this.cache.set(key, report);
+        }
         return report;
       })
       .finally(() => {
-        this.inFlight.delete(key);
+        if (this.epoch === epochAtStart) {
+          this.inFlight.delete(key);
+        }
       });
 
     this.inFlight.set(key, started);

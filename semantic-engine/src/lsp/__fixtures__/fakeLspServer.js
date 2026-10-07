@@ -67,6 +67,7 @@ const state = {
     counts: {},           // method -> how many times it was asked
     documents: new Map(), // uri -> { version, languageId, text }
     closed: [],
+    closedWithLanguage: [],
     handshake: {},
     initialized: false,
 };
@@ -353,7 +354,16 @@ function handle(message) {
         }
 
         case "textDocument/didClose":
+            /*
+            | P-05/continuation-9-P-1 probe: the test needs the languageId a
+            | document was OPENED with, but by didClose time the entry is
+            | gone from `documents` — remember it at close.
+            */
             state.closed.push(params.textDocument.uri);
+            state.closedWithLanguage.push({
+                uri: params.textDocument.uri,
+                languageId: (state.documents.get(params.textDocument.uri) || {}).languageId,
+            });
             state.documents.delete(params.textDocument.uri);
             return;
 
@@ -483,6 +493,30 @@ function handle(message) {
 
         case "callHierarchy/incomingCalls":
             /*
+            | P-05/SE-P-002 probe: `f(g(), g())` — the real server reports
+            | two `fromRanges` on the SAME line for one incoming item.
+            | Without per-range occurrence numbering both edges hash to
+            | the same id and any id-keyed map loses one.
+            */
+            if (flags.has("--dup-ranges")) {
+                reply([
+                    {
+                        from: {
+                            name: "caller",
+                            kind: 12,
+                            uri: params.item.uri,
+                            range: { start: { line: 5, character: 0 }, end: { line: 7, character: 1 } },
+                            selectionRange: { start: { line: 5, character: 9 }, end: { line: 5, character: 15 } },
+                        },
+                        fromRanges: [
+                            { start: { line: 6, character: 4 }, end: { line: 6, character: 10 } },
+                            { start: { line: 6, character: 12 }, end: { line: 6, character: 18 } },
+                        ],
+                    },
+                ]);
+                return;
+            }
+            /*
             | The second entry copies what tsgo really does for a call
             | made at module level: the caller is the file itself,
             | named with its absolute path and reported as kind 2.
@@ -525,6 +559,7 @@ function handle(message) {
                     languageId: d.languageId,
                 })),
                 closed: state.closed,
+                closedWithLanguage: state.closedWithLanguage,
                 handshake: state.handshake,
             });
             return;

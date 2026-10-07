@@ -123,7 +123,14 @@ export function makeEdgeId(identity: EdgeIdentity): string {
     identity.to,
     identity.kind,
     identity.line ?? '',
-    identity.occurrence ? String(identity.occurrence) : '',
+    /*
+    | P-05/SE-P-002 — `identity.occurrence ? ...` مقدارِ `0` را مثلِ
+    | غایب encode می‌کرد. سازندهٔ هویت (`CallGraphBuilder.occurrenceOf`)
+    | از صفر شمارش می‌کند، پس *اولین* یالِ یک گروه با هیچِ occurrence
+    | یک شناسه می‌گرفت — همان collisions که این فیلد برای جلوگیری از
+    | آن‌ها طراحی شده بود. حالا صفر صریح «occ:0» است و غایب رشتهٔ خالی.
+    */
+    identity.occurrence !== undefined ? `occ:${identity.occurrence}` : '',
   ];
 
   return sha256(parts.join('\u0000')).substring(0, 16);

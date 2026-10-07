@@ -227,6 +227,27 @@ describe('LSP-14 — مسیر push به‌عنوان مکمل', () => {
     expect(Date.now() - startedAt).toBeLessThan(4000);
   });
 
+  it('P-05/SE-F-032 — یک سررسیدِ push، waiter را از map پاک می‌کند (نه انباشته)', async () => {
+    /*
+    | باگ: `removeWaiter(uri, resolve)` با تابعی مقایسه می‌کرد که در
+    | فهرست نبود (فهرست `waiter`ها را نگه می‌داشت)، پس هیچ‌وقت حذف
+    | نمی‌شد؛ هر فراخوانِ timeout‌خورده روی یک uri، یک بستهٔ مرده در
+    | `pushWaiters` می‌گذاشت. حالا بعد از سررسید، فهرست آن uri خالی است.
+    */
+    const client = await startFake(['--no-pull-diagnostics']);
+    const file = write('a.ts', BROKEN);
+    const provider = providerFor(client, { pushWaitMs: 50 });
+
+    await provider.diagnosticsFor(file, 'typescript', BROKEN, 'f1');
+    await provider.diagnosticsFor(file, 'typescript', BROKEN, 'f2');
+
+    const waiters = (provider as unknown as {
+      pushWaiters: Map<string, (() => void)[]>;
+    }).pushWaiters;
+    const total = [...waiters.values()].reduce((n, list) => n + list.length, 0);
+    expect(total).toBe(0);
+  });
+
   it('وقتی pull هست، منتظر push نمی‌ماند', async () => {
     const client = await startFake(['--push-diagnostics']);
     const file = write('a.ts', BROKEN);

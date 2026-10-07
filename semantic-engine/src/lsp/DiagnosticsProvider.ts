@@ -235,16 +235,25 @@ export class DiagnosticsProvider implements FileDiagnosticsSource {
 
     const waitMs = this.options.pushWaitMs ?? DEFAULT_PUSH_WAIT_MS;
     await new Promise<void>(resolve => {
-      const timer = setTimeout(() => {
-        this.removeWaiter(uri, resolve);
-        resolve();
-      }, waitMs);
-      if (typeof timer.unref === 'function') timer.unref();
-
       const waiter = (): void => {
         clearTimeout(timer);
         resolve();
       };
+      const timer = setTimeout(() => {
+        /*
+        | P-05/SE-F-032 — نسخهٔ اول `removeWaiter(uri, resolve)` را صدا
+        | می‌زد، ولی فهرست waiterها تابعِ `waiter` را نگه می‌دارد نه
+        | `resolve` را؛ فیلتر `waiter !== resolve` هیچ‌وقت هیچ را حذف
+        | نمی‌کرد. یعنی هر بار که یک شنونده روی یک uri سررسید
+        | می‌شد، یک بستهٔ مرده در map می‌ماند (نشت بی‌حد روی uriهای
+        | پرجمعیت) و یک پیامِ بعدیِ همان uri همهٔ آن‌ها را fire
+        | می‌کرد. حالا دقیقاً خودِ همان waiter حذف می‌شود.
+        */
+        this.removeWaiter(uri, waiter);
+        resolve();
+      }, waitMs);
+      if (typeof timer.unref === 'function') timer.unref();
+
       const list = this.pushWaiters.get(uri);
       if (list) list.push(waiter);
       else this.pushWaiters.set(uri, [waiter]);
@@ -265,10 +274,10 @@ export class DiagnosticsProvider implements FileDiagnosticsSource {
     });
   }
 
-  private removeWaiter(uri: string, resolve: () => void): void {
+  private removeWaiter(uri: string, waiter: () => void): void {
     const list = this.pushWaiters.get(uri);
     if (!list) return;
-    const remaining = list.filter(waiter => waiter !== resolve);
+    const remaining = list.filter(entry => entry !== waiter);
     if (remaining.length > 0) this.pushWaiters.set(uri, remaining);
     else this.pushWaiters.delete(uri);
   }

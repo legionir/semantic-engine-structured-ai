@@ -155,6 +155,26 @@ describe('LSP-15 — کش', () => {
     expect(probe.cached(client.serverKey, 'typescript')).toBeUndefined();
   });
 
+  it('P-05/SE-F-031 — forget وسط کاوشِ درحال‌پرواز، نتیجهٔ کهنه را در cache نمی‌گذارد', async () => {
+    /*
+    | forget قبلاً فقط cache را پاک می‌کرد؛ کاوشی که *همزمان* در حال
+    | اجرا بود در پایان نتیجه‌اش را دوباره در cache می‌نوشت و forget
+    | بی‌اثر می‌شد. حالا epoch عوض می‌شود و آن نتیجهٔ کهنه دور ریخته
+    | می‌شود؛ پرس‌وجوی بعدی کاوش تازه می‌سازد.
+    */
+    const client = await started();
+    const probe = new CapabilityProbe();
+
+    const inFlight = probe.probe(client, 'typescript', probeFile);
+    probe.forget();
+    const report = await inFlight;
+
+    // کاوش نتیجه داد (پromise resolve شد)…
+    expect(report.verdicts).toBeDefined();
+    // …اما نتیجهٔ متعلق به دنیایِ پیش از forget در cache ننشست.
+    expect(probe.cached(client.serverKey, 'typescript')).toBeUndefined();
+  });
+
   it('هر زبان کش خودش را دارد', async () => {
     const client = await started();
     const probe = new CapabilityProbe();

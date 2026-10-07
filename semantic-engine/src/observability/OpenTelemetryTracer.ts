@@ -28,12 +28,23 @@ export class OpenTelemetryTracer {
 
   parseTraceparent(header?: string): { traceId: string; parentSpanId?: string } | null {
     if (!header) return null;
-    const parts = header.split('-');
-    if (parts.length < 4) return null;
-    return {
-      traceId: parts[1]!,
-      parentSpanId: parts[2],
-    };
+    /*
+    | P-05/SE-F-034 — W3C traceparent را فقط با «چهار تکه شد» نمی‌توان
+    | پذیرفت: طول، هگز بودن و all-zero بودنِ version-0 بخشی از خودِ
+    | استانداردند. parseTraceparent('junk-x-y-z') قبلاً traceId:'x'
+    | می‌داد و startSpan آن را به‌عنوان هویتِ realِ trace نگه می‌داشت —
+    | یعنی یک span با منشأ نامعتبر، «معتبر» به نظر می‌رسید (§15:
+    | خطا نباید به‌عنوان نتیجهٔ معتبر ارائه شود). حالت all-zero هم
+    | طبق استاندارد یعنی «no trace», نه یک شناسه.
+    */
+    const match = /^([\da-f]{2})-([\da-f]{32})-([\da-f]{16})(-([\da-f]{2}))?$/i.exec(header.trim());
+    if (!match) return null;
+    const [, version, traceId, spanId, , flags] = match;
+    if (version === '00' && traceId && /^0+$/.test(traceId)) return null;
+    if (version === '00' && spanId && /^0+$/.test(spanId)) return null;
+    if (version === 'ff') return null;
+    if (flags === undefined) return null; // spec: version-0 requires the flags field
+    return { traceId: traceId!, parentSpanId: spanId };
   }
 
   startSpan(name: string, parentHeader?: string): Span {

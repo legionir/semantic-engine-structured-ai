@@ -300,6 +300,62 @@ describe('LSP-08 — بودجه', () => {
     expect(WATCH_BUDGET.maxWallClockMs).toBeLessThan(BATCH_BUDGET.maxWallClockMs);
     expect(WATCH_BUDGET.maxSymbols).toBeLessThan(BATCH_BUDGET.maxSymbols);
   });
+
+  it('P-05/continuation-9-P-3 — برخورد سقف callHierarchy بدون سقف references هم flag می‌زند', async () => {
+    /*
+    | محاسبهٔ قبلی `budgetExhausted` فقط `references >= max` را می‌دید؛
+    | بودجهٔ سفارشی‌ای که call-hierarchy را ببندد و references را باز
+    | بگذارد، «کامل» گزارش می‌شد درحالی‌که یک بودجه تمام شده بود (§16).
+    */
+    const client = await startFake();
+    const service = new LspEnrichmentService({
+      acquire: async () => client,
+      budget: { ...BATCH_BUDGET, maxReferenceQueries: 500, maxCallHierarchyQueries: 1 },
+    });
+
+    const result = await service.enrich(fixtureInput());
+    expect(result.stats.callHierarchyQueries).toBe(1);
+    expect(result.stats.referenceQueries).toBeLessThan(500);
+    expect(result.stats.budgetExhausted).toBe(true);
+  });
+
+  it('P-05/continuation-9-P-3 — سقف hover هم flag می‌زند (بودجهٔ صفر hover عمداً خاموش است)', async () => {
+    const client = await startFake();
+    const service = new LspEnrichmentService({
+      acquire: async () => client,
+      budget: { ...BATCH_BUDGET, maxHoverQueries: 1 },
+    });
+
+    const result = await service.enrich(fixtureInput());
+    expect(result.stats.hoverQueries).toBe(1);
+    expect(result.stats.budgetExhausted).toBe(true);
+  });
+});
+
+describe('P-05/SE-P-002 — occurrence روی یال‌های LSP', () => {
+  it('دو fromRanges روی یک خط، دو شناسهٔ یالِ متمایز می‌گیرند', async () => {
+    /*
+    | `f(g(), g())`: سرور دو range با یک خطِ یکسان گزارش می‌کند. نسخهٔ
+    | اول برای هر دو `occurrence: 0` می‌داد و `makeEdgeId` صفر را مثلِ
+    | غایب encode می‌کرد → یک شناسه، و هر نگاشتی کلیدش شناسه باشد یکی
+    | را روی دیگری می‌نوشت. حالا شمارندهٔ محلی، هر occurrence را متمایز
+    | می‌کند.
+    */
+    const client = await startFake(['--dup-ranges']);
+    const service = new LspEnrichmentService({ acquire: async () => client });
+
+    const result = await service.enrich(fixtureInput());
+    const onLine7 = result.callEdges.filter(e => e.line === 7 && e.caller === 's-caller');
+    // هر سه تابعِ نامزد، دو range تکراری از caller می‌گیرند.
+    expect(onLine7).toHaveLength(6);
+    // بدون شمارش occurrence، دو یالِ هم‌سمتِ هر callee یک شناسه می‌گرفتند.
+    expect(new Set(onLine7.map(e => e.id)).size).toBe(6);
+    for (const callee of ['s-alpha', 's-beta', 's-caller']) {
+      const pair = onLine7.filter(e => e.callee === callee);
+      expect(pair).toHaveLength(2);
+      expect(new Set(pair.map(e => e.id)).size).toBe(2);
+    }
+  });
 });
 
 describe('LSP-17 — یال‌های resolved به‌جای حدسِ نام', () => {
@@ -357,6 +413,45 @@ describe('LSP-17 — یال‌های resolved به‌جای حدسِ نام', ()
     const input = fixtureInput();
     const result = await service.enrich({ ...input, files: [] });
     expect(result.callEdges).toEqual([]);
+  });
+
+  it('P-05/continuation-9-P-1 — هر سند با languageId واقعی خودش باز می‌شود', async () => {
+    /*
+    | دامنهٔ پیش‌فرض یک خانواده است (ts/js/tsx/jsx روی یک ts-server)،
+    | ولی didOpen قبلاً برای *همه* همان `input.languageId ?? 'typescript'`
+    | را اعلام می‌کرد: سند `.js` به‌عنوان typescript باز می‌شد و
+    | یافته‌ها با معنای زبانِ اشتباه برمی‌گشتند. حالا per-file استخراج می‌شود.
+    */
+    const client = await startFake();
+    const service = new LspEnrichmentService({ acquire: async () => client });
+
+    fs.writeFileSync(path.join(workspace, 'b.js'), 'function jsThing() {} jsThing();\n', 'utf8');
+    const input = fixtureInput();
+    const mixed = {
+      ...input,
+      files: [
+        ...input.files,
+        file({ id: 'f-js', path: 'b.js', language: 'javascript' }),
+      ],
+      symbols: [
+        ...input.symbols,
+        symbol({ id: 's-js', name: 'jsThing', line: 1, endLine: 1, fileId: 'f-js', exported: true }),
+      ],
+    };
+
+    await service.enrich(mixed);
+    const state = await client.request<{
+      openDocuments: { uri: string; languageId: string }[];
+      closedWithLanguage: { uri: string; languageId: string }[];
+    }>('test/state', {});
+    // سند پس از enrich بسته می‌شود؛ سرور در لحظهٔ close نیز languageId
+    // اعلامی در didOpen را به‌یاد می‌سپارد (probe continuation-9-P-1).
+    const byUri = new Map<string, string>();
+    for (const d of [...state.openDocuments, ...state.closedWithLanguage]) {
+      if (d.languageId) byUri.set(d.uri.split('/').pop()!, d.languageId);
+    }
+    expect(byUri.get('b.js')).toBe('javascript');
+    expect(byUri.get('a.ts')).toBe('typescript');
   });
 
   it('فقط چیزهای فراخوان‌شدنی پرسیده می‌شوند', async () => {
