@@ -61,18 +61,65 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   (cross-process RMW lock — design decision) + AI-06 BLOCKED + AI-13 DEFERRED.
   No new correctness or AI-misleading defect was found this pass.
 
+- **2026-10-08 (seventh cycle — canonical audit reconciliation + remaining
+  remediation, full lifecycle per §13):** all four open CORRECTNESS items were
+  fixed with regression locks, AI-06 was re-measured and IMPLEMENTED (the
+  toolchain claim was falsified), and the two architecture rows were explicitly
+  dispositioned as evidence-backed deferrals. Per-item evidence:
+  `audit/findings/CYCLE7-REMEDIATION.md`.
+  - **SE-F-057 FIXED** — dashboard edit now sends the full worker config, PATCH
+    updates (create stays POST), GatewayServer persists per-project
+    `worker-config.json` (atomic), GET detail discloses it, invalid/secret
+    edits rejected without touching the stored config, a running worker is
+    restarted so the update is live. Regressions: `gatewayUi.test.ts` +
+    `GatewayServer.test.ts` (incl. durability across a fresh server instance).
+  - **SA-F-007 FIXED** — the settings-overlay workspace/floor layer resolves
+    from the PROJECT's own registry root, never the process `WORKSPACE_ROOT`;
+    unknown ids fall back honestly. Regressions in
+    `test/persistence/project-stores.test.js` (A/B isolation, decoy floor,
+    context switch); the previous overlay test had encoded the bug and now
+    asserts the corrected behavior.
+  - **SE-DEBT-003 FIXED (verified pre-existing disposition)** — same-file
+    disambiguation + `name-match`/confidence<70 labeling is implemented and
+    test-locked (`GraphProvenance.test.ts`); closed with that evidence instead
+    of left `open` on inertia.
+  - **AI-06 IMPLEMENTED (was BLOCKED)** — Kotlin/Swift wasm grammars built with
+    `tree-sitter-cli@0.24.7` + `emsdk` in this environment (host glibc 2.35;
+    CLI 0.26 needs 2.39), load under the repo's own web-tree-sitter 0.26.11,
+    are committed in `tree-sitter-grammars/`, wired with probed (not guessed)
+    node tables + keyword disambiguation, and declared `structural` in the
+    honest support surface. Regression: `kotlinSwift.ai06.test.ts`; golden
+    reviewed 201→205 then regenerated via `npm run snapshot:update`.
+  - **SE-ARCH-001 (=AI-13) / SE-ARCH-002** — deliberate architectural DEFERRALS
+    with rationale + trigger (D-16/D-17); SE-ARCH-002 (BlueprintGenerator)
+    confirmed INDEPENDENT of SE-ARCH-001 (ContextDiscoverer), not a duplicate;
+    AI-13 is one ledger row, not double-counted.
+  - **SA-F-016** — cross-process RMW decided NOT required (D-18); atomic-save
+    half verified (cycle-5), lost-update window documented; stays PARTIAL.
+  - Ledger hygiene: the two CSV-quote artifacts (`SE-F-011`, `SE-DEBT-001`)
+    that had made `invalid` miscounted as 33 were cleaned, and
+    `audit/tools/verify_ledger.py` now re-derives every count from the TSV and
+    fails loudly on any arithmetic/vocabulary/reference drift (§16).
+
 ## Counters
 
-- Ledger (`FINDING_INDEX.tsv`, 161 rows): after cycle 5 —
-  **96 fixed · 33 invalid · 7 superseded · 17 duplicate · 1 partial (SA-F-016
-  open half) · 5 open.** Every row now carries current-code evidence; the 52
-  cycle-4 `open` rows are fully dispositioned (see
-  `audit/findings/P04-PER-ROW-CYCLE5.md`). No row silently closed.
-- Active product backlog (this file): AI-01…AI-21.
-- Critical: 0 open. SE-ARCH-001 tracked as AI-13, OPEN by decision (§12).
-- AI-04 PARTIALLY_RESOLVED (ledger now 96 fixed / 33 invalid / 7 superseded /
-  17 duplicate; the 5 honest `open` rows each carry source+rationale).
-- AI-06 OPEN·BLOCKED (environment: no tree-sitter wasm toolchain here).
+- Canonical ledger (`FINDING_INDEX.tsv`): **161 data rows** — programmatically
+  verified by `python3 audit/tools/verify_ledger.py` (exit 0). After cycle 7:
+  **99 fixed · 35 invalid · 7 superseded · 17 duplicate · 1 partial (SA-F-016)
+  · 2 open (SE-ARCH-001, SE-ARCH-002 — deferred by decision, not unresolved
+  correctness defects).** 99+35+7+17+1+2 = 161.
+  *History note:* `COUNT_RECONCILIATION.md`'s "159" predates the 2026-10-07
+  ledger append (`SE-AI-19/SE-AI-20` rows) and the miscount of `invalid` as 33
+  was a parsing artifact of two quote-mangled rows; both are documented in
+  `audit/findings/CYCLE7-REMEDIATION.md`. No finding was invented or deleted to
+  reach these numbers — each row was reconciled against current source.
+- Active product backlog (this file): AI-01…AI-23.
+- Critical: 0 open. SE-ARCH-001 is the same finding as AI-13 (one row, not
+  double-counted); SE-ARCH-002 is a separate deferred architectural row.
+- AI-04 PARTIALLY_RESOLVED (the ledger itself is now deterministic-counted by
+  `audit/tools/verify_ledger.py`; document reconciliation completed this cycle).
+- AI-06 RESOLVED (2026-10-08, seventh cycle — implemented; no longer BLOCKED).
+- AI-22/AI-23: cycle-5/cycle-7 per-row passes below.
 
 ## Status legend (per §4)
 
@@ -331,15 +378,31 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   `tsc -p tsconfig.test.json --noEmit` 0; eslint 0. structured-ai `npm test`
   full chain exit 0. Full dispositions: `audit/findings/P04-PER-ROW-CYCLE5.md`.
 
-## AI-13 — `ContextDiscoverer.discover()` monolith (SE-ARCH-001, HIGH-classified, OPEN by decision)
+## AI-13 — `ContextDiscoverer.discover()` monolith (ledger row SE-ARCH-001, HIGH-classified, OPEN **by decision — a deferred architectural item, not an unresolved defect**)
 
 - **Category:** MAINTAINABILITY / ARCHITECTURE_GAP
-- **Status:** OPEN (deliberate non-fix this cycle)
-- **Why it stays visible, not "fixed":** a 200-line orchestration method is a
+- **Status:** OPEN in the ledger — this row IS AI-13 (one finding, one ledger
+  row; never count them as two). The `open` disposition here means "deliberate
+  deferral recorded and visible", not "unrepaired defect".
+- **Why it stays visible, not "fixed":** a ~276-line orchestration method is a
   real design finding, but it produces correct, non-misleading output — no AI
   is fed a wrong fact by it. §12 forbids an unprovoked rewrite; splitting the
   method is a refactor with regression risk across discovery/ranking, to be
   taken when a functional change actually needs the seams. Recorded, not hidden.
+- **Why it is NOT an ordinary defect and NOT INVALID:** the correctness/
+  honesty failures once clustered around discovery (dropped depth, hidden
+  truncation) were separately fixed and test-locked as SE-AI-19/SE-AI-20 —
+  those are ledger rows of their own, already `fixed`. What remains in this
+  row is the pure structural concern, which is the definition of a deferred
+  architectural decision (DECISIONS D-16).
+- **Trigger / criteria for reopening:** any functional change that needs the
+  stage seams anyway; a measured cost (suite wall-time, a context-assembly bug
+  caused by the monolith's coupling) that makes extraction pay for itself.
+- **Relation to SE-ARCH-002:** SE-ARCH-002 names a DIFFERENT unit
+  (`BlueprintGenerator`, a God class) and is kept as an independent deferred
+  row — the `duplicate_of` link between them marks a shared theme only (§5: a
+  populated `duplicate_of` never forces a DUPLICATE disposition — the
+  SE-SEC-001 precedent). See D-17.
 - **Priority:** P3 relative to correctness (highest-priority *pure* maintainability item).
 
 ## AI-14 — args-only LSP server override silently dropped (SE-F-027, P2)
@@ -453,7 +516,8 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   pass; they stay `open — not verified fixed` (honest state, not silently
   closed). Re-run the script after each future fix to extend coverage.
 - **Priority:** P2
-- **Problem:** `FINDING_INDEX.tsv` has 159 confirmed/potential finding rows, every one of which still carries `fix_status = "(assigned when fixed)"`. The remediation series (`REMEDIATION_BACKLOG.md`, closed 2026-10-07) and this session's AI-01/02/03 fixes are **not** back-propagated into that ledger. A fresh reader treating the ledger as the current state would incorrectly conclude 159 defects remain open.
+- **Problem (state when this was filed, 2026-10-07 — superseded by the
+  reconciliation below):** `FINDING_INDEX.tsv` had 159 confirmed/potential finding rows (the ledger has since grown to 161 with the `SE-AI-19/SE-AI-20` rows filed by this very pass), every one of which still carried `fix_status = "(assigned when fixed)"`. The remediation series (`REMEDIATION_BACKLOG.md`, closed 2026-10-07) and this session's AI-01/02/03 fixes were **not** back-propagated into that ledger. A fresh reader treating the ledger as the current state would have incorrectly concluded 159 defects remained open.
 - **Impact:** Documentation contradicts implementation (§31 violated); a future AI/human audit could re-litigate already-fixed items, or worse, skip the ledger entirely and lose the confirmed-but-still-open items in it.
 - **Root cause:** The remediation cycle used a separate alias numbering (bare `F-0001..F-0037`) tracked in `REMEDIATION_BACKLOG.md`/`audit/findings/`, while the ledger uses prefixed ids (`SE-F-0xx`, `SA-*`, …). No mapping step existed to close rows back into `FINDING_INDEX.tsv`.
 - **Required change:**
@@ -485,15 +549,70 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
 
 ---
 
-## AI-06 — Kotlin / Swift grammar support still blocked (environment)
+## AI-06 — Kotlin / Swift grammar support (2026-10-08: UNBLOCKED, implemented)
 
-- **Category:** BLOCKED (§5 rule: leave visible)
-- **Status:** OPEN · BLOCKED
-- **Priority:** P2
-- **Reason:** The sandbox has no tree-sitter wasm toolchain to compile/validate those grammars; no false claim of support is permitted. Owner action required, not a code change.
-- **Acceptance criteria:** Either the toolchain is provided here and the grammars are wired + tested, or a documented owner decision marks the scope out-of-scope and closes the item.
+- **Category:** Language support (previously listed BLOCKED · environment)
+- **Status:** RESOLVED (2026-10-08, seventh cycle) — no longer BLOCKED
+- **What changed vs the BLOCKED claim:** the seventh cycle re-measured the
+  "no viable toolchain" premise instead of trusting it. `tree-sitter-cli@0.24.7`
+  runs on this host (0.26 needs GLIBC 2.39, the sandbox has 2.35) and, with a
+  locally installed `emsdk`, builds wasm grammars from the official
+  `tree-sitter-kotlin@0.3.8` / `tree-sitter-swift@0.7.1` packages that **load
+  and parse under the repo's own `web-tree-sitter@0.26.11`** (probed end to
+  end before any code change). The old "no ABI-compatible grammar exists" note
+  in `languageGrammars.ts` was falsified by measurement and was corrected in
+  the same file.
+- **What was implemented:** both wasm files committed in
+  `semantic-engine/tree-sitter-grammars/`; grammar entries added to
+  `LANGUAGE_GRAMMARS` with node-kind tables derived from probing the built
+  wasm (never guessed); new `kindFromKeyword` table mechanism disambiguates
+  `class/interface/enum/struct/protocol` inside the shared
+  `class_declaration` node — without it every Kotlin `interface` and Swift
+  `struct` would have been labeled `class`, the kind of wrong label §2
+  forbids; new `nameNodes` field for Kotlin's `simple_identifier` names.
+  Support declared `structural` (no call graph), announced honestly through
+  `describeLanguageSupport`; the two tests that had pinned `swift: heuristic`
+  were updated to the new truth (they would otherwise have been a lie locked
+  in amber).
+- **Validation:** `src/symbols/tree-sitter/kotlinSwift.ai06.test.ts` (real
+  extraction: kinds, parents, enum members, no nameless symbols, both
+  grammars load); golden snapshot diff reviewed line by line (the 4 added
+  symbols are genuine tree-sitter extractions replacing heuristic misses),
+  regenerated with the repo's own `npm run snapshot:update`; full
+  `npm run test:gate` exit 0. Build provenance:
+  `semantic-engine/src/symbols/tree-sitter/README.md` + DECISIONS D-19.
 
 ---
+
+## AI-23 — cycle-7: canonical count reconciliation + the last four correctness items closed (2026-10-08)
+
+- **Category:** process/audit-consistency + the four remaining OPEN ledger
+  findings + AI-06 implementation.
+- **Status:** RESOLVED (2026-10-08)
+- **What happened:** SE-F-057, SA-F-007 and SE-DEBT-003 were fixed and
+  regression-locked (see the seventh-cycle summary bullet above and
+  `audit/findings/CYCLE7-REMEDIATION.md` for per-item evidence); SE-ARCH-001
+  and SE-ARCH-002 were dispositioned as explicit, independent, evidence-backed
+  architectural deferrals (D-16/D-17 — AI-13 is SE-ARCH-001 itself, one row);
+  SA-F-016's remaining concurrency question was decided and documented (D-18);
+  AI-06 was re-measured, found NOT blocked, and implemented (D-19); the ledger's
+  two CSV-quote artifacts were cleaned and `audit/tools/verify_ledger.py` now
+  derives every published count from the TSV itself, failing loudly on drift
+  (§16) — the "159 vs 161" question was closed by direct measurement, not by
+  choosing a favorite number (the true current row count is **161**).
+- **Validation:** semantic-engine `test:gate` exit 0 = **274 suites, 3438 pass /
+  0 fail / 2 skipped** (the 2 skipped TESTS are environment probes with
+  legitimate reasons, both honest-declared, never silent: (a) the optional
+  `sqlite3` native driver fails to load on this host's glibc —
+  `SQLiteExporter.phase24.test.ts` skips its fallback case and exercises the
+  built-in driver instead; (b) the LSP orphan-reaper probe measures whether the
+  environment reaps a child when its parent is SIGKILLed, and skips when it does
+  not (`lspTesting.test.ts`, `describeIfReaper`). `test-skip-budget.json` bounds
+  suite-level SKIPS at 0 and the gate enforces it — neither of these is a suite
+  skip.) · `tsc -p ./` 0 ·
+  `tsc -p tsconfig.test.json --noEmit` 0 · eslint 0 · golden snapshot reviewed
+  and re-compared ("unchanged"). structured-ai `npm test` full chain exit 0.
+  `python3 audit/tools/verify_ledger.py` exit 0 (161 = 99+35+7+17+1+2).
 
 ## Deliberately deferred (from `REMEDIATION_BACKLOG.md` §5, unchanged, protected by rationale)
 
