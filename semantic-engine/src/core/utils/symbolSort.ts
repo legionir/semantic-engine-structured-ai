@@ -9,6 +9,7 @@ const KIND_ORDER = [
   'class',
   'interface',
   'struct',
+  'trait',
   'enum',
   'type-alias',
   'function',
@@ -17,7 +18,16 @@ const KIND_ORDER = [
   'variable',
   'constant',
   'parameter',
+  'decorator',
 ];
+
+/*
+| KIND_ORDER باید تمام اعضای union `SymbolKind` در project-index.types را بپوشاند.
+| قبل از این، `trait` و `decorator` در bucket 999 می‌افتندند؛ خروجی همچنان
+| دترمینیستیک بود (tie-break با name/id) ولی ترتیب canonical را نقض می‌کرد:
+| یک trait کنار یک constantِ هم‌خط/هم‌نام بعد از آن sort می‌شد، برخلاف
+| باقی kindهای سطح-بالا. تست `covers every SymbolKind member` این را قفل می‌کند.
+*/
 
 function kindOrder(kind: string): number {
   const idx = KIND_ORDER.indexOf(kind);

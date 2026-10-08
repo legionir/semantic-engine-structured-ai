@@ -50,4 +50,47 @@ describe('sortSymbolsDeterministically', () => {
 
     expect(sorted1.map(s => s.id)).toEqual(sorted2.map(s => s.id));
   });
+
+  /*
+  | SE-F-022 — هر عضو union `SymbolKind` باید جایگاه canonical خودش را در
+  | KIND_ORDER داشته باشد. پیش از این `trait` و `decorator` در bucket 999
+  | می‌افتادند: یک trait هم‌خط با یک constant *بعد از* آن sort می‌شد، برخلاف
+  | هر kind سطح-بالای دیگر. این تست کل union را برابر ترتیب مورد انتظار
+  | قرار می‌دهد؛ افزودن kind جدید به union بدون افزودن آن به KIND_ORDER،
+  | و همچنین جابه‌جایی اشتباه جایگاه، این را قرمز می‌کند.
+  */
+  it('places every SymbolKind member in its canonical bucket', () => {
+    const kinds: SymbolEntry['kind'][] = [
+      'decorator', 'constant', 'variable', 'property',
+      'method', 'function', 'type-alias', 'enum', 'trait', 'struct',
+      'interface', 'class', 'module', 'namespace',
+    ];
+
+    // ورودی عمداً معکوس: خروجی باید دقیقاً ترتیب canonical باشد.
+    const symbols = kinds.map((kind, i) =>
+      createSymbol(`k${i}`, 'file-a', kind, 'Same', 1)
+    );
+
+    const sorted = sortSymbolsDeterministically(symbols);
+
+    expect(sorted.map(s => s.kind)).toEqual([
+      'namespace', 'module', 'class', 'interface', 'struct', 'trait',
+      'enum', 'type-alias', 'function', 'method', 'property', 'variable',
+      'constant', 'decorator',
+    ]);
+  });
+
+  it('stays deterministic for kinds outside KIND_ORDER', () => {
+    const mk = (id: string, kind: string) =>
+      ({ ...createSymbol(id, 'file-a', 'class', id, 1), kind }) as SymbolEntry;
+
+    const symbols = [mk('z', 'quantum'), mk('a', 'sparkline'), mk('m', 'quantum')];
+
+    const sorted = sortSymbolsDeterministically(symbols);
+
+    // هر دو unknown در bucket 999؛ tie-break نام→id باید پایدار بماند.
+    expect(sorted.map(s => s.id)).toEqual(['a', 'm', 'z']);
+    const again = sortSymbolsDeterministically([...symbols].reverse());
+    expect(again.map(s => s.id)).toEqual(sorted.map(s => s.id));
+  });
 });
