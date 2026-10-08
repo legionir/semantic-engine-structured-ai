@@ -28,6 +28,7 @@ const REPO = path.resolve(__dirname, "..", "..");
 const PlanRepository = require(path.join(REPO, "agent", "tools", "planning", "PlanRepository.js"));
 const SessionRepository = require(path.join(REPO, "agent", "persistence", "SessionRepository.js"));
 const WorkspaceProfile = require(path.join(REPO, "agent", "projects", "WorkspaceProfile.js"));
+const ProjectStore = require(path.join(REPO, "agent", "projects", "ProjectStore.js"));
 
 const results = [];
 
@@ -145,6 +146,36 @@ async function main() {
         );
 
         assert.strictEqual(fs.readFileSync(target, "utf8"), before);
+        assertNoTempFiles(path.dirname(target));
+    });
+
+    /*
+    | SA-F-016 (contained half) — the registry save used to hand-roll the
+    | atomic write with a pid-only temp suffix. It now goes through the
+    | same AtomicFile path as every other durable write, so a crash
+    | before rename must keep the previous registry and leave no .tmp-
+    | file behind. This locks that; the cross-process RMW race is the
+    | separate, still-open ledger half.
+    */
+    await test("ProjectStore.save keeps the previous registry when the write crashes", () => {
+
+        const target = path.join(fs.mkdtempSync(path.join(WORKSPACE, "registry-")), "registry.json");
+
+        ProjectStore.save({ version: ProjectStore.STORE_VERSION, projects: { a: { rootPath: "/a" } } }, target);
+        const before = fs.readFileSync(target, "utf8");
+
+        assert.throws(
+            () => withFailingRename(
+                () => ProjectStore.save(
+                    { version: ProjectStore.STORE_VERSION, projects: { b: { rootPath: "/b" } } },
+                    target
+                )
+            ),
+            /simulated crash/
+        );
+
+        assert.strictEqual(fs.readFileSync(target, "utf8"), before);
+        assert.deepStrictEqual(JSON.parse(before).projects.a.rootPath, "/a");
         assertNoTempFiles(path.dirname(target));
     });
 

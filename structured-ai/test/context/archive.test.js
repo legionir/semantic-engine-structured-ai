@@ -538,6 +538,75 @@ async function main() {
         }
     });
 
+    await test("SA-F-003: a fully-dead segment is removed even when another segment still rolls up", async () => {
+
+        reset();
+
+        /*
+        | Two segments: `a` holds a live record that is rolled up into a
+        | merge record whose merged_ids keep an id from `b`; `b`'s only
+        | record is dropped from the index and is not referenced by the
+        | rollup. Before SA-F-003, `b` had alive=0 but the global keep set
+        | was non-empty (from the rollup), so the removal branch was
+        | skipped and `b` was rewritten as a one-newline empty file that
+        | then persisted forever. The correct outcome: `b` has nothing
+        | live and nothing referenced *in this segment*, so it is unlinked.
+        */
+
+        const directory = archive.archiveDirectory();
+
+        fs.mkdirSync(directory, { recursive: true });
+
+        const segA = "segment-0001.jsonl";
+        const segB = "segment-0002.jsonl";
+
+        fs.writeFileSync(
+            path.join(directory, segA),
+            `${JSON.stringify({ id: 1, body: "kept" })}\n`,
+            "utf8"
+        );
+        fs.writeFileSync(
+            path.join(directory, segB),
+            `${JSON.stringify({ id: 2, body: "dead" })}\n`,
+            "utf8"
+        );
+
+        const index = archive.emptyIndex();
+
+        /*
+        | A rollup record lives in segment A and references id 1 (its own
+        | body). id 2 (in segment B) is neither a live record nor a
+        | referenced merged_id, so segment B is fully dead.
+        */
+
+        index.records = [
+            {
+                id: 3,
+                segment: segA,
+                merged_ids: [1]
+            }
+        ];
+
+        archive.saveIndex(index);
+
+        const report = archive.compactSegments(index);
+
+        assert.ok(
+            !fs.readdirSync(directory).includes(segB),
+            "the fully-dead segment must be removed, not left as an empty shell"
+        );
+        assert.ok(
+            fs.readdirSync(directory).includes(segA),
+            "a segment with live/referenced content must survive"
+        );
+        assert.ok(
+            fs.readFileSync(path.join(directory, segA), "utf8").trim().length > 0,
+            "the surviving segment must not be emptied"
+        );
+        assert.equal(report.removed, 1);
+
+    });
+
     await test("a corrupt index degrades to empty instead of throwing", async () => {
 
         reset();

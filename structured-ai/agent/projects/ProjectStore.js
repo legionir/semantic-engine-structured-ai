@@ -5,6 +5,7 @@ const os = require("os");
 const path = require("path");
 
 const settings = require("../config");
+const AtomicFile = require("../persistence/AtomicFile");
 
 /*
 |--------------------------------------------------------------------------
@@ -136,14 +137,20 @@ function load(registryPath = resolveRegistryPath()) {
 
 function save(registry, registryPath = resolveRegistryPath()) {
 
-    fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+    /*
+    | SA-F-016 (contained half) — this used to hand-roll the atomic write
+    | with `${registryPath}.tmp-${process.pid}`: two saves sharing a pid
+    | (container pid namespaces, or a retried save overlapping a slow one)
+    | wrote through the SAME temp path, so one rename could publish the
+    | other's bytes; and a crash between write and rename left a stale
+    | `.tmp-<pid>` file forever. Both are the exact hazards AtomicFile
+    | already solves (pid+time+random suffix, unlink-on-failure). The
+    | cross-process read-modify-write race (load→mutate→save with no lock)
+    | is a separate design decision and stays tracked in the ledger.
+    */
 
-    const tempPath = `${registryPath}.tmp-${process.pid}`;
-
-    fs.writeFileSync(
-
-        tempPath,
-
+    AtomicFile.writeFile(
+        registryPath,
         JSON.stringify(
             {
                 version: registry.version || STORE_VERSION,
@@ -151,11 +158,9 @@ function save(registry, registryPath = resolveRegistryPath()) {
             },
             null,
             2
-        ) + "\n"
-
+        ) + "\n",
+        "utf8"
     );
-
-    fs.renameSync(tempPath, registryPath);
 
 }
 

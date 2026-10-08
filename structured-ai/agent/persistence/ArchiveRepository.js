@@ -949,6 +949,25 @@ function compactSegments(index, root) {
                 }
             });
 
+        /*
+        | SA-F-003 — a segment is dead when *its own* lines are all dead,
+        | not when the global keep set happens to be empty. The removal
+        | branch above only fires when no rollup exists anywhere, so with
+        | any rollup present a fully-dead segment fell through here, kept
+        | became empty, and was rewritten as a one-newline file that then
+        | persisted forever. When nothing in this segment is live or
+        | referenced, unlink it instead of leaving an empty shell.
+        */
+
+        if (kept.length === 0) {
+
+            fs.unlinkSync(segmentPath(name, root));
+
+            removed++;
+
+            continue;
+        }
+
         if (kept.length === lines.length) {
             continue;
         }
