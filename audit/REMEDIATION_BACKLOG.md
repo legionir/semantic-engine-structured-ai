@@ -10,13 +10,22 @@ not actionable here. Deliberate-deferred items are listed at the bottom for refe
 Baseline in this sandbox (2026-10-07, Node 22, fixture generated): `tsc --noEmit` = 0;
 `jest --ci` = 3213 passed / 0 failed / 92 skipped (before this cycle's fixes).
 
-> **EXECUTED 2026-10-07:** every open product item below (P1 `c5llm`…`c7a19`,
-> P2 `c8l4`…`c8a4`) is implemented with regression tests; ledger/filing items
-> (`l1ids`, `l2count`, `unk2`, `fragile`, `prune`, `sec08file`, `lspeperm`) are
-> filed under `audit/findings/`, `audit/COUNT_RECONCILIATION.md`,
-> `audit/unknowns.md` and `audit/HOUSEKEEPING.md`. Final full-suite run:
+> **EXECUTED 2026-10-07 — HISTORICAL RECORD, NOT THE CURRENT BACKLOG.** Every
+> open product item below (P1 `c5llm`…`c7a19`, P2 `c8l4`…`c8a4`) is implemented
+> with regression tests; ledger/filing items (`l1ids`, `l2count`, `unk2`,
+> `fragile`, `prune`, `sec08file`, `lspeperm`) are filed under
+> `audit/findings/`, `audit/COUNT_RECONCILIATION.md`, `audit/unknowns.md` and
+> `audit/HOUSEKEEPING.md`. Final full-suite run:
 > **252 suites / 3249 tests passed, 0 failed, exit 0** (the +36 delta is the
 > new F-00xx regression suites). Blocked and deferred items are untouched.
+>
+> **Do not read the P1/P2 tables below as today's open work** — every row is a
+> CLOSED historical item of the 2026-10-07 remediation cycle (independently
+> re-verified against current code in cycles 5–7; cycle 6's per-item source
+> evidence is recorded in `audit/OPEN_ITEMS.md`'s supersession note and cycle
+> 7's gate re-ran all of their regression suites green). The current state of
+> the repository is `audit/ACTIVE-ISSUES.md`; the canonical counts come from
+> `python3 audit/tools/verify_ledger.py`.
 
 Legend: P0 security/correctness · P1 correctness/resource-safety/authz · P2 hygiene/CI.
 

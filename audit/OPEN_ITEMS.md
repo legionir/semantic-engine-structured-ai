@@ -2,7 +2,8 @@
 
 > **STALE SNAPSHOT (2026-10-06). SUPERSEDED — do not use as a backlog.**
 > `audit/ACTIVE-ISSUES.md` is the single source of truth (verified 2026-10-08,
-> cycle 5). Every product item listed below as "in progress" / P1 / P2 was
+> cycle 5; cycle 7 completed the remaining tail the same day — see the
+> cycle-7 bullet). Every product item listed below as "in progress" / P1 / P2 was
 > re-verified CLOSED in current code on 2026-10-08: F-0030 (`AbortSignal.timeout`
 > in `OpenAILlmClient.ts:36`), F-0010 (`allowedProjects` in
 > `PermissionChecker` + `HttpServer.ts:296`), F-0011 (least-privilege markers on
@@ -12,9 +13,13 @@
 > (`configRoutes.ts:31` real model), F-0013/F-0016/F-0018/F-0022/F-0029 and the
 > housekeeping rows per `audit/REMEDIATION_BACKLOG.md` (EXECUTED 2026-10-07).
 > `sa-web-flake` was root-caused and fixed as AI-01/AI-02 — it was not a flake.
-> The genuinely-open tail is exactly: 5 ledger rows (`SE-ARCH-001/002`,
-> `SE-DEBT-003`, `SE-F-057`, `SA-F-007`) + AI-06 (blocked) + AI-13 (deferred by
-> decision) — see ACTIVE-ISSUES.md.
+> The tail that was open when this snapshot was retired (cycle 6) — 5 ledger
+> rows (`SE-ARCH-001/002`, `SE-DEBT-003`, `SE-F-057`, `SA-F-007`) + AI-06
+> (blocked) + AI-13 (deferred by decision) — was completed by **cycle 7 on
+> 2026-10-08**: SE-F-057/SA-F-007/SE-DEBT-003 fixed, AI-06 implemented, the two
+> SE-ARCH rows dispositioned as documented deferrals. Current truth:
+> `audit/ACTIVE-ISSUES.md` (the sole current source of truth) and
+> `python3 audit/tools/verify_ledger.py`.
 
 Source reports reconciled: `audit/REMEDIATION_PLAN.md` (Sections A–D), `audit/STATE.md`,
 and the 2026-10-06 STATUS REPORT pasted by the owner.

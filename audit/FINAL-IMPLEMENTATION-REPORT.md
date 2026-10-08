@@ -1,5 +1,16 @@
 # Final Implementation Report
 
+> **HISTORICAL SNAPSHOT — CYCLE 5 (2026-10-08).** The ledger counters and
+> item dispositions below were superseded on 2026-10-08 by the **seventh
+> cycle**: SE-F-057/SA-F-007/SE-DEBT-003 were fixed and dispositioned, AI-06
+> was unblocked and implemented (Kotlin/Swift grammars now shipped), the two
+> architecture rows became explicit deferrals, and the count artifacts were
+> reconciled. Current truth: `audit/ACTIVE-ISSUES.md` +
+> `python3 audit/tools/verify_ledger.py` (161 rows: 99 fixed · 35 invalid ·
+> 7 superseded · 17 duplicate · 1 partial · 2 open). See
+> `audit/findings/CYCLE7-REMEDIATION.md`. Do not treat this report's
+> counters or its `OPEN·BLOCKED` AI-06 rows as current.
+
 ## Scope
 
 - `semantic-engine`
