@@ -24,14 +24,16 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   clean checkout" required `npm run build` first). Fixed: jest globalSetup now
   prints an honest dist-skip notice, and `check-tests.js` bounds suite-level
   skips via `test-skip-budget.json` (AI-16 below). Per-row verification of the
-  ledger continued: 27 more rows dispositioned with current-code evidence
-  (`audit/findings/P04-PER-ROW-CYCLE4.md`); 6 genuinely-open defects were
-  fixed + regression-locked (AI-15…AI-20 below).
+  ledger continued: 30 previously-open rows dispositioned with current-code
+  evidence (`audit/findings/P04-PER-ROW-CYCLE4.md`) — 28 verified-fixed (incl.
+  SA-F-006 and SE-PIPE-001, closed THIS cycle) and 2 merged as duplicates;
+  9 genuinely-open defects were fixed + regression-locked (AI-15…AI-21 below;
+  SA-F-006 and SE-PIPE-001 detailed in POST-AUDIT-PLAN P-14/P-16).
 
 ## Counters
 
 - Ledger (`FINDING_INDEX.tsv`, 161 rows): after cycle 4 —
-  **72 fixed · 11 invalid · 6 superseded · 17 duplicate · 55 open.**
+  **75 fixed · 11 invalid · 6 superseded · 17 duplicate · 52 open.**
   All HIGH rows dispositioned; the remaining open rows are MEDIUM/LOW/Unknown
   quality-hygiene items, each honestly labeled `open — not verified fixed`.
 - Active product backlog (this file): AI-01…AI-20.
@@ -42,7 +44,7 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   SE-API-002 (validation errors answered as HTTP 500), SE-F-049 (gate claimed
   "all suites ran" over 10 skipped suites), SE-F-009 (type barrel missing
   Blueprint exports), SE-UI-001 (project switch left stale project state).
-- AI-04 PARTIALLY_RESOLVED (55 honest `open` rows remain, each with
+- AI-04 PARTIALLY_RESOLVED (52 honest `open` rows remain, each with
   source-report evidence pointers; none silently closed).
 - AI-06 OPEN·BLOCKED (environment).
 

@@ -443,3 +443,102 @@ the last known fabricated-number surface (gateway zeros) is honest, and the audi
 trail records denials it used to swallow. Every prior "green" claim is now
 reproducible from a clean checkout by the bare documented command — the verification
 chain itself no longer depends on tribal knowledge.
+
+---
+
+# Cycle 4 (2026-10-08): independent re-review, per-row ledger pass, 8 fixes + regressions
+
+## Scope
+
+semantic-engine + structured-ai. Continuing §19–20 (assume prior reports were
+not complete) and §4.1 (no label is proof).
+
+## Initial Findings (verified against live runs before any change)
+
+- §4.1 caught the prior cycle's claim: `jest --ci` is NOT 267/267 on a bare
+  clean checkout — without `npm run build`, 10 dist-gated suites (gateway e2e,
+  CLI, LSP client) silently SKIP and the run still reads green
+  (257 pass / 10 skipped / 0 fail). `check-tests.js` printed "all suites ran"
+  over those skips.
+- Per-row verification of the 82 open ledger rows continued: 24 were re-confirmed
+  fixed in current code and back-propagated (SE-F-037/038/039/041/042/046/047/048/050,
+  SE-F-005/006, SE-DASH-001/002, SE-VIZ-004/005, SA-REL-002/006, SA-ARCH-001,
+  SA-F-008, …), 2 pairs merged as duplicates, and 8 defects found genuinely open.
+
+## Resolved Issues (this cycle; each with a named regression)
+
+| ID | Defect | Class |
+|----|--------|-------|
+| SA-F-004 | code_rename applied at the FIRST textual match, not its designated range; `applied:true` asserted even when nothing was written | data corruption / AI-context |
+| SE-F-049 | the test gate claimed "all suites ran" while 10 suites skipped | misleading verification surface |
+| SE-API-001 | job cancel ignored project binding (cross-project cancel; unknown job → 200 false) | integrity |
+| SE-API-002 | Source Sync validation failures answered HTTP 500 | API contract / §15 |
+| SA-F-002 | graduated compression had no immutable original (fields/counts degraded on escalation) — fixed via NON-ENUMERABLE property so the pristine copy NEVER reaches the model wire (§17) | completeness / token hygiene |
+| SE-UI-001 | failed project switch left stale projectId + visualizer link | reliability / §15 |
+| SA-F-006 | visualizer fabricated "✓ Covered by <title>.test.ts" per node | invented evidence |
+| SE-PIPE-001 | run-pipeline indexed a NON-EXISTENT workspace with exit 0 (§16); un-awaited async dispose | honesty / error handling |
+| SE-F-009 | core/types barrel missing Blueprint exports | API surface |
+
+## New Findings recorded, deliberately NOT fixed (rationale in POST-AUDIT-PLAN P-17/P-18)
+
+- SA-F-007 (MEDIUM): openProject overlay reads the process workspace's project
+  file as the floor for every project. A partial fix was attempted and REVERTED:
+  the behavior is asserted by a documented bit-for-bit contract and a passing
+  persistence test; relocating the floor is a contract change, not a patch.
+- SE-F-057 (MEDIUM): gateway Edit posts 4 of 35 form fields; making it work
+  needs per-project WorkerConfig persistence (a feature). No guessed fix.
+
+## Tests Added
+
++19 new cases in 8 suites — semantic-engine (14): jobCancelScope(2),
+sourceValidation400(4), barrelSurface(2), openUiProjectSwitch(4),
+runPipelineHonesty(2); structured-ai (5): SA-F-004 rename(3) in
+test/mcp/semantic.test.js (14→17), SA-F-002(1) in test/context/context.test.js
+(7→8), SA-F-006(1) in test/ui/visualizer.test.js (9→10).
+
+## Test Results (final, this cycle)
+
+- semantic-engine: `tsc -p ./` = 0; `tsc -p tsconfig.test.json --noEmit` = 0;
+  eslint clean on all changed files; **jest --ci after build: 272/272 suites,
+  3400 passed, 0 failed, 2 skipped** (the 2 are pre-existing environment-probed
+  skips). Gate (`node scripts/check-tests.js`) exits 0 with budget 0 honored;
+  `check-artifact-location.js` ok.
+- structured-ai: **npm test exit 0** — full 60-suite `&&` chain, 774 ok
+  (individual suites re-run in isolation: mcp/semantic 17/17, context 8/8,
+  archive 19/19, ui/visualizer 10/10, ui/modules 10/10, ui 42/42,
+  project-stores 9/9).
+- Known failures: none.
+
+## AI Context Quality Validation (§25)
+
+The seven fixed misleading surfaces, as consuming-AI questions: "did my rename
+actually apply, and where?" (edits_applied/edits_skipped/note + designated
+location, never a guessed match); "is this verification complete?" (gate now
+distinguishes ran / skipped-within-budget / over-budget); "can I cancel another
+tenant's job?" (no — 404); "did the server break or was my request invalid?"
+(400 vs 500, correctly); "what was the original tool result size?" (true
+original_chars survives escalation, without paying its tokens on the wire);
+"am I still looking at the project I tried to leave?" (no — switch resets);
+"is this symbol tested?" (the UI no longer lies: coverage unknown ≠ coverage
+✓); "does an empty index mean the workspace is empty or mistyped?" (now a hard
+failure).
+
+## Ledger
+
+FINDING_INDEX.tsv after cycle 4: **75 fixed · 11 invalid · 6 superseded ·
+17 duplicate · 52 open** (all open rows MEDIUM/LOW/Unknown, honestly labeled
+`open — not verified fixed`; SE-ARCH-001 stays open by decision, §12).
+
+## Git
+
+Branch: main · Commits: 17226c7 (semantic-engine), cefa8c7 (structured-ai),
+4c65db7 (audit) + this docs follow-up · Push: origin/main after final validation.
+
+## Final Assessment (cycle 4)
+
+§26 remains YES. The cycle's value is concentrated exactly where the directive
+points: not "tools execute" but "an AI can trust the output". Two of the nine
+fixes (SA-F-004 rename location, SE-F-049 verification gate) were invisible to
+every green suite before this pass — they were re-derived from current code and
+live runs, locked with regressions, and the two items deliberately not fixed are
+recorded with rationale instead of patched by guess.

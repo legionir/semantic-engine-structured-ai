@@ -49,10 +49,29 @@ Rows found fixed (code re-read this session; several carry in-source markers):
 - SA-ARCH-001 (McpManager.currentProject() reads effectiveProject — marker)
 - SA-F-014/008 (atomic-saves.test.js green in the chain — verified live)
 
+## Final counters after the cycle-4 pass
+
+75 fixed · 11 invalid · 6 superseded · 17 duplicate · **52 open** (net ledger change this cycle: 28 open→fixed, 2 open→duplicate).
+
+Fixed LATER in the same day (after the first reconcile run above), bringing the
+totals: SA-F-006 (visualizer fabricated coverage — honest "not known" + safe
+DOM, regression in test/ui/visualizer.test.js) and SE-PIPE-001 (run-pipeline
+indexed a non-existent workspace with exit 0; un-awaited async dispose in
+finally — pre-dist existence check + awaited guarded dispose, 2 regressions in
+src/scripts/runPipelineHonesty.test.ts).
+
+Honest state of the HIGH class: SE-ARCH-001 (discover() monolith) remains
+`open` BY DELIBERATE DECISION (AI-13, §12 — correct output, no AI misled,
+refactor has regression risk; recorded, not hidden). Every other HIGH row is
+fixed/invalid/superseded/duplicate with evidence. No HIGH defect is silently
+closed.
+
 ## Still OPEN (honest state) after per-row verification
 
-Remaining MEDIUM/LOW/Unknown rows keep `open — not verified fixed` with their
-source pointers; they are quality/hygiene items (barrel utilities, binary
-preview window, encoding validate, heuristic docs drift, line-index cache
-single-key, KIND_ORDER unknown kinds, manager Result wrapping…) whose
-per-row disposition continues below as time allows. None is HIGH/P0.
+The 52 remaining open rows are MEDIUM/LOW/Unknown quality-hygiene items
+(barrel utilities, binary preview window, encoding validate, heuristic docs
+drift, line-index cache single-key, KIND_ORDER unknown kinds, manager Result
+wrapping, SA-F-007 overlay contract, SE-F-057 gateway config persistence…),
+each keeping `open — not verified fixed` with its source pointer. None is a
+silent close; two of them (P-17/P-18 in POST-AUDIT-PLAN.md) carry explicit
+not-fixed rationale.
