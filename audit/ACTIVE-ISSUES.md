@@ -29,24 +29,30 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   SA-F-006 and SE-PIPE-001, closed THIS cycle) and 2 merged as duplicates;
   9 genuinely-open defects were fixed + regression-locked (AI-15…AI-21 below;
   SA-F-006 and SE-PIPE-001 detailed in POST-AUDIT-PLAN P-14/P-16).
+- **2026-10-08 (fifth cycle):** the cycle-4 remaining **52 open rows** were each
+  re-read against the CURRENT checkout (`audit/findings/P04-PER-ROW-CYCLE5.md`).
+  4 real defects fixed + regression-locked this cycle — SA-F-003 (dead archive
+  segment rewritten to a permanent empty shell), SA-F-016-contained
+  (`ProjectStore.save` pid-only temp collision → routed through AtomicFile),
+  SE-F-016/019 (utils barrel incomplete) and SE-F-022 (`KIND_ORDER` missing
+  trait/decorator) — plus the stale `blueprint.golden.json` (still asserting the
+  pre-AI-09 `authRequired:false`) back-propagated. 32 rows dispositioned INVALID
+  with specific code/test evidence; the rest verified already-fixed in current
+  code. Only 5 maintainability/design/feature-boundary rows stay `open` with
+  rationale; **no HIGH correctness or AI-misleading defect is left open.**
 
 ## Counters
 
-- Ledger (`FINDING_INDEX.tsv`, 161 rows): after cycle 4 —
-  **75 fixed · 11 invalid · 6 superseded · 17 duplicate · 52 open.**
-  All HIGH rows dispositioned; the remaining open rows are MEDIUM/LOW/Unknown
-  quality-hygiene items, each honestly labeled `open — not verified fixed`.
-- Active product backlog (this file): AI-01…AI-20.
+- Ledger (`FINDING_INDEX.tsv`, 161 rows): after cycle 5 —
+  **96 fixed · 33 invalid · 7 superseded · 17 duplicate · 1 partial (SA-F-016
+  open half) · 5 open.** Every row now carries current-code evidence; the 52
+  cycle-4 `open` rows are fully dispositioned (see
+  `audit/findings/P04-PER-ROW-CYCLE5.md`). No row silently closed.
+- Active product backlog (this file): AI-01…AI-21.
 - Critical: 0 open. SE-ARCH-001 tracked as AI-13, OPEN by decision (§12).
-- Fourth-cycle fixes: SA-F-004 (rename applied at wrong location / fake
-  `applied:true`), SA-F-002 (compression lost the immutable original — fixed
-  WITHOUT leaking it to the wire), SE-API-001 (cross-project job cancel),
-  SE-API-002 (validation errors answered as HTTP 500), SE-F-049 (gate claimed
-  "all suites ran" over 10 skipped suites), SE-F-009 (type barrel missing
-  Blueprint exports), SE-UI-001 (project switch left stale project state).
-- AI-04 PARTIALLY_RESOLVED (52 honest `open` rows remain, each with
-  source-report evidence pointers; none silently closed).
-- AI-06 OPEN·BLOCKED (environment).
+- AI-04 PARTIALLY_RESOLVED (ledger now 96 fixed / 33 invalid / 7 superseded /
+  17 duplicate; the 5 honest `open` rows each carry source+rationale).
+- AI-06 OPEN·BLOCKED (environment: no tree-sitter wasm toolchain here).
 
 ## Status legend (per §4)
 
@@ -277,6 +283,33 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
 - **Validation:** structural regression `src/server/openUiProjectSwitch.test.ts`
   (4 cases over the actual shipped source — the repo's established pattern for
   DOM-less browser scripts; no jsdom dependency was invented for this).
+
+## AI-22 — cycle-5 per-row pass: 4 fixes + stale golden (2026-10-08)
+
+- **Category:** DATA_QUALITY / RELIABILITY / API_CONTRACT (mixed)
+- **Status:** RESOLVED (2026-10-08)
+- **Fixes:** (a) SA-F-003 `compactSegments` left a fully-dead archive segment as
+  a permanent one-newline shell whenever any unrelated rollup kept the global
+  keep-set non-empty — now unlinked when nothing in *that segment* is live or
+  referenced (`archive.test.js` regression, fails deterministically without the
+  fix); (b) SA-F-016 contained half — `ProjectStore.save` hand-rolled the atomic
+  write with a pid-only temp suffix (collisions across pid namespaces, stale
+  `.tmp-<pid>` after a crash) — now routed through `AtomicFile.writeFile`
+  (`atomic-saves.test.js` registry case); (c) SE-F-016/019 — `core/utils` barrel
+  now exports `decodeBuffer`, `normalizeLineEndings`, `LineIndex`,
+  `getLineNumber`, `sortSymbolsDeterministically` (`barrelSurface.test.ts`,
+  13 cases); (d) SE-F-022 — `KIND_ORDER` covers every `SymbolKind` member
+  (`trait` after `struct`, `decorator` last); golden snapshot verified unchanged;
+  2 regressions in `symbolSort.test.ts`.
+- **Back-propagation:** `test/golden/blueprint.golden.json` still asserted the
+  pre-AI-09 `authRequired:false` — a stale golden masking the honesty fix.
+  Regenerated via `scripts/snapshot.js --update`; diff reviewed by hand
+  (exactly 10× false→null), `snapshot.js` compare now reports unchanged and
+  `cli.test.ts` golden gate green.
+- **Validation:** semantic-engine `test:gate` exit 0 — **273 suites, 3415 pass /
+  0 fail / 2 skipped** (environment probes); `tsc -p ./` 0;
+  `tsc -p tsconfig.test.json --noEmit` 0; eslint 0. structured-ai `npm test`
+  full chain exit 0. Full dispositions: `audit/findings/P04-PER-ROW-CYCLE5.md`.
 
 ## AI-13 — `ContextDiscoverer.discover()` monolith (SE-ARCH-001, HIGH-classified, OPEN by decision)
 

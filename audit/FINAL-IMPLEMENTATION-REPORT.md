@@ -542,3 +542,84 @@ fixes (SA-F-004 rename location, SE-F-049 verification gate) were invisible to
 every green suite before this pass — they were re-derived from current code and
 live runs, locked with regressions, and the two items deliberately not fixed are
 recorded with rationale instead of patched by guess.
+
+---
+
+# Cycle 5 (2026-10-08): close the 52-row open tail of the ledger
+
+## Scope
+
+Per §19–20 and §4.1, this pass took the **52 rows cycle 4 left
+`open — not verified fixed`** and re-read the CURRENT checkout for each. Full
+dispositions in `audit/findings/P04-PER-ROW-CYCLE5.md`.
+
+## Fixes shipped (each with a named regression)
+
+| Row | Defect | Class |
+|-----|--------|-------|
+| SA-F-003 | `compactSegments` rewrote a fully-dead archive segment to a permanent one-newline empty shell whenever any unrelated rollup kept the global `keep` set non-empty — stale-file leak + wrong compaction statistics | DATA_QUALITY / RELIABILITY |
+| SA-F-016 (contained half) | `ProjectStore.save` hand-rolled the atomic write with a **pid-only** temp suffix — collision across pid namespaces / overlapping retries publishes mixed bytes; a crash before rename leaves `.tmp-<pid>` forever. Now routed through the repo's own `AtomicFile` | RELIABILITY / INTEGRITY |
+| SE-F-016 / SE-F-019 | `core/utils` barrel omitted `decodeBuffer`, `normalizeLineEndings`, `LineIndex`, `getLineNumber`, `sortSymbolsDeterministically` — declared public surface incomplete | API_CONTRACT |
+| SE-F-022 | `KIND_ORDER` left `trait` and `decorator` in the catch-all 999 bucket — deterministic but violates the canonical kind ordering (a `trait` on the same line+name as a `constant` sorts after it) | AI_CONTEXT (consistency) |
+| golden (back-prop) | `test/golden/blueprint.golden.json` still asserted the pre-AI-09 `authRequired:false` — a stale golden that would mask any regression of the three-state honesty fix | DATA_QUALITY (docs↔impl) |
+
+Both structured-ai regressions were confirmed to **fail without the fix and
+pass with it**. The golden diff was reviewed by hand: exactly 10× false→null,
+then `snapshot.js` compare reports unchanged and the CLI golden gate is green.
+
+## Rows dispositioned INVALID (33) — premise wrong or already-correct design
+
+A significant share of the tail were findings whose *symptom* reads like a
+defect but whose premise does not hold against the current design/contract.
+Each carries the specific code/test evidence in the ledger so it is never
+re-litigated blind: several security-class rows (SE-SE-005/006/009/010/011/
+SE-PIPE-003) describe a hazard the implementation already prevents
+(anchored-lowercase project-id pattern, O_EXCL `mkdtemp`, no regex/SQL/shell
+sink for search terms, a monotonic cache-coherency counter that is
+predictable *by contract*); the D-11 raw-extraction contract rows (SE-F-025/
+026, XX-F-002); documented heuristics (SE-F-017/018, SE-F-010/020/021); and
+stale-premise tech-debt rows (SE-DEBT-001/002, SE-PERF-001).
+
+## Rows verified ALREADY FIXED in current code
+
+The prior cycles and decisions (D-10/D-11/D-14/D-15, AI-09, P-06) had landed
+SE-VIZ-001/002/003/006/007, SE-API-003, SE-F-003/023/024, SE-SE-001/008,
+SE-REL-001, SA-ARCH-002, SA-PRJ-001/002, SA-F-015, XX-F-001, and superseded
+SE-PIPE-002 — but the ledger had not been back-propagated (AI-04's honest
+gap). Each now carries its code/test pointer.
+
+## Final ledger counters (cycle 5)
+
+`FINDING_INDEX.tsv` (161 rows): **96 fixed · 33 invalid · 7 superseded ·
+17 duplicate · 1 partial (SA-F-016 open half) · 5 open.** The 5 open rows are
+maintainability / design / feature-boundary items, each kept visible with
+explicit rationale (SE-ARCH-001 discover monolith, SE-ARCH-002 Blueprint
+god-class, SE-DEBT-003 findByName first-match, SA-F-007 overlay-floor
+contract, SE-F-057 gateway per-project config persistence). **No HIGH-class
+correctness or AI-misleading defect remains open and unexamined.**
+
+## Test results (this cycle, final)
+
+- semantic-engine: `tsc -p ./` = 0 · `tsc -p tsconfig.test.json --noEmit` = 0 ·
+  eslint = 0 · `npm run test:gate` = 0 with skip-budget honored →
+  **273/273 suites, 3415 passed / 0 failed / 2 skipped** (the 2 are the
+  environment probes: sqlite3-glibc + orphan-reaper).
+- structured-ai: `npm test` full chain = **exit 0**.
+- Known failures: none.
+
+## AI-context quality validation (§25)
+
+The cycle-5 changes are all in the trust surface: an archive that stops
+silently leaking dead segments; a registry that can no longer be corrupted by
+a temp-path collision; a `core/utils` surface that now delivers everything it
+declares; a symbol ordering that is canonical for every kind; and a golden
+that reflects the three-state `authRequired` honesty instead of the old
+false-complete `false`. None introduces new context cost.
+
+## Final assessment (cycle 5)
+
+§26 remains YES. This pass closed the last honest tail of the ledger that
+prior cycles deliberately left marked open — not by trusting old labels
+(§4.1), but by re-reading every one of the 52 rows against current code and,
+where a real defect survived that scrutiny, fixing it and proving the fix with
+a regression that fails without it.
