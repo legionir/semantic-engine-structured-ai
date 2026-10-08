@@ -91,18 +91,55 @@ function centralProjectPath(projectId) {
 
 
 /* The two physical layers of the overlay for a project id. `workspaceRoot`
-   names the project's OWN workspace; without it the process workspace is
-   used (the default project). Reading the process workspace's file for
-   every project was audit F-015. */
+   names the project's OWN workspace; when the caller does not know it, the
+   registry record for `projectId` supplies it (SA-F-007). Only when there is
+   no own root — the null default project, or an id the registry does not
+   know — does the process workspace stand in (the pre-F-015 behaviour, kept
+   for the legacy single-project flow). Reading the process workspace's file
+   for EVERY project was audit F-015. */
 function overlayFor(projectId, workspaceRoot) {
+
+    const root =
+        workspaceRoot || projectWorkspaceRoot(projectId);
 
     return {
         workspaceFile:
-            workspaceRoot
-                ? path.join(workspaceRoot, ".agent", "project.json")
+            root
+                ? path.join(root, ".agent", "project.json")
                 : projectPath(),
         centralFile: centralProjectPath(projectId)
     };
+}
+
+
+/*
+| SA-F-007 — the workspace layer of a project is that PROJECT's own root,
+| not whichever workspace the process happens to have. The registry record
+| is the only authority on the root; an id it does not know (and the null
+| default project) resolves to the process workspace, exactly as before.
+| Reading the central cap was already project-aware; this makes the floor
+| layer project-aware too, so openProject(A) can never apply B's settings.
+*/
+function projectWorkspaceRoot(projectId) {
+
+    if (!projectId) {
+        return null;
+    }
+
+    try {
+
+        const { registry } = require("../projects");
+
+        const rootPath = registry().get(projectId).rootPath;
+
+        return typeof rootPath === "string" && rootPath !== "" ? rootPath : null;
+
+    } catch {
+
+        /* an id the registry does not know has no own workspace layer */
+        return null;
+
+    }
 }
 
 
