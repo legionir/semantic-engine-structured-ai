@@ -36,10 +36,21 @@ describe('describeLanguageSupport (SE-SYM-16 / SE-GRAPH-08)', () => {
   });
 
   it('زبانِ بدون گرامر، heuristic اعلام می‌شود', () => {
-    const support = describeLanguageSupport(['zig', 'swift']);
+    const support = describeLanguageSupport(['zig']);
 
     expect(support.zig).toEqual({ symbols: 'heuristic', callGraph: false });
-    expect(support.swift).toEqual({ symbols: 'heuristic', callGraph: false });
+  });
+
+  it('AI-06 — Kotlin و Swift حالا گرامر دارند و structural اعلام می‌شوند', () => {
+    const support = describeLanguageSupport(['kotlin', 'swift']);
+
+    for (const language of ['kotlin', 'swift']) {
+      expect({ language, ...support[language]! }).toEqual({
+        language,
+        symbols: 'structural',
+        callGraph: false,
+      });
+    }
   });
 
   it('C#، PHP و Ruby ساختاری‌اند و گراف فراخوانی ندارند', () => {

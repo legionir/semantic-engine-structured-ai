@@ -48,7 +48,10 @@ export class TreeSitterSymbolMapper {
     private readonly contentLines: string[]
   ) {
     this.grammar = grammarFor(languageId);
-    this.nameNodeTypes = [...DEFAULT_NAME_NODES];
+    /* AI-06 — زبان‌هایی مثل Kotlin نامِ تابع/متغیر را در گره‌ای به جز
+    | identifier می‌گذارند (`simple_identifier`); گرامر آن‌ها این گره‌ها را
+    | اعلام می‌کند و اینجا به فهرست نام اضافه می‌شوند. */
+    this.nameNodeTypes = [...DEFAULT_NAME_NODES, ...(this.grammar?.nameNodes ?? [])];
   }
 
   /**
@@ -184,6 +187,35 @@ export class TreeSitterSymbolMapper {
     }
 
     let kind = this.mapNodeTypeToKind(node.type);
+
+    /*
+    | AI-06 — تفکیک بر اساس کلیدواژه. Kotlin و Swift هم `class` و هم
+    | `interface`/`enum`/`struct`/`object` را در یک گرهٔ `class_declaration`
+    | می‌ریزند و نوعِ واقعی فقط در کلیدواژهٔ بیرون‌آمدنِ اولِ گره است.
+    | حدس نزدن بهتر از برچسبِ غلط است؛ اینجا حدس لازم نیست — گرامر
+    | کلیدواژه را صریح می‌دهد. پیمایش فقط تا پیش از اولین گرهٔ نام‌دار
+    | (نامِ اعلان) می‌رود، پس کلیدواژهٔ بدنه هرگز خوانده نمی‌شود.
+    */
+    const byKeyword = this.grammar?.kindFromKeyword?.[node.type];
+    if (byKeyword && kind) {
+      let matched = false;
+      for (const child of node.children) {
+        /* `abstract class …` در Kotlin یک گرهٔ modifiers نام‌دار *پیش از*
+        | کلیدواژه می‌گذارد؛ آن رد می‌شود ولی هر نام‌دار دیگری (نامِ
+        | اعلان) یعنی سرِ اعلان تمام شده است. */
+        if (child.isNamed && child.type === 'modifiers') continue;
+        if (child.isNamed) break;
+        const mapped = byKeyword[child.type];
+        if (mapped) {
+          kind = mapped;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && byKeyword.default) {
+        kind = byKeyword.default;
+      }
+    }
 
     /*
     | نوع از فرزند، وقتی گرامر یک گره برای چند چیز دارد. در Go هم

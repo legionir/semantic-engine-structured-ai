@@ -109,6 +109,31 @@ export interface LanguageGrammar {
   readonly extendsChildTypes?: readonly string[];
   /** گره‌های هم‌سطح که اینترفیس(ها) داخلشان است (TS implements، PHP interface clause). */
   readonly implementsChildTypes?: readonly string[];
+  /**
+   * گره‌های نام این زبان، اضافه بر DEFAULT_NAME_NODES.
+   *
+   * AI-06 — Kotlin و Swift نامِ تابع/متد/عضو-enum را در `simple_identifier`
+   * می‌گذارند و هیچ فیلدِ `name` ندارند؛ بدون این فیلد، `extractName` تهی
+   * برمی‌گرداند و نماد بی‌صدا حذف می‌شد.
+   */
+  readonly nameNodes?: readonly string[];
+  /**
+   * تفکیک نوعِ اعلان بر اساس کلیدواژه.
+   *
+   * AI-06 — Kotlin و Swift هم `class` و هم `interface`/`protocol`/`enum`/
+   * `struct` را در یک گرهٔ `class_declaration` می‌ریزند و نوعِ واقعی فقط از
+   * کلیدواژهٔ بیرون‌آمدنِ سرِ گره خوانده می‌شود. بدون این، هر interface یا
+   * enum به‌عنوان `class` ثبت می‌شد — یک برچسبِ غلط که بهتر است اصلاً ادعا
+   * نشود.
+   *
+   * کلید: نوعِ گرهٔ اعلان. مقدار: نگاشتِ کلیدواژه → SymbolKind؛ اگر هیچ
+   * کلیدواژه‌ای از فهرست پیدا نشد، `default` (یا همان `kinds` معمولی)
+   * به‌کار می‌رود. پیمایش وارد بدنهٔ کلاس/enum نمی‌شود تا کلیدواژه‌های
+   * عضوها اشتباهاً خوانده نشوند.
+   */
+  readonly kindFromKeyword?: Readonly<
+    Record<string, Readonly<Record<string, SymbolKind>> & { readonly default?: SymbolKind }>
+  >;
 }
 
 /**
@@ -211,8 +236,13 @@ const RUST_KINDS: Readonly<Record<string, SymbolKind>> = {
 | اول `childForFieldName('name')` را می‌پرسد)، پس نام‌ها درست درمی‌آیند.
 | C++ نام را زیر `declarator` می‌گذارد (نه فیلد `name`) و لذا با این
 | mapper تابع/فیلدهایش را از دست می‌دهد؛ عمداً روی heuristic مانده تا
-| completeness نسبت به heuristic افت نکند. Kotlin/Swift گرامرِ سازگار با
-| ABIِ این web-tree-sitter ندارند.
+| completeness نسبت به heuristic افت نکند.
+|
+| AI-06 (cycle-7): ادعای قبلی همین‌جا — «Kotlin/Swift گرامرِ سازگار با
+| ABI این web-tree-sitter ندارند» — با اندازه‌گیریِ مجدد غلط از آب درآمد:
+| گرامرهای build-شده با tree-sitter-cli 0.24 + emsdk روی همان
+| web-tree-sitter 0.26 بارگذاری و پارس می‌شوند (probe: source_file با
+| فرزندهای واقعی). هر دو حالا در LANGUAGE_GRAMMARS ثبت‌اند.
 */
 const CSHARP_KINDS: Readonly<Record<string, SymbolKind>> = {
   class_declaration: 'class',
@@ -243,6 +273,43 @@ const RUBY_KINDS: Readonly<Record<string, SymbolKind>> = {
   class: 'class',
   method: 'method',
   singleton_method: 'method',
+};
+
+/*
+| AI-06 — Kotlin و Swift. نام گره‌ها حدس نیستند: هر دو با یک probe روی
+| همان wasm که زمان ایندکس بار می‌شود بیرون کشیده شدند (build:
+| tree-sitter-cli 0.24 + emsdk؛ probe: پارس نمونه‌های واقعی).
+|
+|   kotlin  class_declaration (interface/enum با گرهٔ کلیدواژهٔ فرزند
+|           خودش تفکیک می‌شود), object_declaration, function_declaration,
+|           property_declaration, enum_entry
+|   swift   class_declaration (struct/enum هم همین گره‌اند)،
+|           protocol_declaration, function_declaration,
+|           protocol_function_declaration, property_declaration,
+|           enum_entry
+|
+| Kotlin هیچ فیلد `name` ندارد (نام در simple_identifier/type_identifier
+| می‌نشیند)؛ Swift فیلد `name` اعلام‌شده دارد. هر دو `structural`‌اند:
+| نماد و ساختار، بدون گراف فراخوانی — دقیقاً مثل python/go/java/rust.
+*/
+const KOTLIN_KINDS: Readonly<Record<string, SymbolKind>> = {
+  class_declaration: 'class',
+  object_declaration: 'class',
+  function_declaration: 'function',
+  // خودِ Kotlin یک property را به دو گره می‌شکند: property_declaration
+  // بی‌نام است و نام داخل variable_declaration می‌نشیند — گرهٔ بی‌نام
+  // هیچ‌وقت نماد نمی‌شود و پیمایش به گرهٔ نام‌دار پایین می‌رود.
+  variable_declaration: 'property',
+  enum_entry: 'constant',
+};
+
+const SWIFT_KINDS: Readonly<Record<string, SymbolKind>> = {
+  class_declaration: 'class',
+  protocol_declaration: 'interface',
+  function_declaration: 'function',
+  protocol_function_declaration: 'method',
+  property_declaration: 'property',
+  enum_entry: 'constant',
 };
 
 export const LANGUAGE_GRAMMARS: Readonly<Record<string, LanguageGrammar>> = Object.freeze({
@@ -334,6 +401,52 @@ export const LANGUAGE_GRAMMARS: Readonly<Record<string, LanguageGrammar>> = Obje
     paramListNodeTypes: ['method_parameters'],
     // روبی type annotation ندارد؛ پس returnType عمداً نمی‌خوانده می‌شود
     extendsFields: ['superclass'],
+  },
+
+  /*
+  | AI-06 — Kotlin و Swift. گرامرهای wasm‌شان با همین محیط ساخته و روی
+  | همان web-tree-sitter این پروژه probe شد (پیش‌تر «ABI سازگار ندارد»
+  | ثبت شده بود — ادعایی که با اندازه‌گیریِ امروز غلط از آب درآمد).
+  |
+  | Kotlin هیچ فیلد `name` اعلام‌شده‌ای ندارد: نام تابع/متغیر/عضو enum در
+  | `simple_identifier` و نام کلاس در `type_identifier` است، پس `simple_identifier`
+  | به فهرست نام اضافه می‌شود. خودِ Kotlin یک property را به دو گره
+  | (`property_declaration` → `variable_declaration`) می‌شکند؛ eclaration
+  | بی‌نام‌خوانده نمی‌شود و `variable_declaration` خودش نماد است.
+  |
+  | هر دو `structural`‌اند (نماد+ساختار، بدون گراف فراخوانی) و صریحاً هم
+  | اعلام می‌شوند.
+  */
+  kotlin: {
+    grammar: 'kotlin',
+    support: 'structural',
+    kinds: KOTLIN_KINDS,
+    nameNodes: ['simple_identifier'],
+    functionsInContainersAreMethods: true,
+    paramListNodeTypes: ['function_value_parameters'],
+    kindFromKeyword: {
+      class_declaration: {
+        interface: 'interface',
+        enum: 'enum',
+        default: 'class',
+      },
+    },
+  },
+  swift: {
+    grammar: 'swift',
+    support: 'structural',
+    kinds: SWIFT_KINDS,
+    nameNodes: ['simple_identifier'],
+    functionsInContainersAreMethods: true,
+    paramListNodeTypes: ['parameter_list'],
+    kindFromKeyword: {
+      class_declaration: {
+        struct: 'struct',
+        enum: 'enum',
+        actor: 'class',
+        default: 'class',
+      },
+    },
   },
 });
 

@@ -18,10 +18,40 @@ LSP (100) → tree-sitter (50) → heuristic (10)
 
 ## زبان‌های پشتیبانی‌شده
 
+`full` — نماد، امضا، پارامتر، پیچیدگی و گراف فراخوانی:
+
 - `typescript`
 - `javascript`
 - `typescriptreact` (tsx)
 - `javascriptreact` (jsx)
+
+`structural` — نماد و ساختار از AST، بدون گراف فراخوانی (اعلام می‌شود:
+`describeLanguageSupport`):
+
+- `python` · `go` · `java` · `rust` · `csharp` · `php` · `ruby`
+- `kotlin` · `swift` — AI-06 (cycle-7). این دو گرامر با همان محیطی که
+  پروژه اجرا می‌شود build و validate شدند: `tree-sitter-cli@0.24.7` +
+  `emsdk` (0.26 به GLIBC 2.39 نیاز دارد؛ host این CI 2.35 است) از
+  پکیج‌های رسمی `tree-sitter-kotlin@0.3.8` / `tree-sitter-swift@0.7.1`،
+  و روی همان `web-tree-sitter@0.26.11` بارگذاری/پارس می‌شوند. نام گره‌ها
+  از probe روی همین wasmها گرفته شده، نه از حدس؛ تفکیک
+  class/interface/enum/struct/protocol با `kindFromKeyword` انجام می‌شود
+  (قبلاً هر دو ادعا می‌شدند ABI سازگار ندارند — با اندازه‌گیری ابطال
+  شد: `audit/DECISIONS.md` D-19).
+
+## provenance گرامرها
+
+فایل‌های `tree-sitter-grammars/*.wasm` باینری‌های commit‌شده‌اند. برای
+بازتولید kotlin/swift:
+
+```bash
+npm i -g tree-sitter-cli@0.24.7   # یا npx tree-sitter-cli@0.24.7
+git clone https://github.com/emscripten-core/emsdk && cd emsdk
+./emsdk install latest && ./emsdk activate latest && source ./emsdk_env.sh
+# grammarها را از npm دانلود و در پوشهٔ منبع استخراج کنید
+tree-sitter build --wasm -o tree-sitter-grammars/tree-sitter-kotlin.wasm <kotlin-src>
+tree-sitter build --wasm -o tree-sitter-grammars/tree-sitter-swift.wasm <swift-src>
+```
 
 ## استخراج‌شونده‌ها
 

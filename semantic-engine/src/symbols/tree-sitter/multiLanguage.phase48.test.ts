@@ -275,11 +275,14 @@ describe('سطح پشتیبانی صریح است (SE-SYM-16)', () => {
     expect(supportLevelFor('go')).toBe('structural');
     expect(supportLevelFor('java')).toBe('structural');
     expect(supportLevelFor('rust')).toBe('structural');
+    // AI-06 — Kotlin و Swift حالا گرامرِ build-شده دارند.
+    expect(supportLevelFor('kotlin')).toBe('structural');
+    expect(supportLevelFor('swift')).toBe('structural');
   });
 
   it('زبانِ بدون گرامر، heuristic اعلام می‌شود', () => {
     expect(supportLevelFor('zig')).toBe('heuristic');
-    expect(supportLevelFor('swift')).toBe('heuristic');
+    expect(supportLevelFor('cobol')).toBe('heuristic');
   });
 
   it('پیکربندی هر زبان قابل بازرسی است', () => {
@@ -299,6 +302,17 @@ describe('مسیر tree-sitter در دسترس است', () => {
     const manager = new TreeSitterParserManager({ grammarDir });
 
     for (const languageId of ['python', 'go', 'java', 'rust']) {
+      expect({ languageId, ok: await manager.isAvailable(languageId) }).toEqual({
+        languageId,
+        ok: true,
+      });
+    }
+  });
+
+  it('AI-06 — گرامرهای Kotlin و Swift بارگذاری می‌شوند', async () => {
+    const manager = new TreeSitterParserManager({ grammarDir });
+
+    for (const languageId of ['kotlin', 'swift']) {
       expect({ languageId, ok: await manager.isAvailable(languageId) }).toEqual({
         languageId,
         ok: true,

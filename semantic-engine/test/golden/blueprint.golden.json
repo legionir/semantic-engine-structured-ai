@@ -737,7 +737,15 @@
     },
     {
       "conceptualEntityId": "entity-Store",
-      "fields": [],
+      "fields": [
+        {
+          "isPrimaryKey": false,
+          "name": "rows",
+          "nullable": false,
+          "references": null,
+          "type": "unknown"
+        }
+      ],
       "modelName": "Store",
       "ormType": null,
       "storage": "in-memory",
@@ -764,7 +772,22 @@
     },
     {
       "conceptualEntityId": "entity-User-53f223",
-      "fields": [],
+      "fields": [
+        {
+          "isPrimaryKey": true,
+          "name": "id",
+          "nullable": false,
+          "references": null,
+          "type": "unknown"
+        },
+        {
+          "isPrimaryKey": false,
+          "name": "name",
+          "nullable": false,
+          "references": null,
+          "type": "unknown"
+        }
+      ],
       "modelName": "User",
       "ormType": null,
       "storage": "in-memory",
@@ -1965,11 +1988,11 @@
     {
       "fileId": "4ac2e66c4754461a",
       "id": "cc6ac7e229b640fe",
-      "importanceScore": 18,
+      "importanceScore": 16,
       "kind": "method",
       "line": 6,
       "name": "find",
-      "signature": "find(id: String)"
+      "signature": "find(id: String = id)"
     },
     {
       "fileId": "4ac2e66c4754461a",
@@ -1979,6 +2002,15 @@
       "line": 9,
       "name": "InMemoryRepository",
       "signature": "class InMemoryRepository : Repository"
+    },
+    {
+      "fileId": "4ac2e66c4754461a",
+      "id": "4f142afedbac2aab",
+      "importanceScore": 16,
+      "kind": "method",
+      "line": 12,
+      "name": "find",
+      "signature": "find(id: String = id)"
     },
     {
       "fileId": "52a81ebf47179edf",
@@ -2865,7 +2897,7 @@
     {
       "fileId": "a05d9167dc9da29b",
       "id": "d807cf929979e8d8",
-      "importanceScore": 14,
+      "importanceScore": 20,
       "kind": "interface",
       "line": 3,
       "name": "Identifiable",
@@ -2874,7 +2906,7 @@
     {
       "fileId": "a05d9167dc9da29b",
       "id": "9fb854495231cf75",
-      "importanceScore": 14,
+      "importanceScore": 20,
       "kind": "struct",
       "line": 7,
       "name": "User",
@@ -2882,8 +2914,26 @@
     },
     {
       "fileId": "a05d9167dc9da29b",
+      "id": "3e571e8f2e1e6d98",
+      "importanceScore": 22,
+      "kind": "property",
+      "line": 8,
+      "name": "id",
+      "signature": "id()"
+    },
+    {
+      "fileId": "a05d9167dc9da29b",
+      "id": "4ab42c57a7f92a24",
+      "importanceScore": 22,
+      "kind": "property",
+      "line": 9,
+      "name": "name",
+      "signature": "name()"
+    },
+    {
+      "fileId": "a05d9167dc9da29b",
       "id": "1118bd0f314ec4ec",
-      "importanceScore": 14,
+      "importanceScore": 20,
       "kind": "class",
       "line": 12,
       "name": "Store",
@@ -2891,12 +2941,21 @@
     },
     {
       "fileId": "a05d9167dc9da29b",
+      "id": "5bc67bf25270d81a",
+      "importanceScore": 22,
+      "kind": "property",
+      "line": 13,
+      "name": "rows",
+      "signature": "rows()"
+    },
+    {
+      "fileId": "a05d9167dc9da29b",
       "id": "8256b108c21ed6a7",
-      "importanceScore": 16,
+      "importanceScore": 22,
       "kind": "method",
       "line": 15,
       "name": "find",
-      "signature": "find(id: String)"
+      "signature": "find()"
     },
     {
       "fileId": "a695523a199c1519",
