@@ -1,9 +1,23 @@
 # OPEN ITEMS — consolidated remediation backlog
-Source of truth: user-supplied STATUS REPORT (2026-10-06) reconciled against the
-repo's `audit/FINDING_INDEX.tsv` ledger and `audit/REMEDIATION_PLAN.md`
-references. All ✅ DONE items from Section 1 of the source report are removed.
-Blocked and deliberately-deferred items are kept visible but marked
-explicitly so no one re-litigates them.
+
+> **STALE SNAPSHOT (2026-10-06). SUPERSEDED — do not use as a backlog.**
+> `audit/ACTIVE-ISSUES.md` is the single source of truth (verified 2026-10-08,
+> cycle 5). Every product item listed below as "in progress" / P1 / P2 was
+> re-verified CLOSED in current code on 2026-10-08: F-0030 (`AbortSignal.timeout`
+> in `OpenAILlmClient.ts:36`), F-0010 (`allowedProjects` in
+> `PermissionChecker` + `HttpServer.ts:296`), F-0011 (least-privilege markers on
+> admin routes), F-0009 (`authVerifyRateLimit.test.ts`), F-0012 (`HttpServer.ts:65`
+> dead jobQueue removed), F-0023 (501 stubs in `authRoutes.ts:112-134`),
+> F-0019 (`MAX_CO_CHURN_PARTNERS` in `GitHistoryMiner.ts:33`), F-0021
+> (`configRoutes.ts:31` real model), F-0013/F-0016/F-0018/F-0022/F-0029 and the
+> housekeeping rows per `audit/REMEDIATION_BACKLOG.md` (EXECUTED 2026-10-07).
+> `sa-web-flake` was root-caused and fixed as AI-01/AI-02 — it was not a flake.
+> The genuinely-open tail is exactly: 5 ledger rows (`SE-ARCH-001/002`,
+> `SE-DEBT-003`, `SE-F-057`, `SA-F-007`) + AI-06 (blocked) + AI-13 (deferred by
+> decision) — see ACTIVE-ISSUES.md.
+
+Source reports reconciled: `audit/REMEDIATION_PLAN.md` (Sections A–D), `audit/STATE.md`,
+and the 2026-10-06 STATUS REPORT pasted by the owner.
 
 Legend
 - 🟥 P0 — security / correctness; must land before release.

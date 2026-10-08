@@ -41,6 +41,26 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   code. Only 5 maintainability/design/feature-boundary rows stay `open` with
   rationale; **no HIGH correctness or AI-misleading defect is left open.**
 
+- **2026-10-08 (sixth cycle — independent re-verification, §4.1/§33):** the full
+  surface was re-run from a clean sandbox checkout: `npm ci`-equivalent install →
+  `tsc -p ./` 0 · `tsc -p tsconfig.test.json --noEmit` 0 · eslint 0 ·
+  `npm run test:gate` exit 0 = **273 suites, 3415 pass / 0 fail / 2 skipped**;
+  structured-ai `npm test` full chain exit 0. The cycle-5 counters reproduce
+  exactly — no claim relied on a prior label. Per-row re-check of the
+  supersession chain found `audit/OPEN_ITEMS.md` (2026-10-06) still listing the
+  P1/P2 remediation cluster (F-0009/0010/0011/0012/0018/0019/0021/0023/0029/0030,
+  `sa-web-flake`) as ACTIVE while current code + `REMEDIATION_BACKLOG.md` prove
+  them CLOSED (verified in source: `OpenAILlmClient.ts:36`, `authRoutes.ts:112-134`
+  501s, `HttpServer.ts:65` dead-queue removal, `GitHistoryMiner.ts:33` co-churn
+  cap, `configRoutes.ts:31` real model, `PermissionChecker` allowedProjects,
+  `authVerifyRateLimit.test.ts`). Fixed by marking OPEN_ITEMS.md a stale,
+  superseded snapshot with per-item evidence — documentation now agrees with
+  implementation (§31). The genuinely-open tail is unchanged and was
+  re-confirmed against code: 5 ledger rows (SE-ARCH-001/002, SE-DEBT-003
+  `findByName` still first-match, SE-F-057, SA-F-007) + SA-F-016 open half
+  (cross-process RMW lock — design decision) + AI-06 BLOCKED + AI-13 DEFERRED.
+  No new correctness or AI-misleading defect was found this pass.
+
 ## Counters
 
 - Ledger (`FINDING_INDEX.tsv`, 161 rows): after cycle 5 —
