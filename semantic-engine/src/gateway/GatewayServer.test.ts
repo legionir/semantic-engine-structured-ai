@@ -323,4 +323,118 @@ describeIfBuilt('Semantic Gateway', () => {
     expect(renamed.status).toBe(200);
     expect(renamed.body['name']).toBe('App A renamed');
   }, 300_000);
+
+  /*
+  | SE-F-057 — editing an existing worker must persist the WHOLE config and
+  | reload truthfully. The dashboard used to POST only path/name/id/autoStart
+  | to the collection, so every indexing/watch/service/security/embedding
+  | value was dropped and the worker could not be updated at all.
+  */
+  it('SE-F-057: PATCH stores, returns and re-reads the full worker config', async () => {
+    const edit = await request(port, 'PATCH', `/api/v1/gateway/projects/${idA}`, {
+      token,
+      body: {
+        watch: false,
+        indexing: { pretty: false, blueprint: true },
+        watchOptions: { debounceMs: 900, blueprintMode: 'threshold' },
+      },
+    });
+    expect(edit.status).toBe(200);
+    const stored = edit.body['config'] as Record<string, unknown>;
+    expect(stored).toBeDefined();
+    expect(stored['watch']).toBe(false);
+    expect(stored['indexing']).toMatchObject({ pretty: false, blueprint: true });
+    expect(stored['watchOptions']).toMatchObject({ debounceMs: 900, blueprintMode: 'threshold' });
+
+    /* the reload reproduces the updated state from the detail route */
+    const detail = await request(port, 'GET', `/api/v1/gateway/projects/${idA}`, { token });
+    expect(detail.status).toBe(200);
+    expect(detail.body['config']).toMatchObject({
+      watch: false,
+      watchOptions: { debounceMs: 900 },
+      indexing: { pretty: false },
+    });
+
+    /* a single-field edit preserves the unrelated fields already stored —
+       the old payload silently reset them to defaults */
+    const single = await request(port, 'PATCH', `/api/v1/gateway/projects/${idA}`, {
+      token,
+      body: { watchOptions: { debounceMs: 1500 } },
+    });
+    expect(single.status).toBe(200);
+    const afterSingle = single.body['config'] as Record<string, unknown>;
+    expect(afterSingle['watchOptions']).toMatchObject({ debounceMs: 1500 });
+    expect(afterSingle['watch']).toBe(false); // unrelated watch must be preserved
+    expect(afterSingle['indexing']).toMatchObject({ pretty: false, blueprint: true });
+
+    /*
+    | persistence is on DISK, not in memory: a fresh GatewayServer over the
+    | same data root — exactly what hydration does after a restart — must
+    | reproduce the stored config.
+    */
+    const reopened = new GatewayServer({
+      dataRoot: path.join(base, 'data'),
+      port: 0,
+      host: '127.0.0.1',
+      token: 'second-instance',
+      hydrateOnStart: false,
+    });
+    const durable = reopened.loadStoredWorkerConfig(idA);
+    expect(durable).toBeDefined();
+    expect(durable!.watch).toBe(false);
+    expect(durable!.watchOptions.debounceMs).toBe(1500);
+    expect(durable!.indexing.pretty).toBe(false);
+  }, 300_000);
+
+  it('SE-F-057: an invalid config edit is rejected and leaves the stored config intact', async () => {
+    const before = await request(port, 'GET', `/api/v1/gateway/projects/${idA}`, { token });
+    const goodConfig = before.body['config'];
+
+    const rejected = await request(port, 'PATCH', `/api/v1/gateway/projects/${idA}`, {
+      token,
+      body: { watchOptions: { debounceMs: 5 } }, // below the 25ms floor
+    });
+    expect(rejected.status).toBe(400);
+    expect(String(rejected.body['error'])).toMatch(/debounceMs/);
+
+    const after = await request(port, 'GET', `/api/v1/gateway/projects/${idA}`, { token });
+    expect(after.body['config']).toEqual(goodConfig);
+  }, 300_000);
+
+  it('SE-F-057: a secret in the body is refused, never stored', async () => {
+    const rejected = await request(port, 'PATCH', `/api/v1/gateway/projects/${idA}`, {
+      token,
+      body: { apiKey: 'sk-live-123' },
+    });
+    expect(rejected.status).toBe(400);
+    expect(String(rejected.body['error'])).toMatch(/secret/);
+  }, 300_000);
+
+  it('SE-F-057: an attempted identity change (path/id) is refused, not silently dropped', async () => {
+    const rejected = await request(port, 'PATCH', `/api/v1/gateway/projects/${idA}`, {
+      token,
+      body: { path: '/somewhere/else' },
+    });
+    expect(rejected.status).toBe(400);
+    expect(String(rejected.body['error'])).toMatch(/not patchable/);
+
+    /* the refusal must be side-effect-free: the project is still itself */
+    const detail = await request(port, 'GET', `/api/v1/gateway/projects/${idA}`, { token });
+    expect(detail.body['rootPath']).toBe(rootA);
+  }, 300_000);
+
+  it('SE-F-057: an invalid-config CREATE rolls back — no half-created project', async () => {
+    const rootC = makeProject('app-c', 'gamma');
+    const rejected = await request(port, 'POST', '/api/v1/gateway/projects', {
+      token,
+      body: { path: rootC, name: 'App C', watchOptions: { debounceMs: 5 } },
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body['project']).toBeUndefined();
+
+    /* the root must not be registered as a side effect of the rejected create */
+    const list = await request(port, 'GET', '/api/v1/gateway/projects', { token });
+    const ids = (list.body['projects'] as { id: string; rootPath: string }[]).map(p => p.rootPath);
+    expect(ids).not.toContain(rootC);
+  }, 300_000);
 });

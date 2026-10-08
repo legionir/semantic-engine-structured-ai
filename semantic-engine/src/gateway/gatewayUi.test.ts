@@ -23,6 +23,12 @@ const ui = require(path.join(__dirname, '..', '..', 'public', 'gateway.js')) as 
   renderWorkerRow(worker: Record<string, unknown>): string;
   renderSummaryCards(stats: Record<string, number>): string;
   renderFormFields(values: Record<string, unknown>): string;
+  buildSaveRequest(
+    config: Record<string, unknown>,
+    editingId: string | null,
+    start: boolean
+  ): { url: string; method: string; body: Record<string, unknown> };
+  DEFAULT_FORM_VALUES: Record<string, unknown>;
   projectDashboardUrl(projectId: string): string;
   mcpEndpointUrl(projectId: string): string;
 };
@@ -244,5 +250,181 @@ describe('gateway console — preview and rendering', () => {
     expect(ui.projectDashboardUrl('prj-app-12345678')).toBe('/visualizer?project=prj-app-12345678');
     expect(ui.projectDashboardUrl('a/b')).toBe('/visualizer?project=a%2Fb');
     expect(ui.mcpEndpointUrl('prj-app-12345678')).toBe('/mcp/prj-app-12345678');
+  });
+});
+
+/*
+| SE-F-057 — the dashboard used to drop almost every form field and could not
+| update an existing worker at all (it always POSTed the collection with only
+| path/name/id/autoStart). These lock the corrected request contract:
+| create = POST /projects, update = PATCH /projects/<id>, and the FULL config
+| in both payloads — a field the form left empty is an explicit null on
+| update, never a silently-forgotten key.
+*/
+describe('gateway console — SE-F-057 save request contract', () => {
+  const fullConfig = () => ({
+    projectId: 'prj-app-12345678',
+    name: 'App',
+    rootPath: '/srv/app',
+    watch: false,
+    indexing: { vectors: true, sqlite: true, blueprint: true, git: false, treeSitter: true, pretty: false },
+    watchOptions: { debounceMs: 250, blueprintMode: 'threshold', skipInitialIndex: true },
+    service: { transport: 'socket', host: '127.0.0.1', socketPath: '/run/app.sock', http: true, stdio: false, web: true },
+    security: { gatewayManaged: true, allowRemote: false, tokenEnvVar: 'SE_TOKEN' },
+    embedding: { enabled: true, provider: 'ollama', baseUrl: 'http://127.0.0.1:11434', normalize: true },
+  });
+
+  it('create is a POST on the collection carrying the ENTIRE config', () => {
+    const req = ui.buildSaveRequest(ui.formToConfig(fullConfigValue(fullConfig())) as Record<string, unknown>, null, true);
+    expect(req.method).toBe('POST');
+    expect(req.url).toBe('/api/v1/gateway/projects');
+    expect(req.body['path']).toBe('/srv/app');
+    expect(req.body['id']).toBe('prj-app-12345678');
+    expect(req.body['autoStart']).toBe(true);
+    /* the keys the old payload dropped */
+    expect(req.body['watch']).toBe(false);
+    expect(req.body['indexing']).toEqual(
+      expect.objectContaining({ vectors: true, sqlite: true, git: false, pretty: false })
+    );
+    expect(req.body['watchOptions']).toEqual(
+      expect.objectContaining({ debounceMs: 250, blueprintMode: 'threshold', skipInitialIndex: true })
+    );
+    expect(req.body['service']).toEqual(expect.objectContaining({ transport: 'socket', socketPath: '/run/app.sock' }));
+    expect(req.body['security']).toEqual(expect.objectContaining({ gatewayManaged: true, tokenEnvVar: 'SE_TOKEN' }));
+    expect(req.body['embedding']).toEqual(expect.objectContaining({ enabled: true, provider: 'ollama' }));
+  });
+
+  it('update is a PATCH on the project resource, never the collection', () => {
+    const req = ui.buildSaveRequest(
+      ui.formToConfig(fullConfigValue(fullConfig())) as Record<string, unknown>,
+      'prj-app-12345678',
+      false
+    );
+    expect(req.method).toBe('PATCH');
+    expect(req.url).toBe('/api/v1/gateway/projects/prj-app-12345678');
+    expect(req.body['path']).toBeUndefined();
+    expect(req.body['id']).toBeUndefined();
+    expect(req.body['autoStart']).toBe(false);
+    expect(req.body['name']).toBe('App');
+    expect(req.body['indexing']).toEqual(expect.objectContaining({ vectors: true }));
+    expect(req.body['embedding']).toEqual(expect.objectContaining({ provider: 'ollama' }));
+  });
+
+  it('update sends an explicit null for every optional field the form left empty', () => {
+    const sparse = ui.formToConfig({
+      projectId: 'prj-app-12345678',
+      name: 'App',
+      rootPath: '/srv/app',
+      transport: 'loopback',
+      vectors: true,
+    }) as Record<string, unknown>;
+    const req = ui.buildSaveRequest(sparse, 'prj-app-12345678', false);
+    const service = req.body['service'] as Record<string, unknown>;
+    const security = req.body['security'] as Record<string, unknown>;
+    const embedding = req.body['embedding'] as Record<string, unknown>;
+    expect(req.body['dataDir']).toBeNull();
+    expect(req.body['outOverride']).toBeNull();
+    expect(service['port']).toBeNull();
+    expect(service['socketPath']).toBeNull();
+    expect(security['tokenEnvVar']).toBeNull();
+    expect(embedding['model']).toBeNull();
+    expect(embedding['baseUrl']).toBeNull();
+  });
+
+  it('update carries a value for EVERY schema key — nothing is dropped', () => {
+    const req = ui.buildSaveRequest(
+      ui.formToConfig(fullConfigValue(fullConfig())) as Record<string, unknown>,
+      'prj-x',
+      false
+    );
+    const covered = new Set<string>();
+    for (const field of ui.WORKER_FORM_FIELDS) {
+      if (field.configPath === 'projectId' || field.configPath === 'rootPath') continue;
+      covered.add(field.configPath);
+    }
+    for (const key of covered) {
+      const value = key.split('.').reduce<unknown>(
+        (acc, part) => (acc === null || typeof acc !== 'object' ? undefined : (acc as Record<string, unknown>)[part]),
+        req.body
+      );
+      expect(`${key}=${JSON.stringify(value)}`).toMatch(/=/);
+      expect(value).not.toBeUndefined();
+    }
+  });
+
+  it('escapes the edited project id in the URL', () => {
+    const req = ui.buildSaveRequest({ projectId: 'a/b', name: 'n', rootPath: '/r' }, 'a/b', false);
+    expect(req.url).toBe('/api/v1/gateway/projects/a%2Fb');
+  });
+});
+
+function fullConfigValue(config: Record<string, unknown>): Record<string, unknown> {
+  /* configToForm-style values: the form is built from a full config, saved
+     through formToConfig, so the test feeds the SAME shape the browser does. */
+  const values: Record<string, unknown> = {};
+  for (const field of ui.WORKER_FORM_FIELDS) {
+    const raw = getPath(config, field.configPath);
+    if (raw === undefined) continue;
+    values[field.name] = raw;
+  }
+  return values;
+}
+
+function getPath(source: unknown, dotted: string): unknown {
+  return dotted.split('.').reduce<unknown>(
+    (acc, key) => (acc === undefined || acc === null ? undefined : (acc as Record<string, unknown>)[key]),
+    source
+  );
+}
+
+/*
+| SE-F-057 (independent-review guard) — the "New worker" form now submits the
+| whole config, so its initial values MUST equal the backend schema defaults;
+| otherwise an untouched new worker silently flips defaults to false/absent.
+| The UI table and the JSON Schema are two sources of the same truth — this
+| test fails the moment they drift apart, so neither can lie about the other.
+*/
+describe('gateway console — DEFAULT_FORM_VALUES mirrors the WorkerConfig schema', () => {
+  /** schema default at a dotted path, or `undefined` when it declares none. */
+  function schemaDefault(dotted: string): unknown {
+    const [top, child] = dotted.split('.');
+    const props = WORKER_CONFIG_JSON_SCHEMA.properties as Record<
+      string,
+      { default?: unknown; properties?: Record<string, { default?: unknown }> }
+    >;
+    const def = props[top];
+    if (!def) return undefined;
+    if (child === undefined) return def.default;
+    return def.properties?.[child]?.default;
+  }
+
+  const FIELD_BY_NAME = new Map(ui.WORKER_FORM_FIELDS.map(f => [f.name, f]));
+
+  /*
+  | autoStart is deliberately NOT in the defaults table: the payload's
+  | autoStart comes from which Save button was pressed ("save & start" vs
+  | "save only") — the request builder skips the checkbox field entirely, so
+  | a default here would be a second, contradictory source.
+  */
+  const BUTTON_DRIVEN = new Set(['autoStart']);
+
+  it('every declared default equals the schema default', () => {
+    for (const [name, value] of Object.entries(ui.DEFAULT_FORM_VALUES)) {
+      const field = FIELD_BY_NAME.get(name);
+      expect(field).toBeDefined();
+      const expected = schemaDefault(field!.configPath);
+      expect(`${name}=${JSON.stringify(value)}`).toBe(`${name}=${JSON.stringify(expected)}`);
+    }
+  });
+
+  it('every schema-declared default is present in the form table (no default silently flipped)', () => {
+    for (const field of ui.WORKER_FORM_FIELDS) {
+      if (BUTTON_DRIVEN.has(field.configPath)) continue;
+      const expected = schemaDefault(field.configPath);
+      if (expected === undefined) continue; // optional fields carry no schema default
+      expect(`${field.configPath} covered? ${field.name in ui.DEFAULT_FORM_VALUES}`).toBe(
+        `${field.configPath} covered? true`
+      );
+    }
   });
 });

@@ -131,3 +131,40 @@ correctness rule of the semantic layer; it is not satisfied by the tool
   `structuredContent` (`SemanticEngineMcpServer`), unpacked unchanged on the
   structured-ai side (`JsonRpcCodec`), so the honesty survives the
   integration boundary (§28).
+## Gateway per-project worker config (SE-F-057, executed 2026-10-08)
+
+The Gateway dashboard edits a project's **whole** worker config, so the
+`/api/v1/gateway/projects` surface carries explicit create/update semantics
+and truthful persistence — a save that silently dropped fields or "succeeded"
+without the config landing is exactly the misleading success §2 forbids.
+
+- **Identity is registry-owned.** `POST /projects` creates (or returns the
+  existing record for a repeated canonical root); `PATCH /projects/:id` updates
+  name/enabled/autoStart **and** the worker config. A PATCH body that tries to
+  move the project (`path`/`rootPath`/`id`) is rejected `400` with a named
+  error — never silently ignored. `projectId`/`rootPath` in the stored config
+  always come from the registry, never the payload.
+- **All-or-nothing config writes.** Both POST and PATCH validate the incoming
+  config (the full `WORKER_CONFIG_JSON_SCHEMA` rules) BEFORE any write: a
+  rejected edit leaves the stored config and the registry byte-unchanged, and a
+  rejected *create* rolls back its own registration. A secret in the body
+  (`token`/`apiKey`) is refused, never stored.
+- **Merge semantics (documented for API consumers).** A PATCH payload's object
+  fields merge per leaf; an explicit `null` clears a field back to its default;
+  a payload with no config keys changes no config. A config key the dashboard
+  form did not render is therefore never silently reset.
+- **Truthful effect.** `GET /projects/:id` discloses the **effective** config,
+  which is what a worker starts with (hydration, lifecycle start, CLI) and what
+  the form rehydrates from — not what was last "requested". Updating a RUNNING
+  worker restarts it so the config is live; if that restart fails, the answer is
+  `500` and says exactly what happened (config stored, worker not restarted)
+  rather than implying a complete success.
+- **Durability.** The config lives at `<dataRoot>/projects/<id>/worker-config.json`
+  (outside the source root — D-rule on artifacts), written atomically
+  (temp+rename). A corrupted or no-longer-valid stored file falls back to the
+  default config rather than half-applying, and never crashes the Gateway.
+- **Contract lock.** `gatewayUi.test.ts` pins the request contract and that the
+  new-worker form's initial values equal the schema defaults (mechanically, so
+  UI and schema cannot drift); `GatewayServer.test.ts` pins storage, re-read,
+  unrelated-field preservation, durability across a fresh server instance,
+  rollback of invalid creates, refusal of identity edits and secrets.

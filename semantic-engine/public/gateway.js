@@ -84,6 +84,37 @@ const GatewayUi = (function () {
         { key: "degraded", label: "Degraded" }
     ];
 
+    /*
+    | SE-F-057 — the initial values of a NEW worker form. The save payload now
+    | carries the whole config, so an empty form would silently send
+    | `blueprint:false, git:false, …` and flip the documented backend defaults.
+    | These mirror WORKER_CONFIG_JSON_SCHEMA's `default` entries; a test
+    | (gatewayUi.test.ts) compares this table against the schema key by key,
+    | so the two can never drift — one source of truth, mechanically checked.
+    */
+    const DEFAULT_FORM_VALUES = {
+        watch: true,
+        blueprint: true,
+        git: true,
+        treeSitter: true,
+        pretty: true,
+        vectors: false,
+        sqlite: false,
+        debounceMs: 500,
+        blueprintMode: "always",
+        skipInitialIndex: false,
+        transport: "loopback",
+        host: "127.0.0.1",
+        http: false,
+        stdio: false,
+        web: false,
+        gatewayManaged: false,
+        allowRemote: false,
+        embeddingEnabled: false,
+        embeddingProvider: "local",
+        embeddingNormalize: true
+    };
+
     // No logs/events route is part of the Gateway route inventory. Keep these
     // controls visibly disabled instead of issuing guaranteed 404 requests.
     const UNSUPPORTED_ACTIONS = new Set(["logs", "events"]);
@@ -442,6 +473,61 @@ const GatewayUi = (function () {
         return "/mcp/" + encodeURIComponent(projectId);
     }
 
+    /*
+    | SE-F-057 — the save request shape, as a PURE function so it can be
+    | tested outside the browser: create is POST on the collection with the
+    | registration keys plus the whole config; update is PATCH on the
+    | project's own resource with the full config, where an optional field
+    | the form left empty is sent as an explicit null (clears it back to the
+    | default) instead of vanishing and silently keeping the old value.
+    */
+    const OPTIONAL_SCALARS = [
+        "dataDir", "outOverride",
+        ["service", "port"], ["service", "uiPort"], ["service", "mcpPort"],
+        ["service", "socketPath"],
+        ["security", "tokenEnvVar"],
+        ["embedding", "model"], ["embedding", "baseUrl"], ["embedding", "apiKeyEnvVar"],
+        ["embedding", "useDefaultModel"]
+    ];
+
+    function buildSaveRequest(config, editingId, start) {
+        const full = {};
+        for (const field of WORKER_FORM_FIELDS) {
+            if (field.configPath === "projectId" || field.configPath === "name" ||
+                field.configPath === "rootPath" || field.configPath === "autoStart") {
+                continue;
+            }
+            setPath(full, field.configPath, getPath(config, field.configPath));
+        }
+
+        if (!editingId) {
+            return {
+                url: "/api/v1/gateway/projects",
+                method: "POST",
+                body: Object.assign({
+                    path: config.rootPath,
+                    name: config.name,
+                    id: config.projectId,
+                    autoStart: Boolean(start)
+                }, full)
+            };
+        }
+
+        for (const spec of OPTIONAL_SCALARS) {
+            const dotted = Array.isArray(spec) ? spec.join(".") : spec;
+            if (getPath(full, dotted) === undefined) setPath(full, dotted, null);
+        }
+
+        return {
+            url: "/api/v1/gateway/projects/" + encodeURIComponent(editingId),
+            method: "PATCH",
+            body: Object.assign({}, full, {
+                name: config.name,
+                autoStart: Boolean(start)
+            })
+        };
+    }
+
     return {
         WORKER_FORM_FIELDS,
         WORKER_TABLE_COLUMNS,
@@ -459,6 +545,8 @@ const GatewayUi = (function () {
         renderWorkerRow,
         renderSummaryCards,
         renderFormFields,
+        buildSaveRequest,
+        DEFAULT_FORM_VALUES,
         HEALTH_SECTIONS,
         renderHealthPanel,
         projectDashboardUrl,
@@ -496,6 +584,7 @@ if (typeof document !== "undefined") {
 
         let workers = [];
         let editing = null;
+        let formBlocked = false;
 
         async function api(path, options) {
             const res = await fetch(path, Object.assign({ headers: headers() }, options || {}));
@@ -515,19 +604,50 @@ if (typeof document !== "undefined") {
         function openForm(projectId) {
             const worker = workers.find(function (w) { return w.projectId === projectId; });
             editing = projectId;
-            const values = GatewayUi.configToForm(
-                worker
-                    ? {
-                        projectId: worker.projectId,
-                        name: worker.name,
-                        rootPath: worker.rootPath
-                    }
-                    : {}
-            );
-            els.formTitle.textContent = worker ? "Edit " + worker.name : "New worker";
-            els.formFields.innerHTML = GatewayUi.renderFormFields(values);
-            els.form.hidden = false;
-            updatePreview();
+            formBlocked = false;
+
+            /*
+            | SE-F-057 — hydrate EVERY field from the project's real, effective
+            | worker config, not the three the old save path could send. The
+            | list row is enough for the title, but the full config comes from
+            | the detail route; if that fetch fails we fall back to the row's
+            | identity fields rather than silently showing a blank config that
+            | a save would then reset.
+            */
+            const identity = worker
+                ? { projectId: worker.projectId, name: worker.name, rootPath: worker.rootPath }
+                : {};
+
+            function paintValues(values) {
+                els.formTitle.textContent = worker ? "Edit " + worker.name : "New worker";
+                els.formFields.innerHTML = GatewayUi.renderFormFields(values);
+                els.form.hidden = false;
+                updatePreview();
+            }
+
+            function paint(config) {
+                paintValues(GatewayUi.configToForm(config || identity));
+            }
+
+            if (!worker) {
+                /* a NEW worker starts from the schema defaults — an empty form
+                | would now submit explicit falses and flip them. */
+                paintValues(Object.assign({}, GatewayUi.DEFAULT_FORM_VALUES));
+                return;
+            }
+
+            api("/api/v1/gateway/projects/" + encodeURIComponent(projectId))
+                .then(function (detail) { paint(detail && detail.config ? detail.config : identity); })
+                .catch(function (error) {
+                    /* an edit whose effective config cannot be read must not
+                    | be saved blind — a submit would now write the visible
+                    | fields over the real config. Only identity is trusted. */
+                    formBlocked = true;
+                    els.formErrors.textContent =
+                        "config load failed: " + error.message +
+                        " — fix the connection before saving this worker";
+                    paint(identity);
+                });
         }
 
         function formValues() {
@@ -540,7 +660,9 @@ if (typeof document !== "undefined") {
 
         function updatePreview() {
             const values = formValues();
-            els.formErrors.textContent = "";
+            /* a blocked edit keeps its reason visible — clearing it on every
+            | keystroke would make the failure look like it healed */
+            if (!formBlocked) els.formErrors.textContent = "";
             const errors = GatewayUi.validateForm(values);
             if (errors.length > 0) {
                 els.formErrors.textContent = errors
@@ -594,33 +716,45 @@ if (typeof document !== "undefined") {
 
         document.getElementById("new-worker").addEventListener("click", function () {
             editing = null;
+            formBlocked = false;
+            els.formErrors.textContent = "";
             els.formTitle.textContent = "New worker";
-            els.formFields.innerHTML = GatewayUi.renderFormFields({});
+            els.formFields.innerHTML = GatewayUi.renderFormFields(GatewayUi.DEFAULT_FORM_VALUES);
             els.form.hidden = false;
             updatePreview();
         });
 
         async function save(start) {
+            if (formBlocked) {
+                els.formErrors.textContent =
+                    "saving is blocked: this worker's config could not be loaded, and saving now would overwrite it";
+                return;
+            }
             const values = formValues();
             const errors = GatewayUi.validateForm(values);
             if (errors.length > 0) {
                 els.formErrors.textContent = errors.map(function (e) { return e.field + ": " + e.message; }).join(" — ");
                 return;
             }
+
+            /*
+            | SE-F-057 — the complete config the form models is sent, and an
+            | EDIT uses PATCH on the project's own resource instead of always
+            | POSTing to the collection (the old code could never update an
+            | existing worker). The request shape is the pure, tested
+            | buildSaveRequest contract.
+            */
             const config = GatewayUi.formToConfig(values);
-            const body = {
-                path: config.rootPath,
-                name: config.name,
-                id: config.projectId,
-                autoStart: Boolean(start)
-            };
+            const request = GatewayUi.buildSaveRequest(config, editing, start);
             try {
-                await api("/api/v1/gateway/projects", {
-                    method: "POST",
+                await api(request.url, {
+                    method: request.method,
                     headers: Object.assign({ "Content-Type": "application/json" }, headers()),
-                    body: JSON.stringify(body)
+                    body: JSON.stringify(request.body)
                 });
                 els.form.hidden = true;
+                els.formErrors.textContent = "";
+                editing = null;
                 await refresh();
             } catch (error) {
                 els.formErrors.textContent = error.message;

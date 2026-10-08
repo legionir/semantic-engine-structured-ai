@@ -586,15 +586,10 @@ export class GatewayServer {
   }
 
   /**
-   * SE-F-058: a synchronous entry builder cannot fetch fresh stats.
-   * Routes that answer about a project first give the health loop's
-   * cache a chance to be real: when the project has a worker, refresh it
-   * (one internal HTTP request, same one the monitor makes every 10s).
+   * SE-F-058: a list built synchronously would claim stale (or zero) stats,
+   * so every project with a live worker is refreshed (one internal health
+   * request) before the payload is assembled.
    */
-  private async projectEntryFresh(id: string): Promise<Record<string, unknown>> {
-    await this.supervisor.refreshStats(id);
-    return this.projectEntry(id);
-  }
 
   private async projectListPayload(record: ApiKeyRecord) {
     const projects = this.registry
@@ -639,6 +634,11 @@ export class GatewayServer {
     const name = String(body['name'] ?? path.basename(rootPath));
     const requestedId = body['id'] !== undefined ? String(body['id']) : undefined;
 
+    /* SE-F-057 — did this root already exist? If not, and the config in the
+    | same payload turns out invalid, the half-created registration is rolled
+    | back: a rejected create must not leave a project behind. */
+    const preexisting = this.registry.getByRoot(rootPath);
+
     let registered: ReturnType<ProjectRegistry['register']>;
     try {
       registered = this.registry.register({
@@ -655,6 +655,26 @@ export class GatewayServer {
       registered = this.registry.update(registered.id, { autoStart: body['autoStart'] });
     }
 
+    /*
+    | SE-F-057 — if the payload carried real worker-config keys, validate
+    | them BEFORE any write and store only on success. A body with only
+    | registration keys (a legacy POST) stores nothing and the project keeps
+    | its default config — backwards compatible.
+    */
+    const incoming = this.validateIncomingWorkerConfig(registered, body);
+    if (incoming.changed) {
+      if ('error' in incoming) {
+        /* rollback: an invalid-config create leaves nothing behind */
+        if (!preexisting) this.registry.remove(registered.id);
+        this.send(res, 400, {
+          error: incoming.error,
+          ...(preexisting ? { project: this.projectEntry(registered.id) } : {}),
+        });
+        return;
+      }
+      this.storeWorkerConfig(incoming.config);
+    }
+
     const autoStart = body['autoStart'] === true;
     if (autoStart) {
       try {
@@ -669,7 +689,7 @@ export class GatewayServer {
     }
 
     this.broadcast({ type: 'project-registered', projectId: registered.id });
-    this.send(res, 201, this.projectEntry(registered.id));
+    this.send(res, 201, this.projectEntryWithConfig(registered.id));
   }
 
   /** ساخت config معتبر یک پروژه؛ عمومی است چون `gateway` CLI هم لازم دارد. */
@@ -677,7 +697,177 @@ export class GatewayServer {
     return this.configFor(projectId, rootPath, name);
   }
 
+  /*
+  | SE-F-057 — the dashboard form edits the project's WHOLE worker config, not
+  | only path/name/autoStart. The config therefore has to be persisted per
+  | project (beside the registry manifest, never inside the source root) and
+  | fed back into every start path — hydration, POST, PATCH, lifecycle start —
+  | otherwise an edit "saves" in the UI and evaporates on the next start.
+  */
+
+  /** مسیر فایل config پایدار یک پروژه (خارج از source root). */
+  workerConfigPath(projectId: string): string {
+    if (!isPathSafeProjectId(projectId)) {
+      throw new Error(`project id is not usable as a directory name: ${projectId}`);
+    }
+    return path.join(this.registry.projectDataDir(projectId), 'worker-config.json');
+  }
+
+  /** config پایدار یک پروژه؛ `undefined` یعنی هیچ config سفارشی ثبت نشده. */
+  loadStoredWorkerConfig(projectId: string): ProjectWorkerConfig | undefined {
+    if (!isPathSafeProjectId(projectId)) return undefined;
+    let raw: string;
+    try {
+      raw = fs.readFileSync(this.workerConfigPath(projectId), 'utf8');
+    } catch {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const validation = validateWorkerConfig(parsed as never, { checkFileSystem: false });
+      /* A stored config that no longer validates is treated as absent — and
+         the answer stays HONEST: the default config is used, never a half-
+         applied custom one. (The file itself is left for inspection.) */
+      return validation.ok ? validation.config : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private storeWorkerConfig(config: ProjectWorkerConfig): void {
+    const target = this.workerConfigPath(config.projectId);
+    fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+    /* temp + rename: a crash can never leave a half-written config that a
+       later hydration would parse as "no config" or, worse, as a truncated
+       object. */
+    const tmp = path.join(
+      path.dirname(target),
+      `.worker-config.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+    );
+    fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, target);
+  }
+
+  /**
+   * SE-F-057 — validate a worker-config change from an incoming payload
+   * WITHOUT writing anything. Callers persist only after every other field
+   * also validated, so a rejected edit can never corrupt the stored config.
+   *
+   * Merge semantics, deliberately documented for API consumers:
+   *   - a payload with NO config keys (the legacy registration shape: only
+   *     path/name/id/autoStart) requests no config change;
+   *   - every config key the payload DOES carry is applied — plain objects
+   *     merge per leaf, `null` clears a field back to its default;
+   *   - identity (projectId/name/rootPath) and `autoStart` always come from
+   *     the registry record, never from the config body.
+   */
+  private validateIncomingWorkerConfig(
+    record: { id: string; name: string; rootPath: string; autoStart: boolean },
+    body: Record<string, unknown>
+  ):
+    | { readonly changed: false }
+    | { readonly changed: true; readonly config: ProjectWorkerConfig }
+    | { readonly changed: true; readonly error: string } {
+    const CONFIG_KEYS = [
+      'dataDir',
+      'outOverride',
+      'watch',
+      'indexing',
+      'watchOptions',
+      'service',
+      'security',
+      'embedding',
+    ] as const;
+
+    /* secrets must never reach the stored config, not even as a stray key */
+    if ('token' in body || 'apiKey' in body) {
+      return {
+        changed: true,
+        error:
+          'a secret must not be part of the worker config; pass security.tokenEnvVar or embedding.apiKeyEnvVar instead',
+      };
+    }
+
+    const provided = CONFIG_KEYS.filter(key => body[key] !== undefined);
+    if (provided.length === 0) return { changed: false };
+
+    const stored = this.loadStoredWorkerConfig(record.id);
+    const base = createWorkerConfig({
+      projectId: record.id,
+      name: record.name,
+      rootPath: record.rootPath,
+      autoStart: record.autoStart,
+      ...(stored ? (stored as never) : {}),
+    } as never) as unknown as Record<string, unknown>;
+
+    const merged: Record<string, unknown> = {
+      ...base,
+      projectId: record.id,
+      name: record.name,
+      rootPath: record.rootPath,
+      autoStart: record.autoStart,
+    };
+
+    for (const key of provided) {
+      const incoming = body[key];
+      if (incoming === null) {
+        delete merged[key];
+        continue;
+      }
+      const current = merged[key];
+      if (
+        incoming !== null &&
+        typeof incoming === 'object' &&
+        !Array.isArray(incoming) &&
+        current !== null &&
+        typeof current === 'object' &&
+        !Array.isArray(current)
+      ) {
+        const leaf: Record<string, unknown> = { ...(current as Record<string, unknown>) };
+        for (const [k, v] of Object.entries(incoming as Record<string, unknown>)) {
+          if (v === null) delete leaf[k];
+          else leaf[k] = v;
+        }
+        merged[key] = leaf;
+      } else {
+        merged[key] = incoming;
+      }
+    }
+
+    /* validate BEFORE storing: an invalid edit must leave the existing,
+       working configuration intact. checkFileSystem:false because the
+       registry already owns a canonical, existing root; a socket path
+       inside that root is still rejected by the schema rules. */
+    const validation = validateWorkerConfig(merged as never, { checkFileSystem: false });
+    if (!validation.ok) {
+      return { changed: true, error: validation.errors.join('; ') };
+    }
+    return { changed: true, config: validation.config };
+  }
+
+  /** پاسخ پروژه + config مؤثر فعلی؛ برای hydration فرم دَش‌بُرد (SE-F-057). */
+  private projectEntryWithConfig(id: string): Record<string, unknown> {
+    const record = this.registry.get(id);
+    const config =
+      this.loadStoredWorkerConfig(id) ??
+      (record ? this.configFor(id, record.rootPath, record.name) : undefined);
+    return {
+      ...this.projectEntry(id),
+      ...(config !== undefined ? { config } : {}),
+    };
+  }
+
   private configFor(projectId: string, rootPath: string, name: string): ProjectWorkerConfig {
+    const stored = this.loadStoredWorkerConfig(projectId);
+    if (stored) {
+      /* identity always comes from the registry — a stored config can never
+         redirect a project's worker to a different root or id. */
+      const rebuilt = createWorkerConfig({ ...stored, projectId, name, rootPath });
+      const validation = validateWorkerConfig(rebuilt as never, { checkFileSystem: true });
+      if (validation.ok) return validation.config;
+      /* the stored config became invalid against this root — fall through to
+         the default so the worker still starts honestly. */
+    }
     const config = createWorkerConfig({
       projectId,
       name,
@@ -725,8 +915,12 @@ export class GatewayServer {
       if (method === 'GET') {
         /* SE-F-058 — یک تازه‌سازی هدفمند: همان درخواستی که حلقهٔ health
            هر ۱۰ ثانیه می‌زند؛ این‌جا در لحظهٔ پرسش تکرار می‌شود تا
-           آمارِ پاسخ، آخرین اندازه‌گیری باشد نه قدیمی‌ترین. */
-        this.send(res, 200, await this.projectEntryFresh(projectId));
+           آمارِ پاسخ، آخرین اندازه‌گیری باشد نه قدیمی‌ترین.
+           SE-F-057 — the detail answer also carries the effective worker
+           config so the dashboard form hydrates EVERY field, not just the
+           three the old save path could send. */
+        await this.supervisor.refreshStats(projectId);
+        this.send(res, 200, this.projectEntryWithConfig(projectId));
         return;
       }
       if (method === 'DELETE') {
@@ -745,6 +939,22 @@ export class GatewayServer {
           return;
         }
         const patch: { name?: string; enabled?: boolean; autoStart?: boolean } = {};
+        /*
+        | SE-F-057 — identity is registry-owned: a PATCH body that tries to
+        | move the project (`path`/`rootPath`/`id`) is refused with a real
+        | error rather than silently ignored — a 200 that quietly dropped an
+        | attempted root change is exactly the misleading success §2 forbids.
+        */
+        for (const forbidden of ['path', 'rootPath', 'id'] as const) {
+          if (body[forbidden] !== undefined) {
+            this.send(res, 400, {
+              error:
+                `project identity (${forbidden}) is not patchable; it comes from the registry — ` +
+                'remove the key (or relocate via the registry API) and resend',
+            });
+            return;
+          }
+        }
         if (body['name'] !== undefined) {
           if (typeof body['name'] !== 'string' || body['name'].trim() === '') {
             this.send(res, 400, { error: 'name must be a non-empty string' });
@@ -761,11 +971,65 @@ export class GatewayServer {
             patch[key] = body[key] as boolean;
           }
         }
-        const updated = this.registry.update(projectId, patch);
+
+        /*
+        | SE-F-057 — the dashboard edits the WHOLE worker config, so PATCH
+        | accepts the same config keys as POST. Everything is validated
+        | BEFORE anything is written: a rejected edit leaves both the
+        | registry record and the stored config exactly as they were
+        | (all-or-nothing).
+        */
+        const prospective = {
+          id: registered.id,
+          name: patch.name ?? registered.name,
+          rootPath: registered.rootPath,
+          autoStart: patch.autoStart ?? registered.autoStart,
+        };
+        const incoming = this.validateIncomingWorkerConfig(prospective, body);
+        if (incoming.changed && 'error' in incoming) {
+          this.send(res, 400, {
+            error: incoming.error,
+            project: this.projectEntryWithConfig(projectId),
+          });
+          return;
+        }
+
+        const updatedRecord = this.registry.update(projectId, patch);
+        if (incoming.changed) {
+          this.storeWorkerConfig(incoming.config);
+        }
+
         // Decision D-2: disabling a project must not leave its worker running.
-        if (patch.enabled === false) await this.supervisor.stop(projectId);
-        this.broadcast({ type: 'project-updated', projectId: updated.id });
-        this.send(res, 200, this.projectEntry(updated.id));
+        if (patch.enabled === false) {
+          await this.supervisor.stop(projectId);
+        } else if (incoming.changed && this.supervisor.isRunning(projectId)) {
+          /*
+          | The edit is not real until the worker runs the new config:
+          | a live worker keeps its old argv, so restart it with the freshly
+          | stored configuration. (Restart failure is reported truthfully —
+          | the config IS stored and applies on the next start.)
+          */
+          try {
+            await this.supervisor.stop(projectId);
+            await this.startWorkerFor(projectId, updatedRecord.rootPath, updatedRecord.name);
+          } catch (error) {
+            this.broadcast({
+              type: 'project-update-restart-failed',
+              projectId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            this.send(res, 500, {
+              error: `configuration stored but the worker could not be restarted: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+              project: this.projectEntryWithConfig(projectId),
+            });
+            return;
+          }
+        }
+
+        this.broadcast({ type: 'project-updated', projectId: updatedRecord.id });
+        this.send(res, 200, this.projectEntryWithConfig(updatedRecord.id));
         return;
       }
       this.send(res, 405, { error: `method ${method} not allowed` });
