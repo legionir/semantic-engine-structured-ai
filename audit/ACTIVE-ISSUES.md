@@ -1,4 +1,4 @@
-# Active Issues — single source of truth (verified 2026-10-07)
+# Active Issues — single source of truth (verified 2026-10-08)
 
 Supersedes `OPEN_ITEMS.md` (2026-10-06) and consolidates the 2026-10-07 remediation.
 Every row was re-verified against **current source + a live sandbox run** — not
@@ -18,22 +18,32 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
 - **2026-10-07 (third cycle):** per-row verification of the ledger's open
   backlog against current code — the HIGH class is fully dispositioned and
   6 real defects were fixed + regression-locked this cycle (AI-07…AI-12 below).
+- **2026-10-08 (fourth cycle):** §4.1 caught the *prior claim itself* again:
+  a bare `npx jest` from a clean checkout passes 257 suites and SILENTLY
+  SKIPS the 10 dist-gated gateway/CLI/e2e suites (the cycle-3 "267/267 from a
+  clean checkout" required `npm run build` first). Fixed: jest globalSetup now
+  prints an honest dist-skip notice, and `check-tests.js` bounds suite-level
+  skips via `test-skip-budget.json` (AI-16 below). Per-row verification of the
+  ledger continued: 27 more rows dispositioned with current-code evidence
+  (`audit/findings/P04-PER-ROW-CYCLE4.md`); 6 genuinely-open defects were
+  fixed + regression-locked (AI-15…AI-20 below).
 
 ## Counters
 
-- Ledger (`FINDING_INDEX.tsv`, 161 rows incl. 2 filed last cycle):
-  **47 fixed · 11 invalid · 6 superseded · 15 duplicate · 82 open.**
-- Active product backlog (this file): AI-01…AI-14.
-- Critical: 0 open. All HIGH ledger rows are dispositioned with evidence except
-  SE-ARCH-001 (`ContextDiscoverer.discover()` 200-line monolith) — a real
-  maintainability finding that misleads no AI and is deliberately not rewritten
-  (§12); tracked as AI-13, OPEN by decision, not by oversight.
-- Third-cycle fixes: SA-REL-004 (P0 data-destruction), SE-F-058 (fabricated
-  zeros), SE-SEC-001 (authRequired false→null), SA-F-005 (UTF-8 chunk corruption),
-  SA-POL-001/002/004 (+ bounded history), SE-F-027 (args-only LSP override
-  silently dropped), jest-fixture reproducibility.
-- AI-04 PARTIALLY_RESOLVED (per-row verification continues: 82 honest `open`
-  rows remain, each with source-report evidence pointers; none silently closed).
+- Ledger (`FINDING_INDEX.tsv`, 161 rows): after cycle 4 —
+  **72 fixed · 11 invalid · 6 superseded · 17 duplicate · 55 open.**
+  All HIGH rows dispositioned; the remaining open rows are MEDIUM/LOW/Unknown
+  quality-hygiene items, each honestly labeled `open — not verified fixed`.
+- Active product backlog (this file): AI-01…AI-20.
+- Critical: 0 open. SE-ARCH-001 tracked as AI-13, OPEN by decision (§12).
+- Fourth-cycle fixes: SA-F-004 (rename applied at wrong location / fake
+  `applied:true`), SA-F-002 (compression lost the immutable original — fixed
+  WITHOUT leaking it to the wire), SE-API-001 (cross-project job cancel),
+  SE-API-002 (validation errors answered as HTTP 500), SE-F-049 (gate claimed
+  "all suites ran" over 10 skipped suites), SE-F-009 (type barrel missing
+  Blueprint exports), SE-UI-001 (project switch left stale project state).
+- AI-04 PARTIALLY_RESOLVED (55 honest `open` rows remain, each with
+  source-report evidence pointers; none silently closed).
 - AI-06 OPEN·BLOCKED (environment).
 
 ## Status legend (per §4)
@@ -134,6 +144,137 @@ against prior "RESOLVED" labels (per §4.1: the label is not the proof).
   was corrected in this file rather than left standing.
 - **Validation:** `rm -rf test-fixture && npx jest …` now green; full 267-suite
   run from a clean tree verified.
+
+---
+
+## AI-15 — `code_rename` renamed at the FIRST textual match, not the designated range, and always claimed `applied: true` (SA-F-004, P1)
+
+- **Category:** AI-context quality / data corruption (§15: symbol/path/line presented wrong)
+- **Status:** RESOLVED (2026-10-08)
+- **Problem:** apply-mode rename did `content.replace(edit.oldText, edit.newText)`
+  — a blind first-occurrence replace that ignores the edit's own `range`/`line`.
+  A repeated identifier was renamed at the wrong site; an edit whose `oldText`
+  matched nothing was silently dropped; and the tool returned `applied: !dryRun`
+  unconditionally, so a rename that changed nothing (or the wrong thing) was
+  reported as success. An AI consuming `applied:true` could not tell a correct
+  rename from a corruption or a no-op.
+- **Change made:** each edit is applied at its designated LSP `range`
+  (resolved to a byte span via a bounds-checked `rangeToSpan`) or at its 1-based
+  `line`; only when neither is locatable does it fall back to a whole-file
+  `oldText` replace, and that fallback fires ONLY when `oldText` is unambiguous
+  (exactly one occurrence) — a repeated identifier is refused, never guessed.
+  `applied` is now earned (true only when ≥1 edit was actually written);
+  `edits_applied`/`edits_skipped` and a machine-readable `note` expose a partial
+  or zero-effect rename (§16 honesty about scope).
+- **Validation:** 3 regressions in `structured-ai/test/mcp/semantic.test.js`
+  (line-anchored repeated identifier → correct site; range-based edit → exact
+  span; ambiguous/unlocatable → applied:false, file untouched). Existing
+  single-occurrence apply test still green (17/17 in the suite).
+
+## AI-16 — the test gate claimed "all suites ran" while 10 suites were silently skipped (SE-F-049, P1-process)
+
+- **Category:** AI-context quality / testing (§15: absence reported as presence)
+- **Status:** RESOLVED (2026-10-08)
+- **Problem:** §4.1 verification of the *prior claim itself*: a bare `npx jest`
+  on a clean tree (no `npm run build`) passes 257 suites but skips 10 dist-gated
+  gateway/CLI/e2e suites, so the green summary reads complete while the
+  gateway/CLI surface never ran. `check-tests.js` printed "all suites ran"
+  because it only checked for failed suites, never for suite-level skips.
+- **Change made:** (a) `check-tests.js` now reads the skipped-suite count and
+  bounds it against `test-skip-budget.json` (budget 0 on the built/gated path);
+  a NEW silent skip fails the gate, and a shrinking run warns. (b) jest
+  `globalSetup` prints an honest notice when `dist/` is absent, so a bare green
+  run never masquerades as the full 271-suite surface.
+- **Validation:** gate exits 0 on the built run ("0 suite(s) skipped within the
+  recorded budget"), and the prior over-claim is corrected in this file rather
+  than left standing.
+
+## AI-17 — job cancel ignored project binding: project A could cancel project B's job (SE-API-001, P1)
+
+- **Category:** Reliability / integrity (cross-tenant mutation)
+- **Status:** RESOLVED (2026-10-08)
+- **Problem:** `POST /api/v1/projects/:id/jobs/:jobId/cancel` called
+  `jobManager.cancelJob(jobId)` without checking the job belongs to `:id`,
+  while the sibling GET on the same resource did. A caller on project A could
+  cancel project B's running job; an unknown job returned `200 cancelled:false`
+  (a miss presented as a considered decline).
+- **Change made:** the route resolves the job first and 404s a foreign/unknown
+  job before cancelling — matching the GET endpoint's own invariant.
+- **Validation:** `src/server/jobCancelScope.test.ts` (2 cases: foreign job
+  404s and stays running; unknown id 404s; own-project cancel still works).
+
+## AI-18 — Source Sync validation failures answered HTTP 500, not 400 (SE-API-002, P2)
+
+- **Category:** API_CONTRACT / error transparency (§15: an error presented as a different result)
+- **Status:** RESOLVED (2026-10-08)
+- **Problem:** `SourceSyncService` threw plain `Error` for every invalid input
+  (bad repoUrl, unsupported protocol, malformed commitHash, empty/non-text
+  bundle, path-traversal/oversize violations). The source routes did not catch
+  them, so they fell through to the server's global handler → HTTP 500. A client
+  or AI reading 500 concludes "the server broke", when the truth is "the request
+  was invalid" — wrong classification, wrong retry behavior.
+- **Change made:** a `SourceValidationError(status=400)` now carries every
+  input/size/security rejection, and all five source-mutation routes map it to
+  its own status (`syncFailure` helper); anything else keeps the prior 500.
+- **Validation:** `src/server/sourceValidation400.test.ts` (4 cases: invalid
+  repoUrl, unsupported protocol, path-traversal bundle → 400 with the
+  validation message); SourceSyncService/ReadBoundary suites unchanged (37 pass).
+
+## AI-19 — graduated context compression had no immutable original (SA-F-002, P2)
+
+- **Category:** AI-context quality / completeness (§14 completeness, §17 token hygiene)
+- **Status:** RESOLVED (2026-10-08)
+- **Problem:** `compressToolMessage` read `message.original_content || message.content`,
+  but `original_content` was NEVER assigned anywhere — so on escalation
+  (light→medium→heavy) `original` was the already-trimmed fragment. `original_chars`
+  then described the fragment, and medium/heavy parsed the truncated content,
+  which no longer parses as the tool's JSON result, silently dropping
+  id/name/success. Detail was lost before the model saw it.
+- **Change made:** the pristine payload is captured ONCE, before any level
+  touches it, as `message.original_content` via `Object.defineProperty` with
+  `enumerable: false`. Non-enumerable is deliberate: `agent/prompt/RequestBuilder.js`
+  hands the message array straight to the model body, so an enumerable pristine
+  copy would ride on every later request and re-inflate exactly what compaction
+  removed (§17) — it is now invisible to `JSON.stringify` while available
+  in-process. Medium/heavy now `parseResult({content: original})` from the
+  pristine original, preserving id/name/success and the true `original_chars`.
+- **Validation:** `test/context/context.test.js` "SA-F-002" case (escalation
+  keeps true original size + fields; `"original_content" in JSON.parse(JSON.stringify(msg))`
+  is false — proves it never reaches the wire). Full context (8/8) and archive
+  (19/19) suites green.
+
+## AI-20 — the `core/types` barrel did not export Blueprint types (SE-F-009, P2)
+
+- **Category:** API_CONTRACT (declared public surface incomplete)
+- **Status:** RESOLVED (2026-10-08)
+- **Problem:** `src/core/types/index.ts` re-exported only common + project-index
+  types; `Blueprint` and every blueprint shape lived in `blueprint.types.ts` and
+  were unreachable from the barrel the docs call "the only file a consumer should
+  import from". `blueprint.types.ts` is a pure-type module (no imports, no
+  runtime, and its names do not collide with the other two), so adding it is
+  zero load-cost and cannot drag an optional native dep into `require`-time.
+- **Change made:** `export * from './blueprint.types';` added to the barrel.
+- **Validation:** `src/core/types/barrelSurface.test.ts` (2 cases) typechecks +
+  passes; schemaSync/openapiSync suites green.
+
+## AI-21 — dashboard project switch left stale project state (SE-UI-001, P2)
+
+- **Category:** AI-context quality / reliability (§15: a deleted/failed file assumed present)
+- **Status:** RESOLVED (2026-10-08)
+- **Problem:** in `public/open.js`, a failed `POST /projects` (switch) kept
+  `state.projectId`, the status badge and the visualizer link pointing at the
+  PREVIOUS project — so "Start indexing" after a failed switch indexed the
+  project the user believed they had left, and the dashboard link opened the
+  wrong project. A successfully opened but not-yet-indexed project also kept
+  the old visualizer href.
+- **Change made:** a `clearProjectSelection()` reset runs at the START of every
+  switch (no window where a slow request leaves stale state) and in the catch
+  path; the visualizer link is shown only for a ready project; the failure log
+  now says "no project is selected" instead of leaving the old selection
+  silently intact.
+- **Validation:** structural regression `src/server/openUiProjectSwitch.test.ts`
+  (4 cases over the actual shipped source — the repo's established pattern for
+  DOM-less browser scripts; no jsdom dependency was invented for this).
 
 ## AI-13 — `ContextDiscoverer.discover()` monolith (SE-ARCH-001, HIGH-classified, OPEN by decision)
 

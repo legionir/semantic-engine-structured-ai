@@ -93,6 +93,37 @@ FIXED_VERIFIED = {
     "SA-POL-003": "ApprovalStore.record enforces the bounded history its header promised (historyLimit, default 500, shift on overflow)",
     "SA-POL-004": "PolicyEngine.enforce/enforceApproval emit the onDecision audit event with approved:false,denial:true when an approval is denied (the throw no longer swallows the security-relevant event); regression 'SA-POL-004' in test/policy/policy.test.js",
     "SE-F-027": "args-only server override now applies on every resolution path (applyArgsOverride after resolveCommand and PATH lookup), not only inside the command branch; 2 regressions 'SE-F-027' in src/lsp/registry.test.ts",
+    # ---- 2026-10-08 cycle-4 per-row pass (code re-read this session) ----
+    # fixed THIS cycle, each with a named regression:
+    "SE-API-001": "job cancel is project-scoped: 404 for foreign/unknown job instead of cross-project cancel + 200/cancelled:false; regression jobCancelScope.test.ts",
+    "SE-API-002": "SourceSyncService validation throws SourceValidationError(status 400) and every source route maps it — a rejected request is 400, not a fake 'server broke' 500; regression sourceValidation400.test.ts",
+    "SE-F-049": "check-tests.js now bounds suite-level skips with test-skip-budget.json (budget 0 on the gated path) and reports the real skip count instead of printing 'all suites ran' while suites were skipped; jest globalSetup prints an honest dist-skip notice on a bare run",
+    "SE-F-009": "core/types barrel exports blueprint.types (Blueprint + all shapes reachable from the declared public surface); regression barrelSurface.test.ts",
+    "SE-UI-001": "project switch clears the previous selection before/after a failed POST (clearProjectSelection); visualizer link only for ready projects; structural regression openUiProjectSwitch.test.ts",
+    "SE-PIPE-001": "run-pipeline finally now awaits the async extractors.dispose() inside its own try/catch — a disposal rejection can no longer float past the deliberate exit(1) path and mask the original pipeline error (SE-F-042 class: silent success/failure confusion); smoke-verified against the fixture and the missing-workspace path",
+    "SA-F-004": "code_rename applies edits at their designated LSP range or 1-based line; falls back to whole-file oldText ONLY when unambiguous (exactly one occurrence); applied:true is earned (≥1 edit written), edits_applied/edits_skipped/note expose partial or zero-effect runs; 3 regressions in test/mcp/semantic.test.js",
+    "SA-F-002": "compressToolMessage captures the pristine tool payload once as message.original_content (NON-ENUMERABLE — never serialized to the model body or persistence, so compaction is not undone on the wire); medium/heavy parse from the original so id/name/success and the true original_chars survive escalation; regression 'SA-F-002' in test/context/context.test.js",
+    "SA-F-006": "the visualizer node inspector no longer fabricates a per-node coverage pass-mark: both renderers (node-details.js + legacy renderer.js) state 'Coverage not known to this view' via safe DOM (replaceChildren/textContent, no innerHTML); regression 'SA-F-006' in test/ui/visualizer.test.js",
+    # fixed earlier in the codebase and re-confirmed in CURRENT source this pass (§4.1: verified by reading, not by label):
+    "SE-F-037": "output directory is ignored by its FULL relative path (IgnoreMatcher.isOutput / scanner outputDir), not by its first segment — an output under src/ no longer drops the whole src tree; in-source marker SE-SCAN-17",
+    "SE-F-038": "parseExportedDeclaration returns ExportEntry[] with one entry per declarator name (SE-DATA-02); multi-declarator exported variables no longer collapse",
+    "SE-F-039": "snapshot normalizer passes the parent keep-context down (keepIds inherited by subtree), so stable ids under files/symbols/nodes survive; comment records the old defect",
+    "SE-F-041": "project PATCH/DELETE call projectService.updateProject/removeProject (registry mutates + persists); in-source marker F-0011 (least-privilege) on the same handlers (SE-F-056 is the same defect reported twice — merged as duplicate)",
+    "SE-F-042": "watch-command resolves the embedding generator via resolveVectorPlan (same rule/provider as `index`); --embedding-provider is no longer ignored on the watch path; in-source marker 'audit F-07'",
+    "SE-F-046": "RemoteEmbeddingGenerator.validateBatch enforces cardinality (expected vs received) and vector shape on the OpenAI-compatible path, mirroring the Ollama branch",
+    "SE-F-047": "SQLite and in-memory traversals share DEFAULT_GRAPH_* constants (maxNodes/path depth/direction) and validateTraversalBound; parity holds without explicit options",
+    "SE-F-048": "shortestPath CTE carries LIMIT maxNodes+1 (options.maxNodes honoured, not ignored); neighbors returns an explicit truncated flag",
+    "SE-F-050": "SearchService forwards mode and minScore into SemanticSearchTool exactly as declared",
+    "SE-F-005": "GetDependenciesTool rejects depth>MAX_DEPTH with an explicit error instead of silent clamp (contract says 'rejected rather than silently reduced')",
+    "SE-F-006": "FindTestsTool declares anyOf over path|fileId|symbolId and validates selectors at runtime — valid inputs are no longer rejected",
+    "SE-DASH-001": "dashboard health/stats use unavailable(reason) + real measured sources instead of hard-coded 'healthy'/0",
+    "SE-DASH-002": "history miner is keyed by projectId on getHotspots/getCoChurn/recordCommit — per-project isolation",
+    "SE-VIZ-004": "confidentRatio computed from real edge confidences (confident/total), not hard-coded 1.0",
+    "SE-VIZ-005": "the file-level fallback declares level:'file' — payload and declared level agree",
+    "SA-REL-006": "chunk eviction decrements/clamps session.read_cursor (marker 'audit REL-024') so unread output is never skipped",
+    "SA-REL-002": "SIGINT/SIGTERM route through cancelAllRuns (global current run + every active AND queued modular run), in both agent.js main() and lifecycle.installSignalHandlers",
+    "SA-ARCH-001": "McpManager.currentProject() reads effectiveProject() (delegation override) instead of the parent run's projectId — comment records the old defect",
+    "SA-F-008": "SessionRepository writes via AtomicFile.writeFile (tmp+rename); test/persistence/atomic-saves.test.js injects a rename crash and asserts the previous document survives — green in the live chain this session",
 }
 SUPERSEDED = {
     "SE-F-043": "superseded — the component the finding described (InMemoryQueueAdapter) was removed; the live path is honest: JobManager.cancelJob cancels the job's CancellationTokenSource and IndexPipeline calls throwIfCancelled at every phase boundary",
@@ -111,6 +142,9 @@ DUPLICATES = {
     "SA-HOOK-002": "SA-HOOK-001", "SA-POL-005": "SA-POL-001",
     "SA-POL-006": "SA-POL-002", "SA-POL-008": "SA-POL-004",
     "SA-PRJ-002": "SA-PRJ-001",
+    # cycle 4 (§5): one real defect = one ledger row
+    "SE-F-056": "SE-F-041",   # same project PATCH/DELETE stub, second report
+    "SA-F-014": "SA-F-008",   # same non-atomic session persistence, second report
 }
 INVALID_ACCEPTED = {
     # not defects — the flagged behavior is the intended, documented contract:
