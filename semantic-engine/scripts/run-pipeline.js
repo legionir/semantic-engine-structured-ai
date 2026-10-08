@@ -46,6 +46,18 @@ async function main() {
         process.exit(1);
     }
 
+    /*
+    | Same contract the CLI enforces (index-command --root check): a workspace
+    | that does not exist must FAIL, not index "nothing" with exit 0. An empty
+    | successful index over a mistyped path is the §16 confusion of "no result
+    | found" with "no result exists" — downstream benchmark/gate consumers
+    | would read an empty project as real.
+    */
+    if (!fs.existsSync(workspace) || !fs.statSync(workspace).isDirectory()) {
+        console.error(`error: workspace does not exist or is not a directory: ${workspace}`);
+        process.exit(1);
+    }
+
     const { IndexPipeline } = need("pipeline/IndexPipeline");
     const { createExtractors } = need("pipeline/ExtractorFactory");
     const { BlueprintExporter } = need("export/BlueprintExporter");
@@ -99,7 +111,19 @@ async function main() {
         );
 
     } finally {
-        extractors.dispose();
+        /*
+        | SE-PIPE-001 — `dispose()` is async. Called bare, its rejection became
+        | a floating promise: depending on timing the original pipeline error
+        | was lost (or the process died via unhandled-rejection instead of the
+        | deliberate exit(1), with no printed cause). A disposal failure must
+        | never mask the failure it follows, and must never turn a real
+        | pipeline error into a silent exit-0 — await it and log it separately.
+        */
+        try {
+            await extractors.dispose();
+        } catch (disposeError) {
+            console.error("extractor disposal failed:", disposeError);
+        }
     }
 }
 

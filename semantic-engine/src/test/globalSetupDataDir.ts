@@ -25,6 +25,25 @@ import { execFileSync } from 'child_process';
 
 export default async function globalSetupDataDir(): Promise<void> {
   /*
+  | Honest notice about suite-level skips (SE-F-049 companion): about ten
+  | e2e/gateway/cli suites gate themselves on `dist/` existing and skip the
+  | whole suite when it does not. On a bare `npx jest` (no prior `npm run
+  | build`) jest reports them as "skipped" and the remaining suites pass, so
+  | the run LOOKS complete while the gateway/CLI surface was never executed.
+  | Print the fact loudly once, in the parent, before workers fork — a green
+  | summary must never be silently weaker than it reads.
+  */
+  const distEntry = path.join(__dirname, '..', '..', 'dist', 'cli', 'main.js');
+  if (!fs.existsSync(distEntry)) {
+    process.stderr.write(
+      '[globalSetup] NOTICE: dist/ is not built. ~10 dist-gated suites ' +
+      '(gateway e2e, CLI, LSP client) will be SKIPPED, not run. This is not ' +
+      'a failure — but the green summary below covers fewer suites than ' +
+      '`npm run build && npx jest` would. Run the build for the full suite.\n'
+    );
+  }
+
+  /*
   | The on-disk test fixture is generated, not committed (scripts/gen-fixture
   | -js). `npm test` makes it via `pretest`, but a direct `jest`/`npx jest`
   | invocation skipped that step and several suites (cli, scanner, export,

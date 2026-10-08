@@ -12,6 +12,26 @@ import { assertResolvedFetchableUrl } from '../providers/EmbeddingProviderServic
 
 const execFileAsync = promisify(execFile);
 
+/*
+| SE-API-002 — a rejected request is a client error, not a server fault.
+| The service used to throw plain `Error` for bad input (invalid repoUrl,
+| unsupported protocol, malformed commitHash, oversized bundle, path-traversal
+| file names); the route did not catch them, so HttpServer's global handler
+| answered HTTP 500. A 500 tells a consuming AI / client "the server broke",
+| which is the wrong fact — the request was simply invalid, and the correct
+| response is 400. This error carries the intended status so the route can
+| honour it instead of masking a validation failure as an infrastructure
+| failure (§15: an error must not be presented as a different result).
+*/
+export class SourceValidationError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = 'SourceValidationError';
+    this.status = status;
+  }
+}
+
 export interface GitSyncOptions {
   readonly repoUrl: string;
   readonly branch?: string;
@@ -77,19 +97,19 @@ export class SourceSyncService {
     try {
       repo = new URL(options.repoUrl);
     } catch {
-      throw new Error('repoUrl must be a valid HTTPS or HTTP URL.');
+      throw new SourceValidationError('repoUrl must be a valid HTTPS or HTTP URL.');
     }
 
     if (!['https:', 'http:'].includes(repo.protocol)) {
-      throw new Error(`Unsupported Git URL protocol: ${repo.protocol}`);
+      throw new SourceValidationError(`Unsupported Git URL protocol: ${repo.protocol}`);
     }
 
     if (options.branch && !/^[A-Za-z0-9._/-]+$/.test(options.branch)) {
-      throw new Error('branch contains unsupported characters.');
+      throw new SourceValidationError('branch contains unsupported characters.');
     }
 
     if (options.commitHash && !/^[0-9a-f]{7,64}$/i.test(options.commitHash)) {
-      throw new Error('commitHash must be a hexadecimal Git commit id.');
+      throw new SourceValidationError('commitHash must be a hexadecimal Git commit id.');
     }
 
     /*
@@ -232,7 +252,7 @@ export class SourceSyncService {
 
     const entries = Object.entries(files);
     if (entries.length === 0) {
-      throw new Error('Bundle must contain at least one file.');
+      throw new SourceValidationError('Bundle must contain at least one file.');
     }
 
     const prepared: Array<{ relPath: string; content: string; dest: string }> = [];
@@ -241,18 +261,18 @@ export class SourceSyncService {
     /* Validate every path and the whole payload before changing the target. */
     for (const [relPath, content] of entries) {
       if (typeof content !== 'string') {
-        throw new Error(`Bundle file '${relPath}' must contain text content.`);
+        throw new SourceValidationError(`Bundle file '${relPath}' must contain text content.`);
       }
 
       const check = this.guard.validateRelativePath(targetDir, relPath);
       if (!check.ok) {
-        throw new Error(`Security violation for bundle file '${relPath}': ${check.reason}`);
+        throw new SourceValidationError(`Security violation for bundle file '${relPath}': ${check.reason}`);
       }
 
       const bytes = Buffer.byteLength(content, 'utf8');
       const fileLimit = this.guard.validateFileSize(bytes);
       if (!fileLimit.ok) {
-        throw new Error(`Security violation for bundle file '${relPath}': ${fileLimit.reason}`);
+        throw new SourceValidationError(`Security violation for bundle file '${relPath}': ${fileLimit.reason}`);
       }
 
       totalBytes += bytes;
@@ -261,7 +281,7 @@ export class SourceSyncService {
 
     const totalLimit = this.guard.validateTotalSize(totalBytes);
     if (!totalLimit.ok) {
-      throw new Error(`Security violation for bundle: ${totalLimit.reason}`);
+      throw new SourceValidationError(`Security violation for bundle: ${totalLimit.reason}`);
     }
 
     const stageDir = fs.mkdtempSync(path.join(targetDir, '.source-sync-'));

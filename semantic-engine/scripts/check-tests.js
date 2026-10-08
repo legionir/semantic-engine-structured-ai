@@ -7,7 +7,8 @@
 |
 |   node scripts/check-tests.js
 |
-| Runs the suite and fails unless *every* suite ran.
+| Runs the suite and fails unless *every* suite ran — or the number of
+| suite-level skips stays inside test-skip-budget.json (SE-F-049).
 |
 | Why this exists: a jest suite that fails to compile contributes zero
 | tests, so the "Tests:" line keeps reporting a healthy, and even a
@@ -23,6 +24,7 @@
 */
 
 const { spawnSync } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
@@ -96,4 +98,52 @@ if (!suites) {
     process.exit(1);
 }
 
-console.log("\nall suites ran");
+/*
+| Skipped suites are named and bounded (SE-F-049).
+|
+| The header of this file promises: "fails unless *every* suite ran". A run
+| where 10 of 267 suites are `describe.skip`-gated (the dist-built e2e suites)
+| satisfied the old gate while printing "all suites ran" - the promise and the
+| surface of trust diverged, which is exactly the failure mode this script
+| exists to catch. Honest states:
+|   - suites did not RUN because they failed to compile  → exit 1 (old check).
+|   - suites SKIPPED by an environment guard            → allowed, but the
+|     count must match the recorded budget and every name is printed, so a
+|     NEW silent skip or a shrinking run is still a failure.
+| The budget lives in test-skip-budget.json: raise it deliberately (with the
+| reason next to the suite), never implicitly by re-running a red CI.
+*/
+const skippedSuites = /Test Suites:.*?(\d+) skipped/.exec(output);
+const skipCount = skippedSuites ? Number(skippedSuites[1]) : 0;
+
+const BUDGET_FILE = path.join(ROOT, "test-skip-budget.json");
+let budget = 0;
+try {
+    budget = JSON.parse(fs.readFileSync(BUDGET_FILE, "utf8")).suites;
+} catch {
+    console.error(
+        `\nerror: ${BUDGET_FILE} missing/unreadable — the skip budget must exist,\n` +
+        "even if it is 0. A gate that cannot bound skips cannot call them honest."
+    );
+    process.exit(1);
+}
+
+if (skipCount > budget) {
+    console.error(
+        `\nerror: ${skipCount} suite(s) skipped, budget is ${budget} (${BUDGET_FILE}).\n` +
+        "Either un-skip/fix the new suite, or raise the budget deliberately with\n" +
+        "a recorded reason — do not let a silent skip widen the gap between\n" +
+        "'all suites ran' and what actually ran."
+    );
+    process.exit(1);
+}
+
+if (skipCount < budget) {
+    console.error(
+        `\nwarning: only ${skipCount} of ${budget} budgeted suites skipped — some\n` +
+        `previously-skipped suite now runs. Lower the budget in ` +
+        `${path.relative(ROOT, BUDGET_FILE)} to keep the gate tight.`
+    );
+}
+
+console.log(`\nsuites ran; ${skipCount} suite(s) skipped within the recorded budget (${budget}).`);

@@ -278,6 +278,19 @@ export function createJobRoutes(
       pattern: '/api/v1/projects/:id/jobs/:jobId/cancel',
       permission: 'semantic:index',
       handler: async ctx => {
+        /*
+        | SE-API-001 — the route is scoped to project `:id`, so it may only
+        | cancel a job that belongs to that project. The sibling GET on the
+        | same resource already enforces `job.projectId !== ctx.params.id →
+        | 404`; cancel did not, so a caller on project A could cancel
+        | project B's running job. An unknown/foreign job now 404s instead
+        | of a 200 `cancelled: false` (which presented a miss as if the
+        | operation had been considered and declined).
+        */
+        const job = jobManager.getJob(ctx.params.jobId);
+        if (!job || job.projectId !== ctx.params.id) {
+          return { status: 404, json: { error: `Job not found: ${ctx.params.jobId}` } };
+        }
         const cancelled = jobManager.cancelJob(ctx.params.jobId);
         return {
           status: 200,

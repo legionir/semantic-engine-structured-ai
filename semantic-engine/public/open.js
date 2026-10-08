@@ -188,9 +188,34 @@ function syncDefaultModelToggle() {
 }
 
 // ── project selection ───────────────────────────────────────────────────
+/*
+| SE-UI-001 — a project switch must leave NO trace of the previous project.
+| Previously a failed POST /projects kept state.projectId, the badge and the
+| visualizer link pointing at the OLD project — so "Start indexing" would
+| index the project the user believed they had left, and the dashboard link
+| opened the wrong project. A successfully-opened but not-yet-indexed project
+| also kept the old visualizer href. Now the selection is reset to a coherent
+| "no project" state on failure, and the visualizer link is hidden whenever
+| the current project is not ready.
+*/
+function clearProjectSelection() {
+  state.projectId = null;
+  state.projectStatus = null;
+  state.jobId = null;
+  const badge = $("projStatusBadge");
+  badge.textContent = "no project";
+  badge.className = "badge missing";
+  $("selectedProject").hidden = true;
+  $("startIndexBtn").disabled = true;
+  $("gotoVisualizerBtn").hidden = true;
+  $("gotoVisualizerBtn").removeAttribute("href");
+}
+
 async function selectProject(path) {
   state.path = path;
   $("pathInput").value = path;
+  // the previous selection is invalid the moment a new switch starts
+  clearProjectSelection();
   try {
     const project = await api("POST", "/api/v1/projects", { path });
     state.projectId = project.id;
@@ -207,7 +232,8 @@ async function selectProject(path) {
     }
     log("ok", "Project opened: " + project.rootPath + " (" + project.status + ")");
   } catch (e) {
-    log("bad", "Could not open project: " + e.message);
+    clearProjectSelection();
+    log("bad", "Could not open project: " + e.message + " — no project is selected");
   }
 }
 

@@ -4,7 +4,22 @@
 
 import { RouteDefinition, HttpRequestContext } from '../types';
 import { ProjectService } from '../../services/ProjectService';
-import { SourceSyncService } from '../../services/source/SourceSyncService';
+import { SourceSyncService, SourceValidationError } from '../../services/source/SourceSyncService';
+
+/*
+| SE-API-002 — a rejected request must be answered with its own status.
+| SourceSyncService now throws SourceValidationError (status 400 by default)
+| for every input/size/security rejection; without this map they would fall
+| through to HttpServer's global handler and surface as HTTP 500 — a wrong
+| fact for a consuming AI or client ("the server broke" vs "the request was
+| invalid"). Anything else keeps its previous 500 behavior.
+*/
+function syncFailure(error: unknown): { status: number; json: { error: string } } {
+  if (error instanceof SourceValidationError) {
+    return { status: error.status, json: { error: error.message } };
+  }
+  throw error;
+}
 
 export function createSourceRoutes(
   projectService: ProjectService,
@@ -18,12 +33,16 @@ export function createSourceRoutes(
     const body = (ctx.body || {}) as { repoUrl?: string; branch?: string; commitHash?: string };
     if (!body.repoUrl) return { status: 400, json: { error: 'repoUrl is required for Git sync' } };
 
-    const result = await sourceSyncService.syncFromGit(projectId, project.rootPath, {
-      repoUrl: body.repoUrl,
-      branch: body.branch,
-      commitHash: body.commitHash,
-    });
-    return { status: 200, json: result };
+    try {
+      const result = await sourceSyncService.syncFromGit(projectId, project.rootPath, {
+        repoUrl: body.repoUrl,
+        branch: body.branch,
+        commitHash: body.commitHash,
+      });
+      return { status: 200, json: result };
+    } catch (error) {
+      return syncFailure(error);
+    }
   };
 
   const uploadHandler = async (ctx: HttpRequestContext) => {
@@ -36,8 +55,12 @@ export function createSourceRoutes(
       return { status: 400, json: { error: 'files payload is required' } };
     }
 
-    const result = await sourceSyncService.importBundle(projectId, project.rootPath, body.files);
-    return { status: 200, json: result };
+    try {
+      const result = await sourceSyncService.importBundle(projectId, project.rootPath, body.files);
+      return { status: 200, json: result };
+    } catch (error) {
+      return syncFailure(error);
+    }
   };
 
   return [
@@ -59,8 +82,12 @@ export function createSourceRoutes(
         const body = (ctx.body || {}) as { content?: string };
         const content = body.content || '';
 
-        const result = await sourceSyncService.importBundle(projectId, project.rootPath, { [filePath]: content });
-        return { status: 200, json: { updated: true, file: filePath, result } };
+        try {
+          const result = await sourceSyncService.importBundle(projectId, project.rootPath, { [filePath]: content });
+          return { status: 200, json: { updated: true, file: filePath, result } };
+        } catch (error) {
+          return syncFailure(error);
+        }
       },
     },
     {
@@ -74,8 +101,12 @@ export function createSourceRoutes(
           return { status: 400, json: { error: 'projectId and files are required' } };
         }
         const project = await projectService.registerProject(body.projectId, body.name || body.projectId);
-        const result = await sourceSyncService.importBundle(body.projectId, project.rootPath, body.files);
-        return { status: 201, json: { project, syncResult: result } };
+        try {
+          const result = await sourceSyncService.importBundle(body.projectId, project.rootPath, body.files);
+          return { status: 201, json: { project, syncResult: result } };
+        } catch (error) {
+          return syncFailure(error);
+        }
       },
     },
     {
@@ -89,8 +120,12 @@ export function createSourceRoutes(
           return { status: 400, json: { error: 'projectId and files are required' } };
         }
         const project = await projectService.registerProject(body.projectId, body.name || body.projectId);
-        const result = await sourceSyncService.importBundle(body.projectId, project.rootPath, body.files);
-        return { status: 201, json: { project, syncResult: result } };
+        try {
+          const result = await sourceSyncService.importBundle(body.projectId, project.rootPath, body.files);
+          return { status: 201, json: { project, syncResult: result } };
+        } catch (error) {
+          return syncFailure(error);
+        }
       },
     },
   ];
