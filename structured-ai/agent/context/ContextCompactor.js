@@ -122,7 +122,42 @@ function compressToolMessage(message, level) {
     const current =
         message.compression || LEVELS.NONE;
 
-    if (ORDER.indexOf(level) <= ORDER.indexOf(current)) {
+    const ORDER_INDEX =
+        ORDER.indexOf(level) <= ORDER.indexOf(current);
+
+    /*
+    | SA-F-002 — capture the PRISTINE tool payload the first time this
+    | message is compressed. Without it, an escalation (light → medium →
+    | heavy) recomputed `original` from the already-trimmed content, so
+    | `original_chars` described the fragment instead of the real result and
+    | later levels could no longer recover detail the first trim had dropped.
+    | `message.original_content || message.content` (below) was written for
+    | exactly this field but nothing ever assigned it — the immutable original
+    | is now actually stored.
+    |
+    | The property is NON-ENUMERABLE on purpose: message objects are sent to
+    | the model and persisted verbatim (agent/prompt/RequestBuilder.js hands
+    | `messages` straight into the request body). An enumerable pristine copy
+    | would ride along on every subsequent request — re-inflating exactly the
+    | context compaction just removed (§17), and possibly tripping strict
+    | schema validation on OpenAI-compatible endpoints. Being enumerable=false
+    | keeps it invisible to JSON.stringify while fully available in-process
+    | for honest escalation.
+    */
+    if (
+        message.original_content === undefined &&
+        !ORDER_INDEX
+    ) {
+
+        Object.defineProperty(message, "original_content", {
+            value: message.content,
+            enumerable: false,
+            writable: true,
+            configurable: true
+        });
+    }
+
+    if (ORDER_INDEX) {
 
         /* already at this level or harder */
         return false;
@@ -131,8 +166,15 @@ function compressToolMessage(message, level) {
     const original =
         message.original_content || message.content;
 
+    /*
+    | SA-F-002 (second half): parse from the PRISTINE original, not the
+    | current content. After an escalation the current content is a trimmed
+    | fragment that no longer parses as the tool's JSON result, which used to
+    | silently drop id/name/success from the medium/heavy summary — exactly
+    | the "detail lost before the model sees it" the finding describes.
+    */
     const parsed =
-        parseResult(message);
+        parseResult({ content: original });
 
     const before =
         message.content.length;
@@ -573,5 +615,7 @@ module.exports = {
     isDigest,
     digestOldest,
     compactConversation,
-    levelForPosition
+    levelForPosition,
+    /* SA-F-002 regression needs the unit that captures the pristine original */
+    compressToolMessage
 };

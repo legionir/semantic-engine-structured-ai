@@ -402,8 +402,16 @@ function openInspector(node) {
     });
   }
 
-  // Covering tests
-  inspTests.innerHTML = `<li>✓ Covered by ${node.label.toLowerCase()}.test.ts</li>`;
+  /*
+  | Covering tests — SA-F-006: the model has no coverage field; the old code
+  | emitted a fabricated pass-mark with an invented test filename for every
+  | node. Show the honest unknown instead.
+  */
+  inspTests.replaceChildren();
+  const coverageLi = document.createElement("li");
+  coverageLi.className = "muted";
+  coverageLi.textContent = "Coverage not known to this view (no test data in the graph model — use the find_tests tool)";
+  inspTests.appendChild(coverageLi);
 }
 
 function drillDown(node) {

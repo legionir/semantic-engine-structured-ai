@@ -57,8 +57,17 @@ export function renderDetails(details, elements) {
     item.textContent = "No direct connections in view";
     elements.connections.appendChild(item);
   }
+  /*
+  | SA-F-006 — the node model carries NO coverage field and no test lookup is
+  | performed here. The previous code rendered a per-node fabricated pass-mark
+  | …test.ts" row — invented evidence shown as fact (§15: an AI or user
+  | reading the inspector would believe a test exists that may not). The
+  | honest state of "we did not check" is now displayed; the engine's
+  | find_tests tool is named as the way to get the real answer.
+  */
   elements.tests.replaceChildren();
-  const test = document.createElement("li");
-  test.textContent = `✓ Covered by ${details.title.toLowerCase()}.test.ts`;
-  elements.tests.appendChild(test);
+  const coverage = document.createElement("li");
+  coverage.className = "muted";
+  coverage.textContent = "Coverage not known to this view (no test data in the graph model — use the find_tests tool)";
+  elements.tests.appendChild(coverage);
 }

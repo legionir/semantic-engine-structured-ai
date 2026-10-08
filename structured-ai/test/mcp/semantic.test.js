@@ -602,6 +602,150 @@ function customHandler(req, send) {
         semantic.shutdown();
     });
 
+    /* 12b. SA-F-004 — repeated identifier must be renamed at ITS line,
+       not at the first textual occurrence elsewhere in the file. */
+    await test("SA-F-004: a line-anchored rename hits the designated occurrence, not the first match", async () => {
+
+        const mockPath = createMockSidecar(`
+function customHandler(req, send) {
+    if (req.method === "tools/call") {
+        return send({
+            jsonrpc: "2.0",
+            id: req.id,
+            result: {
+                changes: {
+                    "src/dup.ts": [
+                        { line: 3, oldText: "AuthService", newText: "RenamedService" }
+                    ]
+                }
+            }
+        });
+    }
+    send({ jsonrpc: "2.0", id: req.id, result: { ok: true } });
+}
+`);
+        settings.set("SEMANTIC_ENGINE_BIN", mockPath);
+
+        const targetFile = path.join(WORKSPACE, "src", "dup.ts");
+        fs.writeFileSync(
+            targetFile,
+            "const a = AuthService;\nconst b = 1;\nconst c = AuthService;\n",
+            "utf8"
+        );
+
+        const applied = await run("code_rename", {
+            path: "src/dup.ts",
+            line: 3,
+            character: 10,
+            new_name: "RenamedService",
+            apply: true
+        });
+
+        assert.equal(applied.applied, true);
+        assert.equal(applied.edits_applied, 1);
+        /* the OLD code replaced the FIRST occurrence; line 3 must change, line 1 must not */
+        assert.equal(
+            fs.readFileSync(targetFile, "utf8"),
+            "const a = AuthService;\nconst b = 1;\nconst c = RenamedService;\n"
+        );
+
+        semantic.shutdown();
+    });
+
+    /* 12c. SA-F-004 — a range-bearing edit applies exactly at the range. */
+    await test("SA-F-004: a range-based edit is applied at its designated span", async () => {
+
+        const mockPath = createMockSidecar(`
+function customHandler(req, send) {
+    if (req.method === "tools/call") {
+        return send({
+            jsonrpc: "2.0",
+            id: req.id,
+            result: {
+                changes: {
+                    "src/rng.ts": [
+                        {
+                            range: { start: { line: 1, character: 4 }, end: { line: 1, character: 15 } },
+                            newText: "RenamedService"
+                        }
+                    ]
+                }
+            }
+        });
+    }
+    send({ jsonrpc: "2.0", id: req.id, result: { ok: true } });
+}
+`);
+        settings.set("SEMANTIC_ENGINE_BIN", mockPath);
+
+        const targetFile = path.join(WORKSPACE, "src", "rng.ts");
+        /* second line (index 1): "AuthService" occupies chars 6..15 */
+        fs.writeFileSync(targetFile, "let AuthService = 1;\nlet AuthService = 2;\n", "utf8");
+
+        const applied = await run("code_rename", {
+            path: "src/rng.ts",
+            line: 2,
+            character: 7,
+            new_name: "RenamedService",
+            apply: true
+        });
+
+        assert.equal(applied.applied, true);
+        assert.equal(
+            fs.readFileSync(targetFile, "utf8"),
+            "let AuthService = 1;\nlet RenamedService = 2;\n"
+        );
+
+        semantic.shutdown();
+    });
+
+    /* 12d. SA-F-004 — an unlocatable edit is skipped and declared; the tool
+       must NOT claim applied:true when nothing was written. */
+    await test("SA-F-004: an unlocatable ambiguous edit is skipped, applied is false, file untouched", async () => {
+
+        const mockPath = createMockSidecar(`
+function customHandler(req, send) {
+    if (req.method === "tools/call") {
+        return send({
+            jsonrpc: "2.0",
+            id: req.id,
+            result: {
+                changes: {
+                    "src/amb.ts": [
+                        { line: 99, oldText: "AuthService", newText: "RenamedService" }
+                    ]
+                }
+            }
+        });
+    }
+    send({ jsonrpc: "2.0", id: req.id, result: { ok: true } });
+}
+`);
+        settings.set("SEMANTIC_ENGINE_BIN", mockPath);
+
+        const targetFile = path.join(WORKSPACE, "src", "amb.ts");
+        const original = "AuthService AuthService AuthService\n";
+        fs.writeFileSync(targetFile, original, "utf8");
+
+        const applied = await run("code_rename", {
+            path: "src/amb.ts",
+            line: 1,
+            character: 0,
+            new_name: "RenamedService",
+            apply: true
+        });
+
+        /* line 99 is out of range AND oldText occurs 3 times → ambiguous →
+           the tool refuses to guess. Honest zero-effect result. */
+        assert.equal(applied.applied, false);
+        assert.equal(applied.edits_applied, 0);
+        assert.equal(applied.edits_skipped, 1);
+        assert.match(applied.note, /skipped/);
+        assert.equal(fs.readFileSync(targetFile, "utf8"), original);
+
+        semantic.shutdown();
+    });
+
     /* 13. Clean shutdown verification */
     await test("shutdown leaves zero running sidecar processes", async () => {
 

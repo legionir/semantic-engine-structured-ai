@@ -574,6 +574,47 @@ async function main() {
     });
 
 
+    await test("SA-F-002: escalation compresses from the immutable original, and the original never reaches the wire", async () => {
+
+        const compactor = require(path.join(REPO, "agent", "context", "ContextCompactor"));
+        const { compressToolMessage, LEVELS } = compactor;
+
+        const pristine = JSON.stringify({
+            id: "call-1",
+            name: "fs_read",
+            success: true,
+            body: "z".repeat(4000)
+        });
+
+        const message = { role: "tool", tool_call_id: "call-1", content: pristine };
+
+        /* light pass: content is trimmed to CONTEXT_LIGHT_CHARS */
+        assert.equal(compressToolMessage(message, LEVELS.LIGHT), true);
+        assert.equal(message.compression, LEVELS.LIGHT);
+        assert.ok(message.content.length < pristine.length, "light must trim");
+
+        /* the immutable original was captured… */
+        assert.equal(message.original_content, pristine);
+
+        /* …and it is NOT enumerable, so request/persistence serialization
+           (messages go verbatim into the model body) never carries the
+           pristine copy — compaction must not be undone on the wire (§17). */
+        assert.equal("original_content" in Object.assign({}, message), false);
+        const serialized = JSON.parse(JSON.stringify([message]));
+        assert.equal("original_content" in serialized[0], false);
+
+        /* escalation to medium: parsed from the PRISTINE original, so the
+           summary still names the call and reports the TRUE original size,
+           not the fragment left by the light pass. */
+        assert.equal(compressToolMessage(message, LEVELS.MEDIUM), true);
+        const summary = JSON.parse(message.content);
+        assert.equal(summary.id, "call-1");
+        assert.equal(summary.name, "fs_read");
+        assert.equal(summary.success, true);
+        assert.equal(summary.original_chars, pristine.length);
+    });
+
+
     const failed = results.filter(item => !item.ok);
 
     console.log(`\n${results.length - failed.length}/${results.length} passed`);

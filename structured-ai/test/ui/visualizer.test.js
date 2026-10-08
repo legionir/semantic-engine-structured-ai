@@ -153,6 +153,21 @@ async function main() {
     assert.doesNotMatch(source("graph-renderer.js"), /innerHTML/);
   });
 
+  await test("SA-F-006: the inspector never fabricates test coverage", () => {
+    /*
+    | The node model carries no coverage field and no test lookup happens in
+    | the visualizer, so the old `✓ Covered by <title>.test.ts` line invented
+    | evidence and presented it as fact (§15). Neither renderer may claim a
+    | node is covered; both must say the coverage is not known.
+    */
+    const details = source("node-details.js");
+    const legacy = source("renderer.js");
+    for (const file of [details, legacy]) {
+      assert.doesNotMatch(file, /Covered by/, "must not claim coverage it did not verify");
+      assert.match(file, /Coverage not known/, "must state the honest unknown");
+    }
+  });
+
   await test("main.js exposes the independent visualizer graph and canonical bootstrap", () => {
     const main = source("main.js");
     required.filter(name => name !== "main.js").forEach(name => {
