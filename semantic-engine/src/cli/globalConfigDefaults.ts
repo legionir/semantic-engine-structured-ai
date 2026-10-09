@@ -24,10 +24,13 @@ import {
   modelsDirFor,
 } from '../core/config/GlobalConfig';
 import { PROVIDER_CATALOG } from '../services/providers/EmbeddingProviderService';
+import { LocalModelStore } from '../services/providers/LocalModelStore';
 
 const ARTIFACT_LOCATION_ENV = 'SEMANTIC_ENGINE_ARTIFACT_LOCATION';
 
 export interface AppliedConfig {
+  /** Things the user should know about, printed once (never fatal). */
+  readonly notices: readonly string[];
   readonly args: ParsedArgs;
   readonly loaded: LoadedGlobalConfig;
   readonly dataRoot: string;
@@ -94,9 +97,40 @@ export function applyGlobalConfig(
       ? options['vectors'] !== false && options['vectors'] !== 'false'
       : (command === 'index' || command === 'watch') &&
         (options['vectors'] === true || options['vectors'] === 'true');
-  if (wantsEmbedding) applyEmbedding(config, fill);
+  const notices: string[] = [];
+  if (wantsEmbedding) {
+    const problem = unusableLocalModel(config, modelsDirFor(dataRoot, config));
+    if (problem && command === 'start') {
+      /*
+      | `start` must come up. A selected model that is not downloaded (or whose
+      | runtime is missing) would abort the index step before the UI exists, so
+      | fall back to the built-in model and say so.
+      */
+      notices.push(`${problem}; using the built-in hashing model for now`);
+      applyEmbedding({ ...config, embedding: { ...config.embedding, model: LOCAL_DEFAULT_EMBEDDING_MODEL, useDefaultModel: true } }, fill);
+    } else {
+      applyEmbedding(config, fill);
+    }
+  }
 
-  return { args: { ...args, options }, loaded, dataRoot };
+  return { args: { ...args, options }, loaded, dataRoot, notices };
+}
+
+/** Why the configured local model cannot run right now, or null. */
+function unusableLocalModel(config: GlobalConfig, modelsDir: string): string | null {
+  const { provider, model, useDefaultModel } = config.embedding;
+  if (provider !== 'local' || useDefaultModel || model === LOCAL_DEFAULT_EMBEDDING_MODEL) return null;
+
+  const store = new LocalModelStore({ modelsDir });
+  const entry = store.catalogEntry(model);
+  if (!entry || entry.builtIn) return null;
+  if (!store.isReady(model)) return `embedding model "${model}" is not downloaded (download it in the panel)`;
+  try {
+    require.resolve('@xenova/transformers');
+  } catch {
+    return `embedding model "${model}" needs the optional package @xenova/transformers (npm install @xenova/transformers)`;
+  }
+  return null;
 }
 
 function applyEmbedding(

@@ -190,6 +190,9 @@ export async function main(argv: readonly string[]): Promise<number> {
   for (const warning of applied?.loaded.warnings ?? []) {
     process.stderr.write(`config: ${warning}\n`);
   }
+  for (const notice of applied?.notices ?? []) {
+    process.stderr.write(`notice: ${notice}\n`);
+  }
   const wantsJson = boolOption(args.options, 'json', false);
 
   if (boolOption(args.options, 'help', false) || args.command === 'help') {

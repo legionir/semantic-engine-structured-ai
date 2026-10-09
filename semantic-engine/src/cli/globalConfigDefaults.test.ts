@@ -52,10 +52,19 @@ describe('applyGlobalConfig — flag > env > config.json > default', () => {
     expect(fs.existsSync(globalConfigPath(dataRoot))).toBe(false);
   });
 
-  it('a downloaded local model is passed on as --embedding-model', () => {
+  it('start falls back to hashing, with a notice, when the chosen model is not downloaded', () => {
     saveGlobalConfig(dataRoot, { embedding: { model: 'Xenova/bge-small-en-v1.5', useDefaultModel: false } });
-    const { args } = applyGlobalConfig(parseArgs(['start']), env)!;
+    const { args, notices } = applyGlobalConfig(parseArgs(['start']), env)!;
+    expect(args.options['embeddingModel']).toBeUndefined();
+    expect(args.options['vectors']).toBe(true);
+    expect(notices.join(' ')).toMatch(/not downloaded/);
+  });
+
+  it('index --vectors keeps the chosen model, so a missing download is an explicit error', () => {
+    saveGlobalConfig(dataRoot, { embedding: { model: 'Xenova/bge-small-en-v1.5', useDefaultModel: false } });
+    const { args, notices } = applyGlobalConfig(parseArgs(['index', '--vectors']), env)!;
     expect(args.options['embeddingModel']).toBe('Xenova/bge-small-en-v1.5');
+    expect(notices).toEqual([]);
   });
 
   it('the artifact location env var outranks the file', () => {

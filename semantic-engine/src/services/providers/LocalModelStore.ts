@@ -137,6 +137,8 @@ export type FetchLike = (url: string, init?: { signal?: AbortSignal }) => Promis
 
 export interface LocalModelStoreOptions {
   readonly modelsDir: string;
+  /** Abort a download that receives nothing for this long. Default 60 s. */
+  readonly idleTimeoutMs?: number;
   readonly fetchImpl?: FetchLike;
   readonly baseUrl?: string;
 }
@@ -271,40 +273,74 @@ export class LocalModelStore {
     fs.rmSync(path.join(dir, COMPLETE_MARKER), { force: true });
 
     const sizes: Record<string, number> = {};
+    const idleMs = this.options.idleTimeoutMs ?? 60_000;
+
     for (const file of MODEL_FILES) {
       const url = `${this.baseUrl}/${id}/resolve/main/${file.path}`;
-      let response: Awaited<ReturnType<FetchLike>>;
+
+      /*
+      | A connection that stays open but sends nothing would leave the model
+      | "downloading" forever, with no way to retry. The timer is re-armed on
+      | every chunk, so only a genuine stall aborts.
+      */
+      const controller = new AbortController();
+      let timer: NodeJS.Timeout | undefined;
+      const arm = (): void => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => controller.abort(), idleMs);
+      };
+      arm();
+
       try {
-        response = await this.fetchImpl(url);
-      } catch (error) {
-        /* undici reports only "fetch failed"; the cause names the host and reason. */
-        const cause = (error as { cause?: { code?: string; message?: string } }).cause;
-        const reason = cause?.code ?? cause?.message ?? (error as Error).message;
-        throw new Error(`cannot reach ${new URL(url).host} (${reason}). Set models.hubUrl to a mirror if this network blocks it.`);
+        let response: Awaited<ReturnType<FetchLike>>;
+        try {
+          response = await this.fetchImpl(url, { signal: controller.signal });
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new Error(`download of ${file.path} stalled (no data for ${Math.round(idleMs / 1000)}s)`);
+          }
+          /* undici reports only "fetch failed"; the cause names the host and reason. */
+          const cause = (error as { cause?: { code?: string; message?: string } }).cause;
+          const reason = cause?.code ?? cause?.message ?? (error as Error).message;
+          throw new Error(
+            `cannot reach ${new URL(url).host} (${reason}). Set models.hubUrl to a mirror if this network blocks it.`
+          );
+        }
+
+        if (response.status === 404 && file.optional) continue;
+        if (!response.ok) {
+          throw new Error(`download failed for ${file.path}: HTTP ${response.status}`);
+        }
+
+        const length = Number(response.headers.get('content-length') ?? 0);
+        if (length > 0) state.totalBytes += length;
+
+        const target = path.join(dir, ...file.path.split('/'));
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        const temp = `${target}.part`;
+        let written: number;
+        try {
+          written = await writeStream(response.body, temp, chunk => {
+            arm();
+            state.receivedBytes += chunk;
+            if (state.receivedBytes > state.totalBytes) state.totalBytes = state.receivedBytes;
+          });
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new Error(`download of ${file.path} stalled (no data for ${Math.round(idleMs / 1000)}s)`);
+          }
+          throw error;
+        }
+
+        if (length > 0 && written !== length) {
+          fs.rmSync(temp, { force: true });
+          throw new Error(`download of ${file.path} was cut short (${written} of ${length} bytes)`);
+        }
+        fs.renameSync(temp, target);
+        sizes[file.path] = written;
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-
-      if (response.status === 404 && file.optional) continue;
-      if (!response.ok) {
-        throw new Error(`download failed for ${file.path}: HTTP ${response.status}`);
-      }
-
-      const length = Number(response.headers.get('content-length') ?? 0);
-      if (length > 0) state.totalBytes += length;
-
-      const target = path.join(dir, ...file.path.split('/'));
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      const temp = `${target}.part`;
-      const written = await writeStream(response.body, temp, chunk => {
-        state.receivedBytes += chunk;
-        if (state.receivedBytes > state.totalBytes) state.totalBytes = state.receivedBytes;
-      });
-
-      if (length > 0 && written !== length) {
-        fs.rmSync(temp, { force: true });
-        throw new Error(`download of ${file.path} was cut short (${written} of ${length} bytes)`);
-      }
-      fs.renameSync(temp, target);
-      sizes[file.path] = written;
     }
 
     fs.writeFileSync(
@@ -323,12 +359,21 @@ async function writeStream(
   if (!body) throw new Error('empty response body');
 
   const out = fs.createWriteStream(target);
+  /* A disk error (full, read-only) must fail the download, not hang on 'drain'. */
+  let streamError: Error | null = null;
+  out.on('error', error => { streamError = error; });
   let written = 0;
   try {
     for await (const chunk of body as AsyncIterable<Uint8Array>) {
+      if (streamError) throw streamError;
       written += chunk.byteLength;
       onChunk(chunk.byteLength);
-      if (!out.write(chunk)) await new Promise<void>(resolve => out.once('drain', resolve));
+      if (!out.write(chunk)) {
+        await new Promise<void>((resolve, reject) => {
+          out.once('drain', resolve);
+          out.once('error', reject);
+        });
+      }
     }
   } catch (error) {
     out.destroy();
@@ -336,6 +381,7 @@ async function writeStream(
     throw error;
   }
   await new Promise<void>((resolve, reject) => {
+    if (streamError) return reject(streamError);
     out.once('error', reject);
     out.end(resolve);
   });

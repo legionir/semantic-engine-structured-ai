@@ -211,8 +211,22 @@ async function runPlatform(
   /* The artifact id comes first so the registry's per-project folder is the
      same folder the index is written to; the display ids are aliases. */
   server.projects.registerProject(workspaceRoot, artifactProjectId, projName);
-  server.projects.registerProject(workspaceRoot, projId, projName);
-  server.projects.registerProject(workspaceRoot, `prj-${projId}`, projName);
+  /*
+  | The display aliases are a convenience. Two checkouts that share a folder
+  | name (`client-a/app`, `client-b/app`) would collide on `app`, and that
+  | collision used to abort startup — the UI never came up. A refused alias is
+  | skipped; the project stays reachable by its artifact id and `current`.
+  */
+  for (const alias of [projId, `prj-${projId}`]) {
+    try {
+      server.projects.registerProject(workspaceRoot, alias, projName);
+    } catch (error) {
+      context.logger.warn('project alias skipped', {
+        alias,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   const current = server.projects.registerProject(workspaceRoot, 'current', projName);
   const resumedJobs = await server.jobs.resumeInterruptedJobs();
 
@@ -508,6 +522,23 @@ export function spawnService(
       resolveReady();
     }
   });
+
+  /*
+  | A child that neither prints its ready marker nor exits (a port that
+  | accepts but never answers, a watcher stuck on a lock) would leave `start`
+  | waiting forever with no message. Fail with what the child said.
+  */
+  const startupMs = Number(process.env['SEMANTIC_ENGINE_START_TIMEOUT_MS'] ?? 180_000);
+  const startupTimer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    rejectReady(new Error(
+      `semantic-engine service did not become ready within ${Math.round(startupMs / 1000)}s ` +
+      `(${args[0] ?? 'service'}); last output:\n${output.split('\n').slice(-8).join('\n')}`
+    ));
+  }, startupMs);
+  startupTimer.unref?.();
+  void ready.then(() => clearTimeout(startupTimer), () => clearTimeout(startupTimer));
 
   child.once('error', error => {
     if (!settled) {

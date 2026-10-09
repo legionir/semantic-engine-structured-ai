@@ -91,4 +91,27 @@ describe('LocalModelStore', () => {
     expect(fs.existsSync(path.join(dir, 'Xenova', 'all-MiniLM-L6-v2'))).toBe(false);
     expect(store.remove('hashing-256')).toBe(false);
   });
+
+  it('a connection that goes silent fails the download instead of hanging', async () => {
+    const stalling: FetchLike = async (_url, init) => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: (async function* () {
+        yield Buffer.from('partial');
+        await new Promise<never>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        });
+      })(),
+    });
+    const store = new LocalModelStore({ modelsDir: dir, fetchImpl: stalling, idleTimeoutMs: 50 });
+
+    store.start(MODEL);
+    await store.finished(MODEL);
+
+    const info = store.list().find(m => m.id === MODEL)!;
+    expect(info.status).toBe('failed');
+    expect(info.error).toMatch(/stalled/);
+    expect(fs.readdirSync(path.join(dir, 'Xenova', 'all-MiniLM-L6-v2')).some(f => f.endsWith('.part'))).toBe(false);
+  });
 });
