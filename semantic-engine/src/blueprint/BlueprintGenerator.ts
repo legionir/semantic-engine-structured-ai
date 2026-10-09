@@ -352,20 +352,20 @@ export class BlueprintGenerator {
 
     const normalized = modulePath.replace(/\\/g, '/');
     const readable = normalized
-      .replace(/[/_]+/g, '-')
       .toLowerCase()
+      // هر نویسه خارج از `[a-z0-9]` (جداکننده، `_`، `.`، `@`، فاصله، ...)
+      // با schema (`^mod-[a-z0-9-]+$`) سازگار نیست؛ مثلاً `.github` یا `@types`.
+      .replace(/[^a-z0-9]+/g, '-')
       // `src/__tests__` نباید `src---tests--` شود.
-      .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
 
     // بازگشت‌پذیر؟ اگر شکلِ خوانا اطلاعاتی را دور نریخته باشد، همان کافی است.
-    const lossless = normalized.toLowerCase() === normalized
-      && !normalized.includes('_')
-      && !normalized.includes('-');
+    const lossless = /^[a-z0-9]+(\/[a-z0-9]+)*$/.test(normalized);
 
     if (lossless) return `mod-${readable}`;
 
-    return `mod-${readable}-${sha256(normalized).substring(0, 6)}`;
+    const hash = sha256(normalized).substring(0, 6);
+    return readable ? `mod-${readable}-${hash}` : `mod-${hash}`;
   }
 
   /**

@@ -92,6 +92,21 @@ describe('BlueprintGenerator — شناسهٔ ماژول بدون تصادم (SE
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('مسیرهای دارای نقطه/@/فاصله شناسهٔ سازگار با schema می‌گیرند', () => {
+    const bp = new BlueprintGenerator().generate(
+      index([
+        file('f1', '.github/workflows/ci.ts'),
+        file('f2', '@types/node/a.ts'),
+        file('f3', 'my dir/b.ts'),
+        file('f4', 'github/workflows/c.ts'),
+      ])
+    );
+
+    const ids = bp.moduleMap.map(m => m.id);
+    for (const id of ids) expect(id).toMatch(/^mod-[a-z0-9-]+$/);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('تفاوت بزرگی و کوچکی حروف حفظ می‌شود', () => {
     const bp = new BlueprintGenerator().generate(
       index([file('f1', 'src/FooBar/a.ts'), file('f2', 'src/foobar/b.ts')])
