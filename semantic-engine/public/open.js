@@ -18,6 +18,9 @@ const state = {
   projectStatus: null,
   providers: [],
   localModels: [],
+  localModel: "hashing-256",
+  modelsTimer: null,
+  settings: null,
   jobId: null,
   sse: null,
 };
@@ -130,15 +133,16 @@ function currentProvider() {
 function applyProvider() {
   const p = currentProvider();
   if (!p) return;
+  const isLocal = p.kind === "local";
   $("baseUrlField").hidden = !p.needsBaseUrl;
   $("apiKeyField").hidden = !p.acceptsApiKey;
+  $("localModelsGroup").hidden = !isLocal;
+  $("remoteModelsGroup").hidden = isLocal;
   if (p.defaultBaseUrl && !$("baseUrlInput").value) $("baseUrlInput").value = p.defaultBaseUrl;
   $("providerHint").textContent = p.description + " · default model: " + p.defaultModel;
 
-  if (p.kind === "local") {
-    // مدل‌های لوکال بدون درخواست شبکه آماده‌اند.
-    fillModels(state.localModels, p.defaultModel);
-    $("fetchStatus").textContent = state.localModels.length + " local models available";
+  if (isLocal) {
+    loadLocalModels();
   } else {
     $("modelSelect").innerHTML = '<option value="">— connect to load models —</option>';
     $("fetchStatus").textContent = "";
@@ -159,6 +163,129 @@ function fillModels(models, defaultModel) {
   const def = models.find(m => m.id === defaultModel) || models.find(m => m.isDefault) || models[0];
   if (def) sel.value = def.id;
   syncDefaultModelToggle();
+}
+
+// ── local embedding models: list, download, choose ─────────────────────
+function formatBytes(n) {
+  if (!n) return "0 MB";
+  return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
+}
+
+async function loadLocalModels() {
+  try {
+    const data = await api("GET", "/api/v1/models/local");
+    state.localModels = data.models || [];
+    $("modelsDirNote").textContent = data.modelsDir ? "stored in " + data.modelsDir : "";
+    const notice = $("runtimeNotice");
+    const needsRuntime = state.localModels.some(m => !m.builtIn && m.status === "ready");
+    notice.hidden = data.runtimeInstalled || !needsRuntime;
+    if (!notice.hidden) {
+      notice.innerHTML = "Downloaded models need the optional runtime. Run <code>npm install @xenova/transformers</code> in the semantic-engine folder and restart.";
+    }
+    // یک مدل انتخاب‌شدهٔ ناآماده نباید بماند.
+    const chosen = state.localModels.find(m => m.id === state.localModel);
+    if (!chosen || chosen.status !== "ready") state.localModel = "hashing-256";
+    renderLocalModels();
+    const busy = state.localModels.some(m => m.status === "downloading");
+    clearTimeout(state.modelsTimer);
+    if (busy) state.modelsTimer = setTimeout(loadLocalModels, 1000);
+  } catch (e) {
+    $("localModelList").innerHTML = "";
+    log("bad", "Could not load local models: " + e.message);
+  }
+}
+
+function renderLocalModels() {
+  const list = $("localModelList");
+  list.innerHTML = "";
+  for (const m of state.localModels) {
+    const li = document.createElement("li");
+    li.className = "model-item" + (m.id === state.localModel ? " selected" : "");
+
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "localModel";
+    radio.checked = m.id === state.localModel;
+    radio.disabled = m.status !== "ready";
+    radio.setAttribute("aria-label", "Use " + m.name);
+    radio.addEventListener("change", () => { state.localModel = m.id; renderLocalModels(); });
+    li.appendChild(radio);
+
+    const name = document.createElement("div");
+    name.className = "model-name";
+    name.textContent = m.name;
+    const badge = document.createElement("span");
+    badge.className = "badge " + (m.status === "ready" ? "ready" : m.status === "failed" ? "failed" : "missing");
+    badge.textContent = m.builtIn ? "built in" : m.status === "ready" ? "downloaded" : m.status;
+    name.appendChild(badge);
+    li.appendChild(name);
+
+    const action = document.createElement("div");
+    action.className = "model-action";
+    if (!m.builtIn && m.status === "downloading") {
+      const t = document.createElement("span");
+      t.className = "muted";
+      t.textContent = formatBytes(m.receivedBytes) + " / " + formatBytes(m.totalBytes);
+      action.appendChild(t);
+    } else if (!m.builtIn && m.status !== "ready") {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn small";
+      b.textContent = m.status === "failed" ? "Retry download" : "Download";
+      b.addEventListener("click", () => downloadModel(m.id));
+      action.appendChild(b);
+    } else if (!m.builtIn) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn ghost small";
+      b.textContent = "Remove";
+      b.addEventListener("click", () => removeModel(m.id));
+      action.appendChild(b);
+    }
+    li.appendChild(action);
+
+    const meta = document.createElement("div");
+    meta.className = "model-meta";
+    meta.textContent = m.dimensions + "d · " + m.languages + (m.sizeMb ? " · ~" + m.sizeMb + " MB" : "") + " — " + m.description;
+    li.appendChild(meta);
+
+    if (m.status === "downloading") {
+      const bar = document.createElement("div");
+      bar.className = "model-progress";
+      const fill = document.createElement("div");
+      const pct = m.totalBytes ? Math.min(100, (m.receivedBytes / m.totalBytes) * 100) : 0;
+      fill.style.width = pct + "%";
+      bar.appendChild(fill);
+      li.appendChild(bar);
+    }
+    if (m.status === "failed" && m.error) {
+      const err = document.createElement("div");
+      err.className = "model-error";
+      err.textContent = m.error;
+      li.appendChild(err);
+    }
+    list.appendChild(li);
+  }
+}
+
+async function downloadModel(id) {
+  try {
+    await api("POST", "/api/v1/models/local/download", { id });
+    log("info", "Downloading " + id);
+    loadLocalModels();
+  } catch (e) {
+    log("bad", "Could not start download: " + e.message);
+  }
+}
+
+async function removeModel(id) {
+  try {
+    await api("POST", "/api/v1/models/local/remove", { id });
+    if (state.localModel === id) state.localModel = "hashing-256";
+    loadLocalModels();
+  } catch (e) {
+    log("bad", "Could not remove model: " + e.message);
+  }
 }
 
 async function fetchModels() {
@@ -231,9 +358,105 @@ async function selectProject(path) {
       $("gotoVisualizerBtn").href = "/visualizer.html?project=" + encodeURIComponent(project.id);
     }
     log("ok", "Project opened: " + project.rootPath + " (" + project.status + ")");
+    showProjectPaths(project.id);
   } catch (e) {
     clearProjectSelection();
     log("bad", "Could not open project: " + e.message + " — no project is selected");
+  }
+}
+
+async function showProjectPaths(id) {
+  try {
+    const detail = await api("GET", "/api/v1/projects/" + encodeURIComponent(id));
+    $("indexPathCode").textContent = detail.indexPath || "";
+    $("pathsInfo").hidden = false;
+  } catch { /* the path list is informational */ }
+}
+
+// ── settings file (<data dir>/config.json) ──────────────────────────────
+function applySettings(view) {
+  state.settings = view;
+  const c = view.config;
+  $("configPathCode").textContent = view.configPath;
+  $("modelsDirCode").textContent = view.modelsDir;
+  $("pathsInfo").hidden = false;
+
+  $("scanEngine").value = c.scan.treeSitter ? "tree-sitter" : "heuristic";
+  $("useGitignore").checked = c.scan.useGitignore;
+  $("skipHidden").checked = c.scan.skipHiddenDirectories;
+  $("maxDepth").value = c.scan.maxDepth;
+  $("maxFileSize").value = c.scan.maxFileSizeMb;
+  $("extraIgnore").value = (c.scan.additionalIgnorePatterns || []).join(", ");
+  $("wantBlueprint").checked = c.scan.blueprint;
+  $("wantLspDiagnostics").checked = c.scan.lspDiagnostics;
+
+  $("embeddingEnabled").checked = c.embedding.enabled;
+  $("embeddingConfig").hidden = !c.embedding.enabled;
+  $("normalizeVectors").checked = c.embedding.normalize;
+  $("useDefaultModel").checked = c.embedding.useDefaultModel;
+  if (c.embedding.provider === "local" && c.embedding.model) state.localModel = c.embedding.model;
+  if (c.embedding.baseUrl) $("baseUrlInput").value = c.embedding.baseUrl;
+  if ([...$("providerSelect").options].some(o => o.value === c.embedding.provider)) {
+    $("providerSelect").value = c.embedding.provider;
+    applyProvider();
+  }
+
+  if (c.chat.baseUrl) $("llmBaseUrl").value = c.chat.baseUrl;
+  if (c.chat.model) $("llmModelSelect").value = c.chat.model;
+  $("llmTemp").value = c.chat.temperature;
+}
+
+async function loadSettings() {
+  try {
+    const view = await api("GET", "/api/v1/settings");
+    applySettings(view);
+    // پوشهٔ سروری که با آن اجرا شده، همان‌جا انتخاب می‌شود.
+    if (view.workspaceRoot && !$("pathInput").value) selectProject(view.workspaceRoot);
+  } catch (e) {
+    // بدون data dir (حالت تست) فایل تنظیمات وجود ندارد؛ پنل با پیش‌فرض‌های داخلی کار می‌کند.
+    try {
+      const cfg = await api("GET", "/api/v1/config");
+      if (cfg.projectsRoot && !$("pathInput").value) selectProject(cfg.projectsRoot);
+    } catch { /* not connected yet */ }
+  }
+}
+
+function collectSettingsPatch() {
+  const p = currentProvider();
+  const provider = p ? p.kind : "local";
+  const hashing = state.localModel === "hashing-256";
+  const useDefault = provider === "local" ? hashing : $("useDefaultModel").checked;
+  const model = provider === "local" ? state.localModel : ($("modelSelect").value || "");
+  return {
+    scan: {
+      treeSitter: $("scanEngine").value === "tree-sitter",
+      useGitignore: $("useGitignore").checked,
+      skipHiddenDirectories: $("skipHidden").checked,
+      maxDepth: parseInt($("maxDepth").value, 10) || 0,
+      maxFileSizeMb: parseFloat($("maxFileSize").value) || 5,
+      additionalIgnorePatterns: $("extraIgnore").value.split(",").map(x => x.trim()).filter(Boolean),
+      blueprint: $("wantBlueprint").checked,
+      lspDiagnostics: $("wantLspDiagnostics").checked,
+    },
+    embedding: {
+      enabled: $("embeddingEnabled").checked,
+      provider,
+      model,
+      useDefaultModel: useDefault,
+      baseUrl: p && p.needsBaseUrl ? $("baseUrlInput").value.trim() : "",
+      normalize: $("normalizeVectors").checked,
+    },
+  };
+}
+
+async function saveDefaults() {
+  $("defaultsStatus").textContent = "Saving…";
+  try {
+    const view = await api("PUT", "/api/v1/settings", collectSettingsPatch());
+    state.settings = view;
+    $("defaultsStatus").textContent = "Saved to " + view.configPath;
+  } catch (e) {
+    $("defaultsStatus").textContent = "✗ " + e.message;
   }
 }
 
@@ -258,12 +481,14 @@ function collectIndexOptions() {
     embedding: { enabled: false },
   };
   if (embeddingEnabled && p) {
-    const useDefault = $("useDefaultModel").checked;
+    const isLocal = p.kind === "local";
+    const hashing = state.localModel === "hashing-256";
+    const useDefault = isLocal ? hashing : $("useDefaultModel").checked;
     body.embedding = {
       enabled: true,
       provider: p.kind,
       useDefaultModel: useDefault,
-      model: useDefault ? "" : $("modelSelect").value,
+      model: useDefault ? "" : (isLocal ? state.localModel : $("modelSelect").value),
       normalize: $("normalizeVectors").checked,
     };
     if (p.needsBaseUrl) body.embedding.baseUrl = $("baseUrlInput").value.trim();
@@ -390,7 +615,7 @@ function bind() {
     state.token = $("tokenInput").value.trim();
     localStorage.setItem("se.token", state.token);
     checkHealth();
-    loadProviders();
+    loadProviders().then(loadSettings);
     log("info", "Token saved");
   });
   $("tokenInput").addEventListener("input", () => { state.token = $("tokenInput").value.trim(); });
@@ -422,6 +647,7 @@ function bind() {
     $("embeddingConfig").hidden = !$("embeddingEnabled").checked;
   });
 
+  $("saveDefaultsBtn").addEventListener("click", saveDefaults);
   $("startIndexBtn").addEventListener("click", startIndex);
   $("cancelIndexBtn").addEventListener("click", cancelIndex);
 
@@ -484,6 +710,9 @@ async function saveLlm() {
     if ($("llmApiKey").value) body.apiKey = $("llmApiKey").value;
     const cfg = await api("PUT", "/api/v1/chat/llm", body);
     $("llmSaveStatus").textContent = "Saved — model: " + cfg.model;
+    try {
+      await api("PUT", "/api/v1/settings", { chat: { baseUrl, model, temperature: body.temperature } });
+    } catch { /* the endpoint works for this session even if the file cannot be written */ }
   } catch (e) {
     $("llmSaveStatus").textContent = "✗ " + e.message;
   }
@@ -493,7 +722,7 @@ function init() {
   loadToken();
   bind();
   checkHealth();
-  loadProviders();
+  loadProviders().then(loadSettings);
   loadLlmConfig();
   // اگر با #llm آمده‌ایم، به بخش LLM اسکرول کن
   if (location.hash === "#llm") {

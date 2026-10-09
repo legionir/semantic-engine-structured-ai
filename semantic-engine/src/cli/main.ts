@@ -15,6 +15,7 @@ import { runIndex } from './commands/index-command';
 import { runQuery } from './commands/query-command';
 import { runDoctor } from './commands/doctor-command';
 import { runServe, runUi, runStart } from './commands/serve-command';
+import { applyGlobalConfig } from './globalConfigDefaults';
 import { runWatch } from './commands/watch-command';
 import { runWorker } from './commands/worker-command';
 import { runCache } from './commands/cache-command';
@@ -179,7 +180,16 @@ function packageVersion(): string {
 }
 
 export async function main(argv: readonly string[]): Promise<number> {
-  const args = parseArgs(argv);
+  const parsed = parseArgs(argv);
+  /*
+  | `<dataRoot>/config.json` supplies the defaults flags do not set. Only
+  | real commands read it; help/version must work on a broken home dir.
+  */
+  const applied = COMMANDS[parsed.command ?? ''] ? applyGlobalConfig(parsed) : null;
+  const args = applied?.args ?? parsed;
+  for (const warning of applied?.loaded.warnings ?? []) {
+    process.stderr.write(`config: ${warning}\n`);
+  }
   const wantsJson = boolOption(args.options, 'json', false);
 
   if (boolOption(args.options, 'help', false) || args.command === 'help') {

@@ -186,3 +186,55 @@ describe('ProjectService — update, remove and indexProject contract', () => {
     service.dispose();
   });
 });
+
+describe('ProjectService — reads the index the CLI wrote ("not indexed" regression)', () => {
+  let base: string;
+
+  beforeEach(() => {
+    base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'se-project-service-idx-')));
+  });
+
+  afterEach(() => {
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  /**
+   * `semantic-engine start` indexes with the id derived from the root
+   * (`prj-<name>-<hash>`), while the UI registers the same folder under display
+   * ids (`<name>`, `current`). The UI used to read `<dataRoot>/projects/<name>`
+   * and so reported a freshly indexed project as "not indexed".
+   */
+  it.each(['current', 'my-app', undefined])('finds the index under the derived id (requested id: %s)', async requested => {
+    const root = makeProject(base, 'my-app');
+    const dataRoot = path.join(base, 'data');
+    const derived = projectIdFor('my-app', root);
+    const artifactDir = path.join(dataRoot, 'projects', derived);
+
+    const { IndexPipeline } = await import('../pipeline/IndexPipeline');
+    const { OutputWriter, INDEX_FILE_NAME } = await import('../pipeline/OutputWriter');
+    const { createExtractors } = await import('../pipeline/ExtractorFactory');
+    const extractors = createExtractors({ workspaceRoot: root, treeSitter: false });
+    const { projectIndex } = await new IndexPipeline({
+      workspaceRoot: root,
+      outputPath: path.join(artifactDir, INDEX_FILE_NAME),
+      symbolExtractors: extractors.symbols,
+      dependencyExtractors: extractors.dependencies,
+      gitCollector: null,
+      vectorIndexer: null,
+    }).run();
+    await new OutputWriter({ outputDir: artifactDir, blueprint: true }).write(projectIndex);
+    extractors.dispose();
+
+    const service = new ProjectService(root, {
+      dataRoot,
+      artifactLocation: 'external',
+      registry: new ProjectRegistry({ dataRoot }),
+    });
+    const project = service.registerProject(root, requested, 'my-app');
+
+    expect(project.status).toBe('ready');
+    expect(project.indexPath).toBe(path.join(artifactDir, INDEX_FILE_NAME));
+    expect(project.stats.filesCount).toBeGreaterThan(0);
+    service.dispose();
+  });
+});

@@ -54,7 +54,8 @@ interface IndexRequestBody {
 }
 
 function buildEmbeddingGenerator(
-  cfg: NonNullable<IndexRequestBody['embedding']>
+  cfg: NonNullable<IndexRequestBody['embedding']>,
+  modelsDir?: string
 ): IEmbeddingGenerator | null {
   /*
   | تصمیم «کدام provider» در `vector/createEmbeddingGenerator` گرفته می‌شود تا
@@ -68,6 +69,7 @@ function buildEmbeddingGenerator(
     ...(cfg.apiKey !== undefined ? { apiKey: cfg.apiKey } : {}),
     ...(cfg.useDefaultModel !== undefined ? { useDefaultModel: cfg.useDefaultModel } : {}),
     ...(cfg.normalize !== undefined ? { normalize: cfg.normalize } : {}),
+    ...(modelsDir ? { modelsDir } : {}),
   });
 }
 
@@ -149,7 +151,8 @@ function createIndexRunner(
 export function createJobRoutes(
   projectService: ProjectService,
   jobManager: JobManager,
-  sseManager: SseManager
+  sseManager: SseManager,
+  modelsDir?: string
 ): RouteDefinition[] {
 
   jobManager.registerRecovery('index', async interrupted => {
@@ -160,7 +163,7 @@ export function createJobRoutes(
       : {};
     const embedding = jobData.embedding ?? {};
     let embeddingGenerator: IEmbeddingGenerator | null = null;
-    if (embedding.enabled) embeddingGenerator = buildEmbeddingGenerator(embedding);
+    if (embedding.enabled) embeddingGenerator = buildEmbeddingGenerator(embedding, modelsDir);
     jobManager.startJob(
       project.id,
       'index',
@@ -197,7 +200,7 @@ export function createJobRoutes(
           if (embedding.baseUrl && embedding.provider && embedding.provider !== 'local') {
             await assertResolvedFetchableUrl(embedding.baseUrl);
           }
-          embeddingGenerator = buildEmbeddingGenerator(embedding);
+          embeddingGenerator = buildEmbeddingGenerator(embedding, modelsDir);
         } catch (error) {
           return { status: 400, json: { error: error instanceof Error ? error.message : String(error) } };
         }

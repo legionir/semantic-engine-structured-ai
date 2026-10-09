@@ -60,6 +60,8 @@ export interface PlatformConfig {
   readonly allowRemote?: boolean;
   readonly maxBodyBytes?: number;
   readonly projectsRoot?: string;
+  /** شناسهٔ artifact پروژهٔ اصلی (`--project-id`)؛ بدون آن از ریشه ساخته می‌شود. */
+  readonly projectId?: string;
   readonly staticDir?: string;
   /**
    * data root برای registry دائمی پروژه‌ها (`registry.json` و manifest هر

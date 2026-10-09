@@ -23,7 +23,8 @@ import {
 import { loadBlueprintBeside } from '../../ai/discovery/loadBlueprint';
 import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
 import { resolveDataRoot } from '../../core/config/DataRootResolver';
-import { artifactLocationFromArgs, indexLookupFromArgs } from '../projectPathsFromArgs';
+import { globalConfigPath } from '../../core/config/GlobalConfig';
+import { artifactLocationFromArgs, indexLookupFromArgs, projectIdFromArgs } from '../projectPathsFromArgs';
 import {
   HttpGuard,
   DEFAULT_HOST,
@@ -175,6 +176,7 @@ async function runPlatform(
   const embeddingModel = stringOption(args.options, 'embeddingModel') ?? null;
 
 
+  const artifactProjectId = projectIdFromArgs(args, workspaceRoot);
   const { HttpServer } = require('../../server/HttpServer') as typeof import('../../server/HttpServer');
   const server = new HttpServer({
     port,
@@ -182,13 +184,17 @@ async function runPlatform(
     token,
     allowRemote: boolOption(args.options, 'allowRemote', false),
     projectsRoot: workspaceRoot,
+    projectId: artifactProjectId,
     embeddingModel,
     /*
     | state پروسه (صف jobها و telemetry) دیگر داخل checkout نوشته نمی‌شود؛
     | جای آن data directory کاربر است. `resolveDataRoot` چیزی روی دیسک
     | نمی‌سازد، پس اگر هرگز job اجرا نشود فایلی هم ساخته نمی‌شود.
     */
-    dataRoot: resolveDataRoot({ env: process.env }),
+    dataRoot: resolveDataRoot({
+      ...(stringOption(args.options, 'dataDir') ? { dataDir: stringOption(args.options, 'dataDir')! } : {}),
+      env: process.env,
+    }),
     artifactLocation: artifactLocationFromArgs(args, process.env),
   });
 
@@ -202,6 +208,9 @@ async function runPlatform(
   */
   const projName = path.basename(workspaceRoot);
   const projId = projName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  /* The artifact id comes first so the registry's per-project folder is the
+     same folder the index is written to; the display ids are aliases. */
+  server.projects.registerProject(workspaceRoot, artifactProjectId, projName);
   server.projects.registerProject(workspaceRoot, projId, projName);
   server.projects.registerProject(workspaceRoot, `prj-${projId}`, projName);
   const current = server.projects.registerProject(workspaceRoot, 'current', projName);
@@ -647,6 +656,15 @@ export async function runStart(
     /* start owns one watcher for both services. */
     '--no-watch',
   ];
+  /* Every child must resolve artifacts exactly as `start` itself did. */
+  for (const [flag, name] of [
+    ['--data-dir', 'dataDir'],
+    ['--artifact-location', 'artifactLocation'],
+    ['--project-id', 'projectId'],
+  ] as const) {
+    const value = stringOption(args.options, name);
+    if (value !== undefined) common.push(flag, value);
+  }
 
   const ui = spawnService(
     ['ui', ...common, '--port', uiPort],
@@ -720,6 +738,13 @@ export async function runStart(
       `   • Root: ${root}\n` +
       `   • Index: ${indexPath}\n` +
       `   • Watcher: ${watcher ? 'enabled' : 'disabled'}\n` +
+      `   • Deep scan: vectors ${wantsVectors ? 'on' : 'off'}, LSP diagnostics ${
+        boolOption(args.options, 'lspDiagnostics', true) ? 'on' : 'off'
+      }\n` +
+      `   • Config: ${globalConfigPath(resolveDataRoot({
+        ...(stringOption(args.options, 'dataDir') ? { dataDir: stringOption(args.options, 'dataDir')! } : {}),
+        env: process.env,
+      }))}\n` +
       `   • Token: ${token}\n`
   );
 
