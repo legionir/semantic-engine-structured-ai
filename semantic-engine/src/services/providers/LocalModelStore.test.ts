@@ -116,9 +116,17 @@ describe('LocalModelStore', () => {
   });
 
   it('a large download under backpressure leaks no stream listeners', async () => {
-    const warnings: string[] = [];
-    const onWarning = (warning: Error): void => { warnings.push(warning.name); };
-    process.on('warning', onWarning);
+    /* Node's own MaxListeners warning is emitted on the real process, which
+       Jest's sandboxed `process` cannot see — so count the listeners instead. */
+    const streams: fs.WriteStream[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const realFs = require('fs') as typeof fs;
+    const original = realFs.createWriteStream;
+    const spy = jest.spyOn(realFs, 'createWriteStream').mockImplementation(((...args: Parameters<typeof original>) => {
+      const stream = original(...args);
+      streams.push(stream);
+      return stream;
+    }) as typeof original);
 
     const chunk = Buffer.alloc(256 * 1024, 'x');
     const big: FetchLike = async url => ({
@@ -128,12 +136,15 @@ describe('LocalModelStore', () => {
       body: Readable.from(url.endsWith('.onnx') ? Array.from({ length: 120 }, () => chunk) : [Buffer.from('{}')]),
     });
     const store = new LocalModelStore({ modelsDir: dir, fetchImpl: big });
-    store.start(MODEL);
-    await store.finished(MODEL);
-    await new Promise(resolve => setImmediate(resolve));
-    process.off('warning', onWarning);
+    try {
+      store.start(MODEL);
+      await store.finished(MODEL);
+    } finally {
+      spy.mockRestore();
+    }
 
     expect(store.isReady(MODEL)).toBe(true);
-    expect(warnings).not.toContain('MaxListenersExceededWarning');
+    expect(streams.length).toBeGreaterThan(0);
+    for (const stream of streams) expect(stream.listenerCount('error')).toBeLessThanOrEqual(2);
   });
 });
