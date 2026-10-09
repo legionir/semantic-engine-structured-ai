@@ -62,6 +62,8 @@ ui & serve options:
   --ui-port <n>          UI port for 'start'         (default: 4000)
   --mcp-port <n>         MCP port for 'start'        (default: 3000)
   --no-watch             start UI/MCP without the file watcher
+  --no-vectors           'start' only: skip vector chunks (on by default)
+  --no-lsp-diagnostics   'start' only: skip language-server diagnostics (on by default)
   --host <addr>         bind address               (default: 127.0.0.1)
   --token <secret>      required bearer token      (generated if omitted)
   --allow-remote        permit a non-loopback bind (needs a strong token)

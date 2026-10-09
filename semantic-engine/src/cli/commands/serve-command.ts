@@ -450,7 +450,7 @@ function startIndexPath(args: ParsedArgs, root: string): string {
   const output = stringOption(args.options, 'out');
   return output
     ? path.resolve(root, output, INDEX_FILE_NAME)
-    : resolveProjectIndexPath(root);
+    : resolveProjectIndexPath(root, undefined, indexLookupFromArgs(args, root));
 }
 
 function validatePort(value: string | undefined, flag: string): CommandResult | null {
@@ -548,9 +548,25 @@ export async function stopChild(child: ChildProcess): Promise<void> {
  * workspace as well as an already indexed one.
  */
 export async function runStart(
-  args: ParsedArgs,
+  rawArgs: ParsedArgs,
   context: CommandContext
 ): Promise<CommandResult> {
+  /*
+  | `start` is the "everything on" entry point: deep scan (vector chunks +
+  | language-server diagnostics), UI, MCP over HTTP and the file watcher.
+  | Each can still be switched off explicitly (`--no-vectors`,
+  | `--no-lsp-diagnostics`, `--no-watch`); only the defaults differ from
+  | `index`/`watch`, where both heavy passes stay opt-in.
+  */
+  const args: ParsedArgs = {
+    ...rawArgs,
+    options: {
+      ...rawArgs.options,
+      vectors: boolOption(rawArgs.options, 'vectors', true),
+      lspDiagnostics: boolOption(rawArgs.options, 'lspDiagnostics', true),
+    },
+  };
+
   const invalid = validateHttpOptions(args);
   if (invalid) return invalid;
 
@@ -573,7 +589,7 @@ export async function runStart(
 
   let indexPath = startIndexPath(args, root);
   const explicitIndex = stringOption(args.options, 'index');
-  const wantsVectors = boolOption(args.options, 'vectors', false);
+  const wantsVectors = boolOption(args.options, 'vectors', true);
   const existingIndex = loadIndex(indexPath);
   const needsRequestedArtifacts =
     !('error' in existingIndex) &&
