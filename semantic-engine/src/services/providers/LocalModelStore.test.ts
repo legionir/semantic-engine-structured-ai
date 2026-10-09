@@ -114,4 +114,26 @@ describe('LocalModelStore', () => {
     expect(info.error).toMatch(/stalled/);
     expect(fs.readdirSync(path.join(dir, 'Xenova', 'all-MiniLM-L6-v2')).some(f => f.endsWith('.part'))).toBe(false);
   });
+
+  it('a large download under backpressure leaks no stream listeners', async () => {
+    const warnings: string[] = [];
+    const onWarning = (warning: Error): void => { warnings.push(warning.name); };
+    process.on('warning', onWarning);
+
+    const chunk = Buffer.alloc(256 * 1024, 'x');
+    const big: FetchLike = async url => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: Readable.from(url.endsWith('.onnx') ? Array.from({ length: 120 }, () => chunk) : [Buffer.from('{}')]),
+    });
+    const store = new LocalModelStore({ modelsDir: dir, fetchImpl: big });
+    store.start(MODEL);
+    await store.finished(MODEL);
+    await new Promise(resolve => setImmediate(resolve));
+    process.off('warning', onWarning);
+
+    expect(store.isReady(MODEL)).toBe(true);
+    expect(warnings).not.toContain('MaxListenersExceededWarning');
+  });
 });

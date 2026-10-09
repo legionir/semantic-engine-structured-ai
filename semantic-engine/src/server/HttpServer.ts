@@ -3,7 +3,6 @@
  */
 
 import * as http from 'http';
-import * as url from 'url';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RouteDefinition, HttpRequestContext, PlatformConfig } from './types';
@@ -445,12 +444,19 @@ export class HttpServer {
       return;
     }
 
-    const parsedUrl = url.parse(req.url || '/', true);
-    const pathname = parsedUrl.pathname || '/';
+    /*
+    | `url.parse` is deprecated (DEP0169). `new URL(req.url, base)` is not a
+    | drop-in: it normalises `..` and treats `//host/x` as a host. The request
+    | target is split by hand instead, so the pathname stays exactly as sent
+    | (as before) and only the query goes through URLSearchParams.
+    */
+    const rawTarget = (req.url || '/').split('#')[0]!;
+    const queryStart = rawTarget.indexOf('?');
+    const pathname = (queryStart === -1 ? rawTarget : rawTarget.slice(0, queryStart)) || '/';
     const query: Record<string, string> = {};
-    for (const [k, v] of Object.entries(parsedUrl.query)) {
-      if (typeof v === 'string') query[k] = v;
-      else if (Array.isArray(v)) query[k] = v[0] || '';
+    if (queryStart !== -1) {
+      const search = new URLSearchParams(rawTarget.slice(queryStart + 1));
+      for (const key of new Set(search.keys())) query[key] = search.get(key) ?? '';
     }
 
     const match = this.matchRoute(req.method || 'GET', pathname);

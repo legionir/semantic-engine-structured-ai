@@ -369,9 +369,12 @@ async function writeStream(
       written += chunk.byteLength;
       onChunk(chunk.byteLength);
       if (!out.write(chunk)) {
+        /* `once` pairs on a long-lived stream leak a listener per wait. */
         await new Promise<void>((resolve, reject) => {
-          out.once('drain', resolve);
-          out.once('error', reject);
+          const onDrain = (): void => { out.off('error', onError); resolve(); };
+          const onError = (error: Error): void => { out.off('drain', onDrain); reject(error); };
+          out.once('drain', onDrain);
+          out.once('error', onError);
         });
       }
     }
