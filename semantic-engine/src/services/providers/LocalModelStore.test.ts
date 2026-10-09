@@ -119,7 +119,6 @@ describe('LocalModelStore', () => {
     /* Node's own MaxListeners warning is emitted on the real process, which
        Jest's sandboxed `process` cannot see — so count the listeners instead. */
     const streams: fs.WriteStream[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const realFs = require('fs') as typeof fs;
     const original = realFs.createWriteStream;
     const spy = jest.spyOn(realFs, 'createWriteStream').mockImplementation(((...args: Parameters<typeof original>) => {
