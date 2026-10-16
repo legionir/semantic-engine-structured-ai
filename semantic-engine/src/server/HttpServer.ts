@@ -3,7 +3,6 @@
  */
 
 import * as http from 'http';
-import * as url from 'url';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RouteDefinition, HttpRequestContext, PlatformConfig } from './types';
@@ -49,6 +48,10 @@ import { createHistoryRoutes } from './routes/historyRoutes';
 import { createProviderRoutes } from './routes/providerRoutes';
 import { createFsRoutes } from './routes/fsRoutes';
 import { createChatRoutes, LlmConfigStore } from './routes/chatRoutes';
+import { createSettingsRoutes } from './routes/settingsRoutes';
+import { resolveModelsDir } from '../vector/createEmbeddingGenerator';
+import { LocalModelStore } from '../services/providers/LocalModelStore';
+import { loadGlobalConfig, modelsDirFor } from '../core/config/GlobalConfig';
 
 export class HttpServer {
   private server?: http.Server;
@@ -80,6 +83,7 @@ export class HttpServer {
   readonly rerankerService: RerankerService;
   readonly contextCompressor: ContextCompressor;
   readonly embeddingProviders: EmbeddingProviderService;
+  readonly localModels: LocalModelStore;
   readonly chatService: ProjectChatService;
   readonly llmConfig: LlmConfigStore;
 
@@ -109,6 +113,7 @@ export class HttpServer {
       {
         ...(config.dataRoot ? { registry: new ProjectRegistry({ dataRoot: config.dataRoot }) } : {}),
         ...(config.dataRoot ? { dataRoot: config.dataRoot } : {}),
+        ...(config.projectId ? { artifactProjectId: config.projectId } : {}),
         ...(config.artifactLocation ? { artifactLocation: config.artifactLocation } : {}),
       }
     );
@@ -126,6 +131,31 @@ export class HttpServer {
     this.embeddingProviders = new EmbeddingProviderService();
     this.chatService = new ProjectChatService();
     this.llmConfig = new LlmConfigStore();
+
+    /*
+    | Models and the saved chat endpoint live next to the other generated data.
+    | Without a dataRoot (unit tests) nothing is read from or written to disk.
+    */
+    const userConfig = config.dataRoot ? loadGlobalConfig(config.dataRoot).config : undefined;
+    this.localModels = new LocalModelStore({
+      modelsDir: config.dataRoot
+        ? modelsDirFor(config.dataRoot, userConfig)
+        : resolveModelsDir(),
+      /* A mirror for networks that cannot reach huggingface.co. */
+      ...((process.env['SEMANTIC_ENGINE_MODEL_HUB_URL'] || userConfig?.models.hubUrl)
+        ? { baseUrl: (process.env['SEMANTIC_ENGINE_MODEL_HUB_URL'] || userConfig!.models.hubUrl).replace(/\/+$/, '') }
+        : {}),
+    });
+    if (userConfig?.chat.baseUrl && userConfig.chat.model) {
+      const keyVar = userConfig.chat.apiKeyEnvVar;
+      const apiKey = keyVar ? (process.env[keyVar] ?? '').trim() : '';
+      this.llmConfig.set({
+        baseUrl: userConfig.chat.baseUrl,
+        model: userConfig.chat.model,
+        temperature: userConfig.chat.temperature,
+        ...(apiKey ? { apiKey } : {}),
+      });
+    }
 
     this.registerAllRoutes();
   }
@@ -155,7 +185,7 @@ export class HttpServer {
     this.routes.push(...createSystemRoutes(() => this.readiness()));
     this.routes.push(...createConfigRoutes(this.config));
     this.routes.push(...createProjectRoutes(this.projects));
-    this.routes.push(...createJobRoutes(this.projects, this.jobs, this.sse));
+    this.routes.push(...createJobRoutes(this.projects, this.jobs, this.sse, this.localModels.modelsDir));
     this.routes.push(...createSearchRoutes(this.projects, this.searchService));
     this.routes.push(...createCodeRoutes(this.projects, this.codeService, this.contextService));
     this.routes.push(...createVisualizationRoutes(this.projects, this.lodService));
@@ -163,7 +193,8 @@ export class HttpServer {
     this.routes.push(...createSourceRoutes(this.projects, this.sourceSyncService));
     this.routes.push(...createAnalysisRoutes(this.projects, this.impactEngine, this.archEngine, this.mutationSimulator));
     this.routes.push(...createHistoryRoutes(this.projects, this.historyMiner));
-    this.routes.push(...createProviderRoutes(this.embeddingProviders));
+    this.routes.push(...createProviderRoutes(this.embeddingProviders, this.localModels));
+    this.routes.push(...createSettingsRoutes(this.config));
     this.routes.push(
       ...createFsRoutes(this.config.projectsRoot ?? process.cwd(), {
         /*
@@ -413,12 +444,19 @@ export class HttpServer {
       return;
     }
 
-    const parsedUrl = url.parse(req.url || '/', true);
-    const pathname = parsedUrl.pathname || '/';
+    /*
+    | `url.parse` is deprecated (DEP0169). `new URL(req.url, base)` is not a
+    | drop-in: it normalises `..` and treats `//host/x` as a host. The request
+    | target is split by hand instead, so the pathname stays exactly as sent
+    | (as before) and only the query goes through URLSearchParams.
+    */
+    const rawTarget = (req.url || '/').split('#')[0]!;
+    const queryStart = rawTarget.indexOf('?');
+    const pathname = (queryStart === -1 ? rawTarget : rawTarget.slice(0, queryStart)) || '/';
     const query: Record<string, string> = {};
-    for (const [k, v] of Object.entries(parsedUrl.query)) {
-      if (typeof v === 'string') query[k] = v;
-      else if (Array.isArray(v)) query[k] = v[0] || '';
+    if (queryStart !== -1) {
+      const search = new URLSearchParams(rawTarget.slice(queryStart + 1));
+      for (const key of new Set(search.keys())) query[key] = search.get(key) ?? '';
     }
 
     const match = this.matchRoute(req.method || 'GET', pathname);

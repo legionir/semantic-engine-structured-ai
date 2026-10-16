@@ -51,8 +51,9 @@ function loadTransformers(): TransformersModule {
     return require('@xenova/transformers') as TransformersModule;
   } catch (error) {
     throw new Error(
-      'The transformer-based local embedding generator is not bundled in production. ' +
-        'Use HashingEmbeddingGenerator or a remote IEmbeddingGenerator instead. ' +
+      'The transformer-based local embedding generator needs the optional package ' +
+        '"@xenova/transformers" (npm install @xenova/transformers). ' +
+        'Until it is installed, use the hashing model or a remote provider. ' +
         `Optional legacy loader cause: ${error instanceof Error ? error.message : String(error)}`
     );
   }

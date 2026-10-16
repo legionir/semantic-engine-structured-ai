@@ -23,7 +23,8 @@ import {
 import { loadBlueprintBeside } from '../../ai/discovery/loadBlueprint';
 import { migrateLegacyArtifacts } from '../../core/config/migrateLegacyArtifacts';
 import { resolveDataRoot } from '../../core/config/DataRootResolver';
-import { artifactLocationFromArgs, indexLookupFromArgs } from '../projectPathsFromArgs';
+import { globalConfigPath } from '../../core/config/GlobalConfig';
+import { artifactLocationFromArgs, indexLookupFromArgs, projectIdFromArgs } from '../projectPathsFromArgs';
 import {
   HttpGuard,
   DEFAULT_HOST,
@@ -175,6 +176,7 @@ async function runPlatform(
   const embeddingModel = stringOption(args.options, 'embeddingModel') ?? null;
 
 
+  const artifactProjectId = projectIdFromArgs(args, workspaceRoot);
   const { HttpServer } = require('../../server/HttpServer') as typeof import('../../server/HttpServer');
   const server = new HttpServer({
     port,
@@ -182,13 +184,17 @@ async function runPlatform(
     token,
     allowRemote: boolOption(args.options, 'allowRemote', false),
     projectsRoot: workspaceRoot,
+    projectId: artifactProjectId,
     embeddingModel,
     /*
     | state پروسه (صف jobها و telemetry) دیگر داخل checkout نوشته نمی‌شود؛
     | جای آن data directory کاربر است. `resolveDataRoot` چیزی روی دیسک
     | نمی‌سازد، پس اگر هرگز job اجرا نشود فایلی هم ساخته نمی‌شود.
     */
-    dataRoot: resolveDataRoot({ env: process.env }),
+    dataRoot: resolveDataRoot({
+      ...(stringOption(args.options, 'dataDir') ? { dataDir: stringOption(args.options, 'dataDir')! } : {}),
+      env: process.env,
+    }),
     artifactLocation: artifactLocationFromArgs(args, process.env),
   });
 
@@ -202,8 +208,25 @@ async function runPlatform(
   */
   const projName = path.basename(workspaceRoot);
   const projId = projName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-  server.projects.registerProject(workspaceRoot, projId, projName);
-  server.projects.registerProject(workspaceRoot, `prj-${projId}`, projName);
+  /* The artifact id comes first so the registry's per-project folder is the
+     same folder the index is written to; the display ids are aliases. */
+  server.projects.registerProject(workspaceRoot, artifactProjectId, projName);
+  /*
+  | The display aliases are a convenience. Two checkouts that share a folder
+  | name (`client-a/app`, `client-b/app`) would collide on `app`, and that
+  | collision used to abort startup — the UI never came up. A refused alias is
+  | skipped; the project stays reachable by its artifact id and `current`.
+  */
+  for (const alias of [projId, `prj-${projId}`]) {
+    try {
+      server.projects.registerProject(workspaceRoot, alias, projName);
+    } catch (error) {
+      context.logger.warn('project alias skipped', {
+        alias,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   const current = server.projects.registerProject(workspaceRoot, 'current', projName);
   const resumedJobs = await server.jobs.resumeInterruptedJobs();
 
@@ -450,7 +473,7 @@ function startIndexPath(args: ParsedArgs, root: string): string {
   const output = stringOption(args.options, 'out');
   return output
     ? path.resolve(root, output, INDEX_FILE_NAME)
-    : resolveProjectIndexPath(root);
+    : resolveProjectIndexPath(root, undefined, indexLookupFromArgs(args, root));
 }
 
 function validatePort(value: string | undefined, flag: string): CommandResult | null {
@@ -500,6 +523,23 @@ export function spawnService(
     }
   });
 
+  /*
+  | A child that neither prints its ready marker nor exits (a port that
+  | accepts but never answers, a watcher stuck on a lock) would leave `start`
+  | waiting forever with no message. Fail with what the child said.
+  */
+  const startupMs = Number(process.env['SEMANTIC_ENGINE_START_TIMEOUT_MS'] ?? 180_000);
+  const startupTimer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    rejectReady(new Error(
+      `semantic-engine service did not become ready within ${Math.round(startupMs / 1000)}s ` +
+      `(${args[0] ?? 'service'}); last output:\n${output.split('\n').slice(-8).join('\n')}`
+    ));
+  }, startupMs);
+  startupTimer.unref?.();
+  void ready.then(() => clearTimeout(startupTimer), () => clearTimeout(startupTimer));
+
   child.once('error', error => {
     if (!settled) {
       settled = true;
@@ -548,9 +588,25 @@ export async function stopChild(child: ChildProcess): Promise<void> {
  * workspace as well as an already indexed one.
  */
 export async function runStart(
-  args: ParsedArgs,
+  rawArgs: ParsedArgs,
   context: CommandContext
 ): Promise<CommandResult> {
+  /*
+  | `start` is the "everything on" entry point: deep scan (vector chunks +
+  | language-server diagnostics), UI, MCP over HTTP and the file watcher.
+  | Each can still be switched off explicitly (`--no-vectors`,
+  | `--no-lsp-diagnostics`, `--no-watch`); only the defaults differ from
+  | `index`/`watch`, where both heavy passes stay opt-in.
+  */
+  const args: ParsedArgs = {
+    ...rawArgs,
+    options: {
+      ...rawArgs.options,
+      vectors: boolOption(rawArgs.options, 'vectors', true),
+      lspDiagnostics: boolOption(rawArgs.options, 'lspDiagnostics', true),
+    },
+  };
+
   const invalid = validateHttpOptions(args);
   if (invalid) return invalid;
 
@@ -573,7 +629,7 @@ export async function runStart(
 
   let indexPath = startIndexPath(args, root);
   const explicitIndex = stringOption(args.options, 'index');
-  const wantsVectors = boolOption(args.options, 'vectors', false);
+  const wantsVectors = boolOption(args.options, 'vectors', true);
   const existingIndex = loadIndex(indexPath);
   const needsRequestedArtifacts =
     !('error' in existingIndex) &&
@@ -631,6 +687,15 @@ export async function runStart(
     /* start owns one watcher for both services. */
     '--no-watch',
   ];
+  /* Every child must resolve artifacts exactly as `start` itself did. */
+  for (const [flag, name] of [
+    ['--data-dir', 'dataDir'],
+    ['--artifact-location', 'artifactLocation'],
+    ['--project-id', 'projectId'],
+  ] as const) {
+    const value = stringOption(args.options, name);
+    if (value !== undefined) common.push(flag, value);
+  }
 
   const ui = spawnService(
     ['ui', ...common, '--port', uiPort],
@@ -704,6 +769,13 @@ export async function runStart(
       `   • Root: ${root}\n` +
       `   • Index: ${indexPath}\n` +
       `   • Watcher: ${watcher ? 'enabled' : 'disabled'}\n` +
+      `   • Deep scan: vectors ${wantsVectors ? 'on' : 'off'}, LSP diagnostics ${
+        boolOption(args.options, 'lspDiagnostics', true) ? 'on' : 'off'
+      }\n` +
+      `   • Config: ${globalConfigPath(resolveDataRoot({
+        ...(stringOption(args.options, 'dataDir') ? { dataDir: stringOption(args.options, 'dataDir')! } : {}),
+        env: process.env,
+      }))}\n` +
       `   • Token: ${token}\n`
   );
 

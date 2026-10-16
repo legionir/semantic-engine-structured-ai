@@ -1834,6 +1834,138 @@
           }
         }
       }
+    },
+    "/api/v1/models/local": {
+      "get": {
+        "summary": "List local embedding models and their download state",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          }
+        }
+      }
+    },
+    "/api/v1/models/local/download": {
+      "post": {
+        "summary": "Download a catalogue embedding model",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "202": {
+            "description": "Download started"
+          },
+          "404": {
+            "description": "Unknown model"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/models/local/remove": {
+      "post": {
+        "summary": "Remove a downloaded embedding model",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "404": {
+            "description": "Model cannot be removed"
+          },
+          "409": {
+            "description": "Model is being downloaded"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "summary": "Read the user settings file (config.json)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update the user settings file (config.json)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request (JSON body with string `error`)"
+          },
+          "503": {
+            "description": "No data directory"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {

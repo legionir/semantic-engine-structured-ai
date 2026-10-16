@@ -104,10 +104,21 @@ export class ProjectService {
     */
     const location: ArtifactLocation =
       this.options.artifactLocation ?? DEFAULT_ARTIFACT_LOCATION;
+    /*
+    | شناسهٔ artifact از ریشه می‌آید — همان قاعدهٔ CLI (`projectIdFromArgs`) که
+    | ایندکس را می‌نویسد — مگر اینکه برای ریشهٔ اصلیِ سرور صراحتاً داده شده
+    | باشد (`--project-id`، worker پشت Gateway). قبلاً `record.id` (مثلاً
+    | `jev-shell-agent` یا `current`) استفاده می‌شد، پس UI از پوشهٔ دیگری
+    | می‌خواند و پروژه‌ای که `index`/`start` ساخته بود «not indexed» می‌ماند.
+    | `basename` و نه `name`: نام نمایشی نباید مسیر دیسک را عوض کند.
+    */
+    const pinnedId = this.options.artifactProjectId;
     const artifactProjectId =
-      record && isPathSafeProjectId(record.id)
-        ? record.id
-        : projectIdFor(name, canonicalizeRoot(rootPath));
+      pinnedId !== undefined &&
+      isPathSafeProjectId(pinnedId) &&
+      rootPath === normalizeWorkspaceRoot(this.defaultRoot)
+        ? pinnedId
+        : projectIdFor(path.basename(rootPath), canonicalizeRoot(rootPath));
     const lookup = {
       location,
       projectId: artifactProjectId,
@@ -517,4 +528,6 @@ export interface ProjectServiceOptions {
   readonly artifactLocation?: ArtifactLocation;
   /** data root صریح؛ در غیر این صورت `resolveDataRoot` تصمیم می‌گیرد. */
   readonly dataRoot?: string;
+  /** شناسهٔ artifact ریشهٔ اصلی سرور (`--project-id`)؛ بدون آن از ریشه ساخته می‌شود. */
+  readonly artifactProjectId?: string;
 }

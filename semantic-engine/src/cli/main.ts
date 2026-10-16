@@ -15,6 +15,7 @@ import { runIndex } from './commands/index-command';
 import { runQuery } from './commands/query-command';
 import { runDoctor } from './commands/doctor-command';
 import { runServe, runUi, runStart } from './commands/serve-command';
+import { applyGlobalConfig } from './globalConfigDefaults';
 import { runWatch } from './commands/watch-command';
 import { runWorker } from './commands/worker-command';
 import { runCache } from './commands/cache-command';
@@ -62,6 +63,8 @@ ui & serve options:
   --ui-port <n>          UI port for 'start'         (default: 4000)
   --mcp-port <n>         MCP port for 'start'        (default: 3000)
   --no-watch             start UI/MCP without the file watcher
+  --no-vectors           'start' only: skip vector chunks (on by default)
+  --no-lsp-diagnostics   'start' only: skip language-server diagnostics (on by default)
   --host <addr>         bind address               (default: 127.0.0.1)
   --token <secret>      required bearer token      (generated if omitted)
   --allow-remote        permit a non-loopback bind (needs a strong token)
@@ -177,7 +180,19 @@ function packageVersion(): string {
 }
 
 export async function main(argv: readonly string[]): Promise<number> {
-  const args = parseArgs(argv);
+  const parsed = parseArgs(argv);
+  /*
+  | `<dataRoot>/config.json` supplies the defaults flags do not set. Only
+  | real commands read it; help/version must work on a broken home dir.
+  */
+  const applied = COMMANDS[parsed.command ?? ''] ? applyGlobalConfig(parsed) : null;
+  const args = applied?.args ?? parsed;
+  for (const warning of applied?.loaded.warnings ?? []) {
+    process.stderr.write(`config: ${warning}\n`);
+  }
+  for (const notice of applied?.notices ?? []) {
+    process.stderr.write(`notice: ${notice}\n`);
+  }
   const wantsJson = boolOption(args.options, 'json', false);
 
   if (boolOption(args.options, 'help', false) || args.command === 'help') {

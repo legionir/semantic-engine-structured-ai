@@ -134,6 +134,7 @@ export async function runWorker(
     host,
     token,
     projectsRoot: paths.workspaceRoot,
+    projectId: paths.projectId,
     dataRoot: paths.dataRoot,
     artifactLocation: artifactLocationFromArgs(args, process.env),
     upgradeHandler,

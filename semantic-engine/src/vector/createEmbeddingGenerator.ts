@@ -18,6 +18,13 @@ import { IEmbeddingGenerator } from './EmbeddingGenerator';
 import { HashingEmbeddingGenerator } from './HashingEmbeddingGenerator';
 import { LocalEmbeddingGenerator } from './LocalEmbeddingGenerator';
 import { RemoteEmbeddingGenerator, RemoteEmbeddingProvider } from './RemoteEmbeddingGenerator';
+import { resolveDataRoot } from '../core/config/DataRootResolver';
+import {
+  LOCAL_DEFAULT_EMBEDDING_MODEL,
+  loadGlobalConfig,
+  modelsDirFor,
+} from '../core/config/GlobalConfig';
+import { LocalModelStore } from '../services/providers/LocalModelStore';
 
 export type EmbeddingProviderName = 'local' | RemoteEmbeddingProvider;
 
@@ -42,6 +49,21 @@ export interface EmbeddingGeneratorSpec {
   readonly apiKey?: string;
   readonly useDefaultModel?: boolean;
   readonly normalize?: boolean;
+  /** Folder of downloaded local models; defaults to `<dataRoot>/models`. */
+  readonly modelsDir?: string;
+}
+
+/**
+ * Where downloaded models live: explicit value, then the
+ * `SEMANTIC_ENGINE_MODELS_DIR` variable, then `models.dir` of the user config,
+ * then `<dataRoot>/models`.
+ */
+export function resolveModelsDir(explicit?: string): string {
+  if (explicit && explicit.trim() !== '') return explicit;
+  const fromEnv = (process.env['SEMANTIC_ENGINE_MODELS_DIR'] ?? '').trim();
+  if (fromEnv !== '') return fromEnv;
+  const dataRoot = resolveDataRoot();
+  return modelsDirFor(dataRoot, loadGlobalConfig(dataRoot).config);
 }
 
 /**
@@ -76,6 +98,29 @@ export function createEmbeddingGenerator(spec: EmbeddingGeneratorSpec): IEmbeddi
         localModelPath,
         normalize: spec.normalize ?? true,
       });
+    }
+    /*
+    | A catalogue model the user downloaded from the panel. It must be
+    | complete on disk: silently hashing instead would store vectors from a
+    | different model than the one the index claims.
+    */
+    const requested = spec.useDefaultModel ? '' : (spec.model ?? '');
+    if (requested !== '' && requested !== LOCAL_DEFAULT_EMBEDDING_MODEL) {
+      const modelsDir = resolveModelsDir(spec.modelsDir);
+      const store = new LocalModelStore({ modelsDir });
+      if (store.catalogEntry(requested) && !store.catalogEntry(requested)!.builtIn) {
+        if (!store.isReady(requested)) {
+          throw new Error(
+            `local embedding model "${requested}" is not downloaded. ` +
+              `Download it from the Embeddings panel (it is stored in ${modelsDir}).`
+          );
+        }
+        return new LocalEmbeddingGenerator({
+          model: requested,
+          localModelPath: modelsDir,
+          normalize: spec.normalize ?? true,
+        });
+      }
     }
     return new HashingEmbeddingGenerator();
   }
