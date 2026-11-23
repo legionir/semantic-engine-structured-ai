@@ -80,7 +80,7 @@ function primarySpec(store = settings) {
         apiKey: store.get("AGENT_API_KEY"),
         temperature: store.get("AGENT_TEMPERATURE"),
         region: store.get("AGENT_PROVIDER_REGION"),
-        apiVersion: store.get("AZURE_OPENAI_API_VERSION"),
+        apiVersion: provider === "azure-openai" ? store.get("AZURE_OPENAI_API_VERSION") : undefined,
         accessKeyId: store.get("BEDROCK_ACCESS_KEY_ID"),
         secretAccessKey: store.get("BEDROCK_SECRET_ACCESS_KEY"),
         sessionToken: store.get("BEDROCK_SESSION_TOKEN"),
