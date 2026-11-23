@@ -1,0 +1,41 @@
+name: P0 regression
+
+on:
+  pull_request:
+    paths:
+      - "structured-ai/**"
+      - ".github/workflows/p0-regression.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  p0:
+    name: P0 ${{ matrix.suite }} (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22, 24]
+        suite: [p01, p02, p03, p04, p05, p06, p07]
+    defaults:
+      run:
+        working-directory: structured-ai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Run ${{ matrix.suite }}
+        run: node test/p0/${{ matrix.suite }}.test.js
