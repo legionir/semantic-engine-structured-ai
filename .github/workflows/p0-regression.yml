@@ -77,12 +77,13 @@ jobs:
           retention-days: 7
 
   full:
-    name: Full suite (ubuntu-latest, Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    name: Full suite (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         node: [20, 22]
     defaults:
       run:
@@ -98,33 +99,19 @@ jobs:
       - name: Run each npm test file separately
         run: |
           set +e
-          node -e "process.stdout.write(require('./package.json').scripts.test.split('&&').map(s => s.trim().replace(/^node\s+/, '')).filter(Boolean).join('\n') + '\n')" > files.txt
-          pass=0; fail=0
-          : > out.txt
-          : > fails.txt
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            timeout 600 node "$f" < /dev/null > one.txt 2>&1
-            c=$?
-            if [ "$c" -eq 0 ]; then
-              pass=$((pass+1)); echo "ok   $f" >> out.txt
-            else
-              fail=$((fail+1)); echo "FAIL $f (exit $c)" >> out.txt
-              { echo "----- $f (exit $c) -----"; tail -n 80 one.txt; echo; } >> fails.txt
-            fi
-          done < files.txt
-          { echo; echo "$pass/$((pass+fail)) passed"; echo; cat fails.txt; } >> out.txt
-          cat out.txt
-          if [ "$fail" -eq 0 ]; then echo 0 > code.txt; else echo 1 > code.txt; fi
-          [ "$fail" -eq 0 ]
+          node ci/run-tests.js --out out.txt --junit junit.xml
+          code=$?
+          echo "$code" > code.txt
+          exit $code
       - name: Upload output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: full-node${{ matrix.node }}
+          name: full-${{ matrix.os }}-node${{ matrix.node }}
           path: |
             structured-ai/out.txt
             structured-ai/code.txt
+            structured-ai/junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -152,10 +139,10 @@ jobs:
             const detail = {};
             const full = [];
             for (const d of dirs) {
-              const fm = d.match(/^full-node(\d+)$/);
+              const fm = d.match(/^full-(?:(.+)-)?node(\d+)$/);
               if (fm) {
                 const readF = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
-                full.push({ node: fm[1], out: readF('out.txt'), code: readF('code.txt').trim() });
+                full.push({ os: (fm[1] || 'ubuntu-latest').replace('-latest', ''), node: fm[2], out: readF('out.txt'), code: readF('code.txt').trim() });
                 continue;
               }
               const m = d.match(/^p0-(p\d\w*)-(.+)-(\d+)$/);
@@ -182,14 +169,16 @@ jobs:
               }
             }
             if (full.length) {
-              body += '## structured-ai full suite (each npm test file run separately)\n\n| Node | Result | Summary |\n|---|---|---|\n';
+              full.sort((a, b) => (a.os + a.node).localeCompare(b.os + b.node));
+              body += '## structured-ai full suite (each npm test file run separately)\n\n| OS | Node | Result | Summary |\n|---|---|---|---|\n';
               for (const f of full) {
                 const s = (f.out.match(/^\s*\d+\/\d+ passed.*$/m) || [''])[0].trim();
-                body += `| ${f.node} | ${f.code === '0' ? '✅' : '❌'} | ${s || ('exit ' + (f.code || '?'))} |\n`;
+                body += `| ${f.os} | ${f.node} | ${f.code === '0' ? '✅' : '❌'} | ${s || ('exit ' + (f.code || '?'))} |\n`;
               }
               body += '\n';
               for (const f of full) {
-                body += `<details><summary><b>full suite</b> Node ${f.node} output</summary>\n\n\`\`\`\n${f.out.slice(0, 16000)}\n\`\`\`\n</details>\n\n`;
+                const size = f.code === '0' ? 1500 : 9000;
+                body += `<details><summary><b>full suite</b> ${f.os} / Node ${f.node} output</summary>\n\n\`\`\`\n${f.out.slice(0, size)}\n\`\`\`\n</details>\n\n`;
               }
             }
             body = body.slice(0, 64000);
