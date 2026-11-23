@@ -3,7 +3,7 @@
  "base": "main",
  "test_pr": 22,
  "test_branch": "test/p0-regression",
- "phase0_validate_tests": "pending",
+ "phase0_validate_tests": "done",
  "items": {
   "P0-1": {
    "status": "pending",
@@ -181,5 +181,12 @@
    "notes": ""
   }
  },
- "log": []
+ "log": [
+  {
+   "ts": "2026-11-23T01:31Z",
+   "msg": "Phase 0 validated: all P0 test failures on PR #22 are genuine bug assertions; phase0_validate_tests=done. Next: P0-1."
+  }
+ ],
+ "phase0_notes": "PR #22 head bf2c52b: P0 report job green; 63 suite/OS/Node jobs fail identically on ubuntu/windows/macos x Node 20/22/24 (p01 0/6, p02 0/5, p03 1/10, p04 0/10, p05 0/10, p06 0/5, p07 1/7). All failures are custom assertions of desired behaviour after API-shape checks pass; no require/TypeError/Windows setup issues.",
+ "tooling_notes": "github_2__get_file_contents returns only the blob SHA (no body) in this environment and raw.githubusercontent is not fetchable (private repo). Read file bodies via get_commit(detail=full_patch) of the commit that added the file (+ later patches), or via PR get_files patches."
 }
