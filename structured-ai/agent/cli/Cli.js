@@ -161,6 +161,55 @@ function parseArguments(argv) {
     return parseCliArguments(argv, { fail });
 }
 
+const numericOptionFlags = {
+    AGENT_TEMPERATURE: { flag: "--temperature", scale: 1, unit: "" },
+    MAX_RUN_MS: { flag: "--timeout", scale: 1000, unit: " seconds" },
+    MAX_ITERATIONS: { flag: "--max-iterations", scale: 1, unit: "" },
+    MAX_TOTAL_AGENTS: { flag: "--max-agents", scale: 1, unit: "" }
+};
+
+
+function validateNumericOptions(environment) {
+
+    const schema =
+        require(path.join(REPO_ROOT, "agent", "config", "SettingsSchema.js"));
+
+    for (const [key, option] of Object.entries(numericOptionFlags)) {
+
+        if (environment[key] === undefined) {
+            continue;
+        }
+
+        const definition =
+            schema.definitionOf(key);
+
+        const value =
+            Number(environment[key]);
+
+        const below =
+            definition.min !== undefined && value < definition.min;
+
+        const above =
+            definition.max !== undefined && value > definition.max;
+
+        if (!Number.isFinite(value) || below || above) {
+
+            const shown =
+                bound => bound === undefined ? null : bound / option.scale;
+
+            const range =
+                definition.max !== undefined
+                    ? `between ${shown(definition.min)} and ${shown(definition.max)}${option.unit}`
+                    : `at least ${shown(definition.min)}${option.unit}`;
+
+            fail(
+                `${option.flag} must be ${range}, received ${value / option.scale}`
+            );
+        }
+    }
+}
+
+
 function applyEnvironment(options) {
 
     const environment = {};
@@ -306,6 +355,13 @@ function applyEnvironment(options) {
     if (options.maxAgents !== undefined) {
         environment.MAX_TOTAL_AGENTS = String(options.maxAgents);
     }
+
+    /*
+    | P0-7: numeric options are checked against the settings schema before
+    | anything runs, so "--temperature 3" is a usage error (exit 2) rather
+    | than a value that fails, or is silently clamped, in the middle of a run.
+    */
+    validateNumericOptions(environment);
 
     if (options.quiet) {
         environment.AGENT_VERBOSE = "0";
