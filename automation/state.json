@@ -83,11 +83,15 @@
    "last_failure": "6b18343: p05data 'user-owned config expands' expected .agent/mcp.json (SOURCES.WORKSPACE) to expand without trust; e2e/interactive.test.js piped 'y' expected to approve. Both are the old insecure behaviour: tests updated in e04e5c4 (p05data: env expands, .agent/mcp.json only when trusted; interactive: piped y is refused, file not written). Branch updated with roadmap/p1 (1a07241)."
   },
   "P1-1": {
-   "status": "pending",
-   "branch": null,
-   "pr": null,
+   "status": "waiting_ci",
+   "branch": "fix/p1-1",
+   "pr": 35,
    "attempts": 0,
-   "notes": ""
+   "notes": "Run 2026-11-23T13:01Z: fix/p1-1 from roadmap/p1 beb265e, pushed 3f2d0d2 (28 files, blobs verified), draft PR #35. New agent/providers/* (20 js files, each <15KB, no process.env): LLMProvider base, ProviderError (retryable 408/425/429/5xx, Retry-After), HttpTransport (fetch, timeout+abort), StreamReaders (SSE/NDJSON), EventStream (AWS, crc32), AwsSigV4 (get-vanilla vector), Messages, TokenCounter; adapters openai, openai-compatible, openai-responses, anthropic, gemini, azure-openai, bedrock, ollama, openrouter; ProviderRegistry/Config/Router (roles PROVIDER_ROLES, PROVIDER_FALLBACKS, retry MAX_REQUEST_RETRIES/RETRY_BASE_MS). SettingsSchema (exact rebuild 3f0d09f3) + 9 defs after AGENT_SCHEMA (group endpoint): AGENT_PROVIDER enum, AGENT_PROVIDER_REGION, AZURE_OPENAI_API_VERSION, BEDROCK_* (secret), PROMPT_CACHING, PROVIDER_ROLES/FALLBACKS (secret). WorkspaceTrust LOCKED_KEYS += AGENT_PROVIDER, AGENT_PROVIDER_REGION. ResponseRepair.salvageActionFromProse + ActionParser call after native adapter (only when exactly one distinct action object outside <think>). test/p1/p11.test.js (~70 cases) + test/fixtures/providers.json + ci/provider-smoke.js + agent/providers/README.md. Workflow/package.json untouched (suite auto-discovered). Not wired into agent.js (96KB, not reconstructable) -> do it in P1-6. Risk: a runtime.test expecting prose-wrapped JSON to be rejected. Local copies agent_files/structured_ai/fix-p1-1__*.",
+   "phase": "P1",
+   "head": "3f2d0d25bd74a170b6f8d94faf36e3e2a46d06fa",
+   "title": "P1-1: Provider abstraction layer",
+   "needs_user_later": "acceptance 3 (nightly e2e on >=4 real providers) needs SMOKE_<PROVIDER>_API_KEY/MODEL repo secrets + a nightly schedule; ci/provider-smoke.js ready."
   },
   "P1-2": {
    "status": "pending",
@@ -302,6 +306,10 @@
   {
    "ts": "2026-11-23T12:58Z",
    "msg": "P1-4 #34 green -> squash-merged into roadmap/p1 (beb265e); #32 and #33 updated from roadmap/p1. P0-8 #32 red (p05data + e2e interactive asserted the old insecure behaviour) -> tests fixed e04e5c4, now 1a07241. P1-5 #33 red on macos/windows full suite -> canonical temp per test file + failure digest a232c1a. 2 in flight; next run: start P1-1 (deps done) in the free slot."
+  },
+  {
+   "ts": "2026-11-23T13:31Z",
+   "msg": "#32 (P0-8) and #33 (P1-5) still running: macOS jobs queued (~32-35 each); so far #32 only fails Node 18 (baseline), #33 fails Full suite windows Node 20/22 again (report not posted until macOS finishes). Started P1-1 in the free slot: fix/p1-1 from roadmap/p1 beb265e, 3f2d0d2, draft PR #35 (provider layer, 9 adapters, router, prose-wrapped action recovery, p11 contract tests). 3 in flight."
   }
  ],
  "phase0_notes": "PR #22 head bf2c52b: P0 report job green; 63 suite/OS/Node jobs fail identically on ubuntu/windows/macos x Node 20/22/24 (p01 0/6, p02 0/5, p03 1/10, p04 0/10, p05 0/10, p06 0/5, p07 1/7). All failures are custom assertions of desired behaviour after API-shape checks pass; no require/TypeError/Windows setup issues.",
