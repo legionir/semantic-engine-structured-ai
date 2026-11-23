@@ -1,0 +1,198 @@
+name: P0 regression
+
+on:
+  pull_request:
+    paths:
+      - "structured-ai/**"
+      - ".github/workflows/p0-regression.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  p0:
+    name: P0 ${{ matrix.suite }} (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22, 24]
+        suite: [p05, p05data]
+    defaults:
+      run:
+        working-directory: structured-ai
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Run ${{ matrix.suite }}
+        run: |
+          set +e
+          node test/p0/${{ matrix.suite }}.test.js > out.txt 2>&1
+          code=$?
+          cat out.txt
+          echo "$code" > code.txt
+          exit $code
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-${{ matrix.suite }}-${{ matrix.os }}-${{ matrix.node }}
+          path: |
+            structured-ai/out.txt
+            structured-ai/code.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  full:
+    name: Full suite (ubuntu-latest, Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20]
+    defaults:
+      run:
+        working-directory: structured-ai
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Run each npm test file separately
+        run: |
+          set +e
+          node -e "process.stdout.write(require('./package.json').scripts.test.split('&&').map(s => s.trim().replace(/^node\s+/, '')).filter(Boolean).join('\n') + '\n')" > files.txt
+          pass=0; fail=0
+          : > out.txt
+          : > fails.txt
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            timeout 600 node "$f" < /dev/null > one.txt 2>&1
+            c=$?
+            if [ "$c" -eq 0 ]; then
+              pass=$((pass+1)); echo "ok   $f" >> out.txt
+            else
+              fail=$((fail+1)); echo "FAIL $f (exit $c)" >> out.txt
+              { echo "----- $f (exit $c) -----"; tail -n 80 one.txt; echo; } >> fails.txt
+            fi
+          done < files.txt
+          { echo; echo "$pass/$((pass+fail)) passed"; echo; cat fails.txt; } >> out.txt
+          cat out.txt
+          if [ "$fail" -eq 0 ]; then echo 0 > code.txt; else echo 1 > code.txt; fi
+          [ "$fail" -eq 0 ]
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-node${{ matrix.node }}
+          path: |
+            structured-ai/out.txt
+            structured-ai/code.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  report:
+    name: P0 report
+    needs: [p0, full]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+      - name: Collect source excerpts for the roadmap worker
+        shell: bash
+        run: |
+          set +e
+          : > dumps.txt
+          { echo "===== tests using \${...} placeholders in MCP config ====="; grep -rn '\${env:\|\${[A-Z_]*}' src/structured-ai/test --include=*.js | grep -v "test/p0/" | head -n 40; echo; } >> dumps.txt
+          { echo "===== tests reading child env / process.env in spawned commands ====="; grep -rln "printenv\|process.env" src/structured-ai/test --include=*.js | grep -v "test/p0/" | head -n 40; echo; } >> dumps.txt
+          { echo "===== persistence writers (mode / writeFile) ====="; grep -n "writeFile\|appendFile\|renameSync\|mode:" src/structured-ai/agent/persistence/*.js | head -n 60; echo; } >> dumps.txt
+          { echo "===== other spawns in agent/ ====="; grep -rn "spawn(\|execFile(\|fork(" src/structured-ai/agent --include=*.js | head -n 40; echo; } >> dumps.txt
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+      - name: Post summary comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dirs = fs.existsSync('results') ? fs.readdirSync('results').sort() : [];
+            const rows = [];
+            const detail = {};
+            const full = [];
+            for (const d of dirs) {
+              const fm = d.match(/^full-node(\d+)$/);
+              if (fm) {
+                const readF = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
+                full.push({ node: fm[1], out: readF('out.txt'), code: readF('code.txt').trim() });
+                continue;
+              }
+              const m = d.match(/^p0-(p0\d\w*)-(.+)-(\d+)$/);
+              if (!m) continue;
+              const [, suite, os, node] = m;
+              const read = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
+              const out = read('out.txt');
+              const code = read('code.txt').trim();
+              const summary = (out.match(/^\s*\d+\/\d+ passed.*$/m) || [''])[0].trim();
+              rows.push(`| ${suite} | ${os.replace('-latest','')} | ${node} | ${code === '0' ? '✅' : '❌'} | ${summary || ('exit ' + (code || '?'))} |`);
+              const key = suite;
+              const fails = out.split('\n').filter((l, i, a) => /FAIL|Error|error:|Cannot find|TypeError|ReferenceError/.test(l)).slice(0, 40).join('\n');
+              detail[key] = detail[key] || {};
+              detail[key][`${os} / Node ${node}`] = { out, fails };
+            }
+            let body = '<!-- p0-report -->\n## P0 regression report\n\n| Suite | OS | Node | Result | Summary |\n|---|---|---|---|---|\n' + rows.join('\n') + '\n\n';
+            for (const suite of Object.keys(detail).sort()) {
+              const envs = detail[suite];
+              const ref = envs['ubuntu-latest / Node 22'] || Object.values(envs)[0];
+              body += `<details><summary><b>${suite}</b> full output (ubuntu / Node 22)</summary>\n\n\`\`\`\n${(ref.out || '').slice(0, 5000)}\n\`\`\`\n</details>\n\n`;
+              for (const [env, v] of Object.entries(envs)) {
+                if (env === 'ubuntu-latest / Node 22' || !v.fails) continue;
+                body += `<details><summary>${suite} — ${env} failure lines</summary>\n\n\`\`\`\n${v.fails.slice(0, 1500)}\n\`\`\`\n</details>\n\n`;
+              }
+            }
+            try {
+              const dumps = fs.readFileSync('dumps.txt', 'utf8');
+              body += `<details><summary><b>source excerpts</b> (for the roadmap worker)</summary>\n\n\`\`\`\n${dumps.slice(0, 20000)}\n\`\`\`\n</details>\n\n`;
+            } catch { /* no excerpts */ }
+            if (full.length) {
+              body += '## structured-ai full suite (each npm test file run separately)\n\n| Node | Result | Summary |\n|---|---|---|\n';
+              for (const f of full) {
+                const s = (f.out.match(/^\s*\d+\/\d+ passed.*$/m) || [''])[0].trim();
+                body += `| ${f.node} | ${f.code === '0' ? '✅' : '❌'} | ${s || ('exit ' + (f.code || '?'))} |\n`;
+              }
+              body += '\n';
+              for (const f of full) {
+                body += `<details><summary><b>full suite</b> Node ${f.node} output</summary>\n\n\`\`\`\n${f.out.slice(0, 16000)}\n\`\`\`\n</details>\n\n`;
+              }
+            }
+            body = body.slice(0, 64000);
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const prev = comments.find(c => c.body && c.body.startsWith('<!-- p0-report -->'));
+            if (prev) await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
