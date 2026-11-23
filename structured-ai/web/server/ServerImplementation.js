@@ -1453,6 +1453,16 @@ function createServer(runtime, options = {}) {
         return started.promise;
     }
 
+    function wellEncodedPath(pathname) {
+
+        try {
+            decodeURIComponent(pathname);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     function serveStatic(req, res, pathname) {
 
         const relative =
@@ -3197,6 +3207,14 @@ function createServer(runtime, options = {}) {
                 }
 
                 /* ---------------------------------------------- static */
+
+                /* P0-4: static and deep-link paths are not decoded by the
+                   router, so a malformed escape must still be a 400. */
+                if (req.method === "GET" && !wellEncodedPath(pathname)) {
+
+                    sendJson(res, 400, { error: "malformed percent-encoding in request path" });
+                    return;
+                }
 
                 if (
                     req.method === "GET" &&
