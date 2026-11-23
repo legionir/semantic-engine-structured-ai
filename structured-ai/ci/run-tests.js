@@ -18,10 +18,21 @@
 |
 | Exit code 0 only when every file passed. Nothing here needs a POSIX
 | shell, `sleep`, `cat` or `timeout`.
+|
+| Each file gets the canonical spelling of the temp folder (TMPDIR on
+| POSIX, TEMP/TMP on Windows): macOS hands out /var/... which is a link
+| to /private/var/..., and Windows runners hand out 8.3 short names
+| (C:\Users\RUNNER~1\...). The code under test resolves real paths, so
+| a test comparing against os.tmpdir() must see the same spelling.
+|
+| The --out report lists failures first and keeps, per failing file, the
+| FAIL lines with what follows them (or the tail when there are none), so
+| a size-limited CI comment still shows why each file failed.
 |--------------------------------------------------------------------------
 */
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
@@ -76,6 +87,75 @@ function tail(text, lines) {
 }
 
 
+/*
+| The lines that say why a file failed: each FAIL / "not ok" line with the
+| three lines after it, and error headers (Error:, AssertionError, ERR_).
+| Without any such line the last `fallback` lines are kept.
+*/
+function digest(text, limit = 60, fallback = 30) {
+
+    const all = String(text || "").split(/\r?\n/);
+    const keep = new Set();
+
+    all.forEach((line, index) => {
+
+        if (/^\s*(FAIL|not ok)\b/.test(line)) {
+            for (let next = index; next < Math.min(all.length, index + 4); next += 1) {
+                keep.add(next);
+            }
+        } else if (/(^|\s)(\w*Error\b[:\s\[]|ERR_[A-Z_]+)/.test(line) && !/^\s+at\s/.test(line)) {
+            keep.add(index);
+        }
+    });
+
+    if (!keep.size) {
+        return tail(text, fallback);
+    }
+
+    const picked = [...keep].sort((a, b) => a - b).slice(0, limit).map(index => all[index]);
+
+    return `${picked.join("\n")}\n  ...\n${tail(text, 3)}`;
+}
+
+
+/* One spelling of the temp folder: links and 8.3 short names resolved. */
+function canonicalTemp() {
+
+    const temp = os.tmpdir();
+
+    try {
+        return fs.realpathSync.native(temp);
+    } catch {
+        return temp;
+    }
+}
+
+
+function childEnvironment(base = process.env, platform = process.platform) {
+
+    const env = {};
+
+    for (const [key, value] of Object.entries(base)) {
+        if (!/^(TMPDIR|TEMP|TMP)$/i.test(key)) {
+            env[key] = value;
+        }
+    }
+
+    const temp = canonicalTemp();
+
+    if (platform === "win32") {
+        env.TEMP = temp;
+        env.TMP = temp;
+    } else {
+        env.TMPDIR = temp;
+    }
+
+    env.CI = base.CI || "true";
+
+    return env;
+}
+
+
 function xmlEscape(text) {
 
     return String(text)
@@ -117,7 +197,7 @@ function runOne(entry, options) {
         killSignal: "SIGKILL",
         maxBuffer: 64 * 1024 * 1024,
         windowsHide: true,
-        env: { ...process.env, CI: process.env.CI || "true" }
+        env: childEnvironment()
     });
 
     const seconds = (Date.now() - started) / 1000;
@@ -188,18 +268,32 @@ function main() {
 
     const seconds = (Date.now() - started) / 1000;
     const failed = results.filter(result => !result.ok);
+    const summaryLine = `${results.length - failed.length}/${results.length} passed in ${seconds.toFixed(1)}s`;
+    const sections = failed.map(result => `----- ${result.file} (${result.status}) -----\n${digest(result.output)}`);
 
     log("");
-    log(`${results.length - failed.length}/${results.length} passed in ${seconds.toFixed(1)}s`);
+    log(summaryLine);
 
-    for (const result of failed) {
+    for (const section of sections) {
         log("");
-        log(`----- ${result.file} (${result.status}) -----`);
-        log(tail(result.output, 80));
+        log(section);
     }
 
     if (options.out) {
-        fs.writeFileSync(options.out, `${lines.join("\n")}\n`, "utf8");
+
+        /* failures first: the CI comment keeps only the start of this file */
+        const report = [
+            lines[0],
+            ...failed.map(result => `FAIL ${result.file} (${result.status}, ${result.seconds.toFixed(1)}s)`),
+            "",
+            summaryLine,
+            ...sections.map(section => `\n${section}`),
+            "",
+            "passed:",
+            ...results.filter(result => result.ok).map(result => `ok   ${result.file} (${result.seconds.toFixed(1)}s)`)
+        ];
+
+        fs.writeFileSync(options.out, `${report.join("\n")}\n`, "utf8");
     }
 
     if (options.junit) {
@@ -221,4 +315,4 @@ if (require.main === module) {
 }
 
 
-module.exports = { testFiles, parseArguments, junit, runOne };
+module.exports = { testFiles, parseArguments, junit, runOne, digest, canonicalTemp, childEnvironment };

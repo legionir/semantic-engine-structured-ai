@@ -10,6 +10,8 @@
 |      file and writes JUnit
 |   2. the tests do not depend on POSIX-only programs (sleep, cat, sh,
 |      timeout, /dev/null) so `npm test` can be green on Windows too
+|   3. every file sees the canonical temp folder, and the --out report
+|      lists failures first with their FAIL lines
 |   CI runs the full suite on ubuntu, windows and macos (p0-regression.yml)
 |--------------------------------------------------------------------------
 */
@@ -125,6 +127,89 @@ async function main() {
             assert.match(junit, /<testsuite name="structured-ai npm test" tests="4" failures="2"/);
             assert.match(junit, /broken &lt;here&gt;/);
             assert.equal((junit.match(/<testcase /g) || []).length, 4);
+
+        } finally {
+
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    await test("each file sees the canonical temp folder (no /var vs /private/var, no 8.3 names)", () => {
+
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "p15-tmp-"));
+
+        try {
+
+            fs.writeFileSync(
+                path.join(dir, "temp.js"),
+                "const fs = require('fs'); const os = require('os');\n" +
+                "const t = os.tmpdir(); const r = fs.realpathSync.native(t);\n" +
+                "if (t !== r) { console.log('FAIL temp ' + t + ' != ' + r); process.exit(1); }\n"
+            );
+            fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: "node temp.js" } }));
+
+            const out = path.join(dir, "out.txt");
+            const child = spawnSync(
+                process.execPath,
+                [RUNNER, "--package", path.join(dir, "package.json"), "--out", out, "--timeout-ms", "20000"],
+                { encoding: "utf8", timeout: 60000 }
+            );
+
+            assert.equal(child.status, 0, child.stdout + child.stderr);
+
+            const env = runner.childEnvironment({ PATH: "x", tmp: "a", Temp: "b", TMPDIR: "c" }, "win32");
+            assert.deepEqual(Object.keys(env).filter(key => /^te?mp(dir)?$/i.test(key)).sort(), ["TEMP", "TMP"]);
+            assert.equal(env.TEMP, runner.canonicalTemp());
+
+            const posix = runner.childEnvironment({ PATH: "x", TMPDIR: "c" }, "linux");
+            assert.equal(posix.TMPDIR, runner.canonicalTemp());
+
+        } finally {
+
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    await test("a failure digest keeps every FAIL line and its message, failures come first in --out", () => {
+
+        const noise = Array.from({ length: 200 }, (unused, index) => `  ok   case ${index}`);
+        const text = [
+            "suite",
+            "  FAIL first case",
+            "       expected 1 got 2",
+            ...noise,
+            "  FAIL second case",
+            "       AssertionError [ERR_ASSERTION]: nope",
+            ...noise,
+            "3/405 passed"
+        ].join("\n");
+
+        const short = runner.digest(text);
+
+        assert.match(short, /FAIL first case\n\s+expected 1 got 2/);
+        assert.match(short, /FAIL second case/);
+        assert.match(short, /ERR_ASSERTION/);
+        assert.match(short, /3\/405 passed/);
+        assert.ok(short.split("\n").length < 30, `digest has ${short.split("\n").length} lines`);
+
+        assert.equal(runner.digest("just\noutput"), "just\noutput");
+
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "p15-order-"));
+
+        try {
+
+            fs.writeFileSync(path.join(dir, "a.js"), "\n");
+            fs.writeFileSync(path.join(dir, "b.js"), "console.log('  FAIL inner'); process.exit(1)\n");
+            fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: "node a.js && node b.js" } }));
+
+            const out = path.join(dir, "out.txt");
+
+            spawnSync(process.execPath, [RUNNER, "--package", path.join(dir, "package.json"), "--out", out], { encoding: "utf8", timeout: 60000 });
+
+            const report = fs.readFileSync(out, "utf8");
+
+            assert.ok(report.indexOf("FAIL b.js") < report.indexOf("ok   a.js"), report);
+            assert.match(report, /FAIL inner/);
 
         } finally {
 
