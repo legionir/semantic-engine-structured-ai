@@ -958,9 +958,60 @@ const DEFINITIONS = [
         key: "PROCESS_SANDBOX_MODE",
         group: "policy",
         type: ENUM,
-        values: ["deny", "bwrap", "test"],
+        values: ["deny", "bwrap", "docker", "podman", "test"],
         default: "deny",
-        description: "Process execution mode. deny is production-safe; bwrap requires an OS sandbox; test is only for the repository test harness."
+        description: "Process execution mode. deny is fail-closed; bwrap is Linux-only; docker and podman require a running container engine; test is only for the repository test harness."
+    },
+    {
+        key: "PROCESS_SANDBOX_IMAGE",
+        group: "policy",
+        type: STRING,
+        default: "node:22-bookworm",
+        description: "Container image for Docker/Podman process sandboxes. Repository project files cannot override it."
+    },
+    {
+        key: "PROCESS_SANDBOX_NETWORK",
+        group: "policy",
+        type: ENUM,
+        values: ["none", "bridge"],
+        default: "none",
+        description: "Container network mode. none is isolated; bridge grants general egress and must be explicitly selected by the operator."
+    },
+    {
+        key: "PROCESS_SANDBOX_CPUS",
+        group: "policy",
+        type: NUMBER,
+        default: 2,
+        min: 0.25,
+        max: 64,
+        description: "Maximum CPU quota for one Docker/Podman sandbox."
+    },
+    {
+        key: "PROCESS_SANDBOX_MEMORY_MB",
+        group: "policy",
+        type: NUMBER,
+        default: 2048,
+        min: 128,
+        max: 65536,
+        description: "Memory limit in MiB for one Docker/Podman sandbox."
+    },
+    {
+        key: "PROCESS_SANDBOX_PIDS_LIMIT",
+        group: "policy",
+        type: NUMBER,
+        default: 256,
+        min: 16,
+        max: 4096,
+        description: "Maximum process count for one Docker/Podman sandbox."
+    },
+    {
+        key: "PROCESS_SANDBOX_TMP_MB",
+        group: "policy",
+        type: NUMBER,
+        default: 512,
+        min: 32,
+        max: 16384,
+        description: "Size of the writable /tmp tmpfs inside a Docker/Podman sandbox, in MiB."
     },
     {
         key: "TERMINAL_TIMEOUT_MS",

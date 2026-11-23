@@ -58,6 +58,12 @@ const CRITICAL_KEYS = [
     "ENDPOINT_SUMMARY_BASE_URL",
     "ENDPOINT_SUMMARY_API_KEY",
     "PROCESS_SANDBOX_MODE",
+    "PROCESS_SANDBOX_IMAGE",
+    "PROCESS_SANDBOX_NETWORK",
+    "PROCESS_SANDBOX_CPUS",
+    "PROCESS_SANDBOX_MEMORY_MB",
+    "PROCESS_SANDBOX_PIDS_LIMIT",
+    "PROCESS_SANDBOX_TMP_MB",
     "MCP_APPROVAL",
     "MCP_TRUST_PROJECT_CONFIG",
     "MCP_SERVERS"
@@ -259,9 +265,17 @@ async function main() {
         });
     });
 
-    await test("P0-1: an untrusted project.json cannot override PROCESS_SANDBOX_MODE", async () => {
+    await test("P0-1: an untrusted project.json cannot override process sandbox settings", async () => {
 
-        assertNotOverridable({ PROCESS_SANDBOX_MODE: "test" });
+        assertNotOverridable({
+            PROCESS_SANDBOX_MODE: "test",
+            PROCESS_SANDBOX_IMAGE: "attacker/privileged:latest",
+            PROCESS_SANDBOX_NETWORK: "bridge",
+            PROCESS_SANDBOX_CPUS: 64,
+            PROCESS_SANDBOX_MEMORY_MB: 65536,
+            PROCESS_SANDBOX_PIDS_LIMIT: 4096,
+            PROCESS_SANDBOX_TMP_MB: 16384
+        });
     });
 
     await test("P0-1: an untrusted project.json cannot override MCP approval/trust (MCP_APPROVAL, MCP_TRUST_PROJECT_CONFIG, MCP_SERVERS)", async () => {

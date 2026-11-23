@@ -116,7 +116,9 @@ async function main() {
 
     await test("classify: security keys are locked, code-running switches are trust-gated", async () => {
         for (const key of ["AGENT_APPROVAL", "AGENT_BASE_URL", "AGENT_API_KEY", "ENDPOINT_MAIN_BASE_URL",
-            "ENDPOINT_L2_API_KEY", "PROCESS_SANDBOX_MODE", "MCP_APPROVAL", "MCP_TRUST_PROJECT_CONFIG", "MCP_SERVERS"]) {
+            "ENDPOINT_L2_API_KEY", "PROCESS_SANDBOX_MODE", "PROCESS_SANDBOX_IMAGE", "PROCESS_SANDBOX_NETWORK",
+            "PROCESS_SANDBOX_CPUS", "PROCESS_SANDBOX_MEMORY_MB", "PROCESS_SANDBOX_PIDS_LIMIT", "PROCESS_SANDBOX_TMP_MB",
+            "MCP_APPROVAL", "MCP_TRUST_PROJECT_CONFIG", "MCP_SERVERS"]) {
             assert.strictEqual(WorkspaceTrust.classify(key, settings), "locked", key);
         }
         assert.strictEqual(WorkspaceTrust.classify("HOOKS_ENABLED", settings), "trust");

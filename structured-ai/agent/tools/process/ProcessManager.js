@@ -48,7 +48,7 @@ function assertProcessExecutionEnabled() {
 
     if (settings.get("PROCESS_SANDBOX_MODE") === "deny") {
         throw new Error(
-            "Process execution is disabled because no OS sandbox is configured. Set PROCESS_SANDBOX_MODE=bwrap on Linux with bubblewrap, or use the test mode only from the repository test harness."
+            "Process execution is disabled because no OS sandbox is configured. Select bwrap on Linux, or configure a Docker/Podman sandbox; test mode is only for the repository test harness."
         );
     }
 }
@@ -74,7 +74,13 @@ function spawnInGroup(ctx, command, cwd) {
         cwd,
         platform: process.platform,
         shell: defaultShell(),
-        detached: USE_PROCESS_GROUPS
+        detached: USE_PROCESS_GROUPS,
+        image: settings.get("PROCESS_SANDBOX_IMAGE"),
+        network: settings.get("PROCESS_SANDBOX_NETWORK"),
+        cpus: settings.get("PROCESS_SANDBOX_CPUS"),
+        memoryMb: settings.get("PROCESS_SANDBOX_MEMORY_MB"),
+        pidsLimit: settings.get("PROCESS_SANDBOX_PIDS_LIMIT"),
+        tmpMb: settings.get("PROCESS_SANDBOX_TMP_MB")
     });
 }
 

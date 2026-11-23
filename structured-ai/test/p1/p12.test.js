@@ -46,7 +46,11 @@ test("bwrap launch isolates namespaces and only makes the workspace writable", (
         platform: "linux",
         ctx: { root: "/work/project" },
         cwd: "/work/project/src",
-        command: "npm test"
+        command: "npm test",
+        environment: {
+            PATH: "/usr/bin",
+            OPENAI_API_KEY: "must-not-escape"
+        }
     });
 
     assert.strictEqual(spec.command, "bwrap");
@@ -66,6 +70,8 @@ test("bwrap launch isolates namespaces and only makes the workspace writable", (
 
     assert.deepStrictEqual(writableBinds, [["/work/project", "/work/project"]]);
     assert.strictEqual(spec.options.cwd, "/work/project");
+    assert.strictEqual(spec.options.env.PATH, "/usr/bin");
+    assert.ok(!Object.hasOwn(spec.options.env, "OPENAI_API_KEY"));
     assert.strictEqual(spec.options.detached, true);
 });
 
@@ -114,16 +120,128 @@ test("test mode gets an allowlisted environment, not runtime credentials", () =>
 });
 
 
+test("Docker/Podman containers have bounded resources, no ambient secrets, and a workspace-only mount", () => {
+
+    for (const mode of ["docker", "podman"]) {
+
+        const spec = SandboxProvider.buildLaunchSpec({
+            mode,
+            ctx: { root: "/work/project" },
+            cwd: "/work/project/packages/app",
+            command: "npm install",
+            platform: "linux",
+            image: "node:22-bookworm",
+            network: "none",
+            cpus: 2,
+            memoryMb: 2048,
+            pidsLimit: 256,
+            tmpMb: 512,
+            uid: 1000,
+            gid: 1000,
+            environment: {
+                PATH: "/usr/bin",
+                DOCKER_HOST: "unix:///run/docker.sock",
+                OPENAI_API_KEY: "host-secret"
+            },
+            containerName: "test-sandbox-1"
+        });
+
+        assert.strictEqual(spec.command, mode);
+        assert.ok(spec.args.includes("--read-only"));
+        assert.ok(spec.args.includes("--cap-drop=ALL"));
+        assert.ok(spec.args.includes("--security-opt=no-new-privileges"));
+        assert.ok(spec.args.includes("--network"));
+        assert.strictEqual(spec.args[spec.args.indexOf("--network") + 1], "none");
+        assert.strictEqual(spec.args[spec.args.indexOf("--memory") + 1], "2048m");
+        assert.strictEqual(spec.args[spec.args.indexOf("--cpus") + 1], "2");
+        assert.strictEqual(spec.args[spec.args.indexOf("--pids-limit") + 1], "256");
+        assert.strictEqual(spec.args[spec.args.indexOf("--workdir") + 1], "/workspace/packages/app");
+        assert.strictEqual(spec.args[spec.args.indexOf("--mount") + 1], "type=bind,source=/work/project,target=/workspace");
+        assert.ok(!spec.args.some(arg => /OPENAI_API_KEY|GITHUB_TOKEN|host-secret/.test(arg)));
+        assert.strictEqual(spec.options.env.PATH, "/usr/bin");
+        assert.strictEqual(spec.options.env.DOCKER_HOST, "unix:///run/docker.sock");
+        assert.ok(!Object.hasOwn(spec.options.env, "OPENAI_API_KEY"));
+        assert.strictEqual(spec.options.cwd, "/work/project");
+    }
+});
+
+
+test("container working directory translates Windows paths and refuses workspace escape", () => {
+
+    assert.strictEqual(
+        SandboxProvider.workspaceContainerPath("C:\\Users\\dev\\repo", "C:\\Users\\dev\\repo\\pkg", "win32"),
+        "/workspace/pkg"
+    );
+
+    assert.throws(
+        () => SandboxProvider.workspaceContainerPath("/work/project", "/work/other", "linux"),
+        /must stay inside the workspace/
+    );
+});
+
+
+test("container configuration is validated and networking defaults to isolated", () => {
+
+    const base = {
+        mode: "docker",
+        ctx: { root: "/work/project" },
+        cwd: "/work/project",
+        command: "true",
+        platform: "linux",
+        containerName: "sandbox-test"
+    };
+
+    const defaults = SandboxProvider.containerLaunchSpec(base);
+    assert.strictEqual(defaults.args[defaults.args.indexOf("--network") + 1], "none");
+    const bridge = SandboxProvider.containerLaunchSpec({ ...base, network: "bridge" });
+    assert.strictEqual(bridge.args[bridge.args.indexOf("--network") + 1], "bridge");
+    assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, network: "host" }), /must be 'none' or 'bridge'/);
+    assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, image: "--privileged" }), /valid image reference/);
+    assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, memoryMb: 64 }), /MEMORY_MB/);
+    assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, pidsLimit: 0 }), /PIDS_LIMIT/);
+    assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, ctx: { root: "/work/a,b" } }), /workspace path contains/);
+});
+
+
+test("a killed container client also removes the named container", () => {
+
+    const { EventEmitter } = require("events");
+    const calls = [];
+    const client = new EventEmitter();
+
+    SandboxProvider.spawnInSandbox({
+        mode: "podman",
+        ctx: { root: "/work/project" },
+        cwd: "/work/project",
+        command: "sleep 30",
+        platform: "linux",
+        containerName: "sandbox-cleanup-test"
+    }, (command, args, options) => {
+        calls.push({ command, args, options });
+        return client;
+    });
+
+    client.emit("close", null, "SIGKILL");
+
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls[0].command, "podman");
+    assert.strictEqual(calls[1].command, "podman");
+    assert.deepStrictEqual(calls[1].args, ["rm", "--force", "sandbox-cleanup-test"]);
+    assert.ok(!Object.hasOwn(calls[0].options.env, "OPENAI_API_KEY"));
+    assert.deepStrictEqual(calls[1].options.env, calls[0].options.env);
+});
+
+
 test("unknown providers fail closed instead of falling back to host execution", () => {
 
     assert.throws(
         () => SandboxProvider.buildLaunchSpec({
-            mode: "docker",
+            mode: "seatbelt",
             ctx: { root: "/work/project" },
             cwd: "/work/project",
             command: "echo unsafe"
         }),
-        /Unsupported process sandbox mode: docker/
+        /Unsupported process sandbox mode: seatbelt/
     );
 });
 
