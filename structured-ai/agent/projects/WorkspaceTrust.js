@@ -26,12 +26,14 @@
 | The trust store lives in the operator's own configuration directory,
 | never in a workspace:
 |
-|   Windows      %APPDATA%\structured-ai\trusted-workspaces.json
-|   elsewhere    $XDG_CONFIG_HOME/structured-ai/trusted-workspaces.json
-|                (~/.config/structured-ai/trusted-workspaces.json)
+|   Windows      ~\AppData\Roaming\structured-ai\trusted-workspaces.json
+|   elsewhere    ~/.config/structured-ai/trusted-workspaces.json
 |
-| STRUCTURED_AI_TRUST_FILE overrides the location (tests, portable
-| installs). Trust is revocable: revoke() removes the entry.
+| The STRUCTURED_AI_TRUST_FILE setting overrides the location (tests,
+| portable installs). Like every runtime value it is read through the
+| settings store, and it is locked: a project file can never point the
+| trust store at a file it controls. Trust is revocable: revoke()
+| removes the entry.
 |--------------------------------------------------------------------------
 */
 
@@ -39,8 +41,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-
-const TRUST_VERSION = 1;
+const settings = require("../config");
 
 
 const LOCKED_KEYS = new Set([
@@ -58,7 +59,8 @@ const LOCKED_KEYS = new Set([
     "NET_ALLOWED_HOSTS",
     "SEMANTIC_ENGINE_URL",
     "PROJECT_FILE_ENABLED",
-    "PROJECT_SAVE_SECRETS"
+    "PROJECT_SAVE_SECRETS",
+    "STRUCTURED_AI_TRUST_FILE"
 ]);
 
 
@@ -170,19 +172,19 @@ function configDirectory() {
 
     if (process.platform === "win32") {
 
-        return process.env.APPDATA ||
-            path.join(os.homedir(), "AppData", "Roaming");
+        return path.join(os.homedir(), "AppData", "Roaming");
     }
 
-    return process.env.XDG_CONFIG_HOME ||
-        path.join(os.homedir(), ".config");
+    return path.join(os.homedir(), ".config");
 }
 
 
 function trustStorePath() {
 
-    if (process.env.STRUCTURED_AI_TRUST_FILE) {
-        return path.resolve(process.env.STRUCTURED_AI_TRUST_FILE);
+    const configured = settings.get("STRUCTURED_AI_TRUST_FILE");
+
+    if (configured) {
+        return path.resolve(String(configured));
     }
 
     return path.join(
@@ -216,6 +218,14 @@ function canonicalRoot(root) {
 }
 
 
+/* The on-disk shape; `version` is the file format, written for future
+   migrations and never read as a setting. */
+function emptyStore(workspaces = {}) {
+
+    return { version: 1, workspaces };
+}
+
+
 function readStore() {
 
     const file = trustStorePath();
@@ -230,7 +240,7 @@ function readStore() {
             parsed.workspaces &&
             typeof parsed.workspaces === "object"
         ) {
-            return { version: TRUST_VERSION, workspaces: parsed.workspaces };
+            return emptyStore(parsed.workspaces);
         }
 
     } catch {
@@ -238,7 +248,7 @@ function readStore() {
         /* missing or corrupt: nothing is trusted */
     }
 
-    return { version: TRUST_VERSION, workspaces: {} };
+    return emptyStore();
 }
 
 

@@ -1314,6 +1314,13 @@ const DEFINITIONS = [
         default: null,
         description: "Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai."
     },
+    {
+        key: "STRUCTURED_AI_TRUST_FILE",
+        group: "workspace",
+        type: STRING,
+        default: null,
+        description: "File that records which workspaces the operator trusted (roadmap P0-1). Empty means ~/.config/structured-ai/trusted-workspaces.json (~\\AppData\\Roaming\\structured-ai on Windows). Never taken from a project file."
+    },
 
 
 
