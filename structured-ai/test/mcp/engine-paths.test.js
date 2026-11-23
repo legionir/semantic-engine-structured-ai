@@ -172,7 +172,7 @@ async function main() {
         assert.equal(candidates.length, 4);
         assert.equal(
             candidates[0],
-            path.join(
+            path.posix.join(
                 "/srv/engine",
                 "projects",
                 enginePaths.engineProjectIdFor(root),
