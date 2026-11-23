@@ -14,6 +14,7 @@
 const assert = require("assert");
 const SandboxProvider = require("../../agent/tools/process/SandboxProvider");
 const SandboxDoctor = require("../../agent/tools/process/SandboxDoctor");
+const ProcessManager = require("../../agent/tools/process/ProcessManager");
 
 const results = [];
 
@@ -174,9 +175,27 @@ test("container working directory translates Windows paths and refuses workspace
         "/workspace/pkg"
     );
 
+    assert.strictEqual(
+        SandboxProvider.workspaceContainerPath("C:\\Users\\dev\\repo", "c:\\users\\dev\\repo\\pkg", "win32"),
+        "/workspace/pkg",
+        "Windows path containment is case-insensitive"
+    );
+
     assert.throws(
         () => SandboxProvider.workspaceContainerPath("/work/project", "/work/other", "linux"),
         /must stay inside the workspace/
+    );
+    assert.throws(
+        () => SandboxProvider.workspaceContainerPath("C:\\work\\project", "C:\\work\\project-copy", "win32"),
+        /must stay inside the workspace/
+    );
+    assert.throws(
+        () => SandboxProvider.workspaceContainerPath("C:\\work\\project", "D:\\outside", "win32"),
+        /must stay inside the workspace/
+    );
+    assert.throws(
+        () => SandboxProvider.workspaceContainerPath("relative\\project", "relative\\project", "win32"),
+        /must be absolute/
     );
 });
 
@@ -194,6 +213,15 @@ test("container configuration is validated and networking defaults to isolated",
 
     const defaults = SandboxProvider.containerLaunchSpec(base);
     assert.strictEqual(defaults.args[defaults.args.indexOf("--network") + 1], "none");
+    assert.ok(defaults.args.includes("--read-only"));
+    assert.ok(defaults.args.includes("--cap-drop=ALL"));
+    assert.ok(defaults.args.includes("--security-opt=no-new-privileges"));
+    assert.ok(defaults.args.includes("--rm"));
+    assert.ok(defaults.args.includes("--init"));
+    assert.ok(defaults.args.includes("--pull=missing"));
+    assert.ok(!defaults.args.includes("--privileged"));
+    assert.ok(!defaults.args.some(arg => arg.startsWith("/var/run/docker.sock")));
+
     const bridge = SandboxProvider.containerLaunchSpec({ ...base, network: "bridge" });
     assert.strictEqual(bridge.args[bridge.args.indexOf("--network") + 1], "bridge");
     assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, network: "host" }), /must be 'none' or 'bridge'/);
@@ -201,6 +229,54 @@ test("container configuration is validated and networking defaults to isolated",
     assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, memoryMb: 64 }), /MEMORY_MB/);
     assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, pidsLimit: 0 }), /PIDS_LIMIT/);
     assert.throws(() => SandboxProvider.containerLaunchSpec({ ...base, ctx: { root: "/work/a,b" } }), /workspace path contains/);
+});
+
+
+test("container resource limits validate every dimension and supported boundary", () => {
+
+    assert.deepStrictEqual(SandboxProvider.validateContainerLimits({
+        cpus: 0.25,
+        memoryMb: 128,
+        pidsLimit: 16,
+        tmpMb: 32
+    }), {
+        cpus: 0.25,
+        memoryMb: 128,
+        pidsLimit: 16,
+        tmpMb: 32
+    });
+
+    assert.deepStrictEqual(SandboxProvider.validateContainerLimits({
+        cpus: 64,
+        memoryMb: 65536,
+        pidsLimit: 4096,
+        tmpMb: 16384
+    }), {
+        cpus: 64,
+        memoryMb: 65536,
+        pidsLimit: 4096,
+        tmpMb: 16384
+    });
+
+    for (const invalid of [
+        { cpus: 0.24 },
+        { cpus: 64.1 },
+        { cpus: "not-a-number" },
+        { memoryMb: 127 },
+        { memoryMb: 65537 },
+        { memoryMb: 128.5 },
+        { pidsLimit: 15 },
+        { pidsLimit: 4097 },
+        { tmpMb: 31 },
+        { tmpMb: 16385 }
+    ]) {
+        assert.throws(
+            () => SandboxProvider.validateContainerLimits({
+                ...SandboxProvider.DEFAULT_CONTAINER_LIMITS,
+                ...invalid
+            })
+        );
+    }
 });
 
 
@@ -230,6 +306,64 @@ test("a killed container client also removes the named container", () => {
     assert.deepStrictEqual(calls[1].args, ["rm", "--force", "sandbox-cleanup-test"]);
     assert.ok(!Object.hasOwn(calls[0].options.env, "OPENAI_API_KEY"));
     assert.deepStrictEqual(calls[1].options.env, calls[0].options.env);
+});
+
+
+test("Windows runaway processes are killed as a complete task tree", () => {
+
+    const { EventEmitter } = require("events");
+    const child = { pid: 4321, exitCode: null, killed: [], kill(signal) { this.killed.push(signal); } };
+    const taskkill = new EventEmitter();
+    const calls = [];
+
+    ProcessManager.killTree(child, "SIGKILL", {
+        platform: "win32",
+        spawnImpl: (command, args, options) => {
+            calls.push({ command, args, options });
+            return taskkill;
+        }
+    });
+
+    assert.deepStrictEqual(calls, [{
+        command: "taskkill",
+        args: ["/pid", "4321", "/T", "/F"],
+        options: { windowsHide: true, stdio: "ignore" }
+    }]);
+
+    taskkill.emit("close", 0);
+    assert.deepStrictEqual(child.killed, [], "a successful tree kill should not need a direct-child fallback");
+});
+
+
+test("Windows process killing falls back safely if taskkill fails", () => {
+
+    const { EventEmitter } = require("events");
+    const child = { pid: 7890, exitCode: null, killed: [], kill(signal) { this.killed.push(signal); } };
+    const taskkill = new EventEmitter();
+
+    ProcessManager.killTree(child, "SIGTERM", {
+        platform: "win32",
+        spawnImpl: () => taskkill
+    });
+
+    taskkill.emit("error", new Error("taskkill unavailable"));
+    taskkill.emit("close", 1);
+    assert.deepStrictEqual(child.killed, ["SIGTERM"], "the fallback must run exactly once");
+});
+
+
+test("POSIX runaway processes signal the process group before the direct child", () => {
+
+    const child = { pid: 1234, exitCode: null, killed: [], kill(signal) { this.killed.push(signal); } };
+    const calls = [];
+
+    ProcessManager.killTree(child, "SIGKILL", {
+        platform: "linux",
+        killImpl: (pid, signal) => calls.push({ pid, signal })
+    });
+
+    assert.deepStrictEqual(calls, [{ pid: -1234, signal: "SIGKILL" }]);
+    assert.deepStrictEqual(child.killed, []);
 });
 
 

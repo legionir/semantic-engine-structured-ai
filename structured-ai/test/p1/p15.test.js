@@ -12,7 +12,7 @@
 |      timeout, /dev/null) so `npm test` can be green on Windows too
 |   3. every file sees the canonical temp folder, and the --out report
 |      lists failures first with their FAIL lines
-|   CI runs the full suite on ubuntu, windows and macos (p0-regression.yml)
+|   CI runs the full suite on ubuntu and windows (p0-regression.yml)
 |--------------------------------------------------------------------------
 */
 

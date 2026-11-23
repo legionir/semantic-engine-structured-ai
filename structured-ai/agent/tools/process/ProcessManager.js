@@ -85,17 +85,30 @@ function spawnInGroup(ctx, command, cwd) {
 }
 
 
-function killTree(child, signal) {
+function killTree(child, signal, options = {}) {
 
     if (!child || child.exitCode !== null) {
         return;
     }
 
-    if (USE_PROCESS_GROUPS) {
+    const platform = options.platform || process.platform;
+    const spawnImpl = options.spawnImpl || spawn;
+    const killImpl = options.killImpl || ((pid, killSignal) => process.kill(pid, killSignal));
+
+    const killDirectly = () => {
+
+        try {
+            child.kill(signal);
+        } catch {
+            /* the process is already gone */
+        }
+    };
+
+    if (platform !== "win32") {
 
         try {
 
-            process.kill(-child.pid, signal);
+            killImpl(-child.pid, signal);
 
             return;
 
@@ -105,11 +118,13 @@ function killTree(child, signal) {
         }
     }
 
-    if (process.platform === "win32") {
+    if (platform === "win32") {
+
+        let killer;
 
         try {
 
-            spawn(
+            killer = spawnImpl(
                 "taskkill",
                 ["/pid", String(child.pid), "/T", "/F"],
                 {
@@ -118,22 +133,35 @@ function killTree(child, signal) {
                 }
             );
 
-            return;
-
         } catch {
 
             /* fall through to the direct kill */
         }
+
+        if (killer && typeof killer.once === "function") {
+
+            let fallbackUsed = false;
+            const fallback = () => {
+                if (!fallbackUsed) {
+                    fallbackUsed = true;
+                    killDirectly();
+                }
+            };
+
+            /* A missing/failing taskkill must not leave the direct child
+               alive, and its asynchronous spawn error must be observed. */
+            killer.once("error", fallback);
+            killer.once("close", code => {
+                if (code !== 0) {
+                    fallback();
+                }
+            });
+
+            return;
+        }
     }
 
-    try {
-
-        child.kill(signal);
-
-    } catch {
-
-        /* the process is already gone */
-    }
+    killDirectly();
 }
 
 

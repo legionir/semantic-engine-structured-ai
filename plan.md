@@ -353,6 +353,8 @@ GitHub Actions روی ubuntu، windows و macos با Node 20/22/24؛ حذف وا
 - coverage خط برای agent/policy، agent/mcp و agent/tools بیش از ۸۰٪.
 - زمان کل CI کمتر از ۱۵ دقیقه.
 
+**تصمیم اجرایی این شاخه:** به‌دلیل خطای میزبانی/ظرفیت Runnerهای macOS، jobهای macOS از CI مسدودکننده حذف شده‌اند؛ گیت‌های فعلی روی Ubuntu و Windows اجرا می‌شوند. این تصمیم صرفاً محدودیت CI است و به‌تنهایی پشتیبانی محصول از macOS را تأیید یا رد نمی‌کند.
+
 ### P1-6 — شکستن agent.js و حذف کارهای همگام
 
 تقسیم فایل ۹۶KB به AgentLoop، LLMClient، PromptAssembler و غیره؛ حذف execSync/spawnSync از مسیر داغ (git status کش‌شده و async)؛ اجرای regex جستجو در worker با timeout.

@@ -41,11 +41,10 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      # This is a large cross-platform matrix; keep macOS runners from being
-      # overwhelmed when every suite starts at once.
+      # Keep the large Linux/Windows matrix within hosted-runner capacity.
       max-parallel: 12
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         node: [20, 22, 24]
         suite: ${{ fromJSON(needs.suites.outputs.list) }}
     defaults:
@@ -86,7 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         node: [20, 22]
     defaults:
       run:
