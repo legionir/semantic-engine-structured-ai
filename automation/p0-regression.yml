@@ -1,0 +1,111 @@
+name: P0 regression
+
+on:
+  pull_request:
+    paths:
+      - "structured-ai/**"
+      - ".github/workflows/p0-regression.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  p0:
+    name: P0 ${{ matrix.suite }} (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22, 24]
+        suite: [p01, p02, p03, p04, p05, p06, p07]
+    defaults:
+      run:
+        working-directory: structured-ai
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Run ${{ matrix.suite }}
+        run: |
+          set +e
+          node test/p0/${{ matrix.suite }}.test.js > out.txt 2>&1
+          code=$?
+          cat out.txt
+          echo "$code" > code.txt
+          exit $code
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-${{ matrix.suite }}-${{ matrix.os }}-${{ matrix.node }}
+          path: |
+            structured-ai/out.txt
+            structured-ai/code.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  report:
+    name: P0 report
+    needs: p0
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+      - name: Post summary comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dirs = fs.existsSync('results') ? fs.readdirSync('results').sort() : [];
+            const rows = [];
+            const detail = {};
+            for (const d of dirs) {
+              const m = d.match(/^p0-(p0\d)-(.+)-(\d+)$/);
+              if (!m) continue;
+              const [, suite, os, node] = m;
+              const read = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
+              const out = read('out.txt');
+              const code = read('code.txt').trim();
+              const summary = (out.match(/^\s*\d+\/\d+ passed.*$/m) || [''])[0].trim();
+              rows.push(`| ${suite} | ${os.replace('-latest','')} | ${node} | ${code === '0' ? '✅' : '❌'} | ${summary || ('exit ' + (code || '?'))} |`);
+              const key = suite;
+              const fails = out.split('\n').filter((l, i, a) => /FAIL|Error|error:|Cannot find|TypeError|ReferenceError/.test(l)).slice(0, 40).join('\n');
+              detail[key] = detail[key] || {};
+              detail[key][`${os} / Node ${node}`] = { out, fails };
+            }
+            let body = '<!-- p0-report -->\n## P0 regression report\n\n| Suite | OS | Node | Result | Summary |\n|---|---|---|---|---|\n' + rows.join('\n') + '\n\n';
+            for (const suite of Object.keys(detail).sort()) {
+              const envs = detail[suite];
+              const ref = envs['ubuntu-latest / Node 22'] || Object.values(envs)[0];
+              body += `<details><summary><b>${suite}</b> full output (ubuntu / Node 22)</summary>\n\n\`\`\`\n${(ref.out || '').slice(0, 5000)}\n\`\`\`\n</details>\n\n`;
+              for (const [env, v] of Object.entries(envs)) {
+                if (env === 'ubuntu-latest / Node 22' || !v.fails) continue;
+                body += `<details><summary>${suite} — ${env} failure lines</summary>\n\n\`\`\`\n${v.fails.slice(0, 1500)}\n\`\`\`\n</details>\n\n`;
+              }
+            }
+            body = body.slice(0, 64000);
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const prev = comments.find(c => c.body && c.body.startsWith('<!-- p0-report -->'));
+            if (prev) await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });

@@ -1,0 +1,185 @@
+{
+ "repo": "legionir/semantic-engine-structured-ai",
+ "base": "main",
+ "test_pr": 22,
+ "test_branch": "test/p0-regression",
+ "phase0_validate_tests": "pending",
+ "items": {
+  "P0-1": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P0-2": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P0-3": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P0-4": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P0-5": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P0-6": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P0-7": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P1-1": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P1-2": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P1-3": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P1-4": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P1-5": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P1-6": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P2-1": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P2-2": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P2-3": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P2-4": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P2-5": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P2-6": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P2-7": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P3-1": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P3-2": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P3-3": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P3-4": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  },
+  "P3-5": {
+   "status": "pending",
+   "branch": null,
+   "pr": null,
+   "attempts": 0,
+   "notes": ""
+  }
+ },
+ "log": []
+}
