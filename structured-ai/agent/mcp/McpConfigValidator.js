@@ -144,11 +144,12 @@ function expandDeep(value) {
 
 
 /*
-| P0-5: a configuration committed with a repository is written by
+| P0-5 / P0-8: a configuration committed with a repository is written by
 | whoever controls the repository, so it must not be able to pull the
-| runtime's secrets into a URL, header or token it chose. Placeholders
-| are expanded only for configuration the user wrote themselves
-| (registry, .agent/mcp.json, MCP_SERVERS, runtime).
+| runtime's secrets into a URL, header, argument or token it chose. Both
+| repository files (.mcp.json and .agent/mcp.json) expand placeholders
+| only once the operator has trusted the workspace (agent --trust);
+| operator configuration (registry, MCP_SERVERS, runtime) always may.
 */
 
 const placeholderPattern =
@@ -189,9 +190,36 @@ function mayDeclareTrusted(context) {
 }
 
 
+function isRepositorySource(context) {
+
+    const source = context && context.source;
+
+    return source === SOURCES.PROJECT || source === SOURCES.WORKSPACE;
+}
+
+
+/* The trust store is the operator's; a folder it does not list (or an
+   unreadable store) is untrusted. Required lazily: WorkspaceTrust loads
+   the settings store, which must not load this module first. */
+function workspaceTrusted(context) {
+
+    const root = context && context.workspaceRoot;
+
+    if (!root) {
+        return false;
+    }
+
+    try {
+        return require("../projects/WorkspaceTrust").isTrusted(root) === true;
+    } catch {
+        return false;
+    }
+}
+
+
 function expandsEnvironment(context) {
 
-    return !(context && context.source === SOURCES.PROJECT);
+    return !isRepositorySource(context) || workspaceTrusted(context);
 }
 
 
@@ -223,9 +251,10 @@ function normalize(name, rawDefinition, context) {
     ) {
 
         throw new Error(
-            "environment placeholders like ${NAME} are not allowed in a repository .mcp.json, " +
-            "because they would hand the runtime's secrets to a server the repository chose; " +
-            "declare this server in .agent/mcp.json or MCP_SERVERS instead"
+            "environment placeholders like ${NAME} are not allowed in a repository MCP configuration " +
+            "(.mcp.json, .agent/mcp.json) of an untrusted workspace, because they would hand the " +
+            "runtime's secrets to a server the repository chose; trust the workspace " +
+            "(agent --trust) or declare this server in MCP_SERVERS instead"
         );
     }
 
@@ -409,6 +438,8 @@ module.exports = {
     expand,
     expandDeep,
     containsPlaceholder,
+    isRepositorySource,
+    workspaceTrusted,
     expandsEnvironment,
     normalizeStringList,
     normalize,

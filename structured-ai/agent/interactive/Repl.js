@@ -56,7 +56,8 @@ async function startSession(runtime, options) {
         createApprovalHandler({
             readAnswer,
             colours,
-            output: process.stdout
+            output: process.stdout,
+            interactive: Boolean(process.stdin.isTTY)
         })
     );
 
