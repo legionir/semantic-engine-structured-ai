@@ -1,6 +1,6 @@
 {
-  "default_action": "allow",
-  "description": "Evaluated for every tool call, after the Agent Profile allowlist and on the resolved arguments. The last matching rule wins, so a specific rule may follow a broad one. Approval behaviour is chosen with AGENT_APPROVAL: auto, prompt, or deny; prompt is the safe default. A call to an MCP server is additionally checked against that server's trust setting and MCP_APPROVAL, which can only make the answer stricter.",
+  "default_action": "require_approval",
+  "description": "Evaluated for every tool call, after the Agent Profile allowlist and on the resolved arguments. A tool that no rule names needs approval (deny-by-default): every tool that may run freely has an explicit allow rule below. The last matching rule wins, so a specific rule may follow a broad one. Approval behaviour is chosen with AGENT_APPROVAL: auto, prompt, or deny; prompt is the safe default. A call to an MCP server is additionally checked against that server's trust setting and MCP_APPROVAL, which can only make the answer stricter.",
   "rules": [
     {
       "id": "destructive_filesystem",
@@ -22,6 +22,17 @@
       ],
       "action": "allow",
       "reason": "inspection only"
+    },
+    {
+      "id": "agent_bookkeeping_is_free",
+      "groups": [
+        "planning",
+        "memory",
+        "knowledge",
+        "discussion"
+      ],
+      "action": "allow",
+      "reason": "the run's own plan, memory, skills and deliberation; nothing outside the run changes"
     },
     {
       "id": "file_deletion",
@@ -139,6 +150,24 @@
       ],
       "action": "require_approval",
       "reason": "runs an arbitrary shell command"
+    },
+    {
+      "id": "process_session_inspection",
+      "tools": [
+        "process_read",
+        "process_list",
+        "process_terminate"
+      ],
+      "action": "allow",
+      "reason": "reads or stops a session this run started"
+    },
+    {
+      "id": "process_input",
+      "tools": [
+        "process_write"
+      ],
+      "action": "require_approval",
+      "reason": "sends input to a running shell; every line is also checked against the shell command rules"
     },
     {
       "id": "irrecoverable_shell_commands",

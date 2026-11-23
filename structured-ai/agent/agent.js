@@ -1369,8 +1369,21 @@ function startRun() {
        attribute events to the same run. */
     events.setContext({ run_id: currentRun().id });
 
+    /* P0-7: a cancel that arrived before this point is kept, with its
+       reason; attaching the controller aborts it immediately. */
+    const cancelledEarly =
+        Boolean(
+            currentRun().cancellation &&
+            currentRun().cancellation.requested
+        );
+
+    const earlyReason =
+        cancelledEarly
+            ? currentRun().cancelled_reason
+            : null;
+
     currentRun().controller = new AbortController();
-    currentRun().cancelled_reason = null;
+    currentRun().cancelled_reason = earlyReason;
     currentRun().inHook = false;
     currentRun().hook_phase = null;
     currentRun().hook_started_at = 0;
@@ -1477,8 +1490,14 @@ function cancelRunById(runId, reason) {
         return runScheduler.cancelQueuedRun(runId, reason) || true;
     }
 
+    /*
+    | P0-7: a run that is running but whose startRun has not attached its
+    | controller yet keeps the cancel (RunCancellation remembers it and
+    | aborts the controller attached next). Only an already-aborted run
+    | is left alone.
+    */
     if (
-        !context.controller ||
+        context.controller &&
         context.controller.signal.aborted
     ) {
         return true;

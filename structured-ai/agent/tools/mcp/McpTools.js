@@ -268,6 +268,25 @@ async function mcpAdd(args = {}) {
         );
     }
 
+    /*
+    | P0-2: the model must not grant its own server more trust than the
+    | default. Only an operator (config file, console) may mark a server
+    | "trusted"; from mcp_add a server can be made stricter ("restricted")
+    | but never trusted, and a self-declared trust is reported back.
+    */
+    const requestedTrust =
+        args.trust === undefined || args.trust === null
+            ? null
+            : String(args.trust);
+
+    const trustLevel =
+        requestedTrust === "restricted"
+            ? "restricted"
+            : "default";
+
+    const trustIgnored =
+        requestedTrust !== null && requestedTrust !== trustLevel;
+
     try {
 
         const added =
@@ -284,7 +303,7 @@ async function mcpAdd(args = {}) {
                     description: args.description,
                     include: args.include,
                     exclude: args.exclude,
-                    trust: args.trust
+                    trust: trustLevel
                 },
                 { persist: args.persist !== false }
             );
@@ -299,6 +318,14 @@ async function mcpAdd(args = {}) {
             server: added.config.name,
             transport: added.config.transport,
             persisted_to: added.persisted_to,
+            trust: added.config.trust,
+            ...(trustIgnored
+                ? {
+                    trust_ignored: requestedTrust,
+                    note:
+                        "mcp_add cannot mark a server trusted; an operator can do that in the MCP configuration."
+                }
+                : {}),
             tool_count: tools.length,
             tools:
                 tools.slice(0, 30).map(entry => entry.name)

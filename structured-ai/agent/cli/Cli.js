@@ -94,6 +94,11 @@ Options
       --list-tools          Print the tool catalogue and exit
       --list-agents         Print the agent profiles and exit
       --list-policy         Print the policy rules and exit
+      --trust               Trust the workspace (-w, --project or cwd): its
+                            project file may then enable hooks and MCP auto
+                            discovery; security settings always stay locked
+      --untrust             Revoke the trust of the workspace
+      --list-trusted        Print the trusted workspaces and exit
   -h, --help                Print this help and exit
       --version             Print the version and exit
 
@@ -160,6 +165,55 @@ function parseArguments(argv) {
 
     return parseCliArguments(argv, { fail });
 }
+
+const numericOptionFlags = {
+    AGENT_TEMPERATURE: { flag: "--temperature", scale: 1, unit: "" },
+    MAX_RUN_MS: { flag: "--timeout", scale: 1000, unit: " seconds" },
+    MAX_ITERATIONS: { flag: "--max-iterations", scale: 1, unit: "" },
+    MAX_TOTAL_AGENTS: { flag: "--max-agents", scale: 1, unit: "" }
+};
+
+
+function validateNumericOptions(environment) {
+
+    const schema =
+        require(path.join(REPO_ROOT, "agent", "config", "SettingsSchema.js"));
+
+    for (const [key, option] of Object.entries(numericOptionFlags)) {
+
+        if (environment[key] === undefined) {
+            continue;
+        }
+
+        const definition =
+            schema.definitionOf(key);
+
+        const value =
+            Number(environment[key]);
+
+        const below =
+            definition.min !== undefined && value < definition.min;
+
+        const above =
+            definition.max !== undefined && value > definition.max;
+
+        if (!Number.isFinite(value) || below || above) {
+
+            const shown =
+                bound => bound === undefined ? null : bound / option.scale;
+
+            const range =
+                definition.max !== undefined
+                    ? `between ${shown(definition.min)} and ${shown(definition.max)}${option.unit}`
+                    : `at least ${shown(definition.min)}${option.unit}`;
+
+            fail(
+                `${option.flag} must be ${range}, received ${value / option.scale}`
+            );
+        }
+    }
+}
+
 
 function applyEnvironment(options) {
 
@@ -306,6 +360,13 @@ function applyEnvironment(options) {
     if (options.maxAgents !== undefined) {
         environment.MAX_TOTAL_AGENTS = String(options.maxAgents);
     }
+
+    /*
+    | P0-7: numeric options are checked against the settings schema before
+    | anything runs, so "--temperature 3" is a usage error (exit 2) rather
+    | than a value that fails, or is silently clamped, in the middle of a run.
+    */
+    validateNumericOptions(environment);
 
     if (options.quiet) {
         environment.AGENT_VERBOSE = "0";
@@ -924,6 +985,150 @@ function runMigration(projectId, options) {
 }
 
 
+/*
+| P0-1: trusting a workspace is an operator decision. It is made on the
+| command line and recorded in the operator's own configuration directory,
+| never in the workspace itself (agent/projects/WorkspaceTrust.js). Like
+| --migrate it runs before the runtime is loaded and exits.
+*/
+function runTrustCommand(options, flags) {
+
+    const operations =
+        ["trust", "untrust", "listTrusted"].filter(name => options[name]);
+
+    if (operations.length > 1) {
+
+        fail("--trust, --untrust and --list-trusted are separate operations");
+
+    }
+
+    if (
+        options.interactive ||
+        options.serve ||
+        options.untilDone ||
+        options.discussion ||
+        options.migrate
+    ) {
+
+        fail("--trust, --untrust and --list-trusted are one-shot operations and cannot be combined with -i, -s, --until-done, --discussion or --migrate");
+
+    }
+
+    const WorkspaceTrust =
+        require(path.join(REPO_ROOT, "agent", "projects", "WorkspaceTrust.js"));
+
+    const store =
+        WorkspaceTrust.trustStorePath();
+
+    if (options.listTrusted) {
+
+        const entries = WorkspaceTrust.list();
+
+        if (options.json) {
+
+            process.stdout.write(
+                `${JSON.stringify({ trust_file: store, workspaces: entries }, null, 2)}\n`
+            );
+
+        } else if (entries.length === 0) {
+
+            process.stdout.write(`no trusted workspaces (${store})\n`);
+
+        } else {
+
+            for (const entry of entries) {
+
+                process.stdout.write(
+                    `${entry.path || entry.key}  trusted ${entry.trusted_at || "-"}\n`
+                );
+
+            }
+
+        }
+
+        process.exit(EXIT.SUCCESS);
+
+    }
+
+    /* The same folder the runtime opens: -w / --project, otherwise the
+       workspace boundary's own root (cwd by default). */
+    const root =
+        flags.WORKSPACE_ROOT ||
+        require(path.join(REPO_ROOT, "agent", "context", "WorkspaceBoundary")).WORKSPACE_ROOT ||
+        process.cwd();
+
+    if (
+        !fs.existsSync(root) ||
+        !fs.statSync(root).isDirectory()
+    ) {
+
+        fail(`workspace is not a directory: ${root}`);
+
+    }
+
+    let workspace;
+    let changed;
+
+    try {
+
+        if (options.trust) {
+
+            workspace = WorkspaceTrust.trust(root, { by: "cli" });
+            changed = true;
+
+        } else {
+
+            workspace = WorkspaceTrust.canonicalRoot(root);
+            changed = WorkspaceTrust.revoke(root);
+
+        }
+
+    } catch (error) {
+
+        process.stderr.write(
+            `agent: cannot update the trust store ${store}: ${error.message}\n`
+        );
+
+        process.exit(EXIT.FAILED);
+
+    }
+
+    if (options.json) {
+
+        process.stdout.write(
+            `${JSON.stringify({
+                workspace,
+                trusted: Boolean(options.trust),
+                changed,
+                trust_file: store
+            }, null, 2)}\n`
+        );
+
+    } else if (options.trust) {
+
+        process.stderr.write(
+            `agent: trusted workspace ${workspace}\n` +
+            `  store   : ${store}\n` +
+            `  enables : ${[...WorkspaceTrust.TRUST_GATED_KEYS].join(", ")} from its project file\n` +
+            "  security settings (approval, endpoints, keys, sandbox, MCP trust) stay locked\n" +
+            `  revoke  : agent --untrust -w ${root}\n`
+        );
+
+    } else {
+
+        process.stderr.write(
+            changed
+                ? `agent: revoked trust for ${workspace}\n`
+                : `agent: workspace was not trusted: ${workspace}\n`
+        );
+
+    }
+
+    process.exit(EXIT.SUCCESS);
+
+}
+
+
 function commandRegistry() {
 
     return new CommandRegistry({
@@ -972,6 +1177,16 @@ async function main() {
 
     const flags =
         applyEnvironment(options);
+
+    if (
+        options.trust ||
+        options.untrust ||
+        options.listTrusted
+    ) {
+
+        runTrustCommand(options, flags);
+
+    }
 
     /* گام ۳ migration is handled before the runtime is loaded: it only
        needs the registry and the two data roots. */
@@ -1060,6 +1275,30 @@ async function main() {
 
         process.stderr.write(
             `project: ignored ${skipped.key} (${skipped.reason})\n`
+        );
+    }
+
+    /*
+    | P0-1: a project file is workspace input. What it may not change is
+    | refused, and the operator is told, never silently obeyed.
+    */
+    for (const refused of opened.blocked || []) {
+
+        process.stderr.write(
+            `project: refused ${refused.key} from ${opened.path} (${refused.reason})\n`
+        );
+    }
+
+    const untrusted =
+        (opened.blocked || [])
+            .filter(refused => refused.reason === "workspace is not trusted")
+            .map(refused => refused.key);
+
+    if (untrusted.length > 0) {
+
+        process.stderr.write(
+            `project: to apply ${untrusted.join(", ")}, trust this workspace: ` +
+            `agent --trust -w ${opened.workspace_root || "<dir>"}\n`
         );
     }
 

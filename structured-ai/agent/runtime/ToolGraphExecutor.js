@@ -397,6 +397,54 @@ async function executeDependencyGraph({
                     )
             );
 
+    /*
+    | P0-7: a call whose dependency failed (or was itself skipped) must not
+    | run — it was planned on the assumption that its input exists. It is
+    | settled as skipped with success:false, so its own dependents are
+    | skipped in turn and every item still gets exactly one result.
+    */
+    const failedDependency =
+        item =>
+            item.depends_on.find(
+                dependency =>
+                    results.has(dependency) &&
+                    results.get(dependency).success === false
+            );
+
+    const skipForDependency =
+        async (item, dependency) => {
+
+            remaining.delete(
+                item.id
+            );
+
+            const reason =
+                `dependency "${dependency}" did not succeed`;
+
+            const skipped =
+                typeof skipItem === "function"
+                    ? await skipItem(
+                        item,
+                        reason
+                    )
+                    : null;
+
+            results.set(
+                item.id,
+                {
+                    id: item.id,
+                    success: false,
+                    skipped: true,
+                    result: skipped,
+                    error: {
+                        code: "DEPENDENCY_FAILED",
+                        message: reason,
+                        retryable: false
+                    }
+                }
+            );
+        };
+
     const launch =
         item => {
 
@@ -534,6 +582,9 @@ async function executeDependencyGraph({
     ) {
 
         /* Fill every free slot, but stop dispatching once a stop is seen. */
+        let settledBySkip =
+            false;
+
         if (
             !stopping
         ) {
@@ -544,13 +595,31 @@ async function executeDependencyGraph({
             ) {
 
                 if (
-                    inFlight.size >= slots
+                    !isReady(item)
                 ) {
-                    break;
+                    continue;
+                }
+
+                const failed =
+                    failedDependency(item);
+
+                if (
+                    failed !== undefined
+                ) {
+
+                    await skipForDependency(
+                        item,
+                        failed
+                    );
+
+                    settledBySkip =
+                        true;
+
+                    continue;
                 }
 
                 if (
-                    !isReady(item)
+                    inFlight.size >= slots
                 ) {
                     continue;
                 }
@@ -559,6 +628,14 @@ async function executeDependencyGraph({
                     item
                 );
             }
+        }
+
+        /* A skip may have made further dependents ready: look again. */
+        if (
+            settledBySkip &&
+            inFlight.size === 0
+        ) {
+            continue;
         }
 
         if (

@@ -1,3 +1,6 @@
+const path = require("path");
+const { pathToFileURL } = require("url");
+
 const protocol = require("./protocol");
 
 const { StdioTransport } = require("./transports/StdioTransport");
@@ -103,6 +106,19 @@ class McpClient {
             message => this.handleNotification(message)
         );
 
+        /*
+        | P0-6: a transport that can carry requests from the server
+        | (stdio today) hands them here, so ping and roots/list are
+        | answered as the MCP specification requires.
+        */
+
+        if (typeof this.transport.onRequest === "function") {
+
+            this.transport.onRequest(
+                message => this.handleRequest(message)
+            );
+        }
+
         this.transport.onClose(() => {
 
             /*
@@ -164,6 +180,63 @@ class McpClient {
     }
 
 
+    handleRequest(message) {
+
+        if (message.method === "ping") {
+            return {};
+        }
+
+        if (message.method === "roots/list") {
+            return { roots: this.roots() };
+        }
+
+        this.record(
+            `server asked for "${message.method}", which this client does not support`
+        );
+
+        const error =
+            new Error(`method "${message.method}" is not supported by this client`);
+
+        error.code = -32601;
+
+        throw error;
+    }
+
+
+    /*
+    | The roots a server may work in: the ones configured for it, or the
+    | directory it was started in. Nothing outside is ever advertised.
+    */
+
+    roots() {
+
+        if (Array.isArray(this.config.roots)) {
+
+            return this.config.roots
+                .filter(root => typeof root === "string" || (root && root.uri))
+                .map(root =>
+                    typeof root === "string"
+                        ? { uri: pathToFileURL(path.resolve(root)).href, name: path.basename(root) || root }
+                        : { uri: String(root.uri), ...(root.name ? { name: String(root.name) } : {}) }
+                );
+        }
+
+        if (typeof this.config.cwd !== "string" || this.config.cwd === "") {
+            return [];
+        }
+
+        const root =
+            path.resolve(this.config.cwd);
+
+        return [
+            {
+                uri: pathToFileURL(root).href,
+                name: path.basename(root) || root
+            }
+        ];
+    }
+
+
     timeout(kind) {
 
         const configured =
@@ -194,9 +267,13 @@ class McpClient {
                     protocolVersion:
                         protocol.PROTOCOL_VERSION,
 
+                    /*
+                    | Only what is implemented is advertised: roots/list
+                    | is answered (handleRequest); sampling is not.
+                    */
+
                     capabilities: {
-                        roots: { listChanged: false },
-                        sampling: {}
+                        roots: { listChanged: false }
                     },
 
                     clientInfo:

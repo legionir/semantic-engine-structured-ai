@@ -7,12 +7,46 @@
 |
 | Tool names are namespaced as mcp__<server>__<tool>, so two servers can
 | both offer "search" without one shadowing the other.
+|
+| P0-6: providers only accept function names matching
+| ^[a-zA-Z0-9_-]{1,64}$. A namespaced name that does not fit (a dot in
+| the server name, a slash or space in the tool name, too long) is
+| rewritten into that alphabet with a short hash of the original, so
+| two names never collapse into one, and the rewritten name is
+| remembered so it still routes to its server and tool.
 |--------------------------------------------------------------------------
 */
+
+const crypto = require("crypto");
 
 const NAMESPACE_PREFIX = "mcp__";
 
 const NAMESPACE_SEPARATOR = "__";
+
+const LLM_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+
+const aliases = new Map();
+
+
+function llmSafeName(raw) {
+
+    const name = String(raw || "");
+
+    if (LLM_TOOL_NAME_PATTERN.test(name)) {
+        return name;
+    }
+
+    const digest =
+        crypto.createHash("sha1").update(name, "utf8").digest("hex").slice(0, 8);
+
+    const cleaned =
+        name.replace(/[^a-zA-Z0-9_-]+/g, "_");
+
+    const room =
+        64 - digest.length - 1;
+
+    return `${cleaned.slice(0, room)}_${digest}`;
+}
 
 
 function toolName(serverName, tool) {
@@ -22,6 +56,10 @@ function toolName(serverName, tool) {
 
 
 function parseToolName(name) {
+
+    if (aliases.has(name)) {
+        return { ...aliases.get(name) };
+    }
 
     if (
         typeof name !== "string" ||
@@ -100,7 +138,7 @@ function toolDeclaration(entry) {
     return {
         type: "function",
         function: {
-            name: entry.name,
+            name: llmSafeName(entry.name),
             description: description.slice(0, 1024),
             parameters
         }
@@ -110,8 +148,19 @@ function toolDeclaration(entry) {
 
 function entryFromTool(client, tool) {
 
-    const namespaced =
+    const raw =
         toolName(client.name, tool.name);
+
+    const namespaced =
+        llmSafeName(raw);
+
+    if (namespaced !== raw) {
+
+        aliases.set(namespaced, {
+            server: client.name,
+            tool: tool.name
+        });
+    }
 
     return {
         name: namespaced,
@@ -130,6 +179,8 @@ function entryFromTool(client, tool) {
 module.exports = {
     NAMESPACE_PREFIX,
     NAMESPACE_SEPARATOR,
+    LLM_TOOL_NAME_PATTERN,
+    llmSafeName,
     toolName,
     parseToolName,
     matchesFilter,

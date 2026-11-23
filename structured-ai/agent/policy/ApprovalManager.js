@@ -109,13 +109,38 @@ class ApprovalManager {
                 ? this.globalMcpServer(serverName)
                 : null;
 
-        if (
-            globalServer &&
-            this.store.hasGateway(serverName)
-        ) {
+        const mode = this.getMode();
 
-            const cached =
-                this.store.gatewayFor(serverName);
+        /*
+        | P0-2: AGENT_APPROVAL=deny is terminal. It used to be checked only
+        | after the gateway cache, so an approval remembered for a global
+        | MCP server (granted while the mode was auto/prompt) kept running
+        | calls unattended after the operator switched to deny.
+        */
+        if (mode === "deny") {
+
+            record.approved = false;
+            record.mode = "deny";
+            this.store.record(record);
+
+            throw unattendedApproval(
+                evaluation.tool,
+                evaluation.reason
+            );
+        }
+
+        /*
+        | P0-2: a remembered gateway answer expires. It used to be reused for
+        | the life of the process, so one answer gave a global MCP server
+        | unattended access until restart. MCP_GATEWAY_APPROVAL_TTL_MS bounds
+        | the reuse; 0 asks every time.
+        */
+        const cached =
+            globalServer
+                ? this.freshGateway(serverName)
+                : null;
+
+        if (cached) {
 
             record.approved = cached.approved;
             record.mode = "gateway";
@@ -131,20 +156,6 @@ class ApprovalManager {
             }
 
             return record;
-        }
-
-        const mode = this.getMode();
-
-        if (mode === "deny") {
-
-            record.approved = false;
-            record.mode = "deny";
-            this.store.record(record);
-
-            throw unattendedApproval(
-                evaluation.tool,
-                evaluation.reason
-            );
         }
 
         const handler = this.handler();
@@ -203,16 +214,77 @@ class ApprovalManager {
                 ? "auto (no tty)"
                 : "auto";
 
-        if (globalServer && serverName) {
-
-            this.store.rememberGateway(serverName, {
-                approved: true,
-                at: Date.now()
-            });
-        }
+        /* P0-2: an automatic answer is not remembered as a gateway
+           approval; only a human answer is, so switching to prompt asks
+           again instead of reusing what auto mode decided. */
 
         this.store.record(record);
         return record;
+    }
+
+
+    /*
+    | How long a remembered gateway answer may be reused, in milliseconds.
+    | An injected settings store that does not know the key falls back to
+    | the real settings, so the shipped default still applies.
+    */
+    gatewayTtlMs() {
+
+        const key = "MCP_GATEWAY_APPROVAL_TTL_MS";
+
+        let value = null;
+
+        try {
+            value = this.settings.get(key);
+        } catch {
+            value = null;
+        }
+
+        if (value === null || value === undefined) {
+            value = settings.get(key);
+        }
+
+        const ttl = Number(value);
+
+        return Number.isFinite(ttl) && ttl > 0
+            ? ttl
+            : 0;
+    }
+
+
+    /*
+    | The cached gateway answer for a server, or null when there is none or
+    | it has expired. An entry without a numeric timestamp cannot be aged,
+    | so it is treated as expired rather than trusted forever.
+    */
+    freshGateway(serverName) {
+
+        if (
+            !serverName ||
+            !this.store.hasGateway(serverName)
+        ) {
+            return null;
+        }
+
+        const cached =
+            this.store.gatewayFor(serverName);
+
+        if (!cached) {
+            return null;
+        }
+
+        const at = Number(cached.at);
+        const ttl = this.gatewayTtlMs();
+
+        if (
+            !Number.isFinite(at) ||
+            ttl <= 0 ||
+            Date.now() - at >= ttl
+        ) {
+            return null;
+        }
+
+        return cached;
     }
 
 

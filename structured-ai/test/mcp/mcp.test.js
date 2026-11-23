@@ -766,10 +766,28 @@ async function main() {
 
     await test("a token in the environment is read, never stored in the file", async () => {
 
+        /*
+        | P0-5: only configuration the user wrote (.agent/mcp.json,
+        | MCP_SERVERS, the registry) may pull a value out of the
+        | environment. A repository .mcp.json that asks for one is refused,
+        | so a cloned project cannot route the user's tokens to a server
+        | it chose.
+        */
+
         process.env.MCP_TEST_TOKEN = "s3cret";
 
+        const workspaceConfig =
+            path.join(WORKSPACE, ".agent", "mcp.json");
+
+        const previousWorkspaceConfig =
+            fs.existsSync(workspaceConfig)
+                ? fs.readFileSync(workspaceConfig, "utf8")
+                : null;
+
+        fs.mkdirSync(path.dirname(workspaceConfig), { recursive: true });
+
         fs.writeFileSync(
-            path.join(WORKSPACE, ".mcp.json"),
+            workspaceConfig,
             JSON.stringify({
                 mcpServers: {
                     remote: {
@@ -781,20 +799,67 @@ async function main() {
             "utf8"
         );
 
-        const loaded =
-            config.load(WORKSPACE);
+        try {
 
-        assert.equal(
-            loaded.servers[0].headers.authorization,
-            "Bearer s3cret"
-        );
+            const loaded =
+                config.load(WORKSPACE);
 
-        assert.match(
-            fs.readFileSync(path.join(WORKSPACE, ".mcp.json"), "utf8"),
-            /\$\{env:MCP_TEST_TOKEN\}/
-        );
+            assert.equal(
+                loaded.servers.find(server => server.name === "remote").headers.authorization,
+                "Bearer s3cret"
+            );
 
-        delete process.env.MCP_TEST_TOKEN;
+            assert.match(
+                fs.readFileSync(workspaceConfig, "utf8"),
+                /\$\{env:MCP_TEST_TOKEN\}/
+            );
+
+            fs.writeFileSync(workspaceConfig, JSON.stringify({}), "utf8");
+
+            fs.writeFileSync(
+                path.join(WORKSPACE, ".mcp.json"),
+                JSON.stringify({
+                    mcpServers: {
+                        repo_remote: {
+                            url: "https://example.com/mcp",
+                            headers: { authorization: "Bearer ${env:MCP_TEST_TOKEN}" }
+                        }
+                    }
+                }),
+                "utf8"
+            );
+
+            const fromRepository =
+                config.load(WORKSPACE);
+
+            assert.equal(
+                fromRepository.servers.some(server => server.name === "repo_remote"),
+                false,
+                "a repository .mcp.json must not expand environment placeholders"
+            );
+
+            assert.match(
+                fromRepository.problems.join(" "),
+                /placeholder/
+            );
+
+            assert.doesNotMatch(
+                JSON.stringify(fromRepository),
+                /s3cret/
+            );
+
+        } finally {
+
+            fs.rmSync(path.join(WORKSPACE, ".mcp.json"), { force: true });
+
+            if (previousWorkspaceConfig === null) {
+                fs.rmSync(workspaceConfig, { force: true });
+            } else {
+                fs.writeFileSync(workspaceConfig, previousWorkspaceConfig, "utf8");
+            }
+
+            delete process.env.MCP_TEST_TOKEN;
+        }
     });
 
     await test("the environment overrides the file, and the file overrides the registry", async () => {

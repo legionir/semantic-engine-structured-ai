@@ -1300,6 +1300,15 @@ const DEFINITIONS = [
         description: "Whether calling an MCP tool needs approval. inherit follows the policy rules and each server's trust setting, always asks every time, never asks at all."
     },
     {
+        key: "MCP_GATEWAY_APPROVAL_TTL_MS",
+        group: "mcp",
+        type: NUMBER,
+        default: 900000,
+        min: 0,
+        max: 86400000,
+        description: "How long an approval answer for a global MCP server is reused before the next call asks again (P0-2). 0 asks every time."
+    },
+    {
         key: "WORKSPACE_ROOT",
         group: "workspace",
         type: STRING,
@@ -1313,6 +1322,13 @@ const DEFINITIONS = [
         type: STRING,
         default: null,
         description: "Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai."
+    },
+    {
+        key: "STRUCTURED_AI_TRUST_FILE",
+        group: "workspace",
+        type: STRING,
+        default: null,
+        description: "File that records which workspaces the operator trusted (roadmap P0-1). Empty means ~/.config/structured-ai/trusted-workspaces.json (~\\AppData\\Roaming\\structured-ai on Windows). Never taken from a project file."
     },
 
 

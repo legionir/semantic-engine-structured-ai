@@ -85,6 +85,53 @@ function isNotification(message) {
 
 
 /*
+| P0-6: a server may send requests of its own (ping, roots/list, ...).
+| They carry both a method and an id, and must be answered with the same
+| id, or a spec-compliant server waits for an answer that never comes.
+*/
+
+function isRequest(message) {
+
+    return Boolean(
+        message &&
+        typeof message === "object" &&
+        typeof message.method === "string" &&
+        message.id !== undefined &&
+        message.id !== null
+    );
+}
+
+
+function response(id, result) {
+
+    return {
+        jsonrpc: JSONRPC_VERSION,
+        id,
+        result: result === undefined ? {} : result
+    };
+}
+
+
+function errorResponse(id, code, message, data) {
+
+    const error = {
+        code: Number.isInteger(code) ? code : -32603,
+        message: String(message || "internal error")
+    };
+
+    if (data !== undefined) {
+        error.data = data;
+    }
+
+    return {
+        jsonrpc: JSONRPC_VERSION,
+        id,
+        error
+    };
+}
+
+
+/*
 | tools/call answers with a content array. Text content that parses as
 | JSON is the structured result the caller asked for; anything else is
 | returned as text so an image or a resource link is not silently lost.
@@ -157,5 +204,8 @@ module.exports = {
     notification,
     isResponse,
     isNotification,
+    isRequest,
+    response,
+    errorResponse,
     unpackToolResult
 };
