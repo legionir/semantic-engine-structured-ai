@@ -26,7 +26,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node: [20, 22, 24]
-        suite: [p02]
+        suite: [p02, p02ttl]
     defaults:
       run:
         working-directory: structured-ai
@@ -151,8 +151,8 @@ jobs:
           console.log(byDefault.length ? byDefault.join('\n') : '(none)');
           EOF
           { echo "===== shipped policy: registered tools without an explicit rule ====="; node tool-decisions.js 2>&1 | head -n 120; echo; } >> dumps.txt
-          { echo "===== SettingsSchema AGENT_APPROVAL / MCP_APPROVAL / APPROVAL_HISTORY_LIMIT definitions ====="; grep -n -B3 -A16 'key: "AGENT_APPROVAL"\|key: "MCP_APPROVAL"\|key: "APPROVAL_HISTORY_LIMIT"' src/structured-ai/agent/config/SettingsSchema.js | cut -c1-200 | head -n 140; echo; } >> dumps.txt
-          { echo "===== gateway approval cache users ====="; grep -rn "gateway" src/structured-ai/agent/policy src/structured-ai/agent/mcp --include=*.js | cut -c1-200 | head -n 40; echo; } >> dumps.txt
+          { echo "===== SettingsSchema MCP_GATEWAY_APPROVAL_TTL_MS definition ====="; grep -n -B1 -A8 'key: "MCP_GATEWAY_APPROVAL_TTL_MS"' src/structured-ai/agent/config/SettingsSchema.js | cut -c1-200 | head -n 140; echo; } >> dumps.txt
+          { echo "===== tests touching the gateway approval cache ====="; grep -rn "rememberGateway\|hasGateway\|gatewayFor\|gateway_cached" src/structured-ai/test --include=*.js | cut -c1-200 | head -n 40; echo; } >> dumps.txt
       - uses: actions/download-artifact@v4
         with:
           path: results
@@ -173,7 +173,7 @@ jobs:
                 full.push({ node: fm[1], out: readF('out.txt'), code: readF('code.txt').trim() });
                 continue;
               }
-              const m = d.match(/^p0-(p0\d)-(.+)-(\d+)$/);
+              const m = d.match(/^p0-(p0\d\w*)-(.+)-(\d+)$/);
               if (!m) continue;
               const [, suite, os, node] = m;
               const read = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
