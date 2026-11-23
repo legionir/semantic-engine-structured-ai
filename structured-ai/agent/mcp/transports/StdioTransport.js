@@ -2,6 +2,7 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 const protocol = require("../protocol");
+const childEnvironment = require("../../tools/process/ChildEnvironment");
 
 
 /*
@@ -182,10 +183,10 @@ class StdioTransport {
 
                         stdio: ["pipe", "pipe", "pipe"],
 
-                        env: {
-                            ...process.env,
-                            ...(this.config.env || {})
-                        },
+                        /* P0-5: only an allowlisted environment plus the
+                           server's own configured env, never the
+                           runtime's API keys and tokens. */
+                        env: childEnvironment.build(this.config.env || {}),
 
                         windowsHide: true
                     });

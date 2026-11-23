@@ -6,6 +6,7 @@ const path = require("path");
 const settings = require("../config");
 const dataRoot = require("../persistence/DataRoot");
 const SchemaVersion = require("./SchemaVersion");
+const EventRedactor = require("../events/EventRedactor");
 
 
 /*
@@ -36,6 +37,17 @@ const SchemaVersion = require("./SchemaVersion");
 
 const STORE_VERSION = "1";
 const pendingWrites = new Map();
+
+/* P0-5: the store holds tool arguments and output, so it is private to
+   the user (ignored on Windows) and secrets are masked before writing. */
+const privateFileMode = 0o600;
+const privateDirMode = 0o700;
+
+
+function persistedLine(event) {
+
+    return `${JSON.stringify(EventRedactor.redactSecrets(event))}\n`;
+}
 
 
 /* Phase 8: readers may name a root explicitly (a project dataRoot, a
@@ -100,12 +112,12 @@ function append(event) {
 
         const root = eventRoot(event);
 
-        fs.mkdirSync(storeRoot(root), { recursive: true });
+        fs.mkdirSync(storeRoot(root), { recursive: true, mode: privateDirMode });
 
         fs.appendFileSync(
             fileFor(event.at, root),
-            `${JSON.stringify(event)}\n`,
-            "utf8"
+            persistedLine(event),
+            { encoding: "utf8", mode: privateFileMode }
         );
 
         return true;
@@ -124,14 +136,22 @@ async function appendQueued(event) {
 
     const root = eventRoot(event);
     const file = fileFor(event.at, root);
+    /* Redacted now, so a later mutation of the event cannot change
+       what is written and the secret never waits in the queue. */
+    let line;
+    try {
+        line = persistedLine(event);
+    } catch {
+        return false;
+    }
     const previous = pendingWrites.get(file) || Promise.resolve();
     const next = previous
         .then(async () => {
-            await fs.promises.mkdir(storeRoot(root), { recursive: true });
+            await fs.promises.mkdir(storeRoot(root), { recursive: true, mode: privateDirMode });
             await fs.promises.appendFile(
                 file,
-                `${JSON.stringify(event)}\n`,
-                "utf8"
+                line,
+                { encoding: "utf8", mode: privateFileMode }
             );
             return true;
         })

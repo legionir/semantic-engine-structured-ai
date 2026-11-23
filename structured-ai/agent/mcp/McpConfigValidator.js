@@ -143,6 +143,42 @@ function expandDeep(value) {
 }
 
 
+/*
+| P0-5: a configuration committed with a repository is written by
+| whoever controls the repository, so it must not be able to pull the
+| runtime's secrets into a URL, header or token it chose. Placeholders
+| are expanded only for configuration the user wrote themselves
+| (registry, .agent/mcp.json, MCP_SERVERS, runtime).
+*/
+
+const placeholderPattern =
+    /\$\{(?:env:)?[A-Za-z_][A-Za-z0-9_]*\}/;
+
+
+function containsPlaceholder(value) {
+
+    if (typeof value === "string") {
+        return placeholderPattern.test(value);
+    }
+
+    if (Array.isArray(value)) {
+        return value.some(containsPlaceholder);
+    }
+
+    if (value && typeof value === "object") {
+        return Object.values(value).some(containsPlaceholder);
+    }
+
+    return false;
+}
+
+
+function expandsEnvironment(context) {
+
+    return !(context && context.source === SOURCES.PROJECT);
+}
+
+
 function normalizeStringList(value) {
 
     if (!value) {
@@ -164,6 +200,18 @@ function normalizeStringList(value) {
 
 
 function normalize(name, rawDefinition, context) {
+
+    if (
+        !expandsEnvironment(context) &&
+        containsPlaceholder(rawDefinition || {})
+    ) {
+
+        throw new Error(
+            "environment placeholders like ${NAME} are not allowed in a repository .mcp.json, " +
+            "because they would hand the runtime's secrets to a server the repository chose; " +
+            "declare this server in .agent/mcp.json or MCP_SERVERS instead"
+        );
+    }
 
     const definition =
         expandDeep(rawDefinition || {});
@@ -337,6 +385,8 @@ module.exports = {
     inferTransport,
     expand,
     expandDeep,
+    containsPlaceholder,
+    expandsEnvironment,
     normalizeStringList,
     normalize,
     normalizeOne
