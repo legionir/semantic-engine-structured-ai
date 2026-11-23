@@ -525,6 +525,8 @@ async function main() {
         await stub.close();
     } catch { /* best-effort */ }
 
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
     fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     fs.rmSync(OTHER_ROOT, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

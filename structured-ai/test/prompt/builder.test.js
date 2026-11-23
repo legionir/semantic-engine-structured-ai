@@ -731,6 +731,9 @@ async function main() {
     });
 
 
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
+
     fs.rmSync(WORKSPACE, { recursive: true, force: true });
     fs.rmSync(DATA_HOME, { recursive: true, force: true });
 

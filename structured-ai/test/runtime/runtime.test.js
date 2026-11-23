@@ -4265,6 +4265,9 @@ async function main() {
         `\n${results.length - failed.length}/${results.length} passed`
     );
 
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
+
     fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     process.exit(failed.length === 0 ? 0 : 1);

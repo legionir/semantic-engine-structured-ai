@@ -463,6 +463,8 @@ async function main() {
 
     try { await stub.close(); } catch { /* */ }
 
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
     fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     fs.rmSync(ROOT_A, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     fs.rmSync(ROOT_B, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
