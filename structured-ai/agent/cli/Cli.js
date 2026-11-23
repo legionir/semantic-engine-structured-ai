@@ -1063,6 +1063,17 @@ async function main() {
         );
     }
 
+    /*
+    | P0-1: a project file is workspace input. What it may not change is
+    | refused, and the operator is told, never silently obeyed.
+    */
+    for (const refused of opened.blocked || []) {
+
+        process.stderr.write(
+            `project: refused ${refused.key} from ${opened.path} (${refused.reason})\n`
+        );
+    }
+
     if (listing) {
 
         printCatalogue(runtime, options);
