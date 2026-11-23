@@ -9,8 +9,8 @@
    "status": "waiting_ci",
    "branch": "fix/p0-1",
    "pr": 23,
-   "attempts": 0,
-   "notes": "Pushed 5eba28d: WorkspaceTrust.js (locked + trust-gated keys, user trust store), WorkspaceProfile screens both overlay layers, CLI warns on refused keys, tests p01 + test/projects/workspace-trust.test.js, p0 workflow limited to p01. TODO after green: CLI --trust/--untrust flags (ArgParser) for criterion 2."
+   "attempts": 1,
+   "notes": "Pushed 5eba28d: WorkspaceTrust.js (locked + trust-gated keys, user trust store), WorkspaceProfile screens both overlay layers, CLI warns on refused keys, tests p01 + test/projects/workspace-trust.test.js, p0 workflow limited to p01. TODO after green: CLI --trust/--untrust flags (ArgParser) for criterion 2. | Run 2026-11-23T02:34Z: PR #23 at 5eba28d — p01 9/9 green, P0 report green; but structured-ai (Node 20) failed (was green on PR #22 baseline; Node 18 also fails on baseline) and semantic-engine (Node 20) failed (untouched by P0-1, green on #22: likely flaky). Job logs unreadable, so pushed 96e712b adding a 'full' job to p0-regression.yml that runs each npm-test file separately (Node 18/20) and posts per-file results in the p0-report comment. Next run: read that section, fix the regression."
   },
   "P0-2": {
    "status": "pending",
@@ -189,8 +189,12 @@
   {
    "ts": "2026-11-23T02:20Z",
    "msg": "P0-1: branch fix/p0-1 created from main 9304338, implementation pushed (5eba28d), draft PR #23 opened; status waiting_ci."
+  },
+  {
+   "ts": "2026-11-23T02:34Z",
+   "msg": "P0-1: PR #23 p01 green but structured-ai (Node 20) red (regression vs #22 baseline). Pushed 96e712b to fix/p0-1: full-suite per-file job in P0 report for diagnosis. attempts=1, still waiting_ci."
   }
  ],
  "phase0_notes": "PR #22 head bf2c52b: P0 report job green; 63 suite/OS/Node jobs fail identically on ubuntu/windows/macos x Node 20/22/24 (p01 0/6, p02 0/5, p03 1/10, p04 0/10, p05 0/10, p06 0/5, p07 1/7). All failures are custom assertions of desired behaviour after API-shape checks pass; no require/TypeError/Windows setup issues.",
- "tooling_notes": "github_2__get_file_contents returns only the blob SHA (no body) in this environment and raw.githubusercontent is not fetchable (private repo). Read file bodies via get_commit(detail=full_patch) of the commit that added the file (+ later patches), or via PR get_files patches. Commits with >100 files need get_commit page=N. Renames show no previous_filename: list the parent tree to find the old path (WorkspaceProfile.js was agent/lib/project.js before 184cb712). Verify reconstructions with git blob sha1('blob <len>\\0'+content)."
+ "tooling_notes": "github_2__get_file_contents returns only the blob SHA (no body) in this environment and raw.githubusercontent is not fetchable (private repo). Read file bodies via get_commit(detail=full_patch) of the commit that added the file (+ later patches), or via PR get_files patches. Commits with >100 files need get_commit page=N. Renames show no previous_filename: list the parent tree to find the old path (WorkspaceProfile.js was agent/lib/project.js before 184cb712). Verify reconstructions with git blob sha1('blob <len>\\0'+content). The P0 workflow on fix branches has a 'full' job (copy from fix/p0-1 96e712b) that reports every npm-test file's pass/fail + failing output in the p0-report comment, use it as the log source for structured-ai CI failures. Baseline (PR #22, main 9304338): structured-ai Node 18 fails, Node 20 passes; semantic-engine 20/22 pass."
 }
