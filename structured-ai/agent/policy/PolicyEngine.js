@@ -43,10 +43,12 @@ function mcpServerOf(toolName, args) {
 
     if (toolName === "mcp_call") {
 
-        if (args && args.server) {
-            return String(args.server);
-        }
-
+        /*
+        | P0-2: same precedence as mcp_call itself (McpTools.mcpCall): a
+        | namespaced tool name carries its own server and wins over the
+        | `server` argument, so the approval is attributed to the server
+        | that actually runs the call.
+        */
         const requested =
             args && (args.tool || args.name);
 
@@ -56,11 +58,18 @@ function mcpServerOf(toolName, args) {
 
                 const { parseToolName } = require("../mcp/McpManager");
                 const parsed = parseToolName(requested);
-                return parsed ? parsed.server : null;
+
+                if (parsed) {
+                    return parsed.server;
+                }
 
             } catch {
-                return null;
+                /* fall through to the server argument */
             }
+        }
+
+        if (args && args.server) {
+            return String(args.server);
         }
 
         return null;
@@ -103,7 +112,96 @@ function globalMcpServer(serverName) {
 }
 
 
-function mcpEscalation(toolName, { settingsStore = settings } = {}) {
+/*
+| P0-2: the trust of the server a call really reaches. A namespaced tool
+| carries it on its catalogue entry; a gateway call (mcp_call) names the
+| server in its arguments, so the server's own configuration decides.
+| Before this, only the namespaced form was escalated and
+| mcp_call {server:"restricted-one"} ran as a plain allow.
+*/
+function serverTrust(manager, serverName) {
+
+    if (!serverName) {
+        return null;
+    }
+
+    try {
+
+        const client = manager.client(serverName);
+
+        return client && client.config
+            ? client.config.trust || null
+            : null;
+
+    } catch {
+        return null;
+    }
+}
+
+
+function restrictedServer(manager, toolName, args) {
+
+    let parseToolName = null;
+
+    try {
+        ({ parseToolName } = require("../mcp/McpManager"));
+    } catch {
+        parseToolName = null;
+    }
+
+    const parse = name => {
+
+        try {
+            return parseToolName ? parseToolName(name) : null;
+        } catch {
+            return null;
+        }
+    };
+
+    if (toolName !== "mcp_call") {
+
+        const entry = manager.catalogueEntry(toolName);
+
+        if (entry) {
+            return entry.trust === "restricted" ? entry.server : null;
+        }
+
+        const parsed = parse(toolName);
+
+        return parsed && serverTrust(manager, parsed.server) === "restricted"
+            ? parsed.server
+            : null;
+    }
+
+    const requested =
+        args && (args.tool || args.name);
+
+    const parsed =
+        typeof requested === "string" ? parse(requested) : null;
+
+    if (parsed) {
+
+        const entry = manager.catalogueEntry(String(requested));
+
+        if (entry && entry.trust === "restricted") {
+            return entry.server;
+        }
+    }
+
+    const serverName =
+        parsed
+            ? parsed.server
+            : args && args.server
+                ? String(args.server)
+                : null;
+
+    return serverTrust(manager, serverName) === "restricted"
+        ? serverName
+        : null;
+}
+
+
+function mcpEscalation(toolName, { settingsStore = settings, args } = {}) {
 
     const isGatewayCall =
         toolName === "mcp_call";
@@ -131,10 +229,6 @@ function mcpEscalation(toolName, { settingsStore = settings } = {}) {
         };
     }
 
-    if (!isNamespaced) {
-        return null;
-    }
-
     let manager;
 
     try {
@@ -143,16 +237,16 @@ function mcpEscalation(toolName, { settingsStore = settings } = {}) {
         return null;
     }
 
-    const entry =
-        manager.catalogueEntry(toolName);
+    const server =
+        restrictedServer(manager, toolName, args || {});
 
-    if (!entry || entry.trust !== "restricted") {
+    if (!server) {
         return null;
     }
 
     return {
         decision: DECISIONS.REQUIRE_APPROVAL,
-        reason: `the MCP server "${entry.server}" is configured as restricted`,
+        reason: `the MCP server "${server}" is configured as restricted`,
         rule: "mcp_restricted_server"
     };
 }
@@ -191,9 +285,10 @@ class PolicyEngine {
             matcher ||
             new PolicyMatcher({
                 mcpEscalation:
-                    toolName =>
+                    (toolName, context = {}) =>
                         mcpEscalation(toolName, {
-                            settingsStore: this.settings
+                            settingsStore: this.settings,
+                            args: context.args
                         })
             });
 

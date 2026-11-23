@@ -109,6 +109,26 @@ class ApprovalManager {
                 ? this.globalMcpServer(serverName)
                 : null;
 
+        const mode = this.getMode();
+
+        /*
+        | P0-2: AGENT_APPROVAL=deny is terminal. It used to be checked only
+        | after the gateway cache, so an approval remembered for a global
+        | MCP server (granted while the mode was auto/prompt) kept running
+        | calls unattended after the operator switched to deny.
+        */
+        if (mode === "deny") {
+
+            record.approved = false;
+            record.mode = "deny";
+            this.store.record(record);
+
+            throw unattendedApproval(
+                evaluation.tool,
+                evaluation.reason
+            );
+        }
+
         if (
             globalServer &&
             this.store.hasGateway(serverName)
@@ -131,20 +151,6 @@ class ApprovalManager {
             }
 
             return record;
-        }
-
-        const mode = this.getMode();
-
-        if (mode === "deny") {
-
-            record.approved = false;
-            record.mode = "deny";
-            this.store.record(record);
-
-            throw unattendedApproval(
-                evaluation.tool,
-                evaluation.reason
-            );
         }
 
         const handler = this.handler();
