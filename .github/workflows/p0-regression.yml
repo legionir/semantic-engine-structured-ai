@@ -127,13 +127,32 @@ jobs:
         run: |
           set +e
           : > dumps.txt
-          for f in structured-ai/agent/registry/policy.json structured-ai/agent/registry/tool_groups.json; do
-            { echo "===== $f ====="; cat "src/$f"; echo; } >> dumps.txt
-          done
-          { echo "===== ls structured-ai/agent/tools/process ====="; ls -la src/structured-ai/agent/tools/process; echo; } >> dumps.txt
-          { echo "===== grep process_write|process_start (agent/) ====="; grep -rn "process_write\|process_start" src/structured-ai/agent --include=*.js | cut -c1-220 | head -n 40; echo; } >> dumps.txt
-          { echo "===== tests mentioning mcp_add / AGENT_APPROVAL / default_action ====="; grep -rln "mcp_add\|AGENT_APPROVAL\|default_action" src/structured-ai/test | head -n 40; echo; } >> dumps.txt
-          { echo "===== SettingsSchema APPROVAL / MCP_ keys ====="; grep -n "APPROVAL\|MCP_APPROVAL\|MCP_ALLOW" src/structured-ai/agent/config/SettingsSchema.js | cut -c1-220 | head -n 40; echo; } >> dumps.txt
+          cat > tool-decisions.js <<'EOF'
+          const path = require('path');
+          const root = path.resolve('src/structured-ai/agent');
+          const { PolicyRegistry } = require(path.join(root, 'policy/PolicyRegistry.js'));
+          const { PolicyMatcher } = require(path.join(root, 'policy/PolicyMatcher.js'));
+          const registry = new PolicyRegistry({
+            policy: require(path.join(root, 'registry/policy.json')),
+            toolGroups: require(path.join(root, 'registry/tool_groups.json'))
+          });
+          const raw = require(path.join(root, 'registry/tools.json'));
+          const list = Array.isArray(raw) ? raw : (raw.tools || Object.values(raw));
+          const names = list.map(t => (t && t.function && t.function.name) || (t && t.name)).filter(Boolean);
+          const matcher = new PolicyMatcher();
+          const byDefault = [];
+          for (const name of names) {
+            const d = matcher.evaluate(name, {}, 'main_agent', registry);
+            const groups = registry.groupsFor(name).join(',') || '-';
+            if (d.rule === null) byDefault.push(name + ' [' + groups + '] -> ' + d.decision);
+          }
+          console.log('registered tools: ' + names.length);
+          console.log('tools that fall to default_action (no explicit rule):');
+          console.log(byDefault.length ? byDefault.join('\n') : '(none)');
+          EOF
+          { echo "===== shipped policy: registered tools without an explicit rule ====="; node tool-decisions.js 2>&1 | head -n 120; echo; } >> dumps.txt
+          { echo "===== SettingsSchema AGENT_APPROVAL / MCP_APPROVAL / APPROVAL_HISTORY_LIMIT definitions ====="; grep -n -B3 -A16 'key: "AGENT_APPROVAL"\|key: "MCP_APPROVAL"\|key: "APPROVAL_HISTORY_LIMIT"' src/structured-ai/agent/config/SettingsSchema.js | cut -c1-200 | head -n 140; echo; } >> dumps.txt
+          { echo "===== gateway approval cache users ====="; grep -rn "gateway" src/structured-ai/agent/policy src/structured-ai/agent/mcp --include=*.js | cut -c1-200 | head -n 40; echo; } >> dumps.txt
       - uses: actions/download-artifact@v4
         with:
           path: results

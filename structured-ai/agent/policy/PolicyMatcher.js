@@ -119,6 +119,19 @@ function ruleTargets(rule, toolName, groupsForTool) {
 }
 
 
+/*
+| P0-2: tools whose argument is fed to a shell line by line, and the tool
+| whose command rules each line is checked against.
+*/
+const commandInputTools = Object.freeze({
+    process_write: Object.freeze({
+        argument: "input",
+        evaluateAs: "process_start",
+        as: "command"
+    })
+});
+
+
 class PolicyMatcher {
 
     constructor({ mcpEscalation } = {}) {
@@ -130,12 +143,8 @@ class PolicyMatcher {
     }
 
 
-    match({ toolName, args, agent, registry }) {
-
-        const context = {
-            args: args || {},
-            agent: agent || "main_agent"
-        };
+    /* The last matching rule wins; no rule leaves the registry default. */
+    rulesDecision(toolName, context, registry) {
 
         const groups =
             registry.groupsFor(toolName);
@@ -164,6 +173,108 @@ class PolicyMatcher {
                     `rule "${rule.id || rule.action}"`,
                 rule: rule.id || null
             };
+        }
+
+        return decision;
+    }
+
+
+    /*
+    | P0-2: input written to a running shell is a command. Each line goes
+    | through the rules of the tool that would run it as one: a line those
+    | rules deny denies the whole write, and a line that needs approval
+    | makes an allowed write need it too. Returns null when nothing is
+    | stricter than the decision already reached.
+    */
+    commandInputDecision(toolName, context, registry, current) {
+
+        const spec = commandInputTools[toolName];
+
+        if (!spec) {
+            return null;
+        }
+
+        const input =
+            valueAtPath(context.args, spec.argument);
+
+        if (typeof input !== "string" || input.length === 0) {
+            return null;
+        }
+
+        const lines = input.split(/\r\n|\r|\n/);
+        let stricter = null;
+
+        for (let index = 0; index < lines.length; index += 1) {
+
+            const line = lines[index].trim();
+
+            if (!line) {
+                continue;
+            }
+
+            const verdict =
+                this.rulesDecision(
+                    spec.evaluateAs,
+                    {
+                        args: { [spec.as]: line },
+                        agent: context.agent
+                    },
+                    registry
+                );
+
+            if (verdict.decision === DECISIONS.DENY) {
+
+                return {
+                    decision: DECISIONS.DENY,
+                    reason: `line ${index + 1} of the input: ${verdict.reason}`,
+                    rule: verdict.rule
+                };
+            }
+
+            if (
+                !stricter &&
+                verdict.decision === DECISIONS.REQUIRE_APPROVAL &&
+                current.decision === DECISIONS.ALLOW
+            ) {
+
+                stricter = {
+                    decision: DECISIONS.REQUIRE_APPROVAL,
+                    reason: `line ${index + 1} of the input: ${verdict.reason}`,
+                    rule: verdict.rule
+                };
+            }
+        }
+
+        return stricter;
+    }
+
+
+    match({ toolName, args, agent, registry }) {
+
+        const context = {
+            args: args || {},
+            agent: agent || "main_agent"
+        };
+
+        const groups =
+            registry.groupsFor(toolName);
+
+        let decision =
+            this.rulesDecision(toolName, context, registry);
+
+        if (decision.decision !== DECISIONS.DENY) {
+
+            const lineDecision =
+                this.commandInputDecision(
+                    toolName,
+                    context,
+                    registry,
+                    decision
+                );
+
+            if (lineDecision) {
+                decision = lineDecision;
+            }
         }
 
         /* A deny is terminal; trust settings can only make an allow stricter. */
@@ -208,5 +319,6 @@ module.exports = {
     matchesGlob,
     valueAtPath,
     conditionMatches,
-    ruleTargets
+    ruleTargets,
+    commandInputTools
 };
