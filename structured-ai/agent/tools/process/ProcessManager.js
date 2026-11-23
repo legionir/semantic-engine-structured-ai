@@ -4,7 +4,7 @@ const { spawn } = require("child_process");
 
 const settings = require("../../config");
 
-const childEnvironment = require("./ChildEnvironment");
+const SandboxProvider = require("./SandboxProvider");
 
 
 /*
@@ -67,57 +67,15 @@ const USE_PROCESS_GROUPS =
 
 function spawnInGroup(ctx, command, cwd) {
 
-    const mode = settings.get("PROCESS_SANDBOX_MODE");
-
-    if (mode === "bwrap") {
-        if (process.platform !== "linux") {
-            throw new Error("PROCESS_SANDBOX_MODE=bwrap is supported only on Linux.");
-        }
-
-        return spawn(
-            "bwrap",
-            [
-                "--die-with-parent",
-                "--clearenv",
-                "--setenv", "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                "--setenv", "HOME", "/tmp",
-                "--ro-bind", "/usr", "/usr",
-                "--ro-bind", "/bin", "/bin",
-                "--ro-bind", "/lib", "/lib",
-                "--ro-bind", "/lib64", "/lib64",
-                "--proc", "/proc",
-                "--dev", "/dev",
-                "--tmpfs", "/tmp",
-                "--bind", ctx.root, ctx.root,
-                "--chdir", cwd,
-                "--unshare-pid",
-                "--unshare-uts",
-                "--unshare-ipc",
-                "--unshare-net",
-                "--",
-                "/bin/sh", "-c", command
-            ],
-            {
-                cwd: ctx.root,
-                windowsHide: true,
-                detached: USE_PROCESS_GROUPS
-            }
-        );
-    }
-
-    /* test mode is only selected by the repository's own tests.
-       P0-5: the command sees an allowlisted environment, never the
-       runtime's API keys and tokens. */
-    return spawn(
+    return SandboxProvider.spawnInSandbox({
+        mode: settings.get("PROCESS_SANDBOX_MODE"),
+        ctx,
         command,
-        {
-            cwd,
-            shell: defaultShell(),
-            env: childEnvironment.build(),
-            windowsHide: true,
-            detached: USE_PROCESS_GROUPS
-        }
-    );
+        cwd,
+        platform: process.platform,
+        shell: defaultShell(),
+        detached: USE_PROCESS_GROUPS
+    });
 }
 
 
