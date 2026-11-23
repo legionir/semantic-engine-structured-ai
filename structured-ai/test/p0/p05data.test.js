@@ -8,8 +8,9 @@
 | Complements test/p0/p05.test.js:
 |   - ChildEnvironment allowlist (credential names never pass, explicit
 |     env does, Windows-cased names are matched)
-|   - project .mcp.json placeholders are rejected, user-owned config
-|     still expands them
+|   - project .mcp.json placeholders are rejected, operator config
+|     (MCP_SERVERS) still expands them, and a repository .agent/mcp.json
+|     expands them only in a trusted workspace (P0-8)
 |   - after writing events with a fake key, nothing under the event store
 |     or journal roots contains it, and the files are owner-only (POSIX)
 |   - counters such as max_tokens survive redaction
@@ -25,6 +26,13 @@ const path = require("path");
 const REPO = path.resolve(__dirname, "..", "..");
 const WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), "p05data-"));
 
+/* P0-8: workspace trust is read from a store of this suite's own,
+   never from the developer's ~/.config. */
+process.env.STRUCTURED_AI_TRUST_FILE = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "p05data-trust-")),
+    "trusted-workspaces.json"
+);
+
 const FAKE = "sk-p05dataFAKEkeyVALUE0123456789abcdefXYZ";
 process.env.P05DATA_API_KEY = FAKE;
 process.env.WORKSPACE_ROOT = WORKSPACE;
@@ -37,6 +45,7 @@ const validator = require(path.join(REPO, "agent", "mcp", "McpConfigValidator.js
 const eventstore = require(path.join(REPO, "agent", "persistence", "EventStoreRepository.js"));
 const journal = require(path.join(REPO, "agent", "persistence", "JournalRepository.js"));
 const EventRedactor = require(path.join(REPO, "agent", "events", "EventRedactor.js"));
+const WorkspaceTrust = require(path.join(REPO, "agent", "projects", "WorkspaceTrust.js"));
 
 const results = [];
 
@@ -110,13 +119,30 @@ async function main() {
         assert.strictEqual(config.url, "https://x.invalid/mcp");
     });
 
-    await test("user-owned config (workspace / environment) still expands ${ENV}", () => {
+    await test("operator config expands ${ENV}; a repository .agent/mcp.json only once the workspace is trusted", () => {
+        /* P0-8: .agent/mcp.json is committed with the repository like
+           .mcp.json, so it is operator configuration only after
+           `agent --trust`. MCP_SERVERS (environment) always expands. */
         process.env.P05DATA_HOST = "expanded.invalid";
-        for (const source of [validator.SOURCES.WORKSPACE, validator.SOURCES.ENVIRONMENT]) {
-            const config = validator.normalize("p05d", { url: "https://${P05DATA_HOST}/mcp" }, {
-                source, origin: "test", workspaceRoot: WORKSPACE
-            });
-            assert.strictEqual(config.url, "https://expanded.invalid/mcp", `${source} must expand`);
+        const definition = () => ({ url: "https://${P05DATA_HOST}/mcp" });
+        const context = source => ({ source, origin: "test", workspaceRoot: WORKSPACE });
+
+        const fromEnvironment = validator.normalize("p05d", definition(), context(validator.SOURCES.ENVIRONMENT));
+        assert.strictEqual(fromEnvironment.url, "https://expanded.invalid/mcp", "environment must expand");
+
+        WorkspaceTrust.revoke(WORKSPACE);
+        assert.throws(
+            () => validator.normalize("p05d", definition(), context(validator.SOURCES.WORKSPACE)),
+            /placeholders/,
+            ".agent/mcp.json of an untrusted workspace must not expand"
+        );
+
+        WorkspaceTrust.trust(WORKSPACE, { by: "p05data" });
+        try {
+            const trusted = validator.normalize("p05d", definition(), context(validator.SOURCES.WORKSPACE));
+            assert.strictEqual(trusted.url, "https://expanded.invalid/mcp", "a trusted workspace must expand");
+        } finally {
+            WorkspaceTrust.revoke(WORKSPACE);
         }
     });
 
