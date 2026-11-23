@@ -333,7 +333,7 @@ async function main() {
         const pwd =
             await tools.executeTool(
                 "terminal_exec",
-                { command: "pwd" },
+                { command: `"${process.execPath}" -p "process.cwd()"` },
                 ctxB
             );
 
@@ -346,7 +346,7 @@ async function main() {
         const started =
             await tools.executeTool(
                 "process_start",
-                { command: "sleep 30" },
+                { command: `"${process.execPath}" -e "setTimeout(() => {}, 30000)"` },
                 ctxB
             );
 

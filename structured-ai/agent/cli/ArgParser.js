@@ -146,6 +146,9 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
             case "--list-policy":
                 options.listPolicy = true;
                 break;
+            case "--doctor":
+                options.doctor = true;
+                break;
             case "--trust":
                 options.trust = true;
                 break;
@@ -159,6 +162,11 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
                 if (argument.startsWith("-")) fail(`unknown option ${argument}`);
                 options.positional.push(argument);
         }
+    }
+
+    if (!options.doctor && options.positional[0] === "doctor") {
+        options.doctor = true;
+        options.positional.shift();
     }
 
     return options;

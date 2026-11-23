@@ -486,7 +486,7 @@ async function main() {
 
         const result =
             await run("terminal_exec", {
-                command: "sleep 5",
+                command: `"${process.execPath}" -e "setTimeout(() => {}, 5000)"`,
                 timeout_ms: 300
             });
 
@@ -497,7 +497,7 @@ async function main() {
 
         const started =
             await run("process_start", {
-                command: "cat",
+                command: `"${process.execPath}" -e "process.stdin.pipe(process.stdout)"`,
                 wait_ms: 200
             });
 
@@ -600,6 +600,11 @@ async function main() {
 
     await test("a timed out command does not leave its children running", async () => {
 
+        if (process.platform === "win32") {
+            console.log("       SKIP: POSIX process-group probe");
+            return;
+        }
+
         const marker = "zzorphanmarker";
 
         const survivors = () =>
@@ -628,6 +633,11 @@ async function main() {
     });
 
     await test("terminating a background process kills its whole tree", async () => {
+
+        if (process.platform === "win32") {
+            console.log("       SKIP: POSIX process-group probe");
+            return;
+        }
 
         const marker = "zztreemarker";
 

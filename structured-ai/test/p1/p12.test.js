@@ -13,6 +13,7 @@
 
 const assert = require("assert");
 const SandboxProvider = require("../../agent/tools/process/SandboxProvider");
+const SandboxDoctor = require("../../agent/tools/process/SandboxDoctor");
 
 const results = [];
 
@@ -229,6 +230,119 @@ test("a killed container client also removes the named container", () => {
     assert.deepStrictEqual(calls[1].args, ["rm", "--force", "sandbox-cleanup-test"]);
     assert.ok(!Object.hasOwn(calls[0].options.env, "OPENAI_API_KEY"));
     assert.deepStrictEqual(calls[1].options.env, calls[0].options.env);
+});
+
+
+test("doctor reports deny mode as intentionally disabled without probing an engine", () => {
+
+    const report = SandboxDoctor.diagnose({
+        settingsStore: { get: key => ({
+            PROCESS_SANDBOX_MODE: "deny",
+            PROCESS_SANDBOX_IMAGE: "node:22-bookworm",
+            PROCESS_SANDBOX_NETWORK: "none",
+            PROCESS_SANDBOX_CPUS: 2,
+            PROCESS_SANDBOX_MEMORY_MB: 2048,
+            PROCESS_SANDBOX_PIDS_LIMIT: 256,
+            PROCESS_SANDBOX_TMP_MB: 512
+        })[key] },
+        runner: () => { throw new Error("deny mode must not probe"); }
+    });
+
+    assert.strictEqual(report.ok, true);
+    assert.strictEqual(report.status, "disabled");
+    assert.deepStrictEqual(report.capabilities, ["Process tools are denied by configuration."]);
+});
+
+
+test("doctor probes the configured container engine with bounded, filtered environment", () => {
+
+    const calls = [];
+    const values = {
+        PROCESS_SANDBOX_MODE: "docker",
+        PROCESS_SANDBOX_IMAGE: "node:22-bookworm",
+        PROCESS_SANDBOX_NETWORK: "none",
+        PROCESS_SANDBOX_CPUS: 2,
+        PROCESS_SANDBOX_MEMORY_MB: 2048,
+        PROCESS_SANDBOX_PIDS_LIMIT: 256,
+        PROCESS_SANDBOX_TMP_MB: 512
+    };
+    const report = SandboxDoctor.diagnose({
+        settingsStore: { get: key => values[key] },
+        platform: "linux",
+        runner: (executable, args, options) => {
+            calls.push({ executable, args, options });
+            return { status: 0, stdout: "27.5.1\n", stderr: "" };
+        }
+    });
+
+    assert.strictEqual(report.ok, true);
+    assert.strictEqual(report.status, "ready");
+    assert.strictEqual(report.engineVersion, "27.5.1");
+    assert.deepStrictEqual(calls[0].args, ["info", "--format", "{{.ServerVersion}}"]);
+    assert.strictEqual(calls[0].options.timeout, 3000);
+    assert.ok(!Object.hasOwn(calls[0].options.env, "OPENAI_API_KEY"));
+});
+
+
+test("doctor fails closed when the selected container engine is unreachable", () => {
+
+    const values = {
+        PROCESS_SANDBOX_MODE: "podman",
+        PROCESS_SANDBOX_IMAGE: "node:22-bookworm",
+        PROCESS_SANDBOX_NETWORK: "bridge",
+        PROCESS_SANDBOX_CPUS: 2,
+        PROCESS_SANDBOX_MEMORY_MB: 2048,
+        PROCESS_SANDBOX_PIDS_LIMIT: 256,
+        PROCESS_SANDBOX_TMP_MB: 512
+    };
+    const report = SandboxDoctor.diagnose({
+        settingsStore: { get: key => values[key] },
+        runner: () => ({ status: 125, stdout: "", stderr: "daemon unavailable" })
+    });
+
+    assert.strictEqual(report.ok, false);
+    assert.strictEqual(report.status, "unavailable");
+    assert.ok(report.warnings.some(warning => /no unsandboxed fallback/.test(warning)));
+    assert.ok(!report.warnings.some(warning => /bridge/.test(warning)), "unavailable engines must not claim bridge is active");
+});
+
+
+test("doctor warns that bridge networking is broad egress", () => {
+
+    const values = {
+        PROCESS_SANDBOX_MODE: "docker",
+        PROCESS_SANDBOX_IMAGE: "node:22-bookworm",
+        PROCESS_SANDBOX_NETWORK: "bridge",
+        PROCESS_SANDBOX_CPUS: 2,
+        PROCESS_SANDBOX_MEMORY_MB: 2048,
+        PROCESS_SANDBOX_PIDS_LIMIT: 256,
+        PROCESS_SANDBOX_TMP_MB: 512
+    };
+    const report = SandboxDoctor.diagnose({
+        settingsStore: { get: key => values[key] },
+        runner: () => ({ status: 0, stdout: "28.0.0", stderr: "" })
+    });
+
+    assert.strictEqual(report.ok, true);
+    assert.ok(report.warnings.some(warning => /general egress/.test(warning)));
+});
+
+
+test("doctor marks host test mode unsafe", () => {
+
+    const values = {
+        PROCESS_SANDBOX_MODE: "test",
+        PROCESS_SANDBOX_IMAGE: "node:22-bookworm",
+        PROCESS_SANDBOX_NETWORK: "none",
+        PROCESS_SANDBOX_CPUS: 2,
+        PROCESS_SANDBOX_MEMORY_MB: 2048,
+        PROCESS_SANDBOX_PIDS_LIMIT: 256,
+        PROCESS_SANDBOX_TMP_MB: 512
+    };
+    const report = SandboxDoctor.diagnose({ settingsStore: { get: key => values[key] } });
+
+    assert.strictEqual(report.ok, false);
+    assert.strictEqual(report.status, "unsafe-test-mode");
 });
 
 

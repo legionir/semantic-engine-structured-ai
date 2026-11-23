@@ -41,13 +41,13 @@ function source(name) {
 
 function runModuleScript(script) {
   /*
-  | --input-type is what makes -e an ES module; the extra flag that used to
-  | sit in front of it changed the default for files, is gone from the Node
-  | that runs this app, and the spawn failed on the option alone.
+  | The imported browser modules are native .js ESM without a package.json
+  | type marker. Node 20+ detects their syntax automatically; Node 18 needs
+  | the default-type flag so this test exercises the same browser module graph.
   */
   return spawnSync(
     process.execPath,
-    ["--input-type=module", "-e", script],
+    ["--experimental-default-type=module", "--input-type=module", "-e", script],
     { encoding: "utf8" }
   );
 }

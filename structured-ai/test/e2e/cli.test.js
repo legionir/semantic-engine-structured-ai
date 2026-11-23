@@ -251,6 +251,36 @@ async function main() {
         assert.match(run.stdout.trim(), /^\d+\.\d+\.\d+$/);
     });
 
+    await test("doctor reports the configured sandbox without loading the agent loop", async () => {
+
+        const run = await runCli(["doctor"], {
+            env: { PROCESS_SANDBOX_MODE: "deny" }
+        });
+
+        assert.strictEqual(run.code, 0);
+        assert.match(run.stdout, /Structured AI sandbox diagnostics/);
+        assert.match(run.stdout, /Mode: deny/);
+        assert.match(run.stdout, /Process tools are denied/);
+    });
+
+    await test("--doctor is an alias for the doctor command", async () => {
+
+        const run = await runCli(["--doctor"], {
+            env: { PROCESS_SANDBOX_MODE: "deny" }
+        });
+
+        assert.strictEqual(run.code, 0);
+        assert.match(run.stdout, /Status: disabled/);
+    });
+
+    await test("doctor rejects an extra task argument", async () => {
+
+        const run = await runCli(["doctor", "run something"]);
+
+        assert.strictEqual(run.code, 2);
+        assert.match(run.stderr, /doctor does not accept a task/);
+    });
+
     await test("an unknown option is a usage error", async () => {
 
         const run = await runCli(["--nope"]);

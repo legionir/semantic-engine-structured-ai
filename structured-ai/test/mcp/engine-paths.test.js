@@ -101,7 +101,7 @@ async function main() {
                 homeDir: "/Users/u",
                 env: {}
             }),
-            path.join("/Users/u", "Library", "Application Support", "SemanticEngine")
+            path.posix.join("/Users/u", "Library", "Application Support", "SemanticEngine")
         );
 
         assert.equal(

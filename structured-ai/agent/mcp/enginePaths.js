@@ -53,7 +53,7 @@ const INDEX_FILE = "project-index.json";
 */
 function pathFor(platform) {
 
-    return platform === "win32" ? path.win32 : path;
+    return platform === "win32" ? path.win32 : path.posix;
 }
 
 
@@ -149,7 +149,9 @@ function externalIndexPath(rootPath, options = {}) {
         options.projectId ||
         engineProjectIdFor(rootPath, options.name);
 
-    return path.join(
+    const platformPath = pathFor(options.platform || process.platform);
+
+    return platformPath.join(
         engineDataHome(options),
         PROJECTS_DIR,
         projectId,

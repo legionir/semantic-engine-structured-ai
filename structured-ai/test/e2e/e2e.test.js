@@ -369,7 +369,7 @@ async function main() {
                                 id: `call_${number}`,
                                 name: "terminal_exec",
                                 arguments: {
-                                    command: "sleep 0.6"
+                                    command: `"${process.execPath}" -e "setTimeout(() => {}, 600)"`
                                 },
                                 depends_on: []
                             }))

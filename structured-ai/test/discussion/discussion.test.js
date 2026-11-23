@@ -3,6 +3,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 /*
 | The discussion system is tested without a model: every test injects
@@ -12,7 +13,7 @@ const path = require("path");
 */
 
 process.env.WORKSPACE_ROOT =
-    process.env.WORKSPACE_ROOT || fs.mkdtempSync("/tmp/agent-discussion-");
+    process.env.WORKSPACE_ROOT || fs.mkdtempSync(path.join(os.tmpdir(), "agent-discussion-"));
 
 const {
     DiscussionEngine,

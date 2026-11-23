@@ -94,6 +94,7 @@ Options
       --list-tools          Print the tool catalogue and exit
       --list-agents         Print the agent profiles and exit
       --list-policy         Print the policy rules and exit
+      doctor, --doctor      Report process sandbox backend and capabilities
       --trust               Trust the workspace (-w, --project or cwd): its
                             project file may then enable hooks and MCP auto
                             discovery; security settings always stay locked
@@ -1158,6 +1159,20 @@ async function main() {
     if (options.version) {
         await commands.execute("help", "version");
         process.exit(EXIT.SUCCESS);
+    }
+
+    if (options.doctor) {
+
+        if (options.positional.length > 0) {
+            fail("doctor does not accept a task");
+        }
+
+        const doctor =
+            require(path.join(REPO_ROOT, "agent", "tools", "process", "SandboxDoctor"));
+        const report = doctor.diagnose();
+
+        process.stdout.write(doctor.formatReport(report));
+        process.exit(report.ok ? EXIT.SUCCESS : EXIT.FAILED);
     }
 
     if (
