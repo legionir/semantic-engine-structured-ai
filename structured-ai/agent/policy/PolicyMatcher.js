@@ -1,5 +1,7 @@
 "use strict";
 
+const CommandRisk = require("./CommandRisk");
+
 const DECISIONS = Object.freeze({
     ALLOW: "allow",
     DENY: "deny",
@@ -193,6 +195,66 @@ const commandInputTools = Object.freeze({
 });
 
 
+/*
+| P1-4: the argument of each shell tool that holds the command line, and
+| the shell a tool may name. The command is parsed (CommandRisk) and its
+| risk is attached to the evaluation.
+*/
+const commandRiskTools = Object.freeze({
+    terminal_exec: "command",
+    process_start: "command",
+    process_write: "input"
+});
+
+
+function dialectOfShell(shell) {
+
+    const name = CommandRisk.commandName(shell);
+
+    if (name === "powershell" || name === "pwsh") {
+        return "powershell";
+    }
+
+    if (name === "cmd") {
+        return "cmd";
+    }
+
+    return /^(sh|bash|zsh|dash|ksh|fish|ash)$/.test(name)
+        ? "posix"
+        : undefined;
+}
+
+
+function commandRisk(toolName, args) {
+
+    const argument = commandRiskTools[toolName];
+
+    if (!argument) {
+        return null;
+    }
+
+    const text = valueAtPath(args, argument);
+
+    if (typeof text !== "string" || text.trim() === "") {
+        return null;
+    }
+
+    try {
+
+        return CommandRisk.classify(text, {
+            dialect: args && typeof args.shell === "string"
+                ? dialectOfShell(args.shell)
+                : undefined
+        });
+
+    } catch {
+
+        /* a parser failure must never make a command look safe */
+        return { risk: CommandRisk.RISK.HIGH, reason: "the command could not be parsed" };
+    }
+}
+
+
 class PolicyMatcher {
 
     constructor({ mcpEscalation } = {}) {
@@ -338,6 +400,27 @@ class PolicyMatcher {
             }
         }
 
+        /*
+        | P1-4: a high-risk command (recursive deletion of a root or drive,
+        | disk tools, shutdown, a download piped into a shell, ...) is never
+        | allowed without a person, whatever rule allowed it.
+        */
+        const risk =
+            commandRisk(toolName, context.args);
+
+        if (
+            risk &&
+            risk.risk === CommandRisk.RISK.HIGH &&
+            decision.decision === DECISIONS.ALLOW
+        ) {
+
+            decision = {
+                decision: DECISIONS.REQUIRE_APPROVAL,
+                reason: `high-risk command: ${risk.reason}`,
+                rule: "high_risk_command"
+            };
+        }
+
         /* A deny is terminal; trust settings can only make an allow stricter. */
         if (decision.decision !== DECISIONS.DENY) {
 
@@ -357,7 +440,10 @@ class PolicyMatcher {
             tool: toolName,
             agent: context.agent,
             groups,
-            ...decision
+            ...decision,
+            ...(risk
+                ? { risk: risk.risk, risk_reason: risk.reason }
+                : {})
         };
     }
 
@@ -382,5 +468,7 @@ module.exports = {
     conditionMatches,
     ruleTargets,
     commandInputTools,
+    commandRiskTools,
+    commandRisk,
     isPathArgument
 };
