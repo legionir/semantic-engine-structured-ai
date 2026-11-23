@@ -463,11 +463,11 @@ async function main() {
 
     try { await stub.close(); } catch { /* */ }
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
-    fs.rmSync(ROOT_A, { recursive: true, force: true });
-    fs.rmSync(ROOT_B, { recursive: true, force: true });
-    fs.rmSync(ROOT_C, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(ROOT_A, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(ROOT_B, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(ROOT_C, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     process.exit(failed.length === 0 ? 0 : 1);
 }

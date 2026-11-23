@@ -715,9 +715,9 @@ async function main() {
     });
 
 
-    fs.rmSync(ROOT_A, { recursive: true, force: true });
-    fs.rmSync(ROOT_B, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    fs.rmSync(ROOT_A, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(ROOT_B, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     console.log(`\n${results.filter(item => item.ok).length}/${results.length} passed`);
 

@@ -525,9 +525,9 @@ async function main() {
         await stub.close();
     } catch { /* best-effort */ }
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
-    fs.rmSync(OTHER_ROOT, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(OTHER_ROOT, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     process.exit(failed.length === 0 ? 0 : 1);
 }

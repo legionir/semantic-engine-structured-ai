@@ -693,8 +693,8 @@ async function main() {
         assert.ok(!JSON.stringify(toolA.result).includes(MARKER_B));
         assert.ok(!JSON.stringify(toolB.result).includes(MARKER_A));
 
-        fs.rmSync(rootA, { recursive: true, force: true });
-        fs.rmSync(rootB, { recursive: true, force: true });
+        fs.rmSync(rootA, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+        fs.rmSync(rootB, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
         setModes(null, null, null);
 
@@ -826,8 +826,8 @@ async function main() {
         assert.match(bad.error.message, /Unknown project/);
         assert.deepEqual(bad.findings, []);
 
-        fs.rmSync(rootA, { recursive: true, force: true });
-        fs.rmSync(rootB, { recursive: true, force: true });
+        fs.rmSync(rootA, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+        fs.rmSync(rootB, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
         setModes(null, null, null);
 
@@ -1053,8 +1053,8 @@ async function main() {
             "after two projects\n"
         );
 
-        fs.rmSync(rootA, { recursive: true, force: true });
-        fs.rmSync(rootB, { recursive: true, force: true });
+        fs.rmSync(rootA, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+        fs.rmSync(rootB, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
         setModes(null, null, null);
 
@@ -1116,8 +1116,8 @@ async function main() {
 
     await new Promise(resolve => stub.server.close(resolve));
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     const passed = results.filter(item => item.ok).length;
 
