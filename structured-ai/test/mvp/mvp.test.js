@@ -1242,8 +1242,11 @@ async function main() {
         tools.shutdown();
     } catch { /* */ }
 
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
+
     for (const dir of [PARENT_A, PARENT_B, PARENT_C, WORKSPACE, DATA_HOME]) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
 
     process.exit(failed.length === 0 ? 0 : 1);
