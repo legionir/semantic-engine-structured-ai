@@ -21,6 +21,14 @@ const WORKSPACE =
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
+/* P0-8: workspace trust is read from a store of the suite's own, never
+   from the developer's ~/.config. */
+process.env.STRUCTURED_AI_TRUST_FILE =
+    path.join(
+        fs.mkdtempSync(path.join(os.tmpdir(), "mcp-trust-")),
+        "trusted-workspaces.json"
+    );
+
 const protocol = require("../../agent/mcp/protocol");
 const config = require("../../agent/mcp/McpConfig");
 const { McpManager } = require("../../agent/mcp/McpManager");
@@ -767,12 +775,15 @@ async function main() {
     await test("a token in the environment is read, never stored in the file", async () => {
 
         /*
-        | P0-5: only configuration the user wrote (.agent/mcp.json,
-        | MCP_SERVERS, the registry) may pull a value out of the
-        | environment. A repository .mcp.json that asks for one is refused,
-        | so a cloned project cannot route the user's tokens to a server
-        | it chose.
+        | P0-5 / P0-8: a repository MCP configuration (.mcp.json and
+        | .agent/mcp.json) may pull a value out of the environment only
+        | once the operator trusted the workspace. Until then the server is
+        | refused, so a cloned project cannot route the user's tokens to a
+        | server it chose. Operator configuration (MCP_SERVERS, the
+        | registry) always may.
         */
+
+        const WorkspaceTrust = require("../../agent/projects/WorkspaceTrust");
 
         process.env.MCP_TEST_TOKEN = "s3cret";
 
@@ -801,6 +812,22 @@ async function main() {
 
         try {
 
+            WorkspaceTrust.revoke(WORKSPACE);
+
+            const untrusted =
+                config.load(WORKSPACE);
+
+            assert.equal(
+                untrusted.servers.some(server => server.name === "remote"),
+                false,
+                ".agent/mcp.json of an untrusted workspace must not expand environment placeholders"
+            );
+
+            assert.match(untrusted.problems.join(" "), /placeholder/);
+            assert.doesNotMatch(JSON.stringify(untrusted), /s3cret/);
+
+            WorkspaceTrust.trust(WORKSPACE, { by: "mcp.test" });
+
             const loaded =
                 config.load(WORKSPACE);
 
@@ -813,6 +840,8 @@ async function main() {
                 fs.readFileSync(workspaceConfig, "utf8"),
                 /\$\{env:MCP_TEST_TOKEN\}/
             );
+
+            WorkspaceTrust.revoke(WORKSPACE);
 
             fs.writeFileSync(workspaceConfig, JSON.stringify({}), "utf8");
 
@@ -849,6 +878,8 @@ async function main() {
             );
 
         } finally {
+
+            WorkspaceTrust.revoke(WORKSPACE);
 
             fs.rmSync(path.join(WORKSPACE, ".mcp.json"), { force: true });
 
