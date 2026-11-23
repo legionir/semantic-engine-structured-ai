@@ -1494,11 +1494,22 @@ function createServer(runtime, options = {}) {
     const handle =
         async (req, res) => {
 
-            const url =
-                new URL(
-                    req.url,
-                    `http://${req.headers.host || "localhost"}`
-                );
+            let url;
+
+            try {
+
+                url =
+                    new URL(
+                        req.url,
+                        `http://${req.headers.host || "localhost"}`
+                    );
+
+            } catch {
+
+                /* P0-4: a malformed Host header or request URL is a client error. */
+                sendJson(res, 400, { error: "malformed request URL or Host header" });
+                return;
+            }
 
             const { pathname } = url;
             const isApiRequest = pathname.startsWith("/api/");
@@ -1535,6 +1546,27 @@ function createServer(runtime, options = {}) {
                 sendJson(res, 401, { error: "console authentication required" });
                 return;
             }
+
+            /*
+            | P0-4: scoped tokens. Console-wide changes need the admin
+            | (master) token; legacy endpoints that are not tied to a
+            | project need a token allowed on every project.
+            */
+            const refuse = decision => {
+
+                if (decision.ok) {
+                    return false;
+                }
+
+                sendJson(res, decision.status, { error: decision.error });
+                return true;
+            };
+
+            const requireAdmin = () =>
+                refuse(consoleAuth.authorizeAdmin(claims));
+
+            const requireUnscoped = permission =>
+                refuse(consoleAuth.authorizeUnscoped(claims, permission));
 
             try {
 
@@ -1611,6 +1643,10 @@ function createServer(runtime, options = {}) {
                     req.method === "GET"
                 ) {
 
+                    if (requireUnscoped("project:read")) {
+                        return;
+                    }
+
                     if (url.searchParams.get("refresh") === "1") {
 
                         await toolRuntime
@@ -1640,6 +1676,10 @@ function createServer(runtime, options = {}) {
                     pathname === "/api/mcp" &&
                     req.method === "POST"
                 ) {
+
+                    if (requireAdmin()) {
+                        return;
+                    }
 
                     const body =
                         await readBody(req);
@@ -1706,6 +1746,10 @@ function createServer(runtime, options = {}) {
                     req.method === "DELETE"
                 ) {
 
+                    if (requireAdmin()) {
+                        return;
+                    }
+
                     const name =
                         decodeURIComponent(
                             pathname.slice("/api/mcp/".length)
@@ -1747,6 +1791,10 @@ function createServer(runtime, options = {}) {
                     pathname.endsWith("/enabled") &&
                     req.method === "POST"
                 ) {
+
+                    if (requireAdmin()) {
+                        return;
+                    }
 
                     const name =
                         decodeURIComponent(
@@ -1810,6 +1858,10 @@ function createServer(runtime, options = {}) {
                     req.method === "GET"
                 ) {
 
+                    if (requireUnscoped("project:read")) {
+                        return;
+                    }
+
                     sendJson(res, 200, {
                         current: state.session.id,
                         sessions: sessions.listSessions()
@@ -1822,6 +1874,10 @@ function createServer(runtime, options = {}) {
                     pathname === "/api/sessions" &&
                     req.method === "POST"
                 ) {
+
+                    if (requireUnscoped("project:write")) {
+                        return;
+                    }
 
                     if (state.status === "running") {
 
@@ -1861,6 +1917,10 @@ function createServer(runtime, options = {}) {
                     req.method === "GET"
                 ) {
 
+                    if (requireUnscoped("project:read")) {
+                        return;
+                    }
+
                     const id =
                         decodeURIComponent(
                             pathname.slice("/api/sessions/".length)
@@ -1892,6 +1952,10 @@ function createServer(runtime, options = {}) {
                     pathname.startsWith("/api/sessions/") &&
                     req.method === "POST"
                 ) {
+
+                    if (requireUnscoped("project:write")) {
+                        return;
+                    }
 
                     const id =
                         decodeURIComponent(
@@ -1938,6 +2002,10 @@ function createServer(runtime, options = {}) {
                     req.method === "DELETE"
                 ) {
 
+                    if (requireUnscoped("project:write")) {
+                        return;
+                    }
+
                     const id =
                         decodeURIComponent(
                             pathname.slice("/api/sessions/".length)
@@ -1968,6 +2036,10 @@ function createServer(runtime, options = {}) {
                     req.method === "GET"
                 ) {
 
+                    if (requireUnscoped("project:read")) {
+                        return;
+                    }
+
                     sendJson(res, 200, {
                         calls:
                             [...calls.values()].map(call => ({
@@ -1996,6 +2068,10 @@ function createServer(runtime, options = {}) {
                     pathname.startsWith("/api/calls/") &&
                     req.method === "GET"
                 ) {
+
+                    if (requireUnscoped("project:read")) {
+                        return;
+                    }
 
                     const key =
                         decodeURIComponent(
@@ -2028,6 +2104,13 @@ function createServer(runtime, options = {}) {
                     let root = path.resolve(runtime.workspaceRoot || process.cwd());
                     let projectName = path.basename(root);
                     const graphProjectId = url.searchParams.get("projectId");
+
+                    if (
+                        (!graphProjectId || graphProjectId === "current") &&
+                        requireUnscoped("project:read")
+                    ) {
+                        return;
+                    }
 
                     if (
                         graphProjectId &&
@@ -2138,6 +2221,10 @@ function createServer(runtime, options = {}) {
                     pathname === "/api/tasks" &&
                     req.method === "POST"
                 ) {
+
+                    if (requireUnscoped("project:write")) {
+                        return;
+                    }
 
                     const body =
                         await readBody(req);
@@ -2700,6 +2787,10 @@ function createServer(runtime, options = {}) {
                     req.method === "POST"
                 ) {
 
+                    if (requireUnscoped("project:write")) {
+                        return;
+                    }
+
                     const body =
                         await readBody(req);
 
@@ -2814,6 +2905,39 @@ function createServer(runtime, options = {}) {
                             pathname.slice("/api/approvals/".length)
                         );
 
+                    /*
+                    | P0-4: only a token allowed on the approval's project
+                    | may answer it; approvals of the legacy console run
+                    | (no project) need a token for every project.
+                    */
+                    const pendingApproval =
+                        approvalStore.getPending(id);
+
+                    if (pendingApproval) {
+
+                        const ownerProject =
+                            pendingApproval.project_id ||
+                            pendingApproval.projectId ||
+                            null;
+
+                        const decision =
+                            ownerProject
+                                ? consoleAuth.authorize(claims, {
+                                    projectId: ownerProject,
+                                    permission: "project:write"
+                                })
+                                : consoleAuth.authorizeUnscoped(claims, "project:write");
+
+                        if (refuse(decision)) {
+                            return;
+                        }
+
+                    } else if (
+                        refuse(consoleAuth.authorize(claims, { permission: "project:write" }))
+                    ) {
+                        return;
+                    }
+
                     const body =
                         await readBody(req);
 
@@ -2843,6 +2967,10 @@ function createServer(runtime, options = {}) {
                     req.method === "POST"
                 ) {
 
+                    if (requireUnscoped("project:write")) {
+                        return;
+                    }
+
                     state.stopRequested = true;
 
                     runtime.cancelRun("web console");
@@ -2860,6 +2988,10 @@ function createServer(runtime, options = {}) {
                     pathname === "/api/clear" &&
                     req.method === "POST"
                 ) {
+
+                    if (requireUnscoped("project:write")) {
+                        return;
+                    }
 
                     if (state.status === "running") {
 
@@ -2901,6 +3033,10 @@ function createServer(runtime, options = {}) {
                     req.method === "POST"
                 ) {
 
+                    if (requireAdmin()) {
+                        return;
+                    }
+
                     const body =
                         await readBody(req);
 
@@ -2933,6 +3069,10 @@ function createServer(runtime, options = {}) {
                     req.method === "GET"
                 ) {
 
+                    if (requireAdmin()) {
+                        return;
+                    }
+
                     sendJson(res, 200, {
                         settings:
                             runtime.settings.all()
@@ -2945,6 +3085,10 @@ function createServer(runtime, options = {}) {
                     pathname === "/api/settings" &&
                     req.method === "POST"
                 ) {
+
+                    if (requireAdmin()) {
+                        return;
+                    }
 
                     const body =
                         await readBody(req);
@@ -3078,9 +3222,13 @@ function createServer(runtime, options = {}) {
 
                 sendJson(
                     res,
-                    error.status || 500,
+                    error instanceof URIError
+                        ? 400
+                        : error.status || 500,
                     {
-                        error: error.message
+                        error: error instanceof URIError
+                            ? "malformed percent-encoding in request path"
+                            : error.message
                     }
                 );
             }

@@ -3,7 +3,7 @@
 const http = require("http");
 
 const { createServer: createImplementationServer } = require("./ServerImplementation");
-const { Router } = require("./Router");
+const { Router, sendError } = require("./Router");
 const { ROUTES } = require("./RouteInventory");
 const controllers = require("./controllers");
 const services = require("./services");
@@ -181,13 +181,17 @@ class WebServer {
            adapter, so all callers share one client lifecycle. */
         this.sseHub = this.implementation.sseHub;
 
+        /* P0-4: the router answers its own errors; this catch is the last
+           guard so a request can never become an unhandled rejection. */
         this.server =
-            http.createServer((req, res) =>
-                this.router.handle(req, res, {
-                    runtime,
-                    webServer: this
-                })
-            );
+            http.createServer((req, res) => {
+                Promise.resolve(
+                    this.router.handle(req, res, {
+                        runtime,
+                        webServer: this
+                    })
+                ).catch(error => sendError(res, error));
+            });
     }
 
 

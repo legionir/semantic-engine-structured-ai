@@ -10,6 +10,17 @@ function newConsoleToken() {
 }
 
 
+/* P0-4: a malformed %-escape in a cookie must not throw out of auth. */
+function decodeCookie(value) {
+
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
+
 function parseCookies(header) {
 
     return String(header || "")
@@ -17,7 +28,7 @@ function parseCookies(header) {
         .map(part => part.trim().split("="))
         .filter(parts => parts.length >= 2)
         .reduce((cookies, [key, ...value]) => {
-            cookies[key] = decodeURIComponent(value.join("="));
+            cookies[key] = decodeCookie(value.join("="));
             return cookies;
         }, {});
 }

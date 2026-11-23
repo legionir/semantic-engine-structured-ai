@@ -43,6 +43,82 @@ function compile(pattern) {
 }
 
 
+class BadRequestError extends Error {
+
+    constructor(message) {
+        super(message);
+        this.name = "BadRequestError";
+        this.status = 400;
+    }
+}
+
+
+function decodeParam(value) {
+
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        throw new BadRequestError("malformed percent-encoding in request path");
+    }
+}
+
+
+function requestUrl(req) {
+
+    try {
+        return new URL(
+            req.url,
+            `http://${req.headers.host || "localhost"}`
+        );
+    } catch {
+        throw new BadRequestError("malformed request URL or Host header");
+    }
+}
+
+
+function errorStatus(error) {
+
+    if (error instanceof URIError) {
+        return 400;
+    }
+
+    const status = Number(error && error.status);
+
+    return Number.isInteger(status) && status >= 400 && status < 600
+        ? status
+        : 500;
+}
+
+
+function sendError(res, error) {
+
+    if (res.headersSent || res.writableEnded) {
+
+        try {
+            res.end();
+        } catch {
+            /* the socket is already gone */
+        }
+
+        return;
+    }
+
+    const status = errorStatus(error);
+    const body = JSON.stringify({
+        error: status >= 500
+            ? "internal server error"
+            : String((error && error.message) || "bad request")
+    });
+
+    res.writeHead(status, {
+        "content-type": "application/json; charset=utf-8",
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store"
+    });
+    res.end(body);
+}
+
+
 class Router {
 
     constructor({ fallback } = {}) {
@@ -105,7 +181,7 @@ class Router {
 
             const params = Object.fromEntries(
                 route.names.map(
-                    (name, index) => [name, decodeURIComponent(match[index + 1])]
+                    (name, index) => [name, decodeParam(match[index + 1])]
                 )
             );
 
@@ -118,30 +194,41 @@ class Router {
 
     async handle(req, res, context = {}) {
 
-        const url = new URL(
-            req.url,
-            `http://${req.headers.host || "localhost"}`
-        );
-        const match = this.match(req.method, url.pathname);
+        /*
+        | P0-4: nothing a client sends may escape as an unhandled
+        | rejection (http.createServer does not await this promise). A
+        | malformed Host header, request URL or percent-escape is answered
+        | with 400; any other unexpected error with a generic 500.
+        */
+        try {
 
-        if (match) {
-            return match.route.handler({
-                req,
-                res,
-                url,
-                params: match.params,
-                context,
-                route: match.route
-            });
+            const url = requestUrl(req);
+            const match = this.match(req.method, url.pathname);
+
+            if (match) {
+                return await match.route.handler({
+                    req,
+                    res,
+                    url,
+                    params: match.params,
+                    context,
+                    route: match.route
+                });
+            }
+
+            if (typeof this.fallback === "function") {
+                return await this.fallback(req, res, context, url);
+            }
+
+            res.writeHead(404);
+            res.end();
+            return undefined;
+
+        } catch (error) {
+
+            sendError(res, error);
+            return undefined;
         }
-
-        if (typeof this.fallback === "function") {
-            return this.fallback(req, res, context, url);
-        }
-
-        res.writeHead(404);
-        res.end();
-        return undefined;
     }
 
 
@@ -157,5 +244,9 @@ class Router {
 
 module.exports = {
     Router,
-    compile
+    compile,
+    BadRequestError,
+    decodeParam,
+    requestUrl,
+    sendError
 };
