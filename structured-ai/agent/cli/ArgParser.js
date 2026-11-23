@@ -146,6 +146,15 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
             case "--list-policy":
                 options.listPolicy = true;
                 break;
+            case "--trust":
+                options.trust = true;
+                break;
+            case "--untrust":
+                options.untrust = true;
+                break;
+            case "--list-trusted":
+                options.listTrusted = true;
+                break;
             default:
                 if (argument.startsWith("-")) fail(`unknown option ${argument}`);
                 options.positional.push(argument);

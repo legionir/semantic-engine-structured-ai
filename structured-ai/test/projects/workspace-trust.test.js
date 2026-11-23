@@ -2,14 +2,16 @@
 
 /*
 | P0-1 — WorkspaceTrust unit tests: key classification, the trust store
-| (user config dir, revocable, canonical paths) and trust-gated settings
-| in WorkspaceProfile.openProject().
+| (user config dir, revocable, canonical paths), trust-gated settings
+| in WorkspaceProfile.openProject() and the CLI trust commands
+| (--trust, --untrust, --list-trusted).
 */
 
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { spawn } = require("child_process");
 
 const REPO = path.resolve(__dirname, "..", "..");
 
@@ -63,6 +65,48 @@ function readPlanted() {
 function reset(keys) {
     for (const key of keys) {
         try { settings.reset(key); } catch { /* fixed */ }
+    }
+}
+
+const BIN = path.join(REPO, "bin", "agent.js");
+
+const CLI_WORKSPACE = path.join(BASE, "cli-workspace");
+
+fs.mkdirSync(CLI_WORKSPACE, { recursive: true });
+
+function runCli(args) {
+    return new Promise(resolve => {
+        const env = {
+            ...process.env,
+            WORKSPACE_ROOT: CLI_WORKSPACE,
+            STRUCTURED_AI_DATA_HOME: DATA_HOME,
+            STRUCTURED_AI_TRUST_FILE: TRUST_FILE,
+            MCP_ENABLED: "false"
+        };
+        const child = spawn(process.execPath, [BIN, ...args], {
+            cwd: REPO,
+            env,
+            stdio: ["ignore", "pipe", "pipe"]
+        });
+        let stdout = "";
+        let stderr = "";
+        const killer = setTimeout(() => {
+            try { child.kill(); } catch { /* already gone */ }
+        }, 60000);
+        child.stdout.on("data", chunk => { stdout += chunk; });
+        child.stderr.on("data", chunk => { stderr += chunk; });
+        child.on("close", code => {
+            clearTimeout(killer);
+            resolve({ code, stdout, stderr });
+        });
+    });
+}
+
+function parseJson(result, label) {
+    try {
+        return JSON.parse(result.stdout);
+    } catch {
+        throw new Error(`${label}: stdout is not JSON (exit ${result.code}):\n${result.stdout.slice(0, 400)}\n${result.stderr.slice(0, 400)}`);
     }
 }
 
@@ -150,6 +194,58 @@ async function main() {
         } finally {
             reset(["AGENT_BASE_URL"]);
         }
+    });
+
+    await test("CLI --trust / --list-trusted / --untrust manage the user trust store", async () => {
+        const expected = WorkspaceTrust.canonicalRoot(CLI_WORKSPACE);
+
+        const empty = await runCli(["--list-trusted", "--json"]);
+        assert.strictEqual(empty.code, 0, empty.stderr.slice(0, 400));
+        const before = parseJson(empty, "--list-trusted");
+        assert.strictEqual(before.trust_file, path.resolve(TRUST_FILE));
+        assert.ok(!before.workspaces.some(entry => entry.key === expected), "not trusted yet");
+
+        const trusted = await runCli(["--trust", "--json", "-w", CLI_WORKSPACE]);
+        assert.strictEqual(trusted.code, 0, trusted.stderr.slice(0, 400));
+        const granted = parseJson(trusted, "--trust");
+        assert.strictEqual(granted.workspace, expected);
+        assert.strictEqual(granted.trusted, true);
+        assert.strictEqual(WorkspaceTrust.isTrusted(CLI_WORKSPACE), true, "trust recorded in the user store");
+        assert.ok(!fs.existsSync(path.join(CLI_WORKSPACE, ".agent", "trusted-workspaces.json")), "nothing written into the workspace");
+
+        const listed = parseJson(await runCli(["--list-trusted", "--json"]), "--list-trusted");
+        assert.ok(listed.workspaces.some(entry => entry.key === expected), JSON.stringify(listed));
+
+        const revoked = await runCli(["--untrust", "--json", "-w", CLI_WORKSPACE]);
+        assert.strictEqual(revoked.code, 0, revoked.stderr.slice(0, 400));
+        const removed = parseJson(revoked, "--untrust");
+        assert.strictEqual(removed.changed, true);
+        assert.strictEqual(removed.trusted, false);
+        assert.strictEqual(WorkspaceTrust.isTrusted(CLI_WORKSPACE), false, "trust revoked");
+
+        const again = parseJson(await runCli(["--untrust", "--json", "-w", CLI_WORKSPACE]), "--untrust again");
+        assert.strictEqual(again.changed, false);
+    });
+
+    await test("CLI --trust is a one-shot operation (usage error with -i or --untrust)", async () => {
+        const interactive = await runCli(["--trust", "-i", "-w", CLI_WORKSPACE]);
+        assert.strictEqual(interactive.code, 2, interactive.stderr.slice(0, 400));
+        const both = await runCli(["--trust", "--untrust", "-w", CLI_WORKSPACE]);
+        assert.strictEqual(both.code, 2, both.stderr.slice(0, 400));
+        assert.strictEqual(WorkspaceTrust.isTrusted(CLI_WORKSPACE), false);
+    });
+
+    await test("CLI tells the operator how to trust a workspace whose trust-gated keys were refused", async () => {
+        fs.mkdirSync(path.join(CLI_WORKSPACE, ".agent"), { recursive: true });
+        fs.writeFileSync(
+            path.join(CLI_WORKSPACE, ".agent", "project.json"),
+            `${JSON.stringify({ version: WorkspaceProfile.PROJECT_VERSION, settings: { HOOKS_ENABLED: true } }, null, 2)}\n`,
+            "utf8"
+        );
+        const result = await runCli(["--list-policy", "-w", CLI_WORKSPACE]);
+        assert.strictEqual(result.code, 0, result.stderr.slice(0, 400));
+        assert.ok(/refused HOOKS_ENABLED/.test(result.stderr), result.stderr.slice(0, 600));
+        assert.ok(/agent --trust -w /.test(result.stderr), result.stderr.slice(0, 600));
     });
 
     await new Promise(resolve => setTimeout(resolve, 400));
