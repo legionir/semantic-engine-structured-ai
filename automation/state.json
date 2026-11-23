@@ -65,6 +65,21 @@
    "head": "9e14c5b54f09238734a4fee8fa92ea486be75a57",
    "integrated_pr": 31
   },
+  "P0-8": {
+   "status": "waiting_ci",
+   "phase": "P1",
+   "branch": "fix/p0-8",
+   "pr": 32,
+   "attempts": 0,
+   "title": "P0-8: close remaining P0 gaps",
+   "description": "(a) a repository-committed .agent/mcp.json / .mcp.json must not expand ${ENV} variables unless the workspace is trusted; (b) AGENT_APPROVAL=prompt must DENY (not auto-approve) when there is no TTY / no interactive approver.",
+   "acceptance": [
+    "regression tests for (a) pass on ubuntu/windows/macos",
+    "regression tests for (b) pass on ubuntu/windows/macos"
+   ],
+   "deps": [],
+   "notes": "Run 2026-11-23T12:05Z: fix/p0-8 from roadmap/p1 73bf9d3, pushed 6b18343, draft PR #32. Sources rebuilt exactly (blob verified) from main + PR#31 patch: McpConfigValidator 9f4ebe91, ApprovalManager 0dbaf4b8, WorkspaceTrust a76e2f68, Repl, ApprovalPrompt; mcp.test.js = agent_files fix-p0-5__mcp.test.js (blob 29494993). Finding: ApprovalManager already threw for prompt+no handler+no TTY, so (b) hardening = only answer===true approves, approver throw -> recorded refusal 'prompt (approver failed)', unknown mode fails closed (ApprovalUnavailableError) instead of falling to auto, TTY prompt resolves false on input close, Repl/ApprovalPrompt interactive:false when stdin not a TTY (refuses instead of reading a piped y). (a): expandsEnvironment = !repositorySource || WorkspaceTrust.isTrusted(context.workspaceRoot) (lazy require); error text still contains 'placeholders'. mcp.test.js token test now sets STRUCTURED_AI_TRUST_FILE (temp, top of file) and trusts WORKSPACE for the .agent/mcp.json expansion. New test/p0/p08.test.js (12 cases). Workflow: suites discovered from test/p*/p*.test.js (job 'suites'), run as test/<first 2 chars>/<suite>.test.js, report regex p\\d\\w*, push trigger roadmap/p1..p3 -- identical text in #32/#34 so they merge cleanly. Risk: a REPL test piping 'y' through stdin would now be refused; any other test expecting untrusted .agent/mcp.json expansion. Local copies agent_files/structured_ai/fix-p0-8__*."
+  },
   "P1-1": {
    "status": "pending",
    "branch": null,
@@ -87,18 +102,18 @@
    "notes": ""
   },
   "P1-4": {
-   "status": "pending",
-   "branch": null,
-   "pr": null,
+   "status": "waiting_ci",
+   "branch": "fix/p1-4",
+   "pr": 34,
    "attempts": 0,
-   "notes": ""
+   "notes": "Run 2026-11-23T12:05Z: fix/p1-4 from roadmap/p1 73bf9d3, pushed 5733dd7, draft PR #34. New agent/policy/CommandRisk.js (lexer + wrappers + per-dialect rating low/medium/high), PolicyMatcher (rebuilt exactly, blob 23eaeac7) attaches risk/risk_reason for terminal_exec/process_start/process_write and escalates high-risk allow -> require_approval rule high_risk_command. test/p1/p14.test.js: 268 reference commands (expected labels = classifier design; misses printed), acceptance cases, dialect, process_write, never-relaxes. JS not executable locally: expect possible syntax/logic misses, read the p14 output in the report. policy.json not changed (PowerShell/cmd covered by the parser, not regex rules). Local copies fix-p1-4__*."
   },
   "P1-5": {
-   "status": "pending",
-   "branch": null,
-   "pr": null,
+   "status": "waiting_ci",
+   "branch": "fix/p1-5",
+   "pr": 33,
    "attempts": 0,
-   "notes": ""
+   "notes": "Run 2026-11-23T12:05Z: fix/p1-5 from roadmap/p1 73bf9d3, pushed 393c769, draft PR #33. New structured-ai/ci/run-tests.js (reads scripts.test node steps, spawnSync each with input '' + timeout, ok/FAIL + tail 80, --out/--junit). Workflow full job -> matrix ubuntu/windows/macos x Node 20/22 running the runner, artifacts full-<os>-node<N> (+junit.xml); report parses ^full-(?:(.+)-)?node(\\d+)$ with OS column. test/p1/p15.test.js: runner pass/fail/hang/stdin + JUnit, npm test steps plain 'node <file>', portability scan of test/ (spawn sleep/cat/sh/bash/timeout, '/dev/null', '/bin/sh'). Expected red at first: Windows/macOS full-suite failures + scan offenders are the work list. Next: fix them, then package.json test -> node ci/run-tests.js, coverage via c8 (needs devDependency: check package.json/lockfile), CI time < 15 min. Local copies fix-p1-5__*."
   },
   "P1-6": {
    "status": "pending",
@@ -268,11 +283,19 @@
   {
    "ts": "2026-11-23T12:00Z",
    "msg": "P0-1..P0-7 integrated into roadmap/integration, PR #31 (99/99 P0 jobs green, npm test 61/61 Node 20/22). PRs #22-#30 closed. Review fixes: C2 gate in McpManager.call, repo MCP self-trust cap, locked SEMANTIC_ENGINE_BIN/data dirs, no caching of auto approvals, early cancel in agent.js, NDJSON test fakes. Next: P1 from roadmap/integration."
+  },
+  {
+   "ts": "2026-11-23T12:05Z",
+   "msg": "P1 started: roadmap/p1 from roadmap/integration 73bf9d3 (#31 still open). Added P0-8 as first P1 item. Batch of 3 pushed: P0-8 (#32, 6b18343: repo MCP placeholders gated by workspace trust, prompt approval fails closed), P1-4 (#34, 5733dd7: CommandRisk parser + high-risk escalation, 268-command reference set), P1-5 (#33, 393c769: ci/run-tests.js + full suite on 3 OSes). Workflow now discovers suites from test/p*/. All waiting_ci."
   }
  ],
  "phase0_notes": "PR #22 head bf2c52b: P0 report job green; 63 suite/OS/Node jobs fail identically on ubuntu/windows/macos x Node 20/22/24 (p01 0/6, p02 0/5, p03 1/10, p04 0/10, p05 0/10, p06 0/5, p07 1/7). All failures are custom assertions of desired behaviour after API-shape checks pass; no require/TypeError/Windows setup issues.",
- "tooling_notes": "github_2__get_file_contents returns only the blob SHA (no body) in this environment and raw.githubusercontent is not fetchable (private repo). Read file bodies via get_commit(detail=full_patch) of the commit that added the file (+ later patches), or via PR get_files patches. Commits with >100 files need get_commit page=N. Renames show no previous_filename: list the parent tree to find the old path (WorkspaceProfile.js was agent/lib/project.js before 184cb712). Verify reconstructions with git blob sha1('blob <len>\\0'+content). The P0 workflow on fix branches has a 'full' job (copy from fix/p0-1 96e712b) that reports every npm-test file's pass/fail + failing output in the p0-report comment, use it as the log source for structured-ai CI failures. Baseline (PR #22, main 9304338): structured-ai Node 18 fails, Node 20 passes; semantic-engine 20/22 pass. runtime.test.js on main (test/runtime/runtime.test.js) was renamed from test/runtime.test.js (init c7612ac9, 4129 lines, patch omitted by API): its full text is NOT reconstructable; rely on the full-suite report output. Settings: new runtime values must be SettingsSchema definitions read via require('../config').get(); no process.env reads or UPPER_CASE literal constants in agent/ code. Reconstructed files need a trailing newline appended to match the blob sha (apply_patch drops it). ArgParser.js (93ad8b6b) and Cli.js (93ad8b6b+9411b5be+184cb712+PR#23) reconstruct exactly. get_commit file lists are paged at 30 per page by default: pass page=N, perPage=100 until fewer than 100 come back. A merge commit patch is against its first parent: when list_commits has both the merge and a branch commit touching a file, apply only the merge (McpManager.js). Files that cannot be reconstructed (policy.json, runtime.test.js) can be dumped by the report job: the P0 workflow on fix/p0-2 checks out the repo in the report job and posts a \"source excerpts\" section; edit its file list as needed. SettingsSchema.js reconstructs exactly from 6197d2d0+4db317bd+1b9f1422+184cb712+b588bc81+603bb9d1. Never call push_files with placeholder content; push large files from run_python with the tool injected. Since 2026-11-23T10:00Z the connector tools are named github__* (not github_2__*); patch_tools.py uses github_2__ names, so replace them when exec'ing it. Workflow scope works again since 2026-11-23T10:45Z (github_2__push_files to .github/workflows succeeded); still push workflow changes in a separate call so code lands even if that fails. Log workaround without workflow scope: open a draft PR from the fix branch into a helper branch created (create_branch) from an earlier fix branch that already has p0-regression.yml; the pull_request run uses the merge commit's workflow and posts the p0-report there (PR #28 for P0-5). github__search_code returns nothing for this repo (not indexed). Files whose history patches are omitted (agent.js 96KB, runtime.test.js, policy.json) can be shipped by the report job as gzip+base64 comments (see the PR #30 workflow) and decoded with base64+gzip in run_python. Never call github_2__push_files directly with placeholder content (it happened again on 10:45Z); build content in run_python and push from there.",
+ "tooling_notes": "github_2__get_file_contents returns only the blob SHA (no body) in this environment and raw.githubusercontent is not fetchable (private repo). Read file bodies via get_commit(detail=full_patch) of the commit that added the file (+ later patches), or via PR get_files patches. Commits with >100 files need get_commit page=N. Renames show no previous_filename: list the parent tree to find the old path (WorkspaceProfile.js was agent/lib/project.js before 184cb712). Verify reconstructions with git blob sha1('blob <len>\\0'+content). The P0 workflow on fix branches has a 'full' job (copy from fix/p0-1 96e712b) that reports every npm-test file's pass/fail + failing output in the p0-report comment, use it as the log source for structured-ai CI failures. Baseline (PR #22, main 9304338): structured-ai Node 18 fails, Node 20 passes; semantic-engine 20/22 pass. runtime.test.js on main (test/runtime/runtime.test.js) was renamed from test/runtime.test.js (init c7612ac9, 4129 lines, patch omitted by API): its full text is NOT reconstructable; rely on the full-suite report output. Settings: new runtime values must be SettingsSchema definitions read via require('../config').get(); no process.env reads or UPPER_CASE literal constants in agent/ code. Reconstructed files need a trailing newline appended to match the blob sha (apply_patch drops it). ArgParser.js (93ad8b6b) and Cli.js (93ad8b6b+9411b5be+184cb712+PR#23) reconstruct exactly. get_commit file lists are paged at 30 per page by default: pass page=N, perPage=100 until fewer than 100 come back. A merge commit patch is against its first parent: when list_commits has both the merge and a branch commit touching a file, apply only the merge (McpManager.js). Files that cannot be reconstructed (policy.json, runtime.test.js) can be dumped by the report job: the P0 workflow on fix/p0-2 checks out the repo in the report job and posts a \"source excerpts\" section; edit its file list as needed. SettingsSchema.js reconstructs exactly from 6197d2d0+4db317bd+1b9f1422+184cb712+b588bc81+603bb9d1. Never call push_files with placeholder content; push large files from run_python with the tool injected. Since 2026-11-23T10:00Z the connector tools are named github__* (not github_2__*); patch_tools.py uses github_2__ names, so replace them when exec'ing it. Workflow scope works again since 2026-11-23T10:45Z (github_2__push_files to .github/workflows succeeded); still push workflow changes in a separate call so code lands even if that fails. Log workaround without workflow scope: open a draft PR from the fix branch into a helper branch created (create_branch) from an earlier fix branch that already has p0-regression.yml; the pull_request run uses the merge commit's workflow and posts the p0-report there (PR #28 for P0-5). github__search_code returns nothing for this repo (not indexed). Files whose history patches are omitted (agent.js 96KB, runtime.test.js, policy.json) can be shipped by the report job as gzip+base64 comments (see the PR #30 workflow) and decoded with base64+gzip in run_python. Never call github_2__push_files directly with placeholder content (it happened again on 10:45Z); build content in run_python and push from there. | 2026-11-23: no local JS runtime in the sandbox (node/subprocess blocked); rely on CI. mcp.test.js is not reconstructable from patches (init commit) but agent_files/structured_ai/fix-p0-5__mcp.test.js matches the integration blob; updated copy in fix-p0-8__mcp.test.js. Workflow edits shared by several item PRs must be byte-identical across PRs (suite discovery) to merge cleanly.",
  "integration_branch": "roadmap/integration",
- "branch_policy": "From now on every new roadmap branch MUST be created from roadmap/integration (not main), and every PR MUST target roadmap/integration. Only roadmap/integration -> main PRs (one per phase) go to main; the user reviews and merges those. Never merge into main.",
- "p0_integration_pr": 31
+ "branch_policy": "P0 is under review as PR #31 (roadmap/integration -> main); do not push to roadmap/integration or touch #31. Phase branch roadmap/p1 was created from roadmap/integration (73bf9d3) on 2026-11-23. Every item branch fix/<id> is created from the CURRENT head of roadmap/p1 and its PR targets roadmap/p1. Green item PRs are squash-merged into roadmap/p1 (check base != main first), then update_pull_request_branch on the other open item PRs. When P1 is done/blocked: one PR 'P1: ...' roadmap/p1 -> roadmap/integration while #31 is open (else -> main). Later: roadmap/p2 from roadmap/p1, roadmap/p3 from roadmap/p2. Never branch from or merge into main.",
+ "p0_integration_pr": 31,
+ "phase_branch": "roadmap/p1",
+ "p1_requirements": [
+  "npm test must run (and be green) on ubuntu, windows and macos: handled by P1-5 (full job matrix + ci/run-tests.js)."
+ ]
 }
