@@ -57,9 +57,61 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  full:
+    name: Full suite (ubuntu-latest, Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20]
+    defaults:
+      run:
+        working-directory: structured-ai
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Run each npm test file separately
+        run: |
+          set +e
+          node -e "process.stdout.write(require('./package.json').scripts.test.split('&&').map(s => s.trim().replace(/^node\s+/, '')).filter(Boolean).join('\n') + '\n')" > files.txt
+          pass=0; fail=0
+          : > out.txt
+          : > fails.txt
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            timeout 600 node "$f" < /dev/null > one.txt 2>&1
+            c=$?
+            if [ "$c" -eq 0 ]; then
+              pass=$((pass+1)); echo "ok   $f" >> out.txt
+            else
+              fail=$((fail+1)); echo "FAIL $f (exit $c)" >> out.txt
+              { echo "----- $f (exit $c) -----"; tail -n 80 one.txt; echo; } >> fails.txt
+            fi
+          done < files.txt
+          { echo; echo "$pass/$((pass+fail)) passed"; echo; cat fails.txt; } >> out.txt
+          cat out.txt
+          if [ "$fail" -eq 0 ]; then echo 0 > code.txt; else echo 1 > code.txt; fi
+          [ "$fail" -eq 0 ]
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-node${{ matrix.node }}
+          path: |
+            structured-ai/out.txt
+            structured-ai/code.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
   report:
     name: P0 report
-    needs: p0
+    needs: [p0, full]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -78,7 +130,14 @@ jobs:
             const dirs = fs.existsSync('results') ? fs.readdirSync('results').sort() : [];
             const rows = [];
             const detail = {};
+            const full = [];
             for (const d of dirs) {
+              const fm = d.match(/^full-node(\d+)$/);
+              if (fm) {
+                const readF = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
+                full.push({ node: fm[1], out: readF('out.txt'), code: readF('code.txt').trim() });
+                continue;
+              }
               const m = d.match(/^p0-(p0\d)-(.+)-(\d+)$/);
               if (!m) continue;
               const [, suite, os, node] = m;
@@ -100,6 +159,17 @@ jobs:
               for (const [env, v] of Object.entries(envs)) {
                 if (env === 'ubuntu-latest / Node 22' || !v.fails) continue;
                 body += `<details><summary>${suite} — ${env} failure lines</summary>\n\n\`\`\`\n${v.fails.slice(0, 1500)}\n\`\`\`\n</details>\n\n`;
+              }
+            }
+            if (full.length) {
+              body += '## structured-ai full suite (each npm test file run separately)\n\n| Node | Result | Summary |\n|---|---|---|\n';
+              for (const f of full) {
+                const s = (f.out.match(/^\s*\d+\/\d+ passed.*$/m) || [''])[0].trim();
+                body += `| ${f.node} | ${f.code === '0' ? '✅' : '❌'} | ${s || ('exit ' + (f.code || '?'))} |\n`;
+              }
+              body += '\n';
+              for (const f of full) {
+                body += `<details><summary><b>full suite</b> Node ${f.node} output</summary>\n\n\`\`\`\n${f.out.slice(0, 24000)}\n\`\`\`\n</details>\n\n`;
               }
             }
             body = body.slice(0, 64000);
