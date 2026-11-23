@@ -364,7 +364,14 @@ async function main() {
         fs.rmSync(workspace, { recursive: true, force: true });
     });
 
-    await test("an approval answered with y lets the tool run", async () => {
+    await test("a piped y does not approve: without a TTY the session refuses", async () => {
+
+        /*
+        | P0-8: AGENT_APPROVAL=prompt needs a person at a terminal. This
+        | session reads a pipe, so the "y" below is not an operator's
+        | answer: the approval is refused and the tool does not run. The
+        | TTY path (a typed y approves) is covered by test/p0/p08.test.js.
+        */
 
         const stub =
             await startStub((request, index) =>
@@ -385,13 +392,13 @@ async function main() {
 
         assert.match(run.stdout, /approval required/);
         assert.match(run.stdout, /fs_write/);
-        assert.match(run.stdout, /approved/);
+        assert.match(run.stdout, /refused \(no terminal/);
 
         assert.equal(
             fs.existsSync(
                 path.join(workspace, "approved.txt")
             ),
-            true
+            false
         );
 
         fs.rmSync(workspace, { recursive: true, force: true });

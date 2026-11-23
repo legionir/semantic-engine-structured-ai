@@ -5,6 +5,7 @@ const readline = require("readline");
 const settings = require("../config");
 const {
     ApprovalDeniedError,
+    ApprovalUnavailableError,
     unattendedApproval,
     interactiveApprovalUnavailable
 } = require("./PolicyErrors");
@@ -176,29 +177,46 @@ class ApprovalManager {
             );
         }
 
-        if (
-            mode === "prompt" &&
-            (handler || process.stdin.isTTY)
-        ) {
+        if (mode === "prompt") {
 
-            const answer =
-                handler
-                    ? await handler(evaluation, args)
-                    : await this.prompt(evaluation, args);
+            /*
+            | P0-8: only an explicit `true` from the approver is a yes. A
+            | handler that fails, answers something else, or a terminal that
+            | closes before answering is a no, and the no is recorded.
+            */
+            let answer;
 
-            record.approved = answer;
+            try {
+
+                answer =
+                    handler
+                        ? await handler(evaluation, args)
+                        : await this.prompt(evaluation, args);
+
+            } catch (error) {
+
+                record.approved = false;
+                record.mode = "prompt (approver failed)";
+                this.store.record(record);
+
+                throw error;
+            }
+
+            const approved = answer === true;
+
+            record.approved = approved;
             record.mode = "prompt";
             this.store.record(record);
 
             if (globalServer && serverName) {
 
                 this.store.rememberGateway(serverName, {
-                    approved: answer,
+                    approved,
                     at: Date.now()
                 });
             }
 
-            if (!answer) {
+            if (!approved) {
                 throw new ApprovalDeniedError(
                     evaluation.tool,
                     evaluation.reason
@@ -208,11 +226,24 @@ class ApprovalManager {
             return record;
         }
 
+        /*
+        | P0-8: approving without asking is something the operator chose
+        | (AGENT_APPROVAL=auto). Any other value, e.g. one an injected
+        | settings store returns, fails closed instead of approving.
+        */
+        if (mode !== "auto") {
+
+            record.approved = false;
+            record.mode = `unknown (${String(mode)})`;
+            this.store.record(record);
+
+            throw new ApprovalUnavailableError(
+                `Tool "${evaluation.tool}" requires approval and the approval mode "${String(mode)}" is not auto, prompt or deny, so the call is refused: ${evaluation.reason}`
+            );
+        }
+
         record.approved = true;
-        record.mode =
-            mode === "prompt"
-                ? "auto (no tty)"
-                : "auto";
+        record.mode = "auto";
 
         /* P0-2: an automatic answer is not remembered as a gateway
            approval; only a human answer is, so switching to prompt asks
@@ -301,6 +332,18 @@ class ApprovalManager {
 
         return new Promise(resolve => {
 
+            /* P0-8: end of input (Ctrl-D, a closed pipe) is a refusal,
+               not a question left open forever. */
+            let answered = false;
+
+            rl.on("close", () => {
+
+                if (!answered) {
+                    answered = true;
+                    resolve(false);
+                }
+            });
+
             rl.question(
                 `\nApproval required\n  agent : ${
                     evaluation.agent
@@ -315,10 +358,12 @@ class ApprovalManager {
                 }\n  args  : ${summary}\nAllow? [y/N] `,
                 answer => {
 
+                    answered = true;
+
                     rl.close();
 
                     resolve(
-                        /^y(es)?$/i.test(answer.trim())
+                        /^y(es)?$/i.test(String(answer).trim())
                     );
                 }
             );
