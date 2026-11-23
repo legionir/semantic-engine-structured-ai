@@ -165,7 +165,8 @@ async function main() {
         fs.mkdirSync(root, { recursive: true });
 
         const candidates = enginePaths.indexPathCandidates(root, {
-            override: "/srv/engine"
+            override: "/srv/engine",
+            platform: "linux"
         });
 
         assert.equal(candidates.length, 4);

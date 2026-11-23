@@ -550,7 +550,10 @@ function readTextLive(filePath) {
         return cached.text;
     }
 
-    const text = readText(filePath);
+    /* Normalize checkout line endings before parsing prompt headings and
+       measuring prompt budgets. CRLF otherwise adds a character per line
+       and prevents exact heading/section checks from matching on Windows. */
+    const text = readText(filePath).replace(/\r\n/g, "\n");
 
     TEXT_CACHE.set(filePath, { stamp, text });
 

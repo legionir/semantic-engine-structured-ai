@@ -333,7 +333,7 @@ async function main() {
         const pwd =
             await tools.executeTool(
                 "terminal_exec",
-                { command: `"${process.execPath}" -p "process.cwd()"` },
+                { command: `"${process.execPath}" -e "process.stdout.write(process.cwd())"` },
                 ctxB
             );
 

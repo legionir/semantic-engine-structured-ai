@@ -240,10 +240,18 @@ async function main() {
   } finally {
     await server.close();
     await new Promise(resolve => stub.server.close(resolve));
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
-    fs.rmSync(PROJECT_A_ROOT, { recursive: true, force: true });
-    fs.rmSync(PROJECT_B_ROOT, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
+    const removeTestDirectory = directory => fs.rmSync(directory, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100
+    });
+    removeTestDirectory(WORKSPACE);
+    removeTestDirectory(PROJECT_A_ROOT);
+    removeTestDirectory(PROJECT_B_ROOT);
+    removeTestDirectory(DATA_HOME);
   }
 
   const failed = results.filter(item => !item.ok);

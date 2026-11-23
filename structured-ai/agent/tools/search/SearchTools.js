@@ -31,15 +31,17 @@ let sessionCounter = 0;
 
 /*
 | Paths are shown relative to the search's own root: the project root
-| for a project-scoped run (Phase 8), the workspace root otherwise —
-| which is exactly what toWorkspaceRelative already printed in legacy
-| mode, so legacy output is bit-identical.
+| for a project-scoped run (Phase 8), the workspace root otherwise.
+| Output separators are normalized for stable, model-facing paths.
 */
 function sessionRelative(session, target) {
 
-    return session.tool_root
+    const relative = session.tool_root
         ? toRelativeInRoot(session.tool_root, target)
         : toWorkspaceRelative(target);
+
+    /* Model-facing workspace paths use forward slashes on every OS. */
+    return relative.split(path.sep).join("/");
 }
 
 
@@ -75,17 +77,19 @@ function looksLikeGlob(query) {
 function matchesFileName(session, name, relativePath) {
 
     const query = session.query;
+    const normalizedQuery = query.replace(/\\/g, "/");
+    const normalizedPath = String(relativePath).replace(/\\/g, "/");
 
-    if (!looksLikeGlob(query)) {
+    if (!looksLikeGlob(normalizedQuery)) {
 
         return name
             .toLowerCase()
-            .includes(query.toLowerCase());
+            .includes(normalizedQuery.toLowerCase());
     }
 
     if (!session.glob) {
 
-        session.glob = globToRegExp(query);
+        session.glob = globToRegExp(normalizedQuery);
 
         /*
         | "src/*.ts" is a path pattern, "*.ts" is a name pattern, so
@@ -93,15 +97,15 @@ function matchesFileName(session, name, relativePath) {
         */
 
         session.globPath =
-            query.includes("/")
-                ? globToRegExp(query)
-                : globToRegExp(`*/${query}`);
+            normalizedQuery.includes("/")
+                ? globToRegExp(normalizedQuery)
+                : globToRegExp(`*/${normalizedQuery}`);
     }
 
     return (
         session.glob.test(name) ||
-        session.glob.test(relativePath) ||
-        session.globPath.test(relativePath)
+        session.glob.test(normalizedPath) ||
+        session.globPath.test(normalizedPath)
     );
 }
 

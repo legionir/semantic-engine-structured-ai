@@ -598,6 +598,11 @@ async function main() {
 
     await test("Ctrl-C cancels the running task but keeps the session", async () => {
 
+        if (process.platform === "win32") {
+            console.log("       SKIP: SIGINT cannot be delivered to a piped Windows child process");
+            return;
+        }
+
         const stub =
             await startStub((request, index) => ({
                 message: finalAction("slow answer"),
