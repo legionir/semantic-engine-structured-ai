@@ -5,6 +5,36 @@ const path = require("path");
 
 const PathBoundary = require("./PathBoundary");
 
+const {
+    lexists
+} = require("../../context/WorkspaceBoundary");
+
+
+/*
+| Removes a symlink itself. A Windows directory symlink or junction
+| refuses unlink and is removed with rmdir, which deletes only the link
+| and never the directory it points to.
+*/
+
+async function removeLink(target) {
+
+    try {
+
+        await fs.promises.unlink(target);
+
+    } catch (error) {
+
+        if (
+            error.code !== "EPERM" &&
+            error.code !== "EISDIR"
+        ) {
+            throw error;
+        }
+
+        await fs.promises.rmdir(target);
+    }
+}
+
 
 /*
 |--------------------------------------------------------------------------
@@ -310,21 +340,41 @@ async function fsMove(args, context) {
     const ctx = PathBoundary.bound(context);
 
 
+    /*
+    | Both ends are resolved without following their last segment, so
+    | moving a symlink moves the link itself, never the file or directory
+    | it points to (P0-3). Their parents must still be free of symlinks.
+    */
+
     const source =
         ctx.resolvePath(
             args.source,
             {
-                mustExist: true
+                mustExist: true,
+                noFollow: true
             }
         );
 
     const destination =
-        ctx.resolvePath(args.destination);
-    ctx.assertSafe(source, { rejectSymlinks: true });
+        ctx.resolvePath(
+            args.destination,
+            {
+                noFollow: true
+            }
+        );
+
+    if (source === ctx.root) {
+
+        throw new Error(
+            "The workspace root cannot be moved."
+        );
+    }
+
+    ctx.assertSafe(path.dirname(source), { rejectSymlinks: true });
     ctx.assertSafe(destination, { rejectSymlinks: true });
 
     if (
-        fs.existsSync(destination) &&
+        lexists(destination) &&
         args.overwrite !== true
     ) {
 
@@ -369,11 +419,13 @@ async function fsDelete(args, context) {
     const ctx = PathBoundary.bound(context);
 
 
+    /* noFollow: deleting a symlink deletes the link, not its target (P0-3). */
     const target =
         ctx.resolvePath(
             args.path,
             {
-                mustExist: true
+                mustExist: true,
+                noFollow: true
             }
         );
 
@@ -386,6 +438,22 @@ async function fsDelete(args, context) {
 
     const stats =
         await fs.promises.lstat(target);
+
+    if (stats.isSymbolicLink()) {
+
+        await removeLink(target);
+
+        return {
+            path:
+                ctx.relative(target),
+
+            deleted: true,
+
+            was_directory: false,
+
+            was_symlink: true
+        };
+    }
 
     if (
         stats.isDirectory() &&

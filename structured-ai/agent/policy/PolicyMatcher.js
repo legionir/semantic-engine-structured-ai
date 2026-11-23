@@ -37,7 +37,62 @@ function valueAtPath(source, pathExpression) {
 }
 
 
-function conditionMatches(condition, context) {
+/*
+| Path arguments are matched in their forward-slash form as well, so a
+| Windows path such as src\.git\hooks\pre-commit meets the same rules as
+| src/.git/hooks/pre-commit (P0-3); the patterns are already case
+| insensitive. A rule about "path" also judges both ends of a tool that
+| has no path argument but a source and a destination (fs_move): moving a
+| file out of or into a protected place writes there. A rule that makes
+| the answer stricter applies when either end matches; an allow only
+| when both do.
+*/
+
+function isPathArgument(argumentPath) {
+
+    const last =
+        String(argumentPath)
+            .split(".")
+            .pop();
+
+    return /^(path|paths|source|destination|target|file|files|cwd|from|to|dir|directory)$|_path$/i.test(last);
+}
+
+
+function argumentValues(args, argumentPath) {
+
+    const value =
+        valueAtPath(args, argumentPath);
+
+    if (
+        String(argumentPath) === "path" &&
+        (value === undefined || value === null) &&
+        args &&
+        (args.source !== undefined || args.destination !== undefined)
+    ) {
+
+        return [args.source, args.destination]
+            .filter(item => item !== undefined && item !== null);
+    }
+
+    return [value];
+}
+
+
+function textForms(value, pathLike) {
+
+    const text =
+        value === undefined || value === null
+            ? ""
+            : String(value);
+
+    return pathLike && text.includes("\\")
+        ? [text, text.replace(/\\/g, "/")]
+        : [text];
+}
+
+
+function conditionMatches(condition, context, action) {
 
     if (!condition) {
         return true;
@@ -59,18 +114,24 @@ function conditionMatches(condition, context) {
             of Object.entries(condition.argument_matches)
         ) {
 
-            const value =
-                valueAtPath(context.args, argumentPath);
+            const pathLike =
+                isPathArgument(argumentPath);
 
-            const text =
-                value === undefined || value === null
-                    ? ""
-                    : String(value);
+            const valueMatches = value =>
+                textForms(value, pathLike).some(
+                    text =>
+                        patterns.some(
+                            pattern => new RegExp(pattern, "i").test(text)
+                        )
+                );
+
+            const values =
+                argumentValues(context.args, argumentPath);
 
             const matched =
-                patterns.some(
-                    pattern => new RegExp(pattern, "i").test(text)
-                );
+                action === DECISIONS.ALLOW
+                    ? values.every(valueMatches)
+                    : values.some(valueMatches);
 
             if (!matched) {
                 return false;
@@ -153,7 +214,7 @@ class PolicyMatcher {
                 continue;
             }
 
-            if (!conditionMatches(rule.when, context)) {
+            if (!conditionMatches(rule.when, context, rule.action)) {
                 continue;
             }
 
@@ -208,5 +269,6 @@ module.exports = {
     matchesGlob,
     valueAtPath,
     conditionMatches,
-    ruleTargets
+    ruleTargets,
+    isPathArgument
 };

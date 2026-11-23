@@ -163,13 +163,41 @@ function isInsideWorkspace(target) {
 }
 
 
+/*
+| existsSync follows symlinks, so a dangling link looks absent and every
+| walk below would step straight past it to its parent, which is how a
+| link to a not-yet-existing file outside the workspace used to pass the
+| boundary (P0-3). lstat sees the link itself.
+*/
+
+function lexists(target) {
+
+    try {
+
+        fs.lstatSync(target);
+        return true;
+
+    } catch (error) {
+
+        if (
+            error.code === "ENOENT" ||
+            error.code === "ENOTDIR"
+        ) {
+            return false;
+        }
+
+        throw error;
+    }
+}
+
+
 function nearestExistingPath(target) {
 
     let current = target;
 
     for (;;) {
 
-        if (fs.existsSync(current)) {
+        if (lexists(current)) {
             return current;
         }
 
@@ -216,23 +244,19 @@ function resolvePathInRoot(
     }
 
     /*
-    | The deepest existing ancestor is resolved through symlinks, then
-    | the remaining (not yet created) segments are re-attached.
+    | With noFollow the last segment is kept as it is, so an operation on
+    | a symlink (fs_delete, fs_move) acts on the link and never on the
+    | file or directory it points to. Its parent is still canonicalised.
     */
 
-    const existing =
-        nearestExistingPath(resolved);
-
-    const realExisting =
-        realpath(existing);
-
-    const suffix =
-        path.relative(existing, resolved);
-
     const target =
-        suffix === ""
-            ? realExisting
-            : path.join(realExisting, suffix);
+        options.noFollow &&
+        path.relative(root, resolved) !== ""
+            ? path.join(
+                canonicalPath(path.dirname(resolved)),
+                path.basename(resolved)
+            )
+            : canonicalPath(resolved);
 
     if (!isInsideRoot(root, target)) {
 
@@ -243,7 +267,7 @@ function resolvePathInRoot(
 
     if (
         options.mustExist &&
-        suffix !== ""
+        !lexists(target)
     ) {
 
         throw new Error(
@@ -252,6 +276,64 @@ function resolvePathInRoot(
     }
 
     return target;
+}
+
+
+/*
+| The real location of a path that may not exist yet: the deepest
+| existing ancestor is resolved through symlinks, then the remaining (not
+| yet created) segments are re-attached. A dangling symlink on the way is
+| followed by hand, because realpath refuses it while open() and mkdir()
+| would happily create its target, so the boundary has to judge where
+| the link really leads (P0-3). A cycle of links fails like realpath.
+*/
+
+function canonicalPath(target, seen = new Set()) {
+
+    const existing =
+        nearestExistingPath(target);
+
+    const suffix =
+        path.relative(existing, target);
+
+    let realExisting;
+
+    try {
+
+        realExisting =
+            realpath(existing);
+
+    } catch (error) {
+
+        const stats =
+            fs.lstatSync(existing);
+
+        if (
+            !stats.isSymbolicLink() ||
+            seen.has(existing)
+        ) {
+            throw error;
+        }
+
+        seen.add(existing);
+
+        const linked =
+            path.resolve(
+                path.dirname(existing),
+                fs.readlinkSync(existing)
+            );
+
+        return canonicalPath(
+            suffix === ""
+                ? linked
+                : path.join(linked, suffix),
+            seen
+        );
+    }
+
+    return suffix === ""
+        ? realExisting
+        : path.join(realExisting, suffix);
 }
 
 
@@ -277,7 +359,7 @@ function assertPathSafeInRoot(root, target, options = {}) {
 
     let current = resolved;
     for (;;) {
-        if (fs.existsSync(current)) {
+        if (lexists(current)) {
             const stat = fs.lstatSync(current);
             if (options.rejectSymlinks && stat.isSymbolicLink()) {
                 throw new Error(`Symlink components are not allowed for this operation: ${target}`);
@@ -289,8 +371,7 @@ function assertPathSafeInRoot(root, target, options = {}) {
         current = parent;
     }
 
-    const existing = nearestExistingPath(resolved);
-    if (!isInsideRoot(root, realpath(existing))) {
+    if (!isInsideRoot(root, canonicalPath(resolved))) {
         throw new Error(`Path escapes the workspace through a symlink: ${target}`);
     }
 
@@ -601,6 +682,8 @@ function capTotalSize(
 module.exports = {
     isInsideRoot,
     realpath,
+    lexists,
+    canonicalPath,
     WORKSPACE_ROOT,
     ignoredDirectories,
     capTotalSize,
