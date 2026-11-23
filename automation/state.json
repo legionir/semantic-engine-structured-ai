@@ -27,11 +27,11 @@
    "notes": "Run 2026-11-23T06:35Z: branch fix/p0-3 from main 9304338, pushed e71e63d. Sources reconstructed exactly (blob sha verified): WorkspaceBoundary.js = old agent/lib/workspace.js (c7612ac9+8dfd0c99, blob ca90f010) + rename patch 184cb712; DirectoryTools.js (8d145a90), WriteTools.js (184cb712+8d145a90), PathBoundary.js, ToolContext.js (8dfd0c99+184cb712), PolicyMatcher.js (5a7b25e1, main version; PR #24 refactors it, so expect a merge conflict there), PolicyEngine.js. Changes: WorkspaceBoundary lexists (lstat) in nearestExistingPath/assertSafe walk, canonicalPath follows dangling links by readlink (cycle guard via seen Set, no numeric constant), resolvePathInRoot option noFollow (canonical parent + basename), mustExist uses lexists; exports lexists, canonicalPath. DirectoryTools: fs_delete noFollow + removeLink (unlink, rmdir fallback on EPERM/EISDIR), fs_move noFollow on both ends, assertSafe(dirname(source)), root cannot be moved, lexists for overwrite check. PolicyMatcher: path-like args matched raw + backslash->slash; argument_matches.path falls back to source/destination when path absent (any for deny/approval, every for allow); conditionMatches(condition, context, action). policy.json NOT edited (main text not reconstructable): report job now dumps policy.json, tool_groups fs groups and the decision+rule of every p03 policy case. Next run: read p03 results + excerpts; if fs_move or absolute C:\\ cases still not denied, add explicit rules to policy.json (rebuild it from the dump, verify blob a5adaadf). | Run 2026-11-23T07:01Z: CI on e71e63d green: p03 10/10 on all 9 OS/Node jobs (policy dump: all .git / policy.json backslash, C:\\\\ and fs_move cases denied by protect_* rules; ordinary backslash paths require_approval only), full suite Node 20 60/60, Node 18 59/60 (only visualizer baseline), structured-ai Node 20 + semantic-engine 20/22 green, report green. policy.json not edited. PR #25 marked ready for review (checklist 4/4, CI summary, note on PolicyMatcher conflict with PR #24). Done."
   },
   "P0-4": {
-   "status": "pending",
-   "branch": null,
-   "pr": null,
+   "status": "waiting_ci",
+   "branch": "fix/p0-4",
+   "pr": 26,
    "attempts": 0,
-   "notes": ""
+   "notes": "Run 2026-11-23T07:31Z: branch fix/p0-4 from main 9304338, pushed 6462dd2. Sources reconstructed exactly (blob sha verified): Router.js/Middleware.js (1b9f1422), WebServer.js (1b9f1422+184cb712), RouteInventory.js (1b9f1422+9411b5be), ServerImplementation.js = LegacyWebServer.js (1b9f1422+9411b5be, blob 89096648, at parent ed9ab800 of 184cb712) + 184cb712,7d3f1be0,9f3b1ce8,dcf0110a,1555613e,f2443da9 (blob 21654176), ConsoleAuth.js = agent/lib/consoleAuth.js (eca5fc5f) + 184cb712 (blob 79612a62); controllers (1b9f1422) all forward to implementation.handle. Changes: Router decodeParam/requestUrl -> BadRequestError 400, handle() try/catch + sendError (5xx generic); WebServer .catch(sendError); Middleware decodeCookie safe; ConsoleAuth isAdmin(master only)/authorizeAdmin/authorizeUnscoped; ServerImplementation URL parse -> 400, catch URIError -> 400, refuse/requireAdmin/requireUnscoped helpers: admin for settings GET/POST, approval-mode, mcp POST/DELETE/enabled; unscoped read for GET /api/mcp, sessions GET, calls, graph w/o projectId; unscoped write for sessions POST/DELETE, tasks, discussion, cancel, clear; approvals checked vs pending.project_id (project:write), legacy approvals need all-projects token. Tests: p04.test.js copied, new p04matrix.test.js (1000 fuzz paths seeded PRNG, bad Hosts, malformed cookie -> 401, no-token 401 matrix, scoped 403 on admin endpoints incl allowedProjects ['*'], project-scoped 403 on legacy endpoints, legacy approval, master still 200, project A vs B matrix). Workflow suite [p04, p04matrix], excerpts: tests with scoped tokens and their /api lines, tests touching settings/approval-mode/mcp/sessions/cancel/clear/calls/graph, ApprovalStore API. Blobs on branch: ServerImplementation 98216ec7, Router 70658366, ConsoleAuth e741bb8f, p04matrix e41e54c6, workflow ca141559 (copies in agent_files/structured_ai/fix-p0-4__*). Next: read report; if full suite regressions come from scoped tokens on legacy endpoints (see excerpts), decide per test whether the test asserts old insecure behaviour; fix p04matrix fixture issues (e.g. own-project routes, fuzz statuses)."
   },
   "P0-5": {
    "status": "pending",
@@ -229,6 +229,10 @@
   {
    "ts": "2026-11-23T07:01Z",
    "msg": "P0-3: e71e63d green (p03 10/10 x9; full Node 20 60/60, Node 18 only visualizer). PR #25 ready for review, done. Next: P0-4."
+  },
+  {
+   "ts": "2026-11-23T07:31Z",
+   "msg": "P0-4: branch fix/p0-4, pushed 6462dd2 (router 400s for bad escapes/Host, admin-only settings/approval-mode/MCP, unscoped legacy endpoints, project-checked approvals; p04 + p04matrix suites). Draft PR #26. waiting_ci."
   }
  ],
  "phase0_notes": "PR #22 head bf2c52b: P0 report job green; 63 suite/OS/Node jobs fail identically on ubuntu/windows/macos x Node 20/22/24 (p01 0/6, p02 0/5, p03 1/10, p04 0/10, p05 0/10, p06 0/5, p07 1/7). All failures are custom assertions of desired behaviour after API-shape checks pass; no require/TypeError/Windows setup issues.",
