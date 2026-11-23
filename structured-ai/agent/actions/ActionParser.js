@@ -18,7 +18,7 @@ const {
     responsePreview,
     truncatedResponseError
 } = require("./ActionErrors");
-const { repairStructuredAction } = require("./ResponseRepair");
+const { repairStructuredAction, salvageActionFromProse } = require("./ResponseRepair");
 const { adaptNativeToolCalls } = require("./NativeToolCallAdapter");
 const { validateAction } = require("./ActionValidator");
 
@@ -230,6 +230,45 @@ function parseStructuredResponse(
 
             source:
                 "native_tool_calls"
+        };
+    }
+
+    /*
+    | A sentence, a reasoning block or a fence around one action object
+    | (roadmap P1-1): the object is recovered and the cleaned action
+    | replaces the content, as the envelope repair below does.
+    */
+
+    const salvaged =
+        salvageActionFromProse(message.content);
+
+    if (salvaged) {
+
+        ctx.events.emit("response:repaired", {
+            repair: "prose_wrapper",
+            tool: "action_envelope",
+            dropped: [],
+            ignored: `${salvaged.preamble} ${salvaged.trailing}`.trim().slice(0, 200)
+        });
+
+        ctx.logLine(
+            null,
+            "Recovered the action from an answer wrapped in prose."
+        );
+
+        message.content = JSON.stringify(salvaged.action);
+
+        return {
+            message,
+
+            structured:
+                salvaged.action,
+
+            source:
+                "structured_content",
+
+            repaired:
+                "prose_wrapper"
         };
     }
 

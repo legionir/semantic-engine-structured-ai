@@ -89,6 +89,75 @@ const DEFINITIONS = [
         fixed: true,
         description: "Which response schema file to send. Read once at startup."
     },
+    {
+        key: "AGENT_PROVIDER",
+        group: "endpoint",
+        type: ENUM,
+        values: ["openai-compatible", "openai", "openai-responses", "anthropic", "gemini", "azure-openai", "bedrock", "ollama", "openrouter"],
+        default: "openai-compatible",
+        description: "Which LLM API the endpoint speaks (roadmap P1-1). openai-compatible keeps AGENT_BASE_URL as is; for any other provider AGENT_BASE_URL is used only when set, otherwise the vendor endpoint applies."
+    },
+    {
+        key: "AGENT_PROVIDER_REGION",
+        group: "endpoint",
+        type: STRING,
+        default: "us-east-1",
+        description: "AWS region of the bedrock provider (bedrock-runtime.<region>.amazonaws.com)."
+    },
+    {
+        key: "AZURE_OPENAI_API_VERSION",
+        group: "endpoint",
+        type: STRING,
+        default: "2024-10-21",
+        description: "api-version sent to Azure OpenAI deployments. Not used with a /openai/v1 base URL."
+    },
+    {
+        key: "BEDROCK_ACCESS_KEY_ID",
+        group: "endpoint",
+        type: STRING,
+        default: "",
+        secret: true,
+        description: "IAM access key id for the bedrock provider (SigV4). Not needed with a Bedrock API key in AGENT_API_KEY."
+    },
+    {
+        key: "BEDROCK_SECRET_ACCESS_KEY",
+        group: "endpoint",
+        type: STRING,
+        default: "",
+        secret: true,
+        description: "IAM secret access key for the bedrock provider (SigV4)."
+    },
+    {
+        key: "BEDROCK_SESSION_TOKEN",
+        group: "endpoint",
+        type: STRING,
+        default: "",
+        secret: true,
+        description: "Session token for temporary IAM credentials of the bedrock provider."
+    },
+    {
+        key: "PROMPT_CACHING",
+        group: "endpoint",
+        type: BOOLEAN,
+        default: true,
+        description: "Mark the stable prompt prefix (system prompt, tool list) for caching where the provider needs it marked (Anthropic, Bedrock). OpenAI and Gemini cache automatically."
+    },
+    {
+        key: "PROVIDER_ROLES",
+        group: "endpoint",
+        type: STRING,
+        default: "",
+        secret: true,
+        description: "JSON map of role (planner, coder, observer, ...) to a provider spec {provider, model, baseUrl, apiKey, fallbacks} or \"provider:model\". Empty uses the primary endpoint for every role."
+    },
+    {
+        key: "PROVIDER_FALLBACKS",
+        group: "endpoint",
+        type: STRING,
+        default: "",
+        secret: true,
+        description: "JSON list of provider specs tried in order when the primary still fails after MAX_REQUEST_RETRIES. An entry for another provider must name its own model and key."
+    },
 
     {
         key: "ENDPOINT_MAIN_BASE_URL",

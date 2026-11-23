@@ -48,6 +48,11 @@ const LOCKED_KEYS = new Set([
     "AGENT_APPROVAL",
     "AGENT_BASE_URL",
     "AGENT_API_KEY",
+
+    /* which vendor receives the prompt and the operator's credential
+       (roadmap P1-1); the route/fallback lists are secret, so locked too */
+    "AGENT_PROVIDER",
+    "AGENT_PROVIDER_REGION",
     "AGENT_CONSOLE_TOKEN",
     "AGENT_CONSOLE_TOKENS",
     "PROCESS_SANDBOX_MODE",
