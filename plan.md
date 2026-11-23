@@ -318,6 +318,8 @@ interface واحد LLMProvider با adapterهای OpenAI (Chat و Responses)، A
 - فرمان runaway پس از timeout با کل درخت پروسه kill می‌شود (Windows: taskkill /T).
 - agent doctor نوع sandbox فعال و قابلیت‌ها را گزارش می‌دهد.
 
+**وضعیت اجرا (۲۳ نوامبر ۲۰۲۶):** قراردادهای launch برای bwrap و Docker/Podman، محدودیت منابع، deny-by-default، گزارش doctor و تست process-tree در CI توسعه یافته‌اند؛ تست process-tree اکنون از taskkill در Windows نیز استفاده می‌کند. P1-2 هنوز کامل نیست: تست isolation واقعی روی هر سه OS و smoke تست npm/pip/git داخل sandbox انجام نشده، چون این محیط Docker، Podman و bwrap ندارد؛ backendهای native ویندوز/macOS و egress allowlist هم پیاده‌سازی نشده‌اند. تست واقعی backend باید روی runner مجهز اجرا شود و از تست‌های launch-spec جدا بماند.
+
 ### P1-3 — ترمینال تعاملی (PTY)
 
 node-pty و ConPTY، نشست shell پایدار با حفظ cwd و env، پشتیبانی bash، zsh، PowerShell و cmd، stream زنده به UI، interrupt و resize.

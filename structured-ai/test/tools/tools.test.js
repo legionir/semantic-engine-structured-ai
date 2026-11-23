@@ -64,6 +64,82 @@ async function rejects(promise, pattern) {
 }
 
 
+const PROCESS_TREE_HELPER =
+    path.join(__dirname, "../helpers/process-tree-worker.js");
+
+function processTreeCommand(pidFile) {
+
+    const quote = value => `"${value}"`;
+
+    return [
+        quote(process.execPath),
+        quote(PROCESS_TREE_HELPER),
+        quote(pidFile)
+    ].join(" ");
+}
+
+function readTreePids(pidFile) {
+
+    if (!fs.existsSync(pidFile)) {
+        return [];
+    }
+
+    return fs.readFileSync(pidFile, "utf8")
+        .trim()
+        .split(/\s+/)
+        .map(Number)
+        .filter(Number.isInteger);
+}
+
+function isProcessAlive(pid) {
+
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        return error.code === "EPERM";
+    }
+}
+
+async function waitForTreeStopped(pidFile) {
+
+    const deadline = Date.now() + 5000;
+
+    while (Date.now() < deadline) {
+
+        const pids = readTreePids(pidFile);
+
+        if (pids.length === 2 && !pids.some(isProcessAlive)) {
+            return;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    assert.fail(`process tree is still alive: ${readTreePids(pidFile).join(", ")}`);
+}
+
+function cleanupTree(pidFile) {
+
+    const pids = readTreePids(pidFile).reverse();
+
+    if (process.platform === "win32" && pids.length) {
+
+        try {
+            execFileSync("taskkill", ["/pid", String(pids[pids.length - 1]), "/T", "/F"], { stdio: "ignore" });
+        } catch {}
+
+        return;
+    }
+
+    for (const pid of pids) {
+        try {
+            process.kill(pid, "SIGKILL");
+        } catch {}
+    }
+}
+
+
 async function main() {
 
     console.log(`workspace: ${WORKSPACE_ROOT}\n`);
@@ -600,72 +676,47 @@ async function main() {
 
     await test("a timed out command does not leave its children running", async () => {
 
-        if (process.platform === "win32") {
-            console.log("       SKIP: POSIX process-group probe");
-            return;
+        const pidFile = path.join(WORKSPACE, "timeout-tree-pids.txt");
+
+        try {
+
+            await run("terminal_exec", {
+                command: processTreeCommand(pidFile),
+                timeout_ms: 1000
+            });
+
+            assert.equal(readTreePids(pidFile).length, 2, "the test process tree did not start");
+            await waitForTreeStopped(pidFile);
+
+        } finally {
+            cleanupTree(pidFile);
         }
-
-        const marker = "zzorphanmarker";
-
-        const survivors = () =>
-            require("child_process")
-                .execSync("ps -eo args")
-                .toString()
-                .split("\n")
-                .filter(
-                    line =>
-                        line.includes(marker) &&
-                        !line.includes("ps -eo")
-                ).length;
-
-        await run("terminal_exec", {
-            command: `sleep 45 ${marker} & sleep 45 ${marker} & wait`,
-            timeout_ms: 700
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        assert.equal(
-            survivors(),
-            0,
-            "the shell was killed but its children survived"
-        );
     });
 
     await test("terminating a background process kills its whole tree", async () => {
 
-        if (process.platform === "win32") {
-            console.log("       SKIP: POSIX process-group probe");
-            return;
-        }
+        const pidFile = path.join(WORKSPACE, "background-tree-pids.txt");
+        let started;
 
-        const marker = "zztreemarker";
+        try {
 
-        const started =
-            await run("process_start", {
-                command: `sleep 45 ${marker} & wait`,
-                wait_ms: 200
+            started = await run("process_start", {
+                command: processTreeCommand(pidFile),
+                wait_ms: 400
             });
 
-        await run("process_terminate", {
-            process_id: started.process_id,
-            grace_ms: 300
-        });
+            assert.equal(readTreePids(pidFile).length, 2, "the test process tree did not start");
 
-        await new Promise(resolve => setTimeout(resolve, 500));
+            await run("process_terminate", {
+                process_id: started.process_id,
+                grace_ms: 300
+            });
 
-        const survivors =
-            require("child_process")
-                .execSync("ps -eo args")
-                .toString()
-                .split("\n")
-                .filter(
-                    line =>
-                        line.includes(marker) &&
-                        !line.includes("ps -eo")
-                ).length;
+            await waitForTreeStopped(pidFile);
 
-        assert.equal(survivors, 0, "the process tree survived");
+        } finally {
+            cleanupTree(pidFile);
+        }
     });
 
     /* ---------------------------------------------------------------- */

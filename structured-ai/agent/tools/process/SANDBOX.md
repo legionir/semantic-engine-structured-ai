@@ -23,5 +23,5 @@ The container receives a minimal environment (`HOME` and `PATH`); host credentia
 ## Important limitations
 
 - Docker/Podman mode is opt-in; the runtime does not silently fall back to an unsandboxed host shell if the engine is missing or fails.
-- `bridge` networking is broad. Per-domain egress filtering, a Windows-native AppContainer backend, macOS Seatbelt, and sandbox capability reporting are still future P1-2 work.
+- `bridge` networking is broad and is not a destination allowlist. Per-domain egress filtering, a Windows-native AppContainer backend, and macOS Seatbelt remain future P1-2 work. `agent doctor` reports the configured backend and its declared capabilities, but this is a bounded availability probe—not an isolation test.
 - The default image is a convenience image, not a universal build image. Configure an operator-controlled image containing the workspace's needed tools.
