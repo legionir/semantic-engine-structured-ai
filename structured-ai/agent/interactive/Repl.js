@@ -506,13 +506,36 @@ async function startSession(runtime, options) {
 
             const line = queue.shift();
 
-            if (line.startsWith("/")) {
+            /*
+            | P0-7: a failing entry (a /save into a missing directory, a
+            | stats call that throws) is reported and the queue moves on;
+            | it must not leave draining stuck or escape as an unhandled
+            | rejection that ends the session.
+            */
 
-                await handleCommand(line);
+            try {
 
-            } else {
+                if (line.startsWith("/")) {
 
-                await runTask(line);
+                    await handleCommand(line);
+
+                } else {
+
+                    await runTask(line);
+                }
+
+            } catch (error) {
+
+                process.stdout.write(
+                    colours.red(`  ${(error && error.message) || String(error)}\n`)
+                );
+
+                if (options && options.verbose && error && error.stack) {
+
+                    process.stdout.write(
+                        colours.dim(`${error.stack}\n`)
+                    );
+                }
             }
 
             if (!exitRequested) {
@@ -561,7 +584,12 @@ async function startSession(runtime, options) {
 
         queue.push(trimmed);
 
-        drain();
+        drain().catch(error => {
+
+            process.stdout.write(
+                colours.red(`  ${(error && error.message) || String(error)}\n`)
+            );
+        });
     });
 
     rl.prompt();

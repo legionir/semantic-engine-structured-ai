@@ -198,6 +198,66 @@ function authorize(claims, { projectId, permission } = {}) {
 }
 
 
+/*
+| P0-4: console-wide changes (settings, approval mode, MCP servers) are
+| reserved for the master token. A scoped token, even one that lists
+| every project, is never an admin.
+*/
+function isAdmin(claims) {
+    return Boolean(claims && claims.master === true);
+}
+
+
+function authorizeAdmin(claims) {
+
+    if (!claims) {
+
+        return {
+            ok: false,
+            status: 401,
+            error: "console authentication required"
+        };
+    }
+
+    if (!isAdmin(claims)) {
+
+        return {
+            ok: false,
+            status: 403,
+            error: "this endpoint requires the console admin token"
+        };
+    }
+
+    return { ok: true };
+}
+
+
+/*
+| P0-4: legacy console endpoints (the default conversation store, the
+| single console run, its calls) belong to no project, so a token has to
+| be allowed on every project to use them.
+*/
+function authorizeUnscoped(claims, permission) {
+
+    const allowed = authorize(claims, { permission });
+
+    if (!allowed.ok) {
+        return allowed;
+    }
+
+    if (!allowsAllProjects(claims)) {
+
+        return {
+            ok: false,
+            status: 403,
+            error: "this endpoint is not project-scoped; use the /api/projects/:projectId routes"
+        };
+    }
+
+    return { ok: true };
+}
+
+
 function visibleProjects(claims, all) {
 
     if (allowsAllProjects(claims)) {
@@ -262,6 +322,9 @@ module.exports = {
     allowsProject,
     hasPermission,
     authorize,
+    isAdmin,
+    authorizeAdmin,
+    authorizeUnscoped,
     visibleProjects,
     redact,
     masterClaims

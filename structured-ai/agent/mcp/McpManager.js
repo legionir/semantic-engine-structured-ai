@@ -446,6 +446,20 @@ class McpManager {
             );
         }
 
+        /*
+        | P0-2 (C2): a stdio server declared by the repository (.mcp.json,
+        | .agent/mcp.json) is not started unless the operator opted in with
+        | MCP_TRUST_PROJECT_CONFIG. activeClients() already hid it from the
+        | catalogue, but a gateway call (mcp_call) reached it by name.
+        */
+        if (!trust.isActive(client.config)) {
+
+            throw new Error(
+                `MCP server "${serverName}" comes from the repository's MCP configuration and is not started ` +
+                "until the operator trusts project MCP configuration (MCP_TRUST_PROJECT_CONFIG=true)."
+            );
+        }
+
         const projectId =
             options.projectId || currentProjectId();
 

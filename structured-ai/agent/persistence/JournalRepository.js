@@ -7,6 +7,7 @@ const settings = require("../config");
 const dataRoot = require("../persistence/DataRoot");
 const { safeName } = require("./SafeIdentifier");
 const SchemaVersion = require("./SchemaVersion");
+const EventRedactor = require("../events/EventRedactor");
 
 
 /*
@@ -243,11 +244,13 @@ function append(agent, record, at, root) {
     }
 
     const file = fileFor(agent, at, root);
-    const line = `${JSON.stringify(record)}\n`;
+    /* P0-5: masked again at the last moment (a record also carries
+       bucket state such as the task text) and written owner-only. */
+    const line = `${JSON.stringify(EventRedactor.redactSecrets(record))}\n`;
     pendingJournalWrites = pendingJournalWrites
         .then(async () => {
-            await fs.promises.mkdir(path.dirname(file), { recursive: true });
-            await fs.promises.appendFile(file, line, "utf8");
+            await fs.promises.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+            await fs.promises.appendFile(file, line, { encoding: "utf8", mode: 0o600 });
             STATE.last_error = null;
             return file;
         })
@@ -309,7 +312,18 @@ function toolKey(event) {
 }
 
 
-function onEvent(event) {
+function onEvent(rawEvent) {
+
+    /* P0-5: secrets are masked before anything is bounded, so a cut-off
+       preview can never keep the first half of a key. */
+    const event =
+        rawEvent && typeof rawEvent === "object"
+            ? EventRedactor.redactSecrets(rawEvent)
+            : rawEvent;
+
+    if (!event || typeof event !== "object") {
+        return;
+    }
 
     if (event.type === "run:start") {
 

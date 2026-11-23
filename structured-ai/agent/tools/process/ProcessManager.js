@@ -4,6 +4,8 @@ const { spawn } = require("child_process");
 
 const settings = require("../../config");
 
+const childEnvironment = require("./ChildEnvironment");
+
 
 /*
 |--------------------------------------------------------------------------
@@ -103,12 +105,15 @@ function spawnInGroup(ctx, command, cwd) {
         );
     }
 
-    /* test mode is only selected by the repository's own tests. */
+    /* test mode is only selected by the repository's own tests.
+       P0-5: the command sees an allowlisted environment, never the
+       runtime's API keys and tokens. */
     return spawn(
         command,
         {
             cwd,
             shell: defaultShell(),
+            env: childEnvironment.build(),
             windowsHide: true,
             detached: USE_PROCESS_GROUPS
         }

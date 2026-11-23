@@ -6,6 +6,8 @@ const settings = require("../config");
 
 const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
 
+const WorkspaceTrust = require("./WorkspaceTrust");
+
 
 /*
 |--------------------------------------------------------------------------
@@ -216,11 +218,98 @@ function loadProject() {
 }
 
 
+/*
+| P0-1 — every project file is workspace input: the workspace layer sits
+| in a repository, and the central layer starts life as a copy of it
+| (ProjectMigration). Security settings are therefore never taken from
+| either layer, and switches that make repository code run only from a
+| workspace the operator trusted (see WorkspaceTrust).
+*/
+function overlayRoot(projectId, workspaceRoot) {
+
+    return workspaceRoot || projectWorkspaceRoot(projectId) || WORKSPACE_ROOT;
+}
+
+
+function isWorkspaceTrusted(projectId, workspaceRoot) {
+
+    try {
+
+        return WorkspaceTrust.isTrusted(overlayRoot(projectId, workspaceRoot));
+
+    } catch {
+
+        /* an unreadable trust store trusts nothing */
+        return false;
+    }
+}
+
+
+function screenSettings(values, trusted) {
+
+    return WorkspaceTrust.filterProjectSettings(values, {
+        trusted,
+        settings
+    });
+}
+
+
+function withoutLocked(values) {
+
+    const kept = {};
+
+    for (const [key, value] of Object.entries(values || {})) {
+
+        if (!WorkspaceTrust.isLocked(key, settings)) {
+            kept[key] = value;
+        }
+    }
+
+    return kept;
+}
+
+
+/* The effective project carries what was refused, and the settings as
+   the files state them, without either reaching JSON.stringify. */
+function screened(project, rawSettings, trusted) {
+
+    const { allowed, blocked } = screenSettings(rawSettings, trusted);
+
+    project.settings = allowed;
+
+    Object.defineProperty(project, "blocked", {
+        value: blocked,
+        enumerable: false,
+        configurable: true,
+        writable: true
+    });
+
+    Object.defineProperty(project, "rawSettings", {
+        value: { ...(rawSettings || {}) },
+        enumerable: false,
+        configurable: true,
+        writable: true
+    });
+
+    Object.defineProperty(project, "trusted", {
+        value: trusted,
+        enumerable: false,
+        configurable: true,
+        writable: true
+    });
+
+    return project;
+}
+
+
 /* The overlay read: legacy floor with the central cap merged on top.
-   Without a central layer this is exactly loadProject(). */
+   Without a central layer this is exactly loadProject(), minus the
+   settings a project file may not change (P0-1). */
 function loadOverlay(projectId, workspaceRoot) {
 
     const { workspaceFile, centralFile } = overlayFor(projectId, workspaceRoot);
+
+    const trusted = isWorkspaceTrusted(projectId, workspaceRoot);
 
     const floor = normaliseProject(readProjectFile(workspaceFile));
 
@@ -231,7 +320,7 @@ function loadOverlay(projectId, workspaceRoot) {
        hooks included, with the empty defaults.) */
     if (!capRaw || typeof capRaw !== "object") {
 
-        return floor;
+        return screened(floor, floor.settings, trusted);
     }
 
     const cap = normaliseProject(capRaw);
@@ -246,15 +335,17 @@ function loadOverlay(projectId, workspaceRoot) {
         }
     }
 
-    return {
-        ...floor,
-        ...stated,
-
-        settings: {
+    return screened(
+        {
+            ...floor,
+            ...stated
+        },
+        {
             ...floor.settings,
             ...cap.settings
-        }
-    };
+        },
+        trusted
+    );
 }
 
 
@@ -339,7 +430,26 @@ function persist() {
 
     project.version = PROJECT_VERSION;
 
-    project.settings = currentOverrides();
+    /* A security setting is never written to a project file: it would
+       never be read back (P0-1), and a base URL does not belong in a
+       repository. A switch refused only because the workspace is not
+       trusted yet is kept, so trusting the folder later restores it. */
+    const kept = {};
+
+    for (const item of project.blocked || []) {
+
+        if (
+            !WorkspaceTrust.isLocked(item.key, settings) &&
+            Object.prototype.hasOwnProperty.call(project.rawSettings || {}, item.key)
+        ) {
+            kept[item.key] = project.rawSettings[item.key];
+        }
+    }
+
+    project.settings = {
+        ...kept,
+        ...withoutLocked(currentOverrides())
+    };
 
     project.updated_at = new Date().toISOString();
 
@@ -425,6 +535,7 @@ function openProject(projectId) {
 
     const applied = [];
     const skipped = [];
+    const blocked = [...(project.blocked || [])];
 
     if (settings.get("PROJECT_FILE_ENABLED") === true) {
 
@@ -454,7 +565,19 @@ function openProject(projectId) {
 
     if (settings.get("PROJECT_FILE_ENABLED") === true) {
 
-        saveProject(project, centralFile || workspaceFile);
+        /* Recording the visit must not rewrite what the files say: the
+           workspace file keeps its settings exactly as the repository
+           has them; the central file drops security settings, which a
+           migrated copy of a repository file may carry (P0-1). */
+        saveProject(
+            {
+                ...project,
+                settings: centralFile
+                    ? withoutLocked(project.rawSettings)
+                    : { ...(project.rawSettings || {}) }
+            },
+            centralFile || workspaceFile
+        );
     }
 
     if (settings.get("PROJECT_FILE_ENABLED") === true) {
@@ -467,7 +590,10 @@ function openProject(projectId) {
         ...(centralFile ? { overlay_path: centralFile } : {}),
         project,
         applied,
-        skipped
+        skipped,
+        blocked,
+        trusted: project.trusted === true,
+        workspace_root: overlayRoot(openedProjectId)
     };
 }
 
@@ -488,5 +614,9 @@ module.exports = {
     /* Phase 8 گام ۲ overlay surface */
     overlayFor,
     centralProjectPath,
-    loadOverlay
+    loadOverlay,
+
+    /* P0-1 workspace trust */
+    isWorkspaceTrusted,
+    WorkspaceTrust
 };

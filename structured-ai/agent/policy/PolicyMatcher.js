@@ -37,7 +37,62 @@ function valueAtPath(source, pathExpression) {
 }
 
 
-function conditionMatches(condition, context) {
+/*
+| Path arguments are matched in their forward-slash form as well, so a
+| Windows path such as src\.git\hooks\pre-commit meets the same rules as
+| src/.git/hooks/pre-commit (P0-3); the patterns are already case
+| insensitive. A rule about "path" also judges both ends of a tool that
+| has no path argument but a source and a destination (fs_move): moving a
+| file out of or into a protected place writes there. A rule that makes
+| the answer stricter applies when either end matches; an allow only
+| when both do.
+*/
+
+function isPathArgument(argumentPath) {
+
+    const last =
+        String(argumentPath)
+            .split(".")
+            .pop();
+
+    return /^(path|paths|source|destination|target|file|files|cwd|from|to|dir|directory)$|_path$/i.test(last);
+}
+
+
+function argumentValues(args, argumentPath) {
+
+    const value =
+        valueAtPath(args, argumentPath);
+
+    if (
+        String(argumentPath) === "path" &&
+        (value === undefined || value === null) &&
+        args &&
+        (args.source !== undefined || args.destination !== undefined)
+    ) {
+
+        return [args.source, args.destination]
+            .filter(item => item !== undefined && item !== null);
+    }
+
+    return [value];
+}
+
+
+function textForms(value, pathLike) {
+
+    const text =
+        value === undefined || value === null
+            ? ""
+            : String(value);
+
+    return pathLike && text.includes("\\")
+        ? [text, text.replace(/\\/g, "/")]
+        : [text];
+}
+
+
+function conditionMatches(condition, context, action) {
 
     if (!condition) {
         return true;
@@ -59,18 +114,24 @@ function conditionMatches(condition, context) {
             of Object.entries(condition.argument_matches)
         ) {
 
-            const value =
-                valueAtPath(context.args, argumentPath);
+            const pathLike =
+                isPathArgument(argumentPath);
 
-            const text =
-                value === undefined || value === null
-                    ? ""
-                    : String(value);
+            const valueMatches = value =>
+                textForms(value, pathLike).some(
+                    text =>
+                        patterns.some(
+                            pattern => new RegExp(pattern, "i").test(text)
+                        )
+                );
+
+            const values =
+                argumentValues(context.args, argumentPath);
 
             const matched =
-                patterns.some(
-                    pattern => new RegExp(pattern, "i").test(text)
-                );
+                action === DECISIONS.ALLOW
+                    ? values.every(valueMatches)
+                    : values.some(valueMatches);
 
             if (!matched) {
                 return false;
@@ -119,6 +180,19 @@ function ruleTargets(rule, toolName, groupsForTool) {
 }
 
 
+/*
+| P0-2: tools whose argument is fed to a shell line by line, and the tool
+| whose command rules each line is checked against.
+*/
+const commandInputTools = Object.freeze({
+    process_write: Object.freeze({
+        argument: "input",
+        evaluateAs: "process_start",
+        as: "command"
+    })
+});
+
+
 class PolicyMatcher {
 
     constructor({ mcpEscalation } = {}) {
@@ -130,12 +204,8 @@ class PolicyMatcher {
     }
 
 
-    match({ toolName, args, agent, registry }) {
-
-        const context = {
-            args: args || {},
-            agent: agent || "main_agent"
-        };
+    /* The last matching rule wins; no rule leaves the registry default. */
+    rulesDecision(toolName, context, registry) {
 
         const groups =
             registry.groupsFor(toolName);
@@ -153,7 +223,7 @@ class PolicyMatcher {
                 continue;
             }
 
-            if (!conditionMatches(rule.when, context)) {
+            if (!conditionMatches(rule.when, context, rule.action)) {
                 continue;
             }
 
@@ -164,6 +234,108 @@ class PolicyMatcher {
                     `rule "${rule.id || rule.action}"`,
                 rule: rule.id || null
             };
+        }
+
+        return decision;
+    }
+
+
+    /*
+    | P0-2: input written to a running shell is a command. Each line goes
+    | through the rules of the tool that would run it as one: a line those
+    | rules deny denies the whole write, and a line that needs approval
+    | makes an allowed write need it too. Returns null when nothing is
+    | stricter than the decision already reached.
+    */
+    commandInputDecision(toolName, context, registry, current) {
+
+        const spec = commandInputTools[toolName];
+
+        if (!spec) {
+            return null;
+        }
+
+        const input =
+            valueAtPath(context.args, spec.argument);
+
+        if (typeof input !== "string" || input.length === 0) {
+            return null;
+        }
+
+        const lines = input.split(/\r\n|\r|\n/);
+        let stricter = null;
+
+        for (let index = 0; index < lines.length; index += 1) {
+
+            const line = lines[index].trim();
+
+            if (!line) {
+                continue;
+            }
+
+            const verdict =
+                this.rulesDecision(
+                    spec.evaluateAs,
+                    {
+                        args: { [spec.as]: line },
+                        agent: context.agent
+                    },
+                    registry
+                );
+
+            if (verdict.decision === DECISIONS.DENY) {
+
+                return {
+                    decision: DECISIONS.DENY,
+                    reason: `line ${index + 1} of the input: ${verdict.reason}`,
+                    rule: verdict.rule
+                };
+            }
+
+            if (
+                !stricter &&
+                verdict.decision === DECISIONS.REQUIRE_APPROVAL &&
+                current.decision === DECISIONS.ALLOW
+            ) {
+
+                stricter = {
+                    decision: DECISIONS.REQUIRE_APPROVAL,
+                    reason: `line ${index + 1} of the input: ${verdict.reason}`,
+                    rule: verdict.rule
+                };
+            }
+        }
+
+        return stricter;
+    }
+
+
+    match({ toolName, args, agent, registry }) {
+
+        const context = {
+            args: args || {},
+            agent: agent || "main_agent"
+        };
+
+        const groups =
+            registry.groupsFor(toolName);
+
+        let decision =
+            this.rulesDecision(toolName, context, registry);
+
+        if (decision.decision !== DECISIONS.DENY) {
+
+            const lineDecision =
+                this.commandInputDecision(
+                    toolName,
+                    context,
+                    registry,
+                    decision
+                );
+
+            if (lineDecision) {
+                decision = lineDecision;
+            }
         }
 
         /* A deny is terminal; trust settings can only make an allow stricter. */
@@ -208,5 +380,7 @@ module.exports = {
     matchesGlob,
     valueAtPath,
     conditionMatches,
-    ruleTargets
+    ruleTargets,
+    commandInputTools,
+    isPathArgument
 };

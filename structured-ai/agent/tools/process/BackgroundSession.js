@@ -174,6 +174,40 @@ async function processStart(args, context) {
             )
     );
 
+    /*
+    | P0-6: a process that exits while input is still being written makes
+    | its stdin fail with EPIPE. Without a listener that error is uncaught
+    | and kills the runtime; with one it is recorded on the session and the
+    | next process_write is refused.
+    */
+
+    for (const stream of ["stdin", "stdout", "stderr"]) {
+
+        const pipe = child[stream];
+
+        if (pipe && typeof pipe.on === "function") {
+
+            pipe.on(
+                "error",
+                error => {
+
+                    const reason =
+                        (error && (error.code || error.message)) || "error";
+
+                    if (stream === "stdin") {
+                        session.stdin_error = reason;
+                    }
+
+                    ProcessManager.appendOutput(
+                        session,
+                        "stderr",
+                        `[${stream} ${reason}] ${(error && error.message) || ""}\n`
+                    );
+                }
+            );
+        }
+    }
+
     child.on(
         "error",
         error => {
@@ -315,7 +349,35 @@ async function processWrite(args, context) {
             ? args.input
             : `${args.input}\n`;
 
-    session.child.stdin.write(payload);
+    const stdin =
+        session.child.stdin;
+
+    if (
+        !stdin ||
+        stdin.destroyed ||
+        stdin.writableEnded ||
+        session.stdin_error
+    ) {
+
+        throw new Error(
+            `Process ${args.process_id} no longer accepts input${
+                session.stdin_error ? ` (${session.stdin_error})` : ""
+            }.`
+        );
+    }
+
+    try {
+
+        stdin.write(payload);
+
+    } catch (error) {
+
+        session.stdin_error = error.code || error.message;
+
+        throw new Error(
+            `Could not write to process ${args.process_id}: ${error.message}`
+        );
+    }
 
     return {
         process_id:
