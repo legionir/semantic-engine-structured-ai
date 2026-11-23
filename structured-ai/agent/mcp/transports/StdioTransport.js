@@ -17,6 +17,13 @@ const protocol = require("../protocol");
 | The process is started on the first call and reused. When it dies,
 | every call still waiting is rejected with the reason, so a crashed
 | server surfaces as a failed tool call instead of a run that hangs.
+|
+| P0-6: messages are newline-delimited JSON by default, as the MCP stdio
+| transport specifies; Content-Length framing is used only when it is
+| configured (framing: "content-length") or when the server itself
+| answers that way. Requests the server sends (ping, roots/list) are
+| answered, and a broken pipe (EPIPE) on any of the child's streams
+| fails the connection instead of crashing the runtime.
 |--------------------------------------------------------------------------
 */
 
@@ -46,6 +53,8 @@ class StdioTransport {
 
         this.closeHandler = () => {};
 
+        this.requestHandler = defaultRequestHandler;
+
         this.framing =
             config.framing || protocol.FRAMING.AUTO;
 
@@ -57,9 +66,10 @@ class StdioTransport {
 
         /*
         | A server that answers with Content-Length must be answered the
-        | same way. Until one message has arrived the framing is a guess,
-        | and Content-Length is the safe guess because a server that
-        | wants lines tolerates headers far less often than the reverse.
+        | same way. Until one message has arrived the framing follows the
+        | MCP specification: one JSON object per line. A server that only
+        | understands lines ignores a Content-Length header, so guessing
+        | headers would leave it waiting forever.
         */
 
         this.observedFraming = null;
@@ -81,6 +91,18 @@ class StdioTransport {
     onClose(handler) {
 
         this.closeHandler = handler || (() => {});
+    }
+
+
+    /*
+    | The handler receives a server-to-client request and returns (or
+    | resolves to) its result; a thrown error becomes a JSON-RPC error
+    | answer carrying error.code when it is an integer.
+    */
+
+    onRequest(handler) {
+
+        this.requestHandler = handler || defaultRequestHandler;
     }
 
 
@@ -194,6 +216,22 @@ class StdioTransport {
                     this.decoder.push(chunk);
                 });
 
+                /*
+                | Without a listener an EPIPE on any of these pipes is an
+                | uncaught exception that takes the whole runtime down.
+                */
+
+                for (const stream of ["stdin", "stdout", "stderr"]) {
+
+                    if (child[stream] && typeof child[stream].on === "function") {
+
+                        child[stream].on(
+                            "error",
+                            error => this.pipeFailed(child, stream, error)
+                        );
+                    }
+                }
+
                 child.stderr.on("data", chunk => {
                     this.diagnose(
                         chunk.toString("utf8").slice(0, 1000)
@@ -244,6 +282,65 @@ class StdioTransport {
     }
 
 
+    pipeFailed(child, stream, error) {
+
+        const reason =
+            (error && (error.code || error.message)) || "error";
+
+        this.diagnose(
+            `${stream} pipe failed: ${reason}`
+        );
+
+        if (this.child !== child) {
+            return;
+        }
+
+        this.teardown(
+            new Error(
+                `MCP server "${this.name}" closed its ${stream} (${reason}).`
+            )
+        );
+
+        this.closeHandler({ code: null, signal: null, error: reason });
+
+        try {
+
+            child.kill("SIGTERM");
+
+        } catch {
+            /* the process is already gone */
+        }
+    }
+
+
+    answerRequest(message) {
+
+        Promise.resolve()
+            .then(() => this.requestHandler(message))
+            .then(
+                result => protocol.response(message.id, result),
+                error => protocol.errorResponse(
+                    message.id,
+                    error && Number.isInteger(error.code) ? error.code : -32603,
+                    (error && error.message) || "internal error"
+                )
+            )
+            .then(answer => {
+
+                try {
+
+                    this.write(answer);
+
+                } catch (error) {
+
+                    this.diagnose(
+                        `could not answer "${message.method}": ${error.message}`
+                    );
+                }
+            });
+    }
+
+
     receive(message) {
 
         if (
@@ -257,7 +354,7 @@ class StdioTransport {
             */
 
             this.observedFraming =
-                this.decoder.lastFraming || protocol.FRAMING.CONTENT_LENGTH;
+                this.decoder.lastFraming || protocol.FRAMING.NDJSON;
         }
 
         if (protocol.isResponse(message)) {
@@ -287,6 +384,13 @@ class StdioTransport {
             return;
         }
 
+        if (protocol.isRequest(message)) {
+
+            this.answerRequest(message);
+
+            return;
+        }
+
         if (protocol.isNotification(message)) {
 
             this.notificationHandler(message);
@@ -300,7 +404,7 @@ class StdioTransport {
             return this.framing;
         }
 
-        return this.observedFraming || protocol.FRAMING.CONTENT_LENGTH;
+        return this.observedFraming || protocol.FRAMING.NDJSON;
     }
 
 
@@ -313,7 +417,17 @@ class StdioTransport {
             );
         }
 
-        this.child.stdin.write(
+        const stdin =
+            this.child.stdin;
+
+        if (!stdin || stdin.destroyed || stdin.writableEnded) {
+
+            throw new Error(
+                `MCP server "${this.name}" no longer accepts input.`
+            );
+        }
+
+        stdin.write(
             protocol.encode(message, this.writeFraming())
         );
     }
@@ -453,6 +567,26 @@ class StdioTransport {
             timer.unref();
         }
     }
+}
+
+
+/*
+| Used until the client installs its own handler: ping is always
+| answered, anything else is reported as not supported.
+*/
+
+function defaultRequestHandler(message) {
+
+    if (message.method === "ping") {
+        return {};
+    }
+
+    const error =
+        new Error(`method "${message.method}" is not supported by this client`);
+
+    error.code = -32601;
+
+    throw error;
 }
 
 
