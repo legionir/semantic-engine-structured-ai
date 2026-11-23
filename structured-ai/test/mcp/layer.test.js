@@ -84,14 +84,32 @@ function writeStdioServer(serverName) {
 const NAME = ${JSON.stringify(serverName)};
 function send(message) {
     const body = JSON.stringify(message);
+    if (lineMode) {
+        process.stdout.write(body + "\\n");
+        return;
+    }
     process.stdout.write(
         "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body
     );
 }
 let buffer = Buffer.alloc(0);
+let lineMode = false;
 process.stdin.on("data", chunk => {
     buffer = Buffer.concat([buffer, chunk]);
     for (;;) {
+        /* answer in the framing the client used: NDJSON lines or Content-Length */
+        const text = buffer.toString("utf8");
+        const start = text.search(/\\S/);
+        if (start !== -1 && text[start] === "{") {
+            const newline = buffer.indexOf("\\n");
+            if (newline === -1) return;
+            const line = buffer.slice(0, newline).toString().trim();
+            buffer = buffer.slice(newline + 1);
+            if (!line) continue;
+            lineMode = true;
+            handle(JSON.parse(line));
+            continue;
+        }
         const separator = buffer.indexOf("\\r\\n\\r\\n");
         if (separator === -1) return;
         const match = /Content-Length:\\s*(\\d+)/i.exec(
@@ -102,32 +120,37 @@ process.stdin.on("data", chunk => {
         if (buffer.length < separator + 4 + length) return;
         const body = buffer.slice(separator + 4, separator + 4 + length).toString();
         buffer = buffer.slice(separator + 4 + length);
-        const message = JSON.parse(body);
+        lineMode = false;
+        handle(JSON.parse(body));
+    }
+});
+function handle(message) {
+    {
         if (message.method === "initialize") {
             send({ jsonrpc: "2.0", id: message.id, result: {
                 protocolVersion: "2025-06-18",
                 capabilities: { tools: {} },
                 serverInfo: { name: NAME, version: "1.0.0" }
             }});
-            continue;
+            return;
         }
         if (message.method === "tools/list") {
             send({ jsonrpc: "2.0", id: message.id, result: { tools: [
                 { name: "echo", description: "echo", inputSchema: { type: "object", properties: {} } }
             ]}});
-            continue;
+            return;
         }
         if (message.method === "tools/call") {
             send({ jsonrpc: "2.0", id: message.id, result: {
                 content: [{ type: "text", text: JSON.stringify({ via: NAME }) }]
             }});
-            continue;
+            return;
         }
         if (message.id !== undefined) {
             send({ jsonrpc: "2.0", id: message.id, result: {} });
         }
     }
-});
+}
 `;
 
     fs.writeFileSync(file, source, "utf8");

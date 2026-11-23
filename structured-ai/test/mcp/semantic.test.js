@@ -66,9 +66,24 @@ const fs = require("fs");
 
 let buffer = Buffer.alloc(0);
 
+let lineMode = false;
+
 process.stdin.on("data", chunk => {
     buffer = Buffer.concat([buffer, chunk]);
     while (buffer.length > 0) {
+        /* answer in the framing the client used: NDJSON lines or Content-Length */
+        const text = buffer.toString("utf8");
+        const start = text.search(/\\S/);
+        if (start !== -1 && text[start] === "{") {
+            const newline = buffer.indexOf("\\n");
+            if (newline === -1) break;
+            const line = buffer.slice(0, newline).toString("utf8").trim();
+            buffer = buffer.slice(newline + 1);
+            if (!line) continue;
+            lineMode = true;
+            handleRequest(JSON.parse(line));
+            continue;
+        }
         const sep = buffer.indexOf("\\r\\n\\r\\n");
         if (sep === -1) break;
         const header = buffer.slice(0, sep).toString("utf8");
@@ -82,6 +97,7 @@ process.stdin.on("data", chunk => {
         const body = buffer.slice(sep + 4, sep + 4 + len).toString("utf8");
         buffer = buffer.slice(sep + 4 + len);
 
+        lineMode = false;
         const msg = JSON.parse(body);
         handleRequest(msg);
     }
@@ -89,6 +105,10 @@ process.stdin.on("data", chunk => {
 
 function send(res) {
     const json = JSON.stringify(res);
+    if (lineMode) {
+        process.stdout.write(json + "\\n");
+        return;
+    }
     process.stdout.write("Content-Length: " + Buffer.byteLength(json) + "\\r\\n\\r\\n" + json);
 }
 
