@@ -320,6 +320,9 @@ async function main() {
         try {
             const unauthenticated = await fetch(`${base}/api/state`);
             assert.equal(unauthenticated.status, 401);
+            /* Fully release the keep-alive response before server teardown;
+               Windows Node 20/22 can otherwise retain project work briefly. */
+            await unauthenticated.arrayBuffer();
 
             const authenticated = await fetch(`${base}/api/state`, {
                 headers: { "x-console-token": app.token }
@@ -354,12 +357,27 @@ async function main() {
     });
 
 
-    fs.rmSync(WORKSPACE, {
-        recursive: true,
-        force: true,
-        maxRetries: 8,
-        retryDelay: 100
-    });
+    const runtime = require(path.join(REPO, "agent", "agent"));
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
+
+    try {
+        fs.rmSync(WORKSPACE, {
+            recursive: true,
+            force: true,
+            maxRetries: 20,
+            retryDelay: 100
+        });
+    } catch (error) {
+        /* Windows AV/indexing can briefly retain a handle after every HTTP
+           server and persistence writer has been closed. This is an OS-temp
+           cleanup issue, not a route-contract failure; report it, don't turn
+           a passing API suite red. */
+        if (process.platform !== "win32" || !["EBUSY", "EPERM"].includes(error.code)) {
+            throw error;
+        }
+        console.warn(`  cleanup deferred for temporary workspace (${error.code})`);
+    }
     const failed = results.filter(item => !item.ok);
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
     process.exit(failed.length === 0 ? 0 : 1);

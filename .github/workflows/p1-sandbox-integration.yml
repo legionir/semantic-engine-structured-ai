@@ -18,12 +18,10 @@ concurrency:
 
 jobs:
   docker-sandbox:
-    name: Real Docker isolation and toolchain smoke test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: Real Docker isolation and toolchain smoke test (Linux)
+    # The actual container isolation assertions run on a Linux Docker daemon;
+    # Windows launch and process-tree contracts run in the P0 matrix.
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
       run:
