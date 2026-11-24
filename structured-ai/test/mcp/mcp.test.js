@@ -18,16 +18,15 @@ const WORKSPACE =
     fs.mkdtempSync(
         path.join(os.tmpdir(), "mcp-test-")
     );
+const TRUST_HOME =
+    fs.mkdtempSync(path.join(os.tmpdir(), "mcp-trust-"));
 
 process.env.WORKSPACE_ROOT = WORKSPACE;
 
 /* P0-8: workspace trust is read from a store of the suite's own, never
    from the developer's ~/.config. */
 process.env.STRUCTURED_AI_TRUST_FILE =
-    path.join(
-        fs.mkdtempSync(path.join(os.tmpdir(), "mcp-trust-")),
-        "trusted-workspaces.json"
-    );
+    path.join(TRUST_HOME, "trusted-workspaces.json");
 
 const protocol = require("../../agent/mcp/protocol");
 const config = require("../../agent/mcp/McpConfig");
@@ -40,6 +39,21 @@ const tools = require("../../agent/tools");
 const results = [];
 
 const cleanups = [];
+
+
+function removeTempTree(target) {
+    try {
+        fs.rmSync(target, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    } catch (error) {
+        /* Windows Defender/indexing can briefly retain handles even after
+           every MCP transport has shut down. These are OS-temp folders;
+           defer only transient Windows cleanup errors, not test failures. */
+        if (process.platform !== "win32" || !["EBUSY", "EPERM"].includes(error.code)) {
+            throw error;
+        }
+        console.warn(`  cleanup deferred for MCP temp tree (${error.code})`);
+    }
+}
 
 
 async function test(name, fn) {
@@ -1774,7 +1788,8 @@ async function main() {
         `\n${results.length - failed.length}/${results.length} passed`
     );
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    removeTempTree(WORKSPACE);
+    removeTempTree(TRUST_HOME);
 
     process.exit(failed.length === 0 ? 0 : 1);
 }

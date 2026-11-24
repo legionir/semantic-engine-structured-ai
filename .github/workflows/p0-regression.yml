@@ -121,6 +121,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  p1-performance:
+    name: P1 event-loop benchmark (10 concurrent agents)
+    needs: [p0, full]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: structured-ai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run test:p1:benchmark
+
   report:
     name: P0 report
     needs: [p0, full]
