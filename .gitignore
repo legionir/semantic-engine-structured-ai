@@ -2,6 +2,9 @@
 # Runtime state of any demo/test workspace, never source
 **/.agent/
 
+# Node dependencies are restored from package-lock.json.
+**/node_modules/
+
 # Ruflo local secrets and runtime data
 .env
 .env.local

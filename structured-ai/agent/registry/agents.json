@@ -180,7 +180,8 @@
       "skill_get",
       "skill_read",
       "code_find_tests",
-      "code_diagnostics"
+      "code_diagnostics",
+      "process_resize"
     ],
     "model": "auto-switch",
     "temperature": 0.1,

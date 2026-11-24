@@ -3557,6 +3557,9 @@ function describeEvent(event) {
 
     switch (event.type) {
 
+        case "process:output":
+            return `${event.process_id || "process"} ${event.stream || "stdout"}: ${shorten(event.text || "", 120)}`;
+
         case "hook:start":
             return `${event.phase} ${event.id} (${event.hook_type})`;
 

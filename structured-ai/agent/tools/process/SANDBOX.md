@@ -6,7 +6,7 @@ Process tools remain disabled by default:
 PROCESS_SANDBOX_MODE=deny
 ```
 
-Select a sandbox explicitly when enabling `terminal_exec` or `process_start`:
+Select a sandbox explicitly when enabling `terminal_exec` or `process_start`. Set `interactive: true` on `process_start` to open a PTY/ConPTY shell; use `process_write` for input and control characters, `process_resize` for terminal dimensions, and `process_read` for buffered output. The web console receives bounded, redacted PTY output over its live event stream.
 
 - `docker` or `podman`: a Linux container engine must be installed and running. The default image is `node:22-bookworm`; override it with `PROCESS_SANDBOX_IMAGE` if the workspace needs another toolchain.
 - `bwrap`: Linux-only bubblewrap sandbox. Network access is isolated.

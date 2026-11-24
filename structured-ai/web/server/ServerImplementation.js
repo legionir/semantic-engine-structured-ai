@@ -50,6 +50,7 @@ const { SseHub } = require("./SseHub");
 
 const consoleAuth = require("../../agent/config/ConsoleAuth");
 const { ApprovalStore } = require("../../agent/policy");
+const ProcessOutputBus = require("../../agent/tools/process/ProcessOutputBus");
 const { DiscussionService } = require("../../agent/discussion/DiscussionService");
 
 
@@ -679,6 +680,14 @@ function createServer(runtime, options = {}) {
 
 
     runtime.events.bus.on("event", broadcast);
+
+    const broadcastProcessOutput = output => {
+        sseHub.broadcast(
+            { type: "process:output", ...output },
+            (event, client) => eventForClient(event, client)
+        );
+    };
+    ProcessOutputBus.on(ProcessOutputBus.outputEvent, broadcastProcessOutput);
 
 
     /*
@@ -3284,6 +3293,8 @@ function createServer(runtime, options = {}) {
         },
 
         close() {
+
+            ProcessOutputBus.removeListener(ProcessOutputBus.outputEvent, broadcastProcessOutput);
 
             /* Do not leave MCP children/background processes behind. */
             toolRuntime.shutdown();

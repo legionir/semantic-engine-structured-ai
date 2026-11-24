@@ -70,6 +70,7 @@ const IMPLEMENTATIONS = {
     process_start: processTools.process_start,
     process_read: processTools.process_read,
     process_write: processTools.process_write,
+    process_resize: processTools.process_resize,
     process_terminate: processTools.process_terminate,
     process_list: processTools.process_list,
 

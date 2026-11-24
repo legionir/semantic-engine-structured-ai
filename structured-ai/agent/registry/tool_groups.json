@@ -49,6 +49,7 @@
       "process_start",
       "process_read",
       "process_write",
+      "process_resize",
       "process_terminate",
       "process_list"
     ]

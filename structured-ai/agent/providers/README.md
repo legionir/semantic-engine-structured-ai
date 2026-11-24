@@ -63,4 +63,9 @@ the agent loop can switch to the router without changing its request code.
 `test/p1/p11.test.js` runs every adapter against recorded answers in
 `test/fixtures/providers.json` (chat, stream, tool call, 429, 5xx, prose-wrapped
 actions). `ci/provider-smoke.js` runs one fixed scenario against real providers
-whose credentials are present (nightly).
+whose credentials are present. `.github/workflows/provider-smoke.yml` runs it
+nightly and requires at least four configured providers. Add the corresponding
+GitHub Actions secrets (`SMOKE_OPENAI_API_KEY`/`MODEL`,
+`SMOKE_ANTHROPIC_API_KEY`/`MODEL`, `SMOKE_GEMINI_API_KEY`/`MODEL`, and
+`SMOKE_OPENROUTER_API_KEY`/`MODEL`; Azure is optional) before expecting that
+workflow to pass.

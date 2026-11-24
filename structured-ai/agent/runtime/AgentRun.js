@@ -123,6 +123,10 @@ async function runAgentCore(options = {}) {
         h.currentRun().messages = messages;
     }
 
+    if (typeof h.refreshRepositoryContext === "function") {
+        await h.refreshRepositoryContext();
+    }
+
     if (messages.length === 0) {
 
         messages.push(

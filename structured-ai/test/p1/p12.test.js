@@ -168,6 +168,23 @@ test("Docker/Podman containers have bounded resources, no ambient secrets, and a
 });
 
 
+test("container PTY launch attaches stdin and allocates a TTY", () => {
+
+    const spec = SandboxProvider.buildLaunchSpec({
+        mode: "docker",
+        ctx: { root: "/work/project" },
+        cwd: "/work/project",
+        command: "/bin/sh -i",
+        platform: "linux",
+        interactive: true,
+        containerName: "pty-sandbox"
+    });
+
+    assert.ok(spec.args.includes("--interactive"));
+    assert.ok(spec.args.includes("--tty"));
+});
+
+
 test("container working directory translates Windows paths and refuses workspace escape", () => {
 
     assert.strictEqual(

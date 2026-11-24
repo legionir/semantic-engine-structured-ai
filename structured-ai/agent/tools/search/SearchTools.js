@@ -112,34 +112,26 @@ function matchesFileName(session, name, relativePath) {
 
 function buildMatcher(session) {
 
-    if (session.mode === "files") {
+    if (session.mode === "files" || !session.is_regex) {
         return null;
     }
 
-    if (session.is_regex) {
+    const RegexWorkerMatcher = require("./RegexWorker");
 
-        return new RegExp(
-            session.query,
-            session.case_sensitive
-                ? "g"
-                : "gi"
-        );
-    }
-
-    return null;
+    return new RegexWorkerMatcher(
+        session.query,
+        session.case_sensitive ? "g" : "gi"
+    );
 }
 
 
-function countMatchesInLine(
+async function countMatchesInLine(
     line,
     session,
     matcher
 ) {
 
     if (matcher) {
-
-        matcher.lastIndex = 0;
-
         return matcher.test(line);
     }
 
@@ -295,7 +287,7 @@ async function runSearch(session) {
                 }
 
                 if (
-                    countMatchesInLine(
+                    await countMatchesInLine(
                         lines[index],
                         session,
                         matcher
@@ -331,6 +323,10 @@ async function runSearch(session) {
         session.error = error.message;
 
     } finally {
+
+        if (matcher && typeof matcher.close === "function") {
+            await matcher.close();
+        }
 
         session.finished_at = Date.now();
     }

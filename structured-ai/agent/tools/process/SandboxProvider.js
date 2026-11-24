@@ -193,6 +193,7 @@ function containerLaunchSpec({
     memoryMb = DEFAULT_CONTAINER_LIMITS.memoryMb,
     pidsLimit = DEFAULT_CONTAINER_LIMITS.pidsLimit,
     tmpMb = DEFAULT_CONTAINER_LIMITS.tmpMb,
+    interactive = false,
     uid,
     gid,
     environment = process.env,
@@ -222,32 +223,40 @@ function containerLaunchSpec({
     const limits = validateContainerLimits({ cpus, memoryMb, pidsLimit, tmpMb });
     const workdir = workspaceContainerPath(ctx.root, cwd, platform);
     const user = containerUser({ platform, uid, gid });
+    const args = [
+        "run",
+        "--rm",
+        "--init",
+        "--pull=missing"
+    ];
+
+    if (interactive) {
+        args.push("--interactive", "--tty");
+    }
+
+    args.push(
+        "--name", containerName,
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit", String(limits.pidsLimit),
+        "--memory", `${limits.memoryMb}m`,
+        "--cpus", String(limits.cpus),
+        "--network", network,
+        "--tmpfs", `/tmp:rw,nosuid,nodev,size=${limits.tmpMb}m`,
+        "--mount", `type=bind,source=${ctx.root},target=/workspace`,
+        "--workdir", workdir,
+        "--user", user,
+        "--env", "HOME=/tmp",
+        "--env", `PATH=${CONTAINER_PATH}`,
+        "--",
+        image,
+        "/bin/sh", "-lc", command
+    );
 
     return {
         command: mode,
-        args: [
-            "run",
-            "--rm",
-            "--init",
-            "--pull=missing",
-            "--name", containerName,
-            "--read-only",
-            "--cap-drop=ALL",
-            "--security-opt=no-new-privileges",
-            "--pids-limit", String(limits.pidsLimit),
-            "--memory", `${limits.memoryMb}m`,
-            "--cpus", String(limits.cpus),
-            "--network", network,
-            "--tmpfs", `/tmp:rw,nosuid,nodev,size=${limits.tmpMb}m`,
-            "--mount", `type=bind,source=${ctx.root},target=/workspace`,
-            "--workdir", workdir,
-            "--user", user,
-            "--env", "HOME=/tmp",
-            "--env", `PATH=${CONTAINER_PATH}`,
-            "--",
-            image,
-            "/bin/sh", "-lc", command
-        ],
+        args,
         options: {
             cwd: ctx.root,
             env: childEnvironment.build({}, environment),

@@ -5,6 +5,9 @@ const { spawn } = require("child_process");
 const settings = require("../../config");
 
 const SandboxProvider = require("./SandboxProvider");
+const PtySession = require("./PtySession");
+const ProcessOutputBus = require("./ProcessOutputBus");
+const EventRedactor = require("../../events/EventRedactor");
 
 
 /*
@@ -65,9 +68,9 @@ const USE_PROCESS_GROUPS =
     process.platform !== "win32";
 
 
-function spawnInGroup(ctx, command, cwd) {
+function spawnInGroup(ctx, command, cwd, options = {}) {
 
-    return SandboxProvider.spawnInSandbox({
+    const sandboxOptions = {
         mode: settings.get("PROCESS_SANDBOX_MODE"),
         ctx,
         command,
@@ -81,7 +84,17 @@ function spawnInGroup(ctx, command, cwd) {
         memoryMb: settings.get("PROCESS_SANDBOX_MEMORY_MB"),
         pidsLimit: settings.get("PROCESS_SANDBOX_PIDS_LIMIT"),
         tmpMb: settings.get("PROCESS_SANDBOX_TMP_MB")
-    });
+    };
+
+    if (options.interactive === true) {
+        return PtySession.spawnTerminal({
+            ...sandboxOptions,
+            cols: options.cols,
+            rows: options.rows
+        });
+    }
+
+    return SandboxProvider.spawnInSandbox(sandboxOptions);
 }
 
 
@@ -186,6 +199,15 @@ function appendOutput(session, stream, chunk) {
     });
 
     session.buffered_chars += chunk.length;
+
+    ProcessOutputBus.emit(ProcessOutputBus.outputEvent, {
+        process_id: session.id,
+        run_id: session.run_id || null,
+        project_id: session.project_id || null,
+        stream,
+        text: EventRedactor.maskText(String(chunk)).slice(0, 4000),
+        at: Date.now()
+    });
 
     while (
         session.buffered_chars > settings.get("MAX_PROCESS_BUFFER_CHARS") &&

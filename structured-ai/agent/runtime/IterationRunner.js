@@ -131,6 +131,10 @@ async function runSubAgentLoop({
 
         await h.maintainContext(messages, scope);
 
+        if (typeof h.refreshRepositoryContext === "function") {
+            await h.refreshRepositoryContext();
+        }
+
         h.refreshRuntimeContext(messages);
 
         h.events.setContext({ scope, iteration });
@@ -316,6 +320,10 @@ async function runMainLoop({
         h.assertRunActive("main agent");
 
         await h.maintainContext(messages, "main_agent");
+
+        if (typeof h.refreshRepositoryContext === "function") {
+            await h.refreshRepositoryContext();
+        }
 
         h.refreshRuntimeContext(messages);
 

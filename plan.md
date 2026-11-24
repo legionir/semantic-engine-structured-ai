@@ -318,7 +318,7 @@ interface واحد LLMProvider با adapterهای OpenAI (Chat و Responses)، A
 - فرمان runaway پس از timeout با کل درخت پروسه kill می‌شود (Windows: taskkill /T).
 - agent doctor نوع sandbox فعال و قابلیت‌ها را گزارش می‌دهد.
 
-**وضعیت اجرا (۲۳ نوامبر ۲۰۲۶):** قراردادهای launch برای bwrap و Docker/Podman، محدودیت منابع، deny-by-default، گزارش doctor و تست process-tree در CI توسعه یافته‌اند؛ تست process-tree اکنون از taskkill در Windows نیز استفاده می‌کند. P1-2 هنوز کامل نیست: تست isolation واقعی روی هر سه OS و smoke تست npm/pip/git داخل sandbox انجام نشده، چون این محیط Docker، Podman و bwrap ندارد؛ backendهای native ویندوز/macOS و egress allowlist هم پیاده‌سازی نشده‌اند. تست واقعی backend باید روی runner مجهز اجرا شود و از تست‌های launch-spec جدا بماند.
+**وضعیت اجرا (۲۴ نوامبر ۲۰۲۶):** قراردادهای launch برای bwrap و Docker/Podman، محدودیت منابع، deny-by-default، گزارش doctor و تست درخت فرایند پیاده شده‌اند. تست process-tree برای Windows از `taskkill /T` استفاده می‌کند. تست integration واقعی Docker به workflow جداگانهٔ Linux افزوده شده است (خواندن فایل SSH میزبان، عدم اثر نوشتن خارج workspace، قطع شبکه در حالت `none` و smoke تست npm/pip/git با egress صریح `bridge`). این محیط Docker/Podman/bwrap ندارد، پس اجرای واقعی آن در CI بعد از push باید تأیید شود. egress allowlist وجود ندارد؛ `bridge` دسترسی عمومی شبکه می‌دهد.
 
 ### P1-3 — ترمینال تعاملی (PTY)
 
@@ -368,6 +368,19 @@ GitHub Actions روی ubuntu، windows و macos با Node 20/22/24؛ حذف وا
 - هیچ فایل منبع در agent/ بزرگ‌تر از ۱۵KB نیست (به‌جز داده).
 - lag event loop با ۱۰ عامل هم‌زمان کمتر از ۱۰۰ms (p99).
 - regex (a+)+\$ روی فایل ۱۰MB پس از ۲ ثانیه قطع می‌شود و runtime پاسخ‌گو می‌ماند.
+
+**وضعیت P1 در این تغییر:**
+
+| آیتم | وضعیت و شواهد | آنچه هنوز مانده |
+|---|---|---|
+| P1-1 Provider | قرارداد mock برای ۸ provider، 83 تست؛ nightly workflow برای سناریوی واقعی ≥۴ provider اضافه شد. | اجرای nightly وابسته به تنظیم حداقل چهار جفت secret مدل/کلید در GitHub است و هنوز نتیجهٔ واقعی ثبت نشده. |
+| P1-2 Sandbox | قراردادهای launch/doctor و workflow integration واقعی Docker برای Linux اضافه شد. | اجرای workflow واقعی Docker پس از push باید سبز شود؛ egress allowlist پیاده‌سازی نشده. |
+| P1-3 PTY | node-pty/ConPTY، نشست interactive، resize، Ctrl-C و stream زندهٔ redacted به SSE؛ تست‌های p13 و WebServer اضافه شدند. | ماتریس CI این تغییر باید Windows را تأیید کند؛ backend واقعی sandbox+PTY باید در Docker workflow بررسی شود. |
+| P1-4 Policy | طبقه‌بندی 268 فرمان: 268/268 درست در مرجع فعلی. | افزودن نمونه‌های مرجع جدید در صورت تغییر parser. |
+| P1-5 CI | full suite روی Ubuntu/Windows و Node 20/22/24 پیکربندی شده؛ macOS مسدودکننده عمداً حذف شده است. | پوشش خطی >۸۰٪ هنوز اندازه‌گیری/گیت نشده؛ نتیجهٔ ماتریس جدید لازم است. |
+| P1-6 Runtime | درخواست Provider از agent.js جدا شد؛ تشخیص Git async/cache شد؛ regex کاربر در worker با timeout ۲ثانیه‌ای اجرا می‌شود؛ تست ۱۰MiB اضافه شد. | `agent.js` هنوز حدود 90KB است و شرط اندازهٔ ≤15KB و benchmark lag زیر بار ۱۰ عامل تکمیل نشده است. |
+
+بنابراین P1 هنوز **بسته نیست**: کارکرد PTY و guardهای محلی تست شده، اما خروجی CI جدید، sandbox واقعی، providerهای واقعی و refactor کامل/benchmark P1-6 هنوز معیارهای خروج‌اند.
 
 ## P2 — عامل همه‌فن‌حریف (هفته ۱۶ تا ۳۰)
 

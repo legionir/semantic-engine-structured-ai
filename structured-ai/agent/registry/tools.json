@@ -499,7 +499,7 @@
     "type": "function",
     "function": {
       "name": "process_start",
-      "description": "Start a long-running command as a background session that can be read from, written to, and terminated. Use terminal_exec for commands that finish on their own.",
+      "description": "Start a background process or interactive PTY session that can be read from, written to, resized, and terminated. Use terminal_exec for commands that finish on their own.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -514,6 +514,18 @@
           "wait_ms": {
             "type": "integer",
             "description": "How long to collect initial output before returning. Defaults to 1000."
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "Start an interactive terminal session (PTY/ConPTY) instead of a piped process. The command is sent to the shell after startup."
+          },
+          "cols": {
+            "type": "integer",
+            "description": "Initial PTY width in columns; defaults to 80."
+          },
+          "rows": {
+            "type": "integer",
+            "description": "Initial PTY height in rows; defaults to 24."
           }
         },
         "required": [
@@ -575,6 +587,36 @@
         "required": [
           "process_id",
           "input"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_resize",
+      "description": "Resize the terminal dimensions for an interactive PTY session.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "cols": {
+            "type": "integer",
+            "description": "Terminal width in columns, from 20 to 400."
+          },
+          "rows": {
+            "type": "integer",
+            "description": "Terminal height in rows, from 5 to 120."
+          }
+        },
+        "required": [
+          "process_id",
+          "cols",
+          "rows"
         ],
         "additionalProperties": false
       }

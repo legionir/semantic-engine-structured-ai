@@ -3,6 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const http = require("http");
 const path = require("path");
+const ProcessOutputBus = require("../../agent/tools/process/ProcessOutputBus");
 
 /*
 | The console is tested through its own HTTP surface: the event stream,
@@ -467,6 +468,35 @@ async function main() {
         assert.equal(state.body.approval_mode, "prompt");
         assert.ok(state.body.limits.max_run_ms > 0);
         assert.ok(state.body.agents.length > 0);
+    });
+
+    await test("interactive PTY output reaches the live event stream without entering persisted runtime events", async () => {
+
+        const stream = collectEvents();
+        await waitFor(() => stream.seen.some(event => event.type === "snapshot"));
+
+        const durableSequence = runtime.events.eventBus.sequence;
+        ProcessOutputBus.emit("output", {
+            process_id: "pty-live-test",
+            run_id: "run-live-test",
+            project_id: null,
+            stream: "stdout",
+            text: "live terminal byte",
+            at: Date.now()
+        });
+
+        const output = await waitFor(() =>
+            stream.seen.find(event => event.type === "process:output" && event.process_id === "pty-live-test")
+        );
+
+        assert.equal(output.text, "live terminal byte");
+        assert.equal(
+            runtime.events.eventBus.sequence,
+            durableSequence,
+            "ephemeral terminal bytes must not enter the durable event journal"
+        );
+
+        stream.stop();
     });
 
     await test("a task streams events and produces an answer", async () => {

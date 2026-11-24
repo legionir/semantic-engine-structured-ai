@@ -52,6 +52,9 @@ function readSessionOutput(session, options) {
         command:
             session.command,
 
+        interactive:
+            session.child.interactive === true,
+
         cwd:
             toRelativeInRoot(session.root || WORKSPACE_ROOT, session.cwd),
 
@@ -106,8 +109,20 @@ async function processStart(args, context) {
     const cwd =
         ProcessManager.resolveCwd(ctx, args.cwd);
 
+    const interactive = args.interactive === true;
+    const cols = Number.isInteger(args.cols) ? args.cols : 80;
+    const rows = Number.isInteger(args.rows) ? args.rows : 24;
+
+    if (cols < 20 || cols > 400 || rows < 5 || rows > 120) {
+        throw new Error("PTY dimensions must be between 20–400 columns and 5–120 rows.");
+    }
+
     const child =
-        ProcessManager.spawnInGroup(ctx, args.command, cwd);
+        ProcessManager.spawnInGroup(ctx, args.command, cwd, {
+            interactive,
+            cols,
+            rows
+        });
 
     const session = {
         id:
@@ -251,6 +266,10 @@ async function processStart(args, context) {
 
     ProcessManager.registerSession(session);
 
+    if (interactive) {
+        child.stdin.write(`${args.command}\r`);
+    }
+
     const waitMs =
         Number.isInteger(args.wait_ms)
             ? args.wait_ms
@@ -347,7 +366,7 @@ async function processWrite(args, context) {
     const payload =
         args.append_newline === false
             ? args.input
-            : `${args.input}\n`;
+            : `${args.input}${session.child.interactive ? "\r" : "\n"}`;
 
     const stdin =
         session.child.stdin;
@@ -388,6 +407,41 @@ async function processWrite(args, context) {
 
         status:
             session.status
+    };
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| process_resize
+|--------------------------------------------------------------------------
+*/
+
+async function processResize(args, context) {
+
+    const ctx = ToolContext.from(context);
+    const session = ProcessManager.requireSession(args.process_id, ctx);
+
+    if (!session.child.interactive || typeof session.child.resize !== "function") {
+        throw new Error("process_resize requires an interactive PTY session.");
+    }
+
+    if (session.status !== "running") {
+        throw new Error(`Process is not running: ${args.process_id}`);
+    }
+
+    if (!Number.isInteger(args.cols) || args.cols < 20 || args.cols > 400 ||
+        !Number.isInteger(args.rows) || args.rows < 5 || args.rows > 120) {
+        throw new Error("PTY dimensions must be between 20–400 columns and 5–120 rows.");
+    }
+
+    session.child.resize(args.cols, args.rows);
+
+    return {
+        process_id: session.id,
+        cols: args.cols,
+        rows: args.rows,
+        status: session.status
     };
 }
 
@@ -540,6 +594,7 @@ module.exports = {
     process_start: processStart,
     process_read: processRead,
     process_write: processWrite,
+    process_resize: processResize,
     process_terminate: processTerminate,
     process_list: processList
 };

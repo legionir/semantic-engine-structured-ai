@@ -67,6 +67,7 @@
       "process_start",
       "process_read",
       "process_write",
+      "process_resize",
       "process_terminate",
       "process_list"
     ]
@@ -185,7 +186,8 @@
       "git_diff",
       "runtime_stats",
       "code_find_tests",
-      "code_diagnostics"
+      "code_diagnostics",
+      "process_resize"
     ]
   },
   {
