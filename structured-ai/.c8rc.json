@@ -1,0 +1,16 @@
+{
+  "all": true,
+  "include": [
+    "agent/policy/**/*.js",
+    "agent/mcp/**/*.js",
+    "agent/tools/**/*.js"
+  ],
+  "exclude": [
+    "**/*.json"
+  ],
+  "lines": 80,
+  "check-coverage": true,
+  "reporter": [
+    "text-summary"
+  ]
+}

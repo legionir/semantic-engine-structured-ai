@@ -189,43 +189,51 @@ function runSession(lines, {
 
         let stdout = "";
         let stderr = "";
+        let inputSent = false;
+        let signalTimer = null;
+        let exitTimer = null;
 
-        child.stdout.on("data", chunk => {
-            stdout += chunk;
-        });
-
+        child.stdin.on("error", () => {});
         child.stderr.on("data", chunk => {
             stderr += chunk;
         });
 
-        child.stdin.write(lines.join("\n") + "\n");
+        const sendInput = () => {
+            if (inputSent) return;
+            inputSent = true;
+            child.stdin.write(lines.join("\n") + "\n");
 
-        if (signalAfterMs === null) {
-            child.stdin.end();
-        } else {
+            if (signalAfterMs === null) {
+                /* These scripted sessions all include /exit. Keep stdin open
+                   until the REPL drains its ordered queue; ending it here
+                   races EOF/close handling on Node 24. */
+                return;
+            }
 
-            setTimeout(
-                () => {
+            signalTimer = setTimeout(() => {
+                child.kill("SIGINT");
+                exitTimer = setTimeout(() => {
+                    if (!child.stdin.destroyed) {
+                        child.stdin.write("/exit\n");
+                        child.stdin.end();
+                    }
+                }, 400);
+            }, signalAfterMs);
+        };
 
-                    child.kill("SIGINT");
+        child.stdout.on("data", chunk => {
+            stdout += chunk;
+            /* Wait until readline has rendered its first prompt before
+               sending piped input. This avoids racing REPL initialization
+               and input-close handling on newer Node releases. */
+            if (stdout.includes("›")) sendInput();
+        });
 
-                    setTimeout(
-                        () => {
-                            child.stdin.write("/exit\n");
-                            child.stdin.end();
-                        },
-                        400
-                    );
-                },
-                signalAfterMs
-            );
-        }
-
-        child.on(
-            "close",
-            code =>
-                resolve({ code, stdout, stderr })
-        );
+        child.on("close", code => {
+            clearTimeout(signalTimer);
+            clearTimeout(exitTimer);
+            resolve({ code, stdout, stderr });
+        });
     });
 }
 

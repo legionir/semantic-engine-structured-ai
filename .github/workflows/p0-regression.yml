@@ -106,6 +106,9 @@ jobs:
           code=$?
           echo "$code" > code.txt
           exit $code
+      - name: Enforce P1 policy, MCP, and tools line coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run test:coverage
       - name: Upload output
         if: always()
         uses: actions/upload-artifact@v4

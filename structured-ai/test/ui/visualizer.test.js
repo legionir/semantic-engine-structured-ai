@@ -39,15 +39,26 @@ function source(name) {
 }
 
 
+function moduleDataUrl(name) {
+  let text = source(name);
+
+  /* Data-URL ESM modules work consistently from Node 18 through 24 and do
+     not depend on the experimental default-type CLI flag. */
+  if (name === "selection-state.js") {
+    text = text.replace(
+      'from "./graph-model.js"',
+      `from "${moduleDataUrl("graph-model.js")}"`
+    );
+  }
+
+  return `data:text/javascript;base64,${Buffer.from(text).toString("base64")}`;
+}
+
+
 function runModuleScript(script) {
-  /*
-  | The imported browser modules are native .js ESM without a package.json
-  | type marker. Node 20+ detects their syntax automatically; Node 18 needs
-  | the default-type flag so this test exercises the same browser module graph.
-  */
   return spawnSync(
     process.execPath,
-    ["--experimental-default-type=module", "--input-type=module", "-e", script],
+    ["--input-type=module", "-e", script],
     { encoding: "utf8" }
   );
 }
@@ -83,10 +94,10 @@ async function main() {
   });
 
   await test("graph model focus, provenance filtering and layout remain deterministic", () => {
-    const file = path.join(VIS_DIR, "graph-model.js").replace(/\\/g, "\\\\");
+    const moduleUrl = moduleDataUrl("graph-model.js");
     const script = `
       import assert from "node:assert/strict";
-      import { visibleEdges, nodesWithinFocus, layoutGrid, searchNodes } from "file://${file}";
+      import { visibleEdges, nodesWithinFocus, layoutGrid, searchNodes } from ${JSON.stringify(moduleUrl)};
       const nodes = [{id:"a",label:"Auth"},{id:"b",label:"Users"},{id:"c",label:"Other"}];
       const edges = [{source:"a",target:"b",metadata:{confidence:90}},{source:"b",target:"c",metadata:{confidence:40}}];
       assert.equal(visibleEdges(edges, true).length, 1);
@@ -99,10 +110,10 @@ async function main() {
   });
 
   await test("graph store keeps project identity while resetting graph selection", () => {
-    const file = path.join(VIS_DIR, "graph-store.js").replace(/\\/g, "\\\\");
+    const moduleUrl = moduleDataUrl("graph-store.js");
     const script = `
       import assert from "node:assert/strict";
-      import { createGraphStore } from "file://${file}";
+      import { createGraphStore } from ${JSON.stringify(moduleUrl)};
       const store = createGraphStore("project-a");
       store.setGraph([{id:"a"}], []);
       store.select("a");
@@ -117,10 +128,10 @@ async function main() {
   });
 
   await test("selection state computes bounded neighborhood focus without mutating graph data", () => {
-    const file = path.join(VIS_DIR, "selection-state.js").replace(/\\/g, "\\\\");
+    const moduleUrl = moduleDataUrl("selection-state.js");
     const script = `
       import assert from "node:assert/strict";
-      import { SelectionState } from "file://${file}";
+      import { SelectionState } from ${JSON.stringify(moduleUrl)};
       const selection = new SelectionState(2);
       const nodes = [{id:"a"},{id:"b"},{id:"c"},{id:"d"}];
       const edges = [{source:"a",target:"b"},{source:"b",target:"c"},{source:"c",target:"d"}];
