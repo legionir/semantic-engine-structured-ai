@@ -56,16 +56,11 @@ process.env.AGENT_VERBOSE = "0";
 process.env.AGENT_PRINT_FINAL = "0";
 process.env.MAX_RUN_MS = "20000";
 process.env.MAX_REQUEST_MS = "10000";
-process.env.SEMANTIC_CALL_TIMEOUT_MS = "2000";
 process.env.MAX_CONCURRENT_PROJECT_RUNS = "2";
 process.env.MAX_RUNS_PER_PROJECT = "1";
 process.env.RUN_QUEUE_LIMIT = "4";
 
 const REPO = path.resolve(__dirname, "..", "..");
-
-const {
-    createStubSemanticGateway
-} = require(path.join(REPO, "test", "helpers", "stubSemanticGateway.js"));
 
 const results = [];
 
@@ -345,24 +340,6 @@ function workspaceHandler(ids) {
 
         }
 
-        if (text.includes("code_search") || text.includes("search symbols")) {
-
-            if (!hasToolResults(parsed)) {
-
-                return {
-                    action: toolCall("search", "code_search", { query: "auth" })
-                };
-
-            }
-
-            const tool =
-                [...parsed.messages].reverse().find(message => message.role === "tool");
-
-            return {
-                action: finalAction(`semantic-${side}: ${tool ? tool.content : "none"}`)
-            };
-
-        }
 
         return {
             delayMs: side === "A" ? 180 : 0,
@@ -398,41 +375,6 @@ async function request(baseUrl, method, url, { token, body } = {}) {
 
 async function main() {
 
-    const gateway = createStubSemanticGateway({
-        "prj-a": {
-            tools: [{ name: "alpha_tool" }],
-            handlers: {
-                semantic_search: params => ({
-                    total: 1,
-                    items: [{
-                        name: `${MARKER_A}:${params.query}`,
-                        path: "src/alpha.ts",
-                        score: 0.9,
-                        kind: "class",
-                        excerpt: "alpha hit"
-                    }]
-                })
-            }
-        },
-        "prj-b": {
-            tools: [{ name: "beta_tool" }],
-            handlers: {
-                semantic_search: params => ({
-                    total: 1,
-                    items: [{
-                        name: `${MARKER_B}:${params.query}`,
-                        path: "src/beta.ts",
-                        score: 0.8,
-                        kind: "class",
-                        excerpt: "beta hit"
-                    }]
-                })
-            }
-        }
-    });
-
-    await gateway.listen();
-
     initGit(ROOT_A, "seed-a");
     initGit(ROOT_B, "seed-b");
 
@@ -463,14 +405,12 @@ async function main() {
         id: "prj-a",
         name: "Engine Core A",
         rootPath: ROOT_A,
-        semanticEndpoint: gateway.endpointFor("prj-a")
     });
 
     const recordB = runtime.projects.registry().register({
         id: "prj-b",
         name: "Engine Core B",
         rootPath: ROOT_B,
-        semanticEndpoint: gateway.endpointFor("prj-b")
     });
 
     const recordC = runtime.projects.registry().register({
@@ -492,7 +432,7 @@ async function main() {
 
     /* ------------------------------------------------ گام ۱: isolation */
 
-    await test("project isolation: same basename, independent artifacts and semantic", async () => {
+    await test("project isolation: same basename and independent artifacts", async () => {
 
         const listed = runtime.projects.registry().list();
 
@@ -522,27 +462,6 @@ async function main() {
             `owned-by-b ${MARKER_B}\n`
         );
 
-        const searchA =
-            await tools.executeTool("code_search", { query: "auth" }, ctxA);
-
-        const searchB =
-            await tools.executeTool("code_search", { query: "auth" }, ctxB);
-
-        assert.ok(searchA.results.some(item => String(item.name).includes(MARKER_A)));
-        assert.ok(!searchA.results.some(item => String(item.name).includes(MARKER_B)));
-        assert.ok(searchB.results.some(item => String(item.name).includes(MARKER_B)));
-        assert.ok(!searchB.results.some(item => String(item.name).includes(MARKER_A)));
-
-        const pool =
-            require(path.join(REPO, "agent", "mcp", "SemanticClientPool.js")).pool;
-
-        const clientA = pool.get("prj-a");
-
-        assert.ok(clientA, "pool must pin a client for prj-a");
-
-        const toolsA = await clientA.ensureClient().listTools();
-
-        assert.deepEqual(toolsA.map(item => item.name), ["alpha_tool"]);
 
     });
 
@@ -777,20 +696,6 @@ async function main() {
             /not in scope/
         );
 
-        const searchA =
-            await tools.executeTool("code_search", { query: "auth" }, ctxA);
-
-        const searchB =
-            await tools.executeTool("code_search", { query: "auth" }, ctxB);
-
-        assert.ok(JSON.stringify(searchA).includes(MARKER_A));
-        assert.ok(!JSON.stringify(searchA).includes(MARKER_B));
-        assert.ok(JSON.stringify(searchB).includes(MARKER_B));
-
-        const pool =
-            require(path.join(REPO, "agent", "mcp", "SemanticClientPool.js")).pool;
-
-        assert.notStrictEqual(pool.get("prj-a"), pool.get("prj-b"));
 
     });
 
@@ -931,33 +836,6 @@ async function main() {
         assert.equal(healthB.status, "ok");
         assert.equal(gatewayHealth.status, "degraded");
         assert.notEqual(gatewayHealth.status, "down");
-
-        const dead =
-            await tools.executeTool(
-                "code_search",
-                { query: "auth" },
-                {
-                    agent: "main_agent",
-                    runId: "run-dead",
-                    projectId: "prj-dead",
-                    projectContext: {
-                        projectId: "prj-dead",
-                        projectName: "Dead",
-                        workspaceRoot: ROOT_C,
-                        dataRoot: path.join(DATA_HOME, "projects", "prj-dead"),
-                        semanticEndpoint: "http://127.0.0.1:9/mcp/prj-dead",
-                        permissions: {},
-                        synthetic: false
-                    }
-                }
-            );
-
-        assert.equal(dead.ok, false);
-
-        const alive =
-            await tools.executeTool("code_search", { query: "auth" }, ctxB);
-
-        assert.ok(JSON.stringify(alive).includes(MARKER_B));
 
         stub.state.handler = (parsed) => {
 
@@ -1108,18 +986,7 @@ async function main() {
             assert.match(String(taskB.response.content), new RegExp(MARKER_B));
             assert.ok(!String(taskB.response.content).includes(MARKER_A));
 
-            /* 6. Semantic query routes to the right worker */
-            const semA =
-                await tools.executeTool("code_search", { query: "auth" }, ctxA);
-
-            const semB =
-                await tools.executeTool("code_search", { query: "auth" }, ctxB);
-
-            assert.ok(JSON.stringify(semA).includes(MARKER_A));
-            assert.ok(!JSON.stringify(semA).includes(MARKER_B));
-            assert.ok(JSON.stringify(semB).includes(MARKER_B));
-
-            /* 7. memory / plan / session / archive stay independent */
+            /* 6. memory / plan / session / archive stay independent */
             const planA = await tools.executeTool("plan_get", {}, ctxA);
             const planB = await tools.executeTool("plan_get", {}, ctxB);
 
@@ -1203,13 +1070,12 @@ async function main() {
     });
 
 
-    await test("the MVP uses canonical context, prompt and semantic boundaries", async () => {
+    await test("the MVP uses canonical context, prompt and MCP boundaries", async () => {
 
         for (const removed of [
             "PROJECT_CONTEXT_MODE",
             "RUN_CONTEXT_MODE",
             "PROMPT_BUILDER_MODE",
-            "SEMANTIC_POOL_MODE",
             "RUNTIME_ENGINE_MODE",
             "WEB_SERVER_MODE"
         ]) {
@@ -1232,10 +1098,6 @@ async function main() {
 
     try {
         await stub.close();
-    } catch { /* */ }
-
-    try {
-        await gateway.close();
     } catch { /* */ }
 
     try {

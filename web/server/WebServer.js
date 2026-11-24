@@ -63,7 +63,7 @@ function controllerFor(registered, path) {
         return registered.settings;
     }
 
-    if (path.startsWith("/api/graph") || path.startsWith("/api/calls")) {
+    if (path.startsWith("/api/calls")) {
         return registered.run;
     }
 

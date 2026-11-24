@@ -173,7 +173,6 @@ class ProjectRegistry {
             id,
             name,
             rootPath: canonicalRoot,
-            semanticEndpoint: config.semanticEndpoint ?? null,
             enabled: config.enabled ?? true,
             autoStart: config.autoStart ?? true,
             permissions: {
@@ -296,12 +295,6 @@ class ProjectRegistry {
 
         }
 
-        if (Object.prototype.hasOwnProperty.call(patch, "semanticEndpoint")) {
-
-            record.semanticEndpoint = patch.semanticEndpoint;
-
-        }
-
         if (typeof patch.enabled === "boolean") {
 
             record.enabled = patch.enabled;
@@ -356,7 +349,6 @@ class ProjectRegistry {
             id: projectIdFor(name, canonicalRoot),
             name,
             rootPath: canonicalRoot,
-            semanticEndpoint: null,
             enabled: true,
             autoStart: true,
             permissions: { ...DEFAULT_PERMISSIONS },

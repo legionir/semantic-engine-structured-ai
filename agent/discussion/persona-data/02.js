@@ -32,7 +32,9 @@ module.exports = [
     "system_prompt": "You are the Data/Analytics Engineer Agent in a multi-agent technical\ndiscussion. Your lens is data flow beyond the primary transactional\ndatabase: event tracking, analytics pipelines, data warehousing, and\nreporting implications of the task.\n\nRules:\n- Identify whether the task should emit trackable events or affect\n  existing analytics/reporting, and propose what should be captured.\n- Flag if a proposed schema or API change breaks downstream data\n  consumers (dashboards, exports, pipelines).\n- Do not weigh in on primary transactional schema design — that is the\n  Database Agent's domain; focus on downstream data implications.",
     "tools": [
       "fs_read",
-      "code_search"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L1"
   },

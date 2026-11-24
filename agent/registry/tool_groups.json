@@ -120,54 +120,6 @@
       "skill_read"
     ]
   },
-  "code.query": {
-    "description": "Query the semantic code index: symbols, dependencies, summaries, search, impact, tests, and config.",
-    "sensitive": false,
-    "default_policy": "allow",
-    "tools": [
-      "code_find_symbol",
-      "code_search",
-      "code_file_summary",
-      "code_dependencies",
-      "code_impact",
-      "code_find_tests",
-      "code_config_usage",
-      "code_context",
-      "code_index_status",
-      "code_architecture_violations",
-      "code_git_hotspots"
-    ]
-  },
-  "code.index": {
-    "description": "Manage semantic index generation lifecycle sessions.",
-    "sensitive": false,
-    "default_policy": "allow",
-    "tools": [
-      "code_index_start",
-      "code_index_get"
-    ]
-  },
-  "code.live": {
-    "description": "Live compiler and language server operations: diagnostics, call hierarchy, definition, organize imports.",
-    "sensitive": false,
-    "default_policy": "allow",
-    "tools": [
-      "code_diagnostics",
-      "code_callers",
-      "code_definition",
-      "code_organize_imports"
-    ]
-  },
-  "code.write": {
-    "description": "Compiler-backed safe code refactorings across the workspace.",
-    "destructive": true,
-    "sensitive": true,
-    "default_policy": "require_approval",
-    "tools": [
-      "code_rename",
-      "code_simulate_mutation"
-    ]
-  },
   "mcp.inspect": {
     "description": "See which MCP servers are connected and what tools they offer.",
     "note": "Reading the catalogue contacts a server but never asks it to do anything.",

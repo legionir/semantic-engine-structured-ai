@@ -82,7 +82,6 @@ function normalizeProjectInput(value) {
             id: value.id,
             name: value.name,
             rootPath: value.rootPath,
-            semanticEndpoint: value.semanticEndpoint ?? null,
             permissions: { ...(value.permissions || {}) },
             synthetic: value.synthetic === true,
             dataRoot:
@@ -99,7 +98,6 @@ function normalizeProjectInput(value) {
             id: value.projectId,
             name: value.projectName,
             rootPath: value.workspaceRoot,
-            semanticEndpoint: value.semanticEndpoint ?? null,
             permissions: { ...(value.permissions || {}) },
             synthetic: value.synthetic === true,
             dataRoot:
@@ -147,7 +145,6 @@ function createProjectContext(project, { syntheticDefault = false } = {}) {
         projectName: record.name,
         workspaceRoot: record.rootPath,
         dataRoot,
-        semanticEndpoint: record.semanticEndpoint ?? null,
         permissions: { ...(record.permissions || {}) },
         synthetic
     };

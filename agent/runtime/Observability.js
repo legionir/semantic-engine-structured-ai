@@ -1,7 +1,6 @@
 "use strict";
 
 const events = require("../events");
-const settings = require("../config");
 
 
 /*
@@ -22,7 +21,6 @@ function emptyProject() {
         project_active_runs: 0,
         project_failed_runs: 0,
         project_tool_calls_total: 0,
-        project_index_state: "unknown",
         project_last_activity: null,
         project_memory_bytes: 0,
         project_process_count: 0,
@@ -48,7 +46,6 @@ class Observability {
             gateway_mcp_errors_total: 0,
             gateway_mcp_calls_total: 0
         };
-        this.indexInflight = 0;
         this.attached = false;
         this.startedAt = Date.now();
         this.cpuSample = process.cpuUsage();
@@ -137,13 +134,7 @@ class Observability {
                 bucket.project_tool_calls_total++;
             }
 
-            if (event.name && String(event.name).startsWith("code_index_")) {
 
-                if (bucket) {
-                    bucket.project_index_state =
-                        event.success === false ? "failed" : "ready";
-                }
-            }
         }
 
         if (event.type === "mcp:result" || event.type === "mcp:call") {
@@ -188,7 +179,6 @@ class Observability {
 
         bucket.crashed = true;
         bucket.last_error = message || "simulated crash";
-        bucket.project_index_state = "down";
     }
 
 
@@ -199,25 +189,6 @@ class Observability {
         if (bucket) {
             bucket.project_memory_bytes = bytes;
         }
-    }
-
-
-    beginIndex() {
-
-        const limit = settings.get("MAX_CONCURRENT_INDEX_RUNS");
-
-        if (this.indexInflight >= limit) {
-            return false;
-        }
-
-        this.indexInflight++;
-        return true;
-    }
-
-
-    endIndex() {
-
-        this.indexInflight = Math.max(0, this.indexInflight - 1);
     }
 
 
@@ -299,7 +270,6 @@ class Observability {
             uptime_ms: Date.now() - this.startedAt,
             gateway: { ...this.gateway },
             projects,
-            index_inflight: this.indexInflight,
             cpu_percent: this.cpuPercent()
         };
     }
@@ -329,8 +299,7 @@ class Observability {
             status,
             project_id: projectId,
             last_error: bucket.last_error,
-            active_runs: bucket.project_active_runs,
-            index_state: bucket.project_index_state
+            active_runs: bucket.project_active_runs
         };
     }
 
@@ -384,7 +353,6 @@ class Observability {
         this.gateway.gateway_tool_calls_total = 0;
         this.gateway.gateway_mcp_errors_total = 0;
         this.gateway.gateway_mcp_calls_total = 0;
-        this.indexInflight = 0;
     }
 }
 

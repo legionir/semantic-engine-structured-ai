@@ -58,7 +58,6 @@ async function main() {
             "agent/tools/discussion.js",
             "web/server/LegacyWebServer.js",
             "web/public/app.js",
-            "web/public/visualizer.js"
         ];
         for (const relative of removed) {
             assert.equal(fs.existsSync(path.join(ROOT, relative)), false, `${relative} remains`);
@@ -82,7 +81,6 @@ async function main() {
             "web/server/ServerImplementation.js",
             "web/server/WebServer.js",
             "web/public/app/console.js",
-            "web/public/visualizer/renderer.js"
         ]) {
             assert.equal(fs.existsSync(path.join(ROOT, relative)), true, `${relative} is missing`);
         }
@@ -94,7 +92,6 @@ async function main() {
             "PROJECT_CONTEXT_MODE",
             "RUN_CONTEXT_MODE",
             "PROMPT_BUILDER_MODE",
-            "SEMANTIC_POOL_MODE",
             "RUNTIME_ENGINE_MODE",
             "WEB_SERVER_MODE"
         ]) {
@@ -136,7 +133,7 @@ async function main() {
             const source = fs.readFileSync(file, "utf8");
             assert.doesNotMatch(source, /require\([^\n]*agent\/lib\//, path.relative(ROOT, file));
             assert.doesNotMatch(source, /require\([^\n]*(?:LegacyWebServer|tools\/(?:code|fileinfo|filesystem|git|memory|mcp|net|plan|process|search|skills|telemetry)\.js|mcp\/(?:client|config|manager|protocol)\.js)/, path.relative(ROOT, file));
-            assert.doesNotMatch(source, /settings\.get\("(?:PROJECT_CONTEXT_MODE|RUN_CONTEXT_MODE|PROMPT_BUILDER_MODE|SEMANTIC_POOL_MODE|RUNTIME_ENGINE_MODE|WEB_SERVER_MODE)"\)/, path.relative(ROOT, file));
+            assert.doesNotMatch(source, /settings\.get\("(?:PROJECT_CONTEXT_MODE|RUN_CONTEXT_MODE|PROMPT_BUILDER_MODE|RUNTIME_ENGINE_MODE|WEB_SERVER_MODE)"\)/, path.relative(ROOT, file));
         }
     });
 

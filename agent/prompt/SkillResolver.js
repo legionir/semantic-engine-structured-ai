@@ -4,11 +4,8 @@
 |--------------------------------------------------------------------------
 |
 | Which registry skills a profile may use, moved out of agent.js
-| (EXECUTION_PLAN Phase 5). Inactive skills — e.g. the semantic_engine
-| skill while the project's Semantic MCP is not ready — are filtered by
-| the injected isActiveSkill, which is the same gate the runtime has
-| always applied. Until Phase 6, "the project's Semantic MCP" is the
-| single Semantic Engine connection the process already has.
+| (EXECUTION_PLAN Phase 5). Skills that require a configured MCP server are
+| filtered by the injected isActiveSkill capability check.
 |
 | The body is the historical resolveSkills() verbatim.
 |--------------------------------------------------------------------------

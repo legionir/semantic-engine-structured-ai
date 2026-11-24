@@ -443,7 +443,6 @@ async function main() {
             "PROJECT_CONTEXT_MODE",
             "RUN_CONTEXT_MODE",
             "PROMPT_BUILDER_MODE",
-            "SEMANTIC_POOL_MODE",
             "RUNTIME_ENGINE_MODE",
             "WEB_SERVER_MODE",
             "MCP_LAYER_MODE",

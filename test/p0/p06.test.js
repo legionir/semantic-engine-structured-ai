@@ -574,11 +574,11 @@ async function main() {
 
         const plain =
             catalogue.entryFromTool(
-                { name: "semantic", config: { trust: "trusted", builtin: true } },
+                { name: "catalog", config: { trust: "trusted", builtin: true } },
                 { name: "search", description: "", inputSchema: null }
             );
 
-        assert.strictEqual(plain.name, "mcp__semantic__search");
+        assert.strictEqual(plain.name, "mcp__catalog__search");
     });
 
 

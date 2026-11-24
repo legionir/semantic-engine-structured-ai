@@ -129,7 +129,6 @@ async function main() {
     */
     for (const [script, page] of [
       [path.join("app", "console.js"), "index.html"],
-      [path.join("visualizer", "main.js"), "visualizer.html"]
     ]) {
 
       const text = fs.readFileSync(path.join(REPO, "web", "public", script), "utf8");
@@ -150,7 +149,7 @@ async function main() {
 
   await test("neither page declares an id twice", () => {
 
-    for (const page of ["index.html", "visualizer.html"]) {
+    for (const page of ["index.html"]) {
 
       const html = fs.readFileSync(path.join(REPO, "web", "public", page), "utf8");
       const seen = new Map();

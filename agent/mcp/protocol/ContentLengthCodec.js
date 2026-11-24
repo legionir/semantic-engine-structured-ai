@@ -6,7 +6,7 @@
 |--------------------------------------------------------------------------
 |
 | The language-server tradition: a Content-Length header, then the JSON
-| body. The semantic-engine sidecar speaks this framing.
+| body. MCP stdio servers use this framing.
 |--------------------------------------------------------------------------
 */
 

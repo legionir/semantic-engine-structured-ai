@@ -18,16 +18,9 @@
 8. [خط‌لولهٔ امنیتی، پالیسی و گاردها (Security & Policy Engine)](#۸-خط‌لوله-امنیتی-پالیسی-و-گاردها-security--policy-engine)
 9. [مدیریت بودجهٔ کانتکست و حافظه (Context Budget & Compaction)](#۹-مدیریت-بودجه-کانتکست-و-حافظه-context-budget--compaction)
 10. [لایهٔ اتصال به MCP و پروتکل‌های چهارگانه](#۱۰-لایهٔ-اتصال-به-mcp-و-پروتکلهای-چهارگانه)
-11. [Semantic Engine به‌عنوان سرور MCP داخلی](#۱۱-semantic-engine-بهعنوان-سرور-mcp-داخلی)
-12. [آزمون‌ها و ارزیابی کیفیت](#۱۲-آزمونها-و-ارزیابی-کیفیت)
+11. [آزمون‌ها و ارزیابی کیفیت](#۱۱-آزمونها-و-ارزیابی-کیفیت)
 
 ---
-
-> **Execution record:** the canonical rollout status and verification history are in
-> [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md). The corresponding refactor and
-> multi-project design documents are [`REFACTOR_EXECUTION_PLAN.md`](REFACTOR_EXECUTION_PLAN.md),
-> [`MULTI_PROJECT_IMPLEMENTATION_PLAN.md`](MULTI_PROJECT_IMPLEMENTATION_PLAN.md) and
-> [`MULTI_PROJECT_REFACTOR_ORDER_PLAN.md`](MULTI_PROJECT_REFACTOR_ORDER_PLAN.md).
 
 ## ۱. معرفی و منشور معماری سیستم
 
@@ -69,14 +62,13 @@ repository-root/
 │   ├── prompt/                 # main/sub-agent/runtime/request builders
 │   ├── registry/               # JSON registries و split tool schemas
 │   ├── runtime/                # RunManager، engine، scheduler و telemetry
-│   └── tools/                  # ToolRuntime و گروه‌های filesystem/process/code/
+│   └── tools/                  # ToolRuntime و گروه‌های filesystem/process/
 │                                 # planning/memory/git/network/search/skills/mcp
 ├── web/
 │   ├── server.js               # canonical WebServer entrypoint
 │   ├── server/                 # router، middleware، controllers، services
-│   └── public/                 # app/ و visualizer/ native browser modules
+│   └── public/                 # app/ native browser modules
 ├── test/                       # domain-based unit, contract و e2e suites
-└── semantic-engine/            # gateway/engine مستقل Semantic (اختیاری)
 ```
 
 در rollout نهایی Phase 30 هیچ facade انتخاب‌کننده‌ای برای حالت legacy وجود
@@ -140,7 +132,7 @@ node bin/agent.js -i -w /path/to/project
 
 ---
 
-### حالت ۳: کنسول وب و داشبورد زنده (Web Console & Visualizer)
+### حالت ۳: کنسول وب و داشبورد زنده (Web Console)
 راه‌اندازی سرور کنسول وب با رابط کاربری تعاملی، استریم زندهٔ گراف اجرای ایجنت‌ها، مانیتورینگ رویدادها و پنل تأییدیه:
 
 ```bash
@@ -187,9 +179,6 @@ node bin/agent.js -w /path/to/project --discussion --personas security,frontend 
 | `AGENT_MODEL` | `auto-switch` | مدل اصلی runtime |
 | `AGENT_APPROVAL` | `prompt` | `auto`، `prompt` یا `deny` برای approval policy |
 | `PROCESS_SANDBOX_MODE` | `deny` | `deny`، `bwrap` یا `test` (فقط harness) |
-| `SEMANTIC_ENABLED` | `true` | فعال بودن Semantic Engine |
-| `SEMANTIC_ENGINE_URL` | خالی | endpoint اختیاری semantic gateway |
-| `SEMANTIC_TRANSPORT` | `auto` | `stdio`، `http`، `sse` یا `websocket` |
 | `MCP_ENABLED` | `true` | فعال بودن MCP manager |
 | `MCP_AUTO_DISCOVER` | `false` | کشف خودکار configهای workspace |
 | `MCP_TRUST_PROJECT_CONFIG` | `false` | trust لازم برای stdio پروژه |
@@ -207,26 +196,10 @@ node bin/agent.js -w /path/to/project --discussion --personas security,frontend 
 | `ENDPOINT_<ROLE>_CONTEXT_TOKENS` | `0` | پنجرهٔ token برای endpoint role (`MAIN`/`L1`/`L2`/`L3`/`SUMMARY`)؛ صفر از مقدار global ارث می‌برد |
 
 فلگ‌های rollout موقت مراحل قبل (`PROJECT_CONTEXT_MODE`، `RUN_CONTEXT_MODE`،
-`PROMPT_BUILDER_MODE`، `SEMANTIC_POOL_MODE`، `RUNTIME_ENGINE_MODE` و
+`PROMPT_BUILDER_MODE`، `RUNTIME_ENGINE_MODE` و
 `WEB_SERVER_MODE`) در Phase 30 از schema و runtime حذف شده‌اند؛ همهٔ مسیرها
 اکنون implementation canonical را اجرا می‌کنند و setting ناشناخته خطای واضح
 می‌دهد. برای فهرست کامل ۱۶۳ setting به `SettingsSchema.js` مراجعه کنید.
-
-### موتور معنایی چندپروژه‌ای (Semantic Gateway)
-
-سمت Semantic Engine حالا یک Gateway دارد: یک پورت عمومی که چند worker
-تک‌پروژه‌ای را مدیریت می‌کند. نقطهٔ اتصال این پلتفرم به آن، یک URL به ازای
-هر پروژه است:
-
-```text
-POST  http://127.0.0.1:4000/mcp/<projectId>
-```
-
-که در registry به‌عنوان `semanticEndpoint` همان پروژه ثبت می‌شود و
-`agent/mcp/SemanticClientPool.js` به ازای هر پروژه یک اتصال مستقل نگه
-می‌دارد. قوانین مسیر و شناسه (`prj-<slug>-<sha256(root)[0:8]>`) در
-`semantic-engine/README.md` §۵.۱ آمده و تست یکپارچگی دوطرفه در
-`test/mcp/gateway.integration.test.js` اجرا می‌شود.
 
 ## ۶. مستندات کامل اندپوینت‌های سرور وب کنسول (Web Server & REST / SSE API)
 
@@ -249,7 +222,6 @@ POST  http://127.0.0.1:4000/mcp/<projectId>
 | `GET/POST` | `/api/mcp` | وضعیت یا افزودن MCP server |
 | `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
 | `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
-| `GET` | `/api/graph/:view` | graph/neighborhood/impact دادهٔ Semantic |
 
 ### API پروژه‌ها
 
@@ -290,7 +262,7 @@ discussion حفظ شده‌اند. مسیر project-scoped علاوه بر `acce
 `GET /api/events?projectId=<id>` فقط eventهای همان پروژه را می‌فرستد؛ eventهای
 global در stream پروژه‌ای صرفاً metadata aggregate هستند. token master یا
 توکن scoped با permissionهای `project:read`، `project:write`،
-`semantic:query` و `semantic:index` کنترل می‌شود. خطاهای validation کلید
+ کنترل می‌شود. خطاهای validation کلید
 `error` و در صورت نیاز `code` را به‌صورت additive حفظ می‌کنند.
 
 ## ۷. کاتالوگ کامل ابزارها و گروه‌ها (Tools & Tool Groups)
@@ -305,16 +277,6 @@ global در stream پروژه‌ای صرفاً metadata aggregate هستند. t
 ├──────────────────┼─────────────────────────────────────────────────────────────┤
 │ filesystem.write │ fs_write, fs_edit, apply_patch, checkpoint_undo, fs_mkdir,  │
 │                  │ fs_move, fs_delete                                          │
-├──────────────────┼─────────────────────────────────────────────────────────────┤
-│ code.query       │ code_find_symbol, code_search, code_file_summary,           │
-│                  │ code_dependencies, code_impact, code_find_tests,            │
-│                  │ code_config_usage, code_context, code_index_status,         │
-│                  │ code_architecture_violations, code_git_hotspots             │
-├──────────────────┼─────────────────────────────────────────────────────────────┤
-│ code.live        │ code_diagnostics, code_callers, code_definition,            │
-│                  │ code_organize_imports                                       │
-├──────────────────┼─────────────────────────────────────────────────────────────┤
-│ code.write       │ code_rename, code_simulate_mutation                         │
 ├──────────────────┼─────────────────────────────────────────────────────────────┤
 │ search           │ search_start, search_get, search_list, search_stop          │
 ├──────────────────┼─────────────────────────────────────────────────────────────┤
@@ -470,27 +432,33 @@ MCP_SERVERS                       متغیر محیطی، بالاترین او�
 
 ---
 
-## ۱۱. Semantic Engine به‌عنوان سرور MCP داخلی
+### ۱۰.۶ پیکربندی سرورهای خارجی از طریق MCP استاندارد
 
-موتور معنایی قبلاً کلاینت اختصاصی خودش را داشت: سوپروایز زیرپروسه، فریمینگ `Content-Length`، مسیر HTTP جداگانه، جدول فراخوانی‌های در انتظار و سیاست timeout — چیزهایی که هیچ‌کدام مخصوص هوش کد نبودند و هر سرور MCP به آن‌ها نیاز دارد.
+Structured AI کدکلاینت اختصاصی برای ابزارهای بیرونی حمل یا اجرا نمی‌کند.
+قابلیت‌های خارجی فقط از طریق MCP عمومی به دست می‌آیند؛ هر سروری که قرارداد MCP
+را پیاده‌سازی کند می‌تواند با همین سازوکار استفاده شود.
 
-اکنون همهٔ آن‌ها در `agent/mcp/` است و موتور معنایی به‌عنوان یک **سرور MCP داخلی به نام `semantic-engine`** ثبت می‌شود. چیزی که در `agent/mcp/semantic.js` باقی مانده فقط همان بخشی است که واقعاً به خود موتور مربوط است: یافتن مسیر باینری، بررسی در دسترس بودن، سنجش کهنگی ایندکس روی دیسک، و نشست‌های ایندکس.
+سرورها را در `.mcp.json` پروژه یا از طریق `mcp_add` تعریف کنید. نمونهٔ stdio:
 
-```text
-agent/tools/code/  ──►  agent/mcp/semantic.js  ──►  McpManager  ──►  یکی از چهار ترنسپورت
-   (ابزارهای code_*)          (فقط منطق موتور)         (مشترک)
+```json
+{
+  "mcpServers": {
+    "code-tools": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["/path/to/your-mcp-server.js"]
+    }
+  }
+}
 ```
 
-نتیجهٔ عملی:
+برای استفاده، ابتدا `mcp_servers` وضعیت سرورها را نشان می‌دهد و `mcp_tools`
+فهرست ابزارها و schema آن‌ها را می‌خواند؛ سپس ابزار را با `mcp_call` یا نام
+مستقیم کشف‌شدهٔ `mcp__<server>__<tool>` فراخوانی کنید. MCP ابزارهای خارجی را
+از مرز workspace بیرون اجرا می‌کند؛ سرورها را فقط پس از بررسی و اعتماد لازم
+فعال کنید.
 
-* **ابزارهای `code_*` بدون هیچ تغییری کار می‌کنند** و از مسیر canonical `agent/mcp/semantic.js` و `ProjectSemanticResolver` استفاده می‌کنند.
-* موتور معنایی هم می‌تواند از هر چهار ترنسپورت استفاده کند؛ `SEMANTIC_TRANSPORT` یا صرفاً مقداردهی `SEMANTIC_ENGINE_URL` آن را انتخاب می‌کند.
-* یک پروژه می‌تواند در `.mcp.json` سروری با همین نام تعریف کند و موتور خودکار را کاملاً جایگزین کند.
-* **پایش کهنگی ایندکس (Staleness Check)** مثل قبل باقی است: اگر ایندکس کهنه یا غایب باشد، ایجنت راهنمایی می‌گیرد و به ابزارهای متنی جایگزین سوییچ می‌کند.
-
----
-
-## ۱۲. آزمون‌ها و ارزیابی کیفیت
+## ۱۱. آزمون‌ها و ارزیابی کیفیت
 
 سوئیت با Node scriptهای مستقل و بدون dependency تست‌رانر اجرا می‌شود. ساختار
 domain-based و contractهای عمومی در [`test/README.md`](test/README.md) ثبت شده‌اند.
@@ -511,19 +479,10 @@ npm run test:ui
 npm run test:e2e
 ```
 
-در verification نهایی Phase 30، تعداد تست‌ها **694/694** در 49 entrypoint و
-تماماً سبز است. `npm test` ترتیب serial را حفظ می‌کند و testهای contract قبل
-از integration/e2e اجرا می‌شوند.
+`npm test` ترتیب serial را حفظ می‌کند و testهای contract پیش از
+integration/e2e اجرا می‌شوند. برای وضعیت جاری، خروجی CI شاخه را بررسی کنید.
 
-برای smoke واقعی (نه mock) ارتباط `code_find_symbol` با semantic-engine، ابتدا
-`npm run build` را در پوشهٔ sibling `../semantic-engine` اجرا و سپس این دستور را
-بزنید؛ تست خودش یک workspace و data directory موقت می‌سازد و پاک می‌کند:
-
-```bash
-npm run test:semantic:live
-```
-
-## ۱۳. راهنمای توسعهٔ canonical
+## ۱۲. راهنمای توسعهٔ canonical
 
 ### افزودن tool
 

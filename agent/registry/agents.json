@@ -18,7 +18,6 @@
       "terminal_execution",
       "git",
       "codebase_analysis",
-      "semantic_engine",
       "testing_and_verification",
       "search",
       "web_research",
@@ -51,7 +50,6 @@
     ],
     "skills": [
       "codebase_analysis",
-      "semantic_engine",
       "file_management",
       "search",
       "terminal_execution",
@@ -73,22 +71,9 @@
       "archive_get",
       "skill_get",
       "skill_read",
-      "code_find_symbol",
-      "code_search",
-      "code_file_summary",
-      "code_dependencies",
-      "code_impact",
-      "code_find_tests",
-      "code_config_usage",
-      "code_context",
-      "code_index_status",
-      "code_index_start",
-      "code_index_get",
-      "code_diagnostics",
-      "code_callers",
-      "code_definition",
-      "code_organize_imports",
-      "code_rename"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.1,
@@ -179,8 +164,6 @@
       "archive_get",
       "skill_get",
       "skill_read",
-      "code_find_tests",
-      "code_diagnostics",
       "process_resize"
     ],
     "model": "auto-switch",
@@ -226,9 +209,7 @@
       "archive_search",
       "archive_get",
       "skill_get",
-      "skill_read",
-      "code_config_usage",
-      "code_dependencies"
+      "skill_read"
     ],
     "model": "auto-switch",
     "temperature": 0.1,
@@ -285,13 +266,7 @@
       "archive_search",
       "archive_get",
       "skill_get",
-      "skill_read",
-      "code_find_symbol",
-      "code_diagnostics",
-      "code_rename",
-      "code_definition",
-      "code_organize_imports",
-      "code_dependencies"
+      "skill_read"
     ],
     "model": "auto-switch",
     "temperature": 0.1,
@@ -368,9 +343,10 @@
       "fs_list",
       "search_start",
       "search_get",
-      "code_config_usage",
-      "code_dependencies",
-      "net_fetch"
+      "net_fetch",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,
@@ -408,9 +384,9 @@
       "fs_write",
       "fs_edit",
       "terminal_exec",
-      "code_find_symbol",
-      "code_dependencies",
-      "code_file_summary"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,
@@ -443,9 +419,10 @@
     "tools": [
       "fs_read",
       "fs_read_many",
-      "code_search",
-      "code_file_summary",
-      "fs_list"
+      "fs_list",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,
@@ -483,7 +460,9 @@
       "fs_write",
       "fs_edit",
       "terminal_exec",
-      "code_find_symbol"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,
@@ -509,7 +488,6 @@
     ],
     "skills": [
       "codebase_analysis",
-      "semantic_engine",
       "file_management",
       "search"
     ],
@@ -517,9 +495,9 @@
       "fs_read",
       "fs_list",
       "fs_tree",
-      "code_dependencies",
-      "code_impact",
-      "code_file_summary"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,
@@ -550,9 +528,10 @@
     ],
     "tools": [
       "fs_read",
-      "code_search",
-      "code_file_summary",
-      "terminal_exec"
+      "terminal_exec",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,
@@ -587,8 +566,9 @@
       "fs_list",
       "fs_write",
       "terminal_exec",
-      "code_find_tests",
-      "code_file_summary"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,
@@ -710,7 +690,9 @@
     ],
     "tools": [
       "fs_read",
-      "code_search"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model": "auto-switch",
     "temperature": 0.2,

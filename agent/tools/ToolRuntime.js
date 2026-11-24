@@ -10,7 +10,6 @@ const processTools = require("./process");
 const git = require("./git");
 const net = require("./network");
 const telemetry = require("../runtime/Telemetry");
-const code = require("./code");
 const mcp = require("./mcp");
 const discussion = require("./discussion");
 const ToolContext = require("./ToolContext");
@@ -57,7 +56,6 @@ const IMPLEMENTATIONS = {
     ...publicTools(skills),
     ...publicTools(git),
     ...publicTools(net),
-    ...publicTools(code),
     ...publicTools(mcp),
     ...publicTools(discussion),
 
@@ -153,14 +151,9 @@ async function discoverMcpTools(options) {
 
 /*
 | Tools that still act on the process-wide workspace rather than the calling
-| run's project context. They are exactly as safe as before Phase 4 as long
-| as the run's project shares the workspace root (then the two roots are
-| the same directory); on a project rooted ELSEWHERE, executing one would
-| silently mis-scope it, so the gate below makes that a loud error with the
-| phase where each family becomes project-aware (plan/memory in 8).
-|
-| Code tools route through the semantic project resolver, which applies
-| the same loud-failure rule when a foreign project has no endpoint.
+| run's project context. They are safe when the run shares the workspace root;
+| on a project rooted elsewhere, executing one would silently mis-scope it,
+| so the gate below makes that a loud error.
 |
 | Plan, memory and search stores resolve through persistence/DataRoot to
 | the active project's data root (central for registered projects, the
@@ -177,7 +170,7 @@ const PENDING_PROJECT_AWARENESS =
         "runtime_stats"
     ]);
 
-const CONTEXT_AWARE_OVERRIDE = new Set(["code_simulate_mutation"]);
+const CONTEXT_AWARE_OVERRIDE = new Set();
 
 
 async function executeTool(
@@ -208,10 +201,9 @@ async function executeTool(
     ) {
 
         throw new Error(
-            `Tool "${name}" is not yet project-aware and cannot run on ` +
+            `Tool "${name}" is process-scoped and cannot run on ` +
             `project "${toolContext.projectId}" rooted outside this process ` +
-            "workspace. Its conversion lands in a later EXECUTION_PLAN phase; " +
-            "run on a workspace-rooted project or configure a semantic endpoint."
+            "workspace. Use a workspace-rooted project or a project-aware tool."
         );
 
     }
@@ -296,7 +288,6 @@ async function executeTool(
 function shutdown() {
 
     processTools.shutdownAll();
-    code._shutdown();
 
     void mcp._shutdown();
 }
@@ -322,8 +313,6 @@ function startRunScope(runId) {
 
     telemetry.reset(runId);
 
-    const semanticScope = code._startRunScope(runId);
-
     const mcpScope = mcp._startRunScope();
 
     const running =
@@ -339,7 +328,6 @@ function startRunScope(runId) {
                     command: session.command
                 })
             ),
-        semantic: semanticScope,
         mcp: mcpScope
     };
 }

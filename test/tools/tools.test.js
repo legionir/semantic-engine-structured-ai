@@ -1546,35 +1546,6 @@ async function main() {
         assert.deepEqual(partial.missing, ["nope"]);
     });
 
-    await test("the semantic-engine skill follows MCP availability", async () => {
-
-        const skills = require("../../agent/tools/skills");
-        const settings = require("../../agent/config");
-
-        assert.ok(
-            skills._skillIndex().some(item => item.name === "semantic_engine")
-        );
-
-        settings.set("MCP_ENABLED", false);
-        try {
-            assert.equal(
-                skills._skillIndex().some(item => item.name === "semantic_engine"),
-                false
-            );
-
-            await rejects(
-                run("skill_get", { name: "semantic_engine" }),
-                /Unknown skill: semantic_engine/
-            );
-        } finally {
-            settings.reset("MCP_ENABLED");
-        }
-
-        assert.ok(
-            skills._skillIndex().some(item => item.name === "semantic_engine")
-        );
-    });
-
     await test("a skill may carry data, and the data stays where it belongs", async () => {
 
         /*

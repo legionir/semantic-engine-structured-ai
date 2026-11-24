@@ -86,7 +86,7 @@ async function main() {
     await test("the complete route inventory is unique and method-aware", async () => {
 
         assert.equal(assertUnique(), true);
-        assert.equal(ROUTES.length, 45);
+        assert.equal(ROUTES.length, 44);
 
         const required = [
             "GET /api/events",
@@ -102,7 +102,6 @@ async function main() {
             "DELETE /api/sessions/:id",
             "GET /api/calls",
             "GET /api/calls/:key",
-            "GET /api/graph/:view",
             "POST /api/tasks",
             "GET /api/projects",
             "POST /api/projects",
@@ -340,17 +339,6 @@ async function main() {
             assert.equal(page.status, 200);
             assert.match(await page.text(), /structured-ai|<!doctype html/i);
 
-            const visualizer = await fetch(`${base}/visualizer.html`);
-            assert.equal(visualizer.status, 200);
-            assert.match(await visualizer.text(), /visualizer\/main\.js/);
-
-            const visualizerModule = await fetch(`${base}/visualizer/main.js`);
-            assert.equal(visualizerModule.status, 200);
-            assert.match(visualizerModule.headers.get("content-type"), /javascript/);
-
-            const worker = await fetch(`${base}/workers/layout.worker.js`);
-            assert.equal(worker.status, 200);
-            assert.match(await worker.text(), /requestId/);
         } finally {
             await app.close();
         }

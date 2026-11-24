@@ -67,15 +67,6 @@ module.exports = [
         "description": "Active runs allowed inside one project (Phase 10). Default 1 serializes a project's runs."
     },
     {
-        "key": "MAX_CONCURRENT_INDEX_RUNS",
-        "group": "runtime",
-        "type": "number",
-        "default": 2,
-        "min": 1,
-        "max": 16,
-        "description": "How many semantic index jobs may run at once across all projects (Phase 10)."
-    },
-    {
         "key": "MAX_WORKERS_PER_USER",
         "group": "runtime",
         "type": "number",
@@ -109,13 +100,5 @@ module.exports = [
         "min": 0,
         "max": 100,
         "description": "Observational CPU percent ceiling per project (Phase 10). 0 means unlimited; the live percent is reported on /api/metrics."
-    },
-    {
-        "key": "SEMANTIC_POOL_CACHE_LIMIT",
-        "group": "runtime",
-        "type": "number",
-        "default": 200,
-        "min": 0,
-        "description": "How many memoized query results one SemanticClient pool entry keeps per project (0 disables memoization). Entries are additionally invalidated on an index-generation change reported by the worker."
     }
 ];

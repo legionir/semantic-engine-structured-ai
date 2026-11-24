@@ -8,7 +8,7 @@
 | Locks the extracted tool groups against the historical modules:
 | named groups expose one runtime, there is no require cycle back to agent.js,
 | names/schemas stay in parity with the Phase 14 loader, executeTool
-| keeps the Phase 4 signature, and SemanticClient is shared with Phase 6.
+| keeps the Phase 4 signature, and all registered tools have concrete implementations.
 |--------------------------------------------------------------------------
 */
 
@@ -100,11 +100,6 @@ async function main() {
             path.join("process", "ForegroundCommand.js"),
             path.join("process", "BackgroundSession.js"),
             path.join("process", "index.js"),
-            path.join("code", "SemanticClient.js"),
-            path.join("code", "SemanticTools.js"),
-            path.join("code", "LiveLspTools.js"),
-            path.join("code", "IndexSessions.js"),
-            path.join("code", "index.js"),
             path.join("planning", "PlanModel.js"),
             path.join("planning", "PlanRepository.js"),
             path.join("planning", "PlanTools.js"),
@@ -142,7 +137,7 @@ async function main() {
     await test("canonical tool groups expose one public runtime without compatibility wrappers", async () => {
 
         for (const group of [
-            "filesystem", "process", "code", "planning", "memory",
+            "filesystem", "process", "planning", "memory",
             "git", "network", "search", "skills", "mcp", "discussion"
         ]) {
             assert.equal(
@@ -179,7 +174,7 @@ async function main() {
     });
 
 
-    await test("the canonical Phase 19 modules have no require cycle back to agent.js", async () => {
+    await test("the canonical tool modules have no require cycle back to agent.js", async () => {
 
         const extracted = [
             path.join(toolsDir, "ToolRuntime.js"),
@@ -187,7 +182,6 @@ async function main() {
             path.join(toolsDir, "index.js"),
             path.join(toolsDir, "filesystem"),
             path.join(toolsDir, "process"),
-            path.join(toolsDir, "code"),
             path.join(toolsDir, "planning"),
             path.join(toolsDir, "memory")
         ];
@@ -304,30 +298,13 @@ async function main() {
     });
 
 
-    await test("SemanticClient is shared with Phase 6 and index sessions stay on the engine", async () => {
-
-        const groupClient = require(path.join(toolsDir, "code", "SemanticClient.js"));
-        const phase6Client = require(path.join(REPO, "agent", "mcp", "SemanticClient.js"));
-
-        assert.equal(groupClient, phase6Client);
-        assert.equal(typeof groupClient, "function");
-
-        const codeTools = require(path.join(toolsDir, "code"));
-
-        assert.equal(typeof codeTools._shutdown, "function");
-        assert.equal(typeof codeTools._startRunScope, "function");
-
-        const scope = codeTools._startRunScope(undefined);
-
-        assert.ok(scope === undefined || typeof scope === "object");
+    await test("process and planning modules expose their lifecycle helpers", async () => {
 
         const processTools = require(path.join(toolsDir, "process"));
-
         assert.ok(processTools._sessions instanceof Map);
         assert.equal(typeof processTools.shutdownAll, "function");
 
         const planTools = require(path.join(toolsDir, "planning"));
-
         assert.equal(typeof planTools._loadPlan, "function");
         assert.equal(typeof planTools._summarise, "function");
         assert.equal(typeof planTools._normaliseUpdateArguments, "function");
@@ -364,7 +341,6 @@ async function main() {
             "PROJECT_CONTEXT_MODE",
             "RUN_CONTEXT_MODE",
             "PROMPT_BUILDER_MODE",
-            "SEMANTIC_POOL_MODE",
             "RUNTIME_ENGINE_MODE",
             "WEB_SERVER_MODE",
             "TOOL_RUNTIME_MODE",

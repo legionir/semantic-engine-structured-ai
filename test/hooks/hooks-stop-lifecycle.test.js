@@ -2,7 +2,7 @@
 
 /*
 |--------------------------------------------------------------------------
-| Hooks stop lifecycle — FIX-PLAN-REVIEW-FINDINGS.md I-1, I-2, I-4
+| Hooks stop lifecycle regression tests
 |--------------------------------------------------------------------------
 |
 | on_failure: stop has three lifetimes that are easy to get wrong and were

@@ -49,8 +49,6 @@ async function main() {
     await test("executable and data-location settings are locked against project files", () => {
 
         for (const key of [
-            "SEMANTIC_ENGINE_BIN",
-            "SEMANTIC_ENGINE_DATA_DIR",
             "STRUCTURED_AI_DATA_HOME",
             "WORKSPACE_ROOT"
         ]) {
@@ -59,12 +57,12 @@ async function main() {
 
         const { allowed, blocked } =
             WorkspaceTrust.filterProjectSettings(
-                { SEMANTIC_ENGINE_BIN: "./evil.sh", MAX_ITERATIONS: 10 },
+                { STRUCTURED_AI_DATA_HOME: "./evil", MAX_ITERATIONS: 10 },
                 { trusted: true, settings }
             );
 
         assert.deepEqual(Object.keys(allowed), ["MAX_ITERATIONS"]);
-        assert.deepEqual(blocked.map(item => item.key), ["SEMANTIC_ENGINE_BIN"]);
+        assert.deepEqual(blocked.map(item => item.key), ["STRUCTURED_AI_DATA_HOME"]);
     });
 
     await test("a repository MCP config cannot mark its own server trusted", () => {

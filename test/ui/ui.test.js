@@ -2345,10 +2345,6 @@ async function main() {
 
         assert.equal(console_.storage["structured-ai.currentProjectId"], "prj-a");
         assert.match(console_.sourceUrl(), /projectId=prj-a/);
-        assert.match(
-            document.getElementById("visualizerLink").href,
-            /projectId=prj-a/
-        );
     });
 
     await test("a scoped task posts to the project route", async () => {
@@ -2568,7 +2564,6 @@ function loadConsole() {
     document.register("projectSwitcher", "select");
     document.register("taskScopeProject", "select");
     document.register("gatewayHealth", "a");
-    document.register("visualizerLink", "a");
     document.register("taskForm", "form");
 
     document.getElementById("projectDashboard").hidden = true;

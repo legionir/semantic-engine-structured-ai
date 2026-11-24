@@ -31,7 +31,6 @@ const TOOL_SCHEMA_FILES = [
     "planning.json",
     "memory.json",
     "knowledge.json",
-    "code.json",
     "mcp.json",
     "discussion.json"
 ];

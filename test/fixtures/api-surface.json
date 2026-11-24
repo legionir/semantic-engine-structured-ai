@@ -11,7 +11,6 @@
     "/api/discussion",
     "/api/discussion/personas",
     "/api/events",
-    "/api/graph/",
     "/api/health",
     "/api/mcp",
     "/api/mcp/",
@@ -39,7 +38,6 @@
     "POST /api/projects/:projectId/cancel": "cancels only runs of that project",
     "GET  /api/events?projectId=": "SSE filtered to one project; 403 if token cannot access it",
     "GET  /projects": "serves the console SPA so /projects/:id?tab= is a dashboard deep-link (ui.test.js)",
-    "GET  /api/graph/?projectId=": "graph views resolve the named project's root (web/public/visualizer/api-client.js)",
     "GET  /api/projects/:projectId/discussions": "lists durable per-project discussion transcripts",
     "POST /api/projects/:projectId/discussions": "starts a project-scoped discussion and persists its transcript",
     "GET  /api/projects/:projectId/discussions/:discussionId": "replays one project-scoped durable discussion transcript"
@@ -58,7 +56,6 @@
     "DELETE /api/sessions/:id",
     "GET /api/calls",
     "GET /api/calls/:key",
-    "GET /api/graph/:view",
     "POST /api/tasks",
     "GET /api/projects",
     "POST /api/projects",

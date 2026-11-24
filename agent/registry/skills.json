@@ -118,11 +118,10 @@
     ],
     "instructions": [
       "Inspect project structure before making significant changes.",
-      "Identify relevant files and dependencies.",
-      "Prefer code_find_symbol and code_search over search_start for locating symbols and functions.",
-      "Use code_file_summary and code_dependencies to understand architectural roles and relationships.",
-      "Use code_diagnostics to verify syntax and type correctness in real time without executing a slow build.",
-      "Use code_callers and code_impact to determine the reach of a function or class change.",
+      "Identify relevant files and dependencies with the built-in filesystem and search tools.",
+      "When a configured MCP server offers relevant code navigation, inspect its tools with mcp_tools and invoke them through mcp_call or the discovered mcp__<server>__<tool> names.",
+      "Use fs_read after search or MCP results identify the exact source files that need inspection.",
+      "Use terminal_exec for builds, tests, type checks, and other verification.",
       "Understand existing patterns before introducing new ones.",
       "Minimize unrelated changes."
     ],
@@ -140,25 +139,9 @@
       "git_status",
       "git_diff",
       "fs_info",
-      "code_find_symbol",
-      "code_search",
-      "code_file_summary",
-      "code_dependencies",
-      "code_impact",
-      "code_find_tests",
-      "code_config_usage",
-      "code_context",
-      "code_index_status",
-      "code_index_start",
-      "code_index_get",
-      "code_diagnostics",
-      "code_callers",
-      "code_definition",
-      "code_organize_imports",
-      "code_rename",
-      "code_simulate_mutation",
-      "code_architecture_violations",
-      "code_git_hotspots"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ]
   },
   {
@@ -187,9 +170,10 @@
       "fs_read",
       "git_diff",
       "runtime_stats",
-      "code_find_tests",
-      "code_diagnostics",
-      "process_resize"
+      "process_resize",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ]
   },
   {
@@ -319,53 +303,6 @@
       "mcp_call",
       "mcp_add",
       "mcp_remove"
-    ]
-  },
-  {
-    "name": "semantic_engine",
-    "description": "Prefer Semantic Engine MCP over manual search.",
-    "when_to_use": "Whenever the Semantic Engine MCP is enabled and the task asks about symbols, files, dependencies, callers, impact, tests, configuration, architecture, or repository hotspots.",
-    "requires": {
-      "mcp_server": "semantic-engine"
-    },
-    "capabilities": [
-      "semantic_symbol_lookup",
-      "dependency_and_call_graph_navigation",
-      "impact_analysis",
-      "test_and_configuration_mapping",
-      "architecture_and_git_analysis"
-    ],
-    "instructions": [
-      "Use Semantic Engine tools as the first choice for finding code facts; do not start with fs_read, search_start, grep, or broad terminal commands when a semantic tool can answer the question.",
-      "Start with code_index_status when index freshness or availability is unclear. If the index is missing or stale, report that explicitly and use code_index_start only when indexing is needed.",
-      "Use code_find_symbol or code_search to locate a symbol or file, then pass the returned exact id or path to code_file_summary, code_dependencies, code_impact, code_find_tests, or code_config_usage.",
-      "Use code_context for a task-level set of relevant files before reading file bodies manually.",
-      "Use code_architecture_violations and code_git_hotspots for structural and history questions instead of reconstructing graphs from raw files.",
-      "Use fs_read only after Semantic Engine identifies the exact file and the actual source text is required; use terminal_exec only when execution or verification is required.",
-      "Treat an empty semantic result as evidence about the index and query, not proof that the code does not exist. Narrow the query or resolve the exact id before concluding."
-    ],
-    "constraints": [
-      "Never invent a symbol, relationship, test, or configuration usage that the Semantic Engine did not return.",
-      "Do not replace a precise semantic result with a manual approximation unless the semantic tool is unavailable or the user explicitly asks for raw text.",
-      "Keep the distinction between indexed facts, live source text, and Git history clear in the final answer."
-    ],
-    "tools": [
-      "code_index_status",
-      "code_find_symbol",
-      "code_search",
-      "code_file_summary",
-      "code_dependencies",
-      "code_context",
-      "code_impact",
-      "code_find_tests",
-      "code_config_usage",
-      "code_architecture_violations",
-      "code_git_hotspots",
-      "fs_read",
-      "fs_read_many",
-      "search_start",
-      "search_get",
-      "terminal_exec"
     ]
   }
 ]

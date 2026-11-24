@@ -17,15 +17,13 @@ const settings = require("./index");
 |
 |   { "<token>": { "allowedProjects": ["prj-a"], "permissions": ["project:read"] } }
 |
-| Permissions: project:read, project:write, semantic:query, semantic:index.
+| Permissions: project:read, project:write.
 |--------------------------------------------------------------------------
 */
 
 const PERMISSIONS = Object.freeze([
     "project:read",
-    "project:write",
-    "semantic:query",
-    "semantic:index"
+    "project:write"
 ]);
 
 

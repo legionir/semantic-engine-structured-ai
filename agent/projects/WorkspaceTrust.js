@@ -68,15 +68,12 @@ const LOCKED_KEYS = new Set([
     "MCP_ALLOW_RUNTIME_ADD",
     "ALLOW_PRIVATE_NETWORK",
     "NET_ALLOWED_HOSTS",
-    "SEMANTIC_ENGINE_URL",
     "PROJECT_FILE_ENABLED",
     "PROJECT_SAVE_SECRETS",
     "STRUCTURED_AI_TRUST_FILE",
 
     /* where code runs from and where state (and the secrets in it) is
        written: a repository must not choose either */
-    "SEMANTIC_ENGINE_BIN",
-    "SEMANTIC_ENGINE_DATA_DIR",
     "STRUCTURED_AI_DATA_HOME",
     "WORKSPACE_ROOT"
 ]);

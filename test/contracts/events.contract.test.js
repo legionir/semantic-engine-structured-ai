@@ -264,7 +264,7 @@ async function main() {
         assert.deepStrictEqual(
             { missing, added },
             { missing: [], added: [] },
-            "event names drifted from fixtures/events.json — update the fixture and CONTRACTS.md if the change is intentional"
+            "event names drifted from fixtures/events.json — update the fixture and contract documentation if the change is intentional"
         );
 
     });

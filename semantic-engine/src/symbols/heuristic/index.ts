@@ -1,1 +1,0 @@
-export { HeuristicSymbolExtractor } from './HeuristicSymbolExtractor';

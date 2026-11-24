@@ -196,12 +196,10 @@ async function main() {
             registry.register({
                 name: "Engine Core",
                 rootPath: WORKSPACE,
-                semanticEndpoint: "http://localhost:4000/mcp/prj"
             });
 
         assert.match(record.id, /^prj-engine-core-[0-9a-f]{8}$/);
         assert.equal(record.rootPath, canonicalizeRoot(WORKSPACE));
-        assert.equal(record.semanticEndpoint, "http://localhost:4000/mcp/prj");
         assert.equal(record.enabled, true);
         assert.equal(record.autoStart, true);
         assert.deepStrictEqual(record.permissions, {

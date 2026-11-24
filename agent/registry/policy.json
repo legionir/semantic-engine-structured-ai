@@ -15,10 +15,7 @@
       "groups": [
         "filesystem.read",
         "search",
-        "introspection",
-        "code.query",
-        "code.index",
-        "code.live"
+        "introspection"
       ],
       "action": "allow",
       "reason": "inspection only"
@@ -259,14 +256,6 @@
       ],
       "action": "require_approval",
       "reason": "sends data to a remote host"
-    },
-    {
-      "id": "code_refactoring_mutations",
-      "groups": [
-        "code.write"
-      ],
-      "action": "require_approval",
-      "reason": "modifies code across multiple files via compiler rename"
     },
     {
       "id": "mcp_inspection_is_free",

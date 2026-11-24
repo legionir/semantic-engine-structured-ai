@@ -402,69 +402,6 @@ async function main() {
     });
 
 
-    await test("semantic-gated skills follow their activation gate in both modes", async () => {
-
-        /* In this harness no Semantic MCP answers, so any registry
-           skill whose activation requires "semantic-engine" must be
-           filtered — the same gate Phase 6 later scopes per project. */
-
-        const gated =
-            runtime.registries.SKILLS.filter(
-                skill =>
-                    /semantic-engine/i.test(
-                        skill?.requires?.mcp_server ||
-                        skill?.activation?.mcp_server ||
-                        ""
-                    )
-            );
-
-        if (gated.length === 0) {
-
-            console.log("       (no semantic-gated skill in the registry; nothing to assert)");
-            return;
-        }
-
-        /* The invariant, in both modes: a gated skill is advertised in
-           the prompt IFF the runtime's own activation gate says yes —
-           the gate Phase 6 later scopes per project. (Whether the
-           Semantic engine answers in this harness is environment
-           dependent, so the assertion reasons about the gate, not the
-           environment.) */
-
-        const { _isActiveSkill: isActiveSkill } =
-            require(path.join(ROOT, "agent", "tools", "skills"));
-
-        for (const mode of ["legacy", "modular"]) {
-
-            const messages =
-                withMode(mode, () => runtime.createMainAgentMessages("fixture task"));
-
-            const skillsMessage =
-                messages.find(message => {
-                    try {
-                        return JSON.parse(message.content).type === "available_skills";
-                    } catch {
-                        return false;
-                    }
-                });
-
-            const advertised = JSON.parse(skillsMessage.content).skills;
-
-            for (const skill of gated) {
-
-                const gate = isActiveSkill(skill);
-
-                assert.equal(
-                    advertised.some(item => item.name === skill.name),
-                    gate,
-                    `${mode}: skill ${skill.name} advertisement contradicts its activation gate (${gate})`
-                );
-            }
-        }
-
-    });
-
-
     await test("project_context: additive message with the active project and its rules", async () => {
 
         /* Unit-level: the facade built from minimal records, no engine

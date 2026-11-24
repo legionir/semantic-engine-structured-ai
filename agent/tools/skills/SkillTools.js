@@ -182,49 +182,9 @@ function resolveResource(skill, resourceId) {
 }
 
 
-/*
-| A conditional skill is visible only when the capability it documents is
-| available. The semantic skill is special because its MCP sidecar may be
-| local or remote; `semantic.isAvailable()` covers both definitions and
-| does not make a network call merely to build the prompt.
-|
-| Phase 6: inside a modular run that carries a project, "available" is a
-| per-project question — the skill must describe the ACTIVE project's
-| semantic worker, not whatever the process-wide engine happens to do
-| (a run on a project whose worker is down must not be told semantic
-| code tools exist). Legacy mode keeps the exact historic probe.
-*/
-function semanticEngineActive() {
-
-    if (
-        settings.get("MCP_ENABLED") === false ||
-        settings.get("SEMANTIC_ENABLED") === false
-    ) {
-        return false;
-    }
-
-    try {
-
-        const { runManager } = require("../../runtime");
-        const run = runManager.current();
-
-        if (run && run.project) {
-
-            const resolver =
-                require("../../mcp/ProjectSemanticResolver");
-
-            return resolver.isEndpointActiveFor(run.project) === true;
-        }
-
-        const semantic = require("../../mcp/semantic");
-        return semantic.isAvailable() === true;
-
-    } catch {
-        return false;
-    }
-}
-
-
+/* A skill tied to an MCP server is visible only when that standard server
+   is configured and MCP is enabled. This is protocol-agnostic: no server is
+   started or contacted while building the prompt. */
 function isActiveSkill(skill) {
 
     const server =
@@ -235,13 +195,18 @@ function isActiveSkill(skill) {
         return true;
     }
 
-    if (String(server).toLowerCase() === "semantic-engine") {
-        return semanticEngineActive();
+    if (settings.get("MCP_ENABLED") === false) {
+        return false;
     }
 
-    return false;
+    try {
+        const { manager } = require("../../mcp/McpManager");
+        const client = manager.client(String(server));
+        return Boolean(client && client.config.enabled !== false);
+    } catch {
+        return false;
+    }
 }
-
 
 function activeSkills() {
     return loadSkills().filter(isActiveSkill);

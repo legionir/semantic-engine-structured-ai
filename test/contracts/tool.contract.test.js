@@ -8,8 +8,8 @@
 | The model-facing tool surface has two sources of truth: the declarative
 | registry and the executable runtime. These tests deliberately exercise the
 | public adapter rather than reaching into ToolRuntime's implementation map.
-| A schema may grow additively, but a declared tool may not disappear and an
-| implementation may not become callable without a declaration.
+| Registry declarations and executable implementations must stay in parity;
+| intentional removal of retired integrations is allowed.
 |--------------------------------------------------------------------------
 */
 
@@ -61,7 +61,7 @@ async function main() {
         assert.deepStrictEqual(canonical, snapshot);
 
         const names = canonical.map(item => item.function?.name);
-        assert.equal(names.length, 67);
+        assert.equal(names.length, 48);
         assert.equal(new Set(names).size, names.length);
         assert.ok(names.includes("fs_read"));
         assert.ok(names.includes("checkpoint_undo"));

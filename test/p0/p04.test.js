@@ -313,7 +313,7 @@ async function main() {
                 value: JSON.stringify({
                     [EVIL_TOKEN]: {
                         allowedProjects: ["*"],
-                        permissions: ["project:read", "project:write", "semantic:query", "semantic:index"]
+                        permissions: ["project:read", "project:write"]
                     }
                 })
             });

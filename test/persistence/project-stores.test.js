@@ -371,7 +371,7 @@ async function main() {
 
             await expectThrow(
                 tools.executeTool("runtime_stats", {}, ctxA),
-                /not yet project-aware/,
+                /process-scoped/,
                 "runtime_stats on a foreign root"
             );
 

@@ -12,9 +12,10 @@ module.exports = [
       "fs_list",
       "search_start",
       "search_get",
-      "code_config_usage",
-      "code_dependencies",
-      "net_fetch"
+      "net_fetch",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L1"
   },
@@ -31,9 +32,9 @@ module.exports = [
       "fs_write",
       "fs_edit",
       "terminal_exec",
-      "code_find_symbol",
-      "code_dependencies",
-      "code_file_summary"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L1"
   },
@@ -45,9 +46,10 @@ module.exports = [
     "tools": [
       "fs_read",
       "fs_read_many",
-      "code_search",
-      "code_file_summary",
-      "fs_list"
+      "fs_list",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L1"
   },
@@ -64,7 +66,9 @@ module.exports = [
       "fs_write",
       "fs_edit",
       "terminal_exec",
-      "code_find_symbol"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L1"
   },
@@ -77,9 +81,9 @@ module.exports = [
       "fs_read",
       "fs_list",
       "fs_tree",
-      "code_dependencies",
-      "code_impact",
-      "code_file_summary"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L2"
   },
@@ -90,9 +94,10 @@ module.exports = [
     "system_prompt": "You are the Performance Agent in a multi-agent technical discussion. Your\nlens is runtime performance: latency, throughput, memory/CPU usage,\ncaching opportunities, and scalability under load.\n\nRules:\n- Identify concrete performance risks in proposals from other agents\n  (e.g. N+1 queries, unindexed lookups, synchronous blocking calls, large\n  payloads).\n- Where relevant, estimate the order of magnitude of impact rather than\n  vague \"this could be slow\" statements.\n- Propose specific mitigations (caching layer, batching, pagination,\n  indexing) rather than only flagging the problem.\n- Do not over-optimize for scale the task does not require — call out\n  premature optimization if you see it proposed by others.",
     "tools": [
       "fs_read",
-      "code_search",
-      "code_file_summary",
-      "terminal_exec"
+      "terminal_exec",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L1"
   },
@@ -106,8 +111,9 @@ module.exports = [
       "fs_list",
       "fs_write",
       "terminal_exec",
-      "code_find_tests",
-      "code_file_summary"
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
     ],
     "model_role": "L1"
   },

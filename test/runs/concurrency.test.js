@@ -31,7 +31,6 @@ process.env.MAX_CONCURRENT_PROJECT_RUNS = "2";
 process.env.MAX_RUNS_PER_PROJECT = "1";
 process.env.MAX_WORKERS_PER_USER = "8";
 process.env.RUN_QUEUE_LIMIT = "4";
-process.env.MAX_CONCURRENT_INDEX_RUNS = "2";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -163,7 +162,6 @@ async function main() {
         const keys = [
             "MAX_CONCURRENT_PROJECT_RUNS",
             "MAX_RUNS_PER_PROJECT",
-            "MAX_CONCURRENT_INDEX_RUNS",
             "MAX_WORKERS_PER_USER",
             "RUN_QUEUE_LIMIT",
             "PROJECT_MEMORY_LIMIT",
@@ -440,21 +438,6 @@ async function main() {
 
         runtime.settings.set("PROJECT_MEMORY_LIMIT", 0);
         runtime.observability.recordMemory(prjA.id, 0);
-    });
-
-
-    await test("INDEX_LIMIT is enforced by MAX_CONCURRENT_INDEX_RUNS", async () => {
-
-        runtime.observability.reset();
-        assert.equal(runtime.observability.beginIndex(), true);
-        assert.equal(runtime.observability.beginIndex(), true);
-        assert.equal(runtime.observability.beginIndex(), false);
-
-        runtime.observability.endIndex();
-        assert.equal(runtime.observability.beginIndex(), true);
-        runtime.observability.endIndex();
-        runtime.observability.endIndex();
-        runtime.observability.endIndex();
     });
 
 

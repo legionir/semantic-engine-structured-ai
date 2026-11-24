@@ -20,7 +20,6 @@ const ROUTES = Object.freeze([
     ["DELETE", "/api/sessions/:id"],
     ["GET", "/api/calls"],
     ["GET", "/api/calls/:key"],
-    ["GET", "/api/graph/:view"],
     ["POST", "/api/tasks"],
     ["GET", "/api/projects"],
     ["POST", "/api/projects"],

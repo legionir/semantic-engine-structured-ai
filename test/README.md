@@ -12,9 +12,9 @@ test/
 ├── actions/          action parser unit tests
 ├── context/          context and archive regression tests
 ├── tools/            filesystem, process, project and tool-runtime tests
-├── mcp/              MCP, semantic gateway and semantic-pool tests
+├── mcp/              standard MCP client tests
 ├── web/              web server regression and route-boundary tests
-├── ui/               browser console and visualizer tests
+├── ui/               browser console tests
 ├── projects/         registry/API and project-run acceptance tests
 ├── discussion/       discussion engine and project transcript tests
 ├── persistence/      JSONL journal/eventstore and repository tests
@@ -34,7 +34,7 @@ assertions:
 - `tools.test.js` → `tools/tools.test.js`
 - `hooks.test.js` → `hooks/legacy.test.js`
 - `journal.test.js`, `eventstore.test.js` → `persistence/`
-- `semantic.test.js`, `semantic-pool.test.js`, `mcp.test.js` → `mcp/`
+- `mcp.test.js` and generic MCP contract tests → `mcp/`
 - `archive.test.js` → `context/archive.test.js`
 - `project-run.test.js` → `projects/project-run.test.js`
 - `e2e.test.js`, `cli.test.js`, `interactive.test.js` → `e2e/`

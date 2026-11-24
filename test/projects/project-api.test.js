@@ -36,7 +36,7 @@ const SCOPED_B = "scoped-token-bbb-phase9";
 process.env.AGENT_CONSOLE_TOKENS = JSON.stringify({
     [SCOPED_A]: {
         allowedProjects: ["prj-a"],
-        permissions: ["project:read", "project:write", "semantic:query"]
+        permissions: ["project:read", "project:write"]
     },
     [SCOPED_B]: {
         allowedProjects: ["prj-b"],

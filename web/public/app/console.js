@@ -74,7 +74,6 @@ const DASHBOARD_TABS = [
     ["plan", "Plan"],
     ["events", "Events"],
     ["approvals", "Approvals"],
-    ["semantic", "Semantic Engine"],
     ["mcp", "MCP"],
     ["logs", "Logs"],
     ["settings", "Settings"]
@@ -5283,15 +5282,7 @@ function renderProjectSwitcher() {
         }
     }
 
-    const link = el("visualizerLink");
 
-    if (link) {
-
-        link.href =
-            state.currentProjectId
-                ? `/visualizer.html?projectId=${encodeURIComponent(state.currentProjectId)}`
-                : "/visualizer.html";
-    }
 }
 
 
@@ -5629,7 +5620,6 @@ async function renderDashboardBody(projectId, tab) {
             dashboardCard("status", health?.status || projectState?.status),
             dashboardCard("runs", metrics?.metrics?.project_runs_total ?? 0),
             dashboardCard("active", metrics?.metrics?.project_active_runs ?? 0),
-            dashboardCard("index", metrics?.metrics?.project_index_state || "unknown"),
             dashboardCard("root", record?.rootPath)
         );
         body.appendChild(grid);
@@ -5746,15 +5736,6 @@ async function renderDashboardBody(projectId, tab) {
             );
         }
 
-        return;
-    }
-
-    if (tab === "semantic") {
-
-        body.append(
-            dashboardCard("index", metrics?.metrics?.project_index_state || "unknown"),
-            dashboardCard("health", health?.index_state || health?.status)
-        );
         return;
     }
 
