@@ -1150,7 +1150,8 @@ async function main() {
             ["fs_edit", { path: "src/.git/hooks/pre-commit", old_text: "a", new_text: "b" }],
             ["fs_delete", { path: ".git" }],
             ["fs_move", { source: ".git/config", destination: "elsewhere" }],
-            ["fs_move", { source: "a.txt", destination: ".git/hooks/pre-commit" }]
+            ["fs_move", { source: "a.txt", destination: ".git/hooks/pre-commit" }],
+            ["apply_patch", { paths: ["src/.git/config"], patch: "..." }]
         ];
 
         for (const [tool, args] of attempts) {
@@ -1169,7 +1170,8 @@ async function main() {
             ["fs_write", { path: "agent/registry/policy.json", content: "{}" }],
             ["fs_edit", { path: "agent/registry/policy.json", old_text: "deny", new_text: "allow" }],
             ["fs_delete", { path: "agent/registry/policy.json" }],
-            ["fs_move", { source: "agent/registry/policy.json", destination: "/tmp/p.json" }]
+            ["fs_move", { source: "agent/registry/policy.json", destination: "/tmp/p.json" }],
+            ["apply_patch", { paths: ["agent/registry/policy.json"], patch: "..." }]
         ]) {
 
             assert.equal(

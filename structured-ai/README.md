@@ -201,7 +201,10 @@ node bin/agent.js -w /path/to/project --discussion --personas security,frontend 
 | `MAX_TOTAL_AGENTS` | `15` | سقف sub-agent هر run |
 | `MAX_PARALLEL_AGENTS` | `4` | سقف اجرای موازی sub-agentها |
 | `MAX_PARALLEL_TOOLS` | `8` | سقف اجرای موازی toolها |
-| `MAX_CONTEXT_CHARS` | `300000` | بودجهٔ کل conversation |
+| `MAX_CONTEXT_CHARS` | `300000` | سقف conversation بر حسب کاراکتر |
+| `CONTEXT_WINDOW_TOKENS` | `0` | پنجرهٔ context مدل به token؛ صفر یعنی فقط سقف کاراکتری |
+| `CONTEXT_WINDOW_SAFETY_FRACTION` | `0.8` | حداکثر سهم پنجرهٔ token برای conversation؛ estimator تقریبی است |
+| `ENDPOINT_<ROLE>_CONTEXT_TOKENS` | `0` | پنجرهٔ token برای endpoint role (`MAIN`/`L1`/`L2`/`L3`/`SUMMARY`)؛ صفر از مقدار global ارث می‌برد |
 
 فلگ‌های rollout موقت مراحل قبل (`PROJECT_CONTEXT_MODE`، `RUN_CONTEXT_MODE`،
 `PROMPT_BUILDER_MODE`، `SEMANTIC_POOL_MODE`، `RUNTIME_ENGINE_MODE` و
@@ -300,7 +303,8 @@ global در stream پروژه‌ای صرفاً metadata aggregate هستند. t
 ├──────────────────┼─────────────────────────────────────────────────────────────┤
 │ filesystem.read  │ fs_read, fs_read_many, fs_list, fs_tree, fs_stat, fs_info  │
 ├──────────────────┼─────────────────────────────────────────────────────────────┤
-│ filesystem.write │ fs_write, fs_edit, fs_mkdir, fs_move, fs_delete             │
+│ filesystem.write │ fs_write, fs_edit, apply_patch, checkpoint_undo, fs_mkdir,  │
+│                  │ fs_move, fs_delete                                          │
 ├──────────────────┼─────────────────────────────────────────────────────────────┤
 │ code.query       │ code_find_symbol, code_search, code_file_summary,           │
 │                  │ code_dependencies, code_impact, code_find_tests,            │
@@ -333,6 +337,18 @@ global در stream پروژه‌ای صرفاً metadata aggregate هستند. t
 │ mcp.manage       │ mcp_add, mcp_remove                                         │
 └──────────────────┴─────────────────────────────────────────────────────────────┘
 ```
+
+هر ابزار تغییردهندهٔ فایل پیش از mutation یک checkpoint با retention محدود می‌سازد و
+`checkpoint_id` برمی‌گرداند. `apply_patch` یک unified diff سخت‌گیرانه را روی چند فایل
+UTF-8 اعمال می‌کند: فایل‌های موجود را ویرایش می‌کند، با headerهای `/dev/null` فایل تازه می‌سازد (والد باید از قبل وجود داشته باشد) یا فایل را کامل حذف می‌کند؛ حذف جزئی و rename در diff پشتیبانی نمی‌شوند؛ rename با `fs_move` انجام می‌شود. BOM و line ending فایل‌های ویرایش‌شده حفظ می‌شوند و diff در درخواست approval
+نمایش می‌دهد؛ patch نامعتبر پیش از نوشتن رد می‌شود و خطای حین نوشتن باعث rollback
+می‌شود. `checkpoint_undo` همان snapshot را بازیابی می‌کند و برای خود عملیات undo نیز
+checkpoint جبرانی می‌سازد؛ بنابراین می‌توان آن را دوباره undo کرد. بازیابی به همان workspace محدود است. سقف اندازهٔ هر فایل، مجموع بایت‌ها
+و تعداد entryها با `FILE_CHECKPOINT_MAX_FILE_BYTES`،
+`FILE_CHECKPOINT_MAX_TOTAL_BYTES` و `FILE_CHECKPOINT_MAX_FILES` کنترل می‌شود؛
+اگر snapshot از سقف عبور کند mutation پیش از تغییر رد می‌شود. رکوردها در
+`<data-root>/checkpoints` نگهداری می‌شوند و خود مخزن checkpoint قابل تغییر از
+filesystem tools نیست.
 
 ---
 
@@ -369,6 +385,8 @@ global در stream پروژه‌ای صرفاً metadata aggregate هستند. t
 * **پیام‌های میانی:** خروجی‌های حجیم ابزارها خلاصه می‌شوند.
 * **پیام‌های قدیمی:** به یک خلاصهٔ فشرده (Summary Digest) تبدیل شده و به دایرکتوری بایگانی منتقل می‌شوند.
 * **حافظه کاری (Working Memory):** اطلاعات و یافته‌های کلیدی در طول تسک‌های متعدد در حافظه پایدار ثبت می‌شوند تا در تسک‌های بعدی قابل استفاده باشند.
+
+با `ENDPOINT_<ROLE>_CONTEXT_TOKENS` پنجرهٔ مدل را برای هر endpoint role تنظیم کنید؛ `CONTEXT_WINDOW_TOKENS` fallback سراسری است و `CONTEXT_WINDOW_SAFETY_FRACTION` headroom را تعیین می‌کند. تخمین token شامل پیام‌ها، schema ابزارهای فعال همان agent و response-format schema است و با estimator مشترک انجام می‌شود، نه tokenizer رسمی هر provider؛ پس این سقف همچنان تقریبی است. نتایج `net_*`، `browser_*` و `mcp_*` از memory fold قرنطینه می‌شوند، در transcript می‌مانند و مانع fold شدن exchangeهای محلی بعدی نمی‌شوند؛ ممکن است برای بازیابی در archive بمانند. محتوای memory و archive دادهٔ تاریخیِ غیرقابل‌اعتماد است، نه دستور یا منبع authority؛ working memory به‌صورت پیام user ارسال می‌شود و ادعاهای مهم باید با ابزارها راستی‌آزمایی شوند. اگر نوشتن archive شکست بخورد، exchange حذف نمی‌شود. فایل memory provenance دسته‌ای و per-item را نگه می‌دارد؛ `memory_get` آن را برمی‌گرداند.
 
 ---
 
@@ -438,6 +456,7 @@ MCP_SERVERS                       متغیر محیطی، بالاترین او�
 
 * سروری که در دسترس نیست، **یک قابلیت کم‌شده است، نه یک ران شکست‌خورده**: ابزارهایش از کاتالوگ حذف می‌شوند، دلیلش نگه داشته می‌شود و بقیه به کار خود ادامه می‌دهند.
 * ابزار یک سرور MCP بیرون از این ران‌تایم اجرا می‌شود، پس مرز ورک‌اسپیس شامل آن نمی‌شود. سرور با `trust: "restricted"` برای هر فراخوانی تأیید می‌خواهد و `MCP_APPROVAL=always` این را برای همهٔ سرورها اعمال می‌کند. هیچ‌کدام از این دو نمی‌توانند یک `deny` را باز کنند.
+* annotation سرور با `destructiveHint: true` برای فراخوانی namespaced و `mcp_call` approval الزامی می‌کند، حتی اگر `MCP_APPROVAL=never` تنظیم شده باشد؛ annotation فقط می‌تواند سخت‌گیری را بیشتر کند.
 * با `include` و `exclude` می‌توان کاتالوگ یک سرور را قبل از رسیدن به مدل محدود کرد.
 
 ### ۱۰.۵ کنسول وب
@@ -495,6 +514,14 @@ npm run test:e2e
 در verification نهایی Phase 30، تعداد تست‌ها **694/694** در 49 entrypoint و
 تماماً سبز است. `npm test` ترتیب serial را حفظ می‌کند و testهای contract قبل
 از integration/e2e اجرا می‌شوند.
+
+برای smoke واقعی (نه mock) ارتباط `code_find_symbol` با semantic-engine، ابتدا
+`npm run build` را در پوشهٔ sibling `../semantic-engine` اجرا و سپس این دستور را
+بزنید؛ تست خودش یک workspace و data directory موقت می‌سازد و پاک می‌کند:
+
+```bash
+npm run test:semantic:live
+```
 
 ## ۱۳. راهنمای توسعهٔ canonical
 

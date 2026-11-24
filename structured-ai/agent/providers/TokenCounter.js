@@ -9,7 +9,8 @@
 | (countTokens -> { tokens, method: "native" }). Every other provider, and
 | any native count that fails, falls back to this estimate: about four
 | ASCII characters per token, about two for other scripts (Persian, CJK,
-| ...), a small per-message overhead and a flat cost per image.
+| ...), a small per-message overhead and a flat cost per image. Tool and
+| response-format schemas are included as serialized request metadata.
 |--------------------------------------------------------------------------
 */
 
@@ -61,6 +62,11 @@ function estimateRequestTokens(request) {
 
     if (Array.isArray(request && request.tools) && request.tools.length > 0) {
         total += estimateTokens(JSON.stringify(request.tools));
+    }
+
+    const responseFormat = request && (request.response_format || request.responseFormat);
+    if (responseFormat) {
+        total += estimateTokens(JSON.stringify(responseFormat));
     }
 
     return total;

@@ -15,7 +15,11 @@ function createApprovalHandler({
     interactive = true
 } = {}) {
     return (evaluation, args) => {
-        const summary = JSON.stringify(args || {}).slice(0, 200);
+        const patchPreviewLimit = 20000;
+        const summary =
+            evaluation.tool === "apply_patch" && args && typeof args.patch === "string"
+                ? `paths: ${JSON.stringify(args.paths || [])}\n${args.patch.slice(0, patchPreviewLimit)}${args.patch.length > patchPreviewLimit ? `\n... diff truncated in approval preview (${args.patch.length} characters total)` : ""}`
+                : JSON.stringify(args || {}).slice(0, 200);
         output.write(
             `\n${colours.yellow("approval required")}\n` +
             `  agent : ${evaluation.agent}\n` +

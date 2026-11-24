@@ -22,6 +22,8 @@
     "tools": [
       "fs_write",
       "fs_edit",
+      "apply_patch",
+      "checkpoint_undo",
       "fs_mkdir",
       "fs_move",
       "fs_delete"

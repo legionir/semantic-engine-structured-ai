@@ -44,6 +44,12 @@ const {
 
 const promptKit = require("./prompt");
 const { createAgentRequestExecutor } = require("./providers/AgentRequestExecutor");
+const { createEndpointProfiles } = require("./providers/EndpointProfiles");
+const { createMcpRuntime } = require("./mcp/McpRuntime");
+const { createAgentProfileResolver } = require("./runtime/AgentProfileResolver");
+const { createExecutionRules } = require("./prompt/ExecutionRules");
+const { createResponseReporter } = require("./providers/ResponseReporter");
+const { createAgentRegistries } = require("./registry/AgentRegistries");
 
 /*
 | Prompt kit wiring (EXECUTION_PLAN Phase 5). The injected builders and
@@ -216,175 +222,24 @@ const DEFAULT_BASE_URL =
     "http://localhost:4414/p/smart_routing/v1";
 
 
-function currentBaseUrl() {
+const endpointProfiles = createEndpointProfiles({
+    settings,
+    defaultBaseUrl: DEFAULT_BASE_URL,
+    schemaAllowed: (endpoint, role) =>
+        responseFormatAllowed(schemaKeyFor(endpoint, role))
+});
 
-    return (
-        settings.get("AGENT_BASE_URL") ||
-        DEFAULT_BASE_URL
-    );
-}
-
-function currentEndpoint() {
-
-    return `${currentBaseUrl()}/chat/completions`;
-}
-
-function currentApiKey() {
-
-    return settings.get("AGENT_API_KEY");
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Endpoint Profiles
-|--------------------------------------------------------------------------
-|
-| Each role can talk to its own endpoint with its own key, model and
-| temperature: a strong model for the orchestrator, cheaper ones deeper
-| in the tree, and a small fast one for summarising. Anything left empty
-| inherits, so a single AGENT_BASE_URL still configures everything.
-|--------------------------------------------------------------------------
-*/
-
-const ROLES = ["MAIN", "L1", "L2", "L3", "SUMMARY"];
-
-
-function roleForDepth(depth) {
-
-    if (!depth || depth < 1) {
-        return "MAIN";
-    }
-
-    return depth >= 3
-        ? "L3"
-        : `L${depth}`;
-}
-
-
-function endpointFor(role, agentDefinition) {
-
-    const name =
-        ROLES.includes(role)
-            ? role
-            : "MAIN";
-
-    const baseUrl =
-        settings.get(`ENDPOINT_${name}_BASE_URL`) ||
-        currentBaseUrl();
-
-    const apiKey =
-        settings.get(`ENDPOINT_${name}_API_KEY`) ||
-        currentApiKey();
-
-    const roleModel =
-        settings.get(`ENDPOINT_${name}_MODEL`);
-
-    const roleTemperature =
-        settings.get(`ENDPOINT_${name}_TEMPERATURE`);
-
-    return {
-        role: name,
-
-        base_url: baseUrl,
-
-        endpoint: `${baseUrl}/chat/completions`,
-
-        api_key: apiKey,
-
-        model:
-            roleModel ||
-            activeModel(agentDefinition),
-
-        temperature:
-            roleTemperature >= 0
-                ? roleTemperature
-                : activeTemperature(agentDefinition)
-    };
-}
-
-
-function endpointOverview() {
-
-    return ROLES.map(role => {
-
-        const resolved =
-            endpointFor(role, null);
-
-        return {
-            role,
-
-            model: resolved.model,
-
-            temperature: resolved.temperature,
-
-            base_url: resolved.base_url,
-
-            inherits:
-                settings.get(`ENDPOINT_${role}_BASE_URL`) === "",
-
-            /*
-            | Whether this endpoint is still being sent the response
-            | schema. It stops once the endpoint has rejected it, and the
-            | agent should know which contract it is answering under.
-            */
-
-            sends_schema:
-                responseFormatAllowed(
-                    schemaKeyFor(resolved, role)
-                )
-        };
-    });
-}
-
-
-/*
-| A model chosen at runtime, from the console or a session command,
-| outranks the model named by a profile. Otherwise the profile wins and
-| the configured default is the fallback.
-*/
-
-function setModelOverride(model) {
-
-    if (!model) {
-
-        if (settings.sourceOf("AGENT_MODEL") === "override") {
-            settings.reset("AGENT_MODEL");
-        }
-
-        return settings.get("AGENT_MODEL");
-    }
-
-    return settings.set("AGENT_MODEL", model);
-}
-
-
-function activeTemperature(agentDefinition) {
-
-    if (settings.sourceOf("AGENT_TEMPERATURE") === "override") {
-        return settings.get("AGENT_TEMPERATURE");
-    }
-
-    return (
-        agentDefinition && agentDefinition.temperature !== undefined &&
-        agentDefinition.temperature !== null
-            ? agentDefinition.temperature
-            : settings.get("AGENT_TEMPERATURE")
-    );
-}
-
-
-function activeModel(agentDefinition) {
-
-    if (settings.sourceOf("AGENT_MODEL") === "override") {
-        return settings.get("AGENT_MODEL");
-    }
-
-    return (
-        (agentDefinition && agentDefinition.model) ||
-        settings.get("AGENT_MODEL")
-    );
-}
+const {
+    currentBaseUrl,
+    currentEndpoint,
+    currentApiKey,
+    roleForDepth,
+    endpointFor,
+    endpointOverview,
+    setModelOverride,
+    activeTemperature,
+    activeModel
+} = endpointProfiles;
 
 
 /*
@@ -528,294 +383,55 @@ function logObject(
 | prompt or the execution rules does not need a restart either.
 */
 
-const TEXT_CACHE = new Map();
-
-
-function readTextLive(filePath) {
-
-    let stamp = "missing";
-
-    try {
-
-        const stats = fs.statSync(filePath);
-
-        stamp = `${stats.mtimeMs}:${stats.size}`;
-
-    } catch {
-
-        /* fall through and let readText report it */
-    }
-
-    const cached = TEXT_CACHE.get(filePath);
-
-    if (
-        cached &&
-        cached.stamp === stamp
-    ) {
-        return cached.text;
-    }
-
-    /* Normalize checkout line endings before parsing prompt headings and
-       measuring prompt budgets. CRLF otherwise adds a character per line
-       and prevents exact heading/section checks from matching on Windows. */
-    const text = readText(filePath).replace(/\r\n/g, "\n");
-
-    TEXT_CACHE.set(filePath, { stamp, text });
-
-    return text;
-}
-
-
-/*
-| The rules are shared by every agent, but not every rule applies to
-| every agent: git_analysis has no plan tools and was still told, in
-| 1,424 characters of every request, how to keep a plan. A section may
-| therefore declare what it needs:
-|
-|   PLAN AND PROGRESS [needs: plan_get, plan_update]
-|
-| The marker never reaches the model, and a section with no marker is
-| always included, so the default stays "everyone reads everything".
-| Which tools an agent has is what decides, and the special condition
-| "approval" means it holds a tool the policy does not simply allow.
-*/
-
-const RULE_MARKER =
-    /^([A-Z][A-Z ]*?)\s*\[needs:\s*([^\]]+)\]\s*$/;
-
-
-function ruleSectionApplies(condition, toolNames, hasGatedTool) {
-
-    const wanted =
-        condition.split(",").map(item => item.trim()).filter(Boolean);
-
-    return wanted.some(need => {
-
-        if (need === "approval") {
-            return hasGatedTool;
-        }
-
-        return toolNames.includes(need);
-    });
-}
-
-
-function filterExecutionRules(text, toolNames, hasGatedTool) {
-
-    const lines = text.split("\n");
-
-    const output = [];
-
-    let skipping = false;
-
-    for (const line of lines) {
-
-        const match = RULE_MARKER.exec(line);
-
-        if (match) {
-
-            skipping =
-                !ruleSectionApplies(
-                    match[2],
-                    toolNames,
-                    hasGatedTool
-                );
-
-            if (!skipping) {
-
-                /* the condition is bookkeeping, not instruction */
-                output.push(match[1]);
-            }
-
-            continue;
-        }
-
-        /*
-        | A section ends at the next unmarked heading, which is a line
-        | of capitals on its own.
-        */
-
-        if (
-            skipping &&
-            /^[A-Z][A-Z ]+$/.test(line) &&
-            line.trim() !== ""
-        ) {
-            skipping = false;
-        }
-
-        if (!skipping) {
-            output.push(line);
-        }
-    }
-
-    return output.join("\n").replace(/\n{4,}/g, "\n\n\n");
-}
-
-
-function executionRules(agentDefinition) {
-
-    const text =
-        readTextLive(
-            path.join(CONFIG_DIR, "execution_rules.txt")
-        );
-
-    if (!agentDefinition) {
-
-        return filterExecutionRules(
-            text,
-            TOOLS_OF().map(tool => tool.function.name),
-            true
-        );
-    }
-
-    const toolNames =
-        resolveTools(agentDefinition.tools).map(
-            tool => tool.function.name
-        );
-
-    const hasGatedTool =
-        toolNames.some(
-            name =>
-                POLICY_ENGINE.evaluate(name, {}, agentDefinition.name)
-                    .decision !== "allow"
-        );
-
-    return filterExecutionRules(
-        text,
-        toolNames,
-        hasGatedTool
-    );
-}
-
-
-function systemPrompt() {
-
-    return readTextLive(
-        path.join(CONFIG_DIR, "system_prompt.txt")
-    );
-}
-
-
-function schemaFileName() {
-
-    return settings.get("AGENT_SCHEMA") === "strict"
-        ? "response_format.strict.json"
-        : "response_format.json";
-}
-
-
-const REGISTRY_FILES = {
-    PERSONAS: path.join(REGISTRY_DIR, "personas.json"),
-    SKILLS: path.join(REGISTRY_DIR, "skills.json"),
-    TOOLS: path.join(REGISTRY_DIR, "tools.json"),
-    TOOL_GROUPS: path.join(REGISTRY_DIR, "tool_groups.json"),
-    POLICY: path.join(REGISTRY_DIR, "policy.json"),
-    AGENTS: path.join(REGISTRY_DIR, "agents.json"),
-    RESPONSE_FORMAT: path.join(SCHEMA_DIR, schemaFileName()),
-    CONFIGURED_RUNTIME: path.join(RUNTIME_DIR, "runtime_context.json")
-};
-
-const REGISTRY = {
-    loaded_at: 0,
-    signature: null,
-    data: {}
-};
-
-
-function registryFiles() {
-
-    return {
-        ...REGISTRY_FILES,
-
-        RESPONSE_FORMAT:
-            path.join(SCHEMA_DIR, schemaFileName())
-    };
-}
-
-
-function registrySignature() {
-
-    return registryLoader.signatureOf(schemaFileName());
-
-}
-
-
-function loadRegistries(force) {
-
-    const signature =
-        registrySignature();
-
-    if (
-        !force &&
-        REGISTRY.signature === signature
-    ) {
-        return REGISTRY.data;
-    }
-
-    const data =
-        registryLoader.load(schemaFileName());
-
-    data.PERSONA_REGISTRY =
-        new Map(
-            data.PERSONAS.map(
-                persona => [persona.name, persona]
-            )
-        );
-
-    data.SKILL_REGISTRY =
-        SkillRegistry.fromList(data.SKILLS);
-
-    data.TOOL_REGISTRY =
-        ToolRegistry.fromList(data.TOOLS);
-
-    data.AGENT_REGISTRY =
-        AgentRegistry.fromList(data.AGENTS);
-
-    REGISTRY.data = data;
-    REGISTRY.signature = signature;
-    REGISTRY.loaded_at = Date.now();
-
-    if (POLICY_ENGINE_HOLDER.engine) {
-
-        POLICY_ENGINE_HOLDER.engine.reload({
-            policy: data.POLICY,
-            toolGroups: data.TOOL_GROUPS
-        });
-    }
-
-    events.emit("registry:loaded", {
-        at: REGISTRY.loaded_at,
-        forced: Boolean(force)
-    });
-
-    return data;
-}
-
-
-const POLICY_ENGINE_HOLDER = {
-    engine: null
-};
-
-
-/*
-| Named accessors so call sites read the current registry rather than a
-| value captured when this module was first required.
-*/
-
-const registry = () => loadRegistries(false);
-
-const PERSONAS_OF = () => registry().PERSONAS;
-const SKILLS_OF = () => registry().SKILLS;
-const TOOLS_OF = () => registry().TOOLS;
-const TOOL_GROUPS_OF = () => registry().TOOL_GROUPS;
-const POLICY_OF = () => registry().POLICY;
-const AGENTS_OF = () => registry().AGENTS;
-const RESPONSE_FORMAT_OF = () => registry().RESPONSE_FORMAT;
-const CONFIGURED_RUNTIME_OF = () => registry().CONFIGURED_RUNTIME;
-const PERSONA_REGISTRY_OF = () => registry().PERSONA_REGISTRY;
-const SKILL_REGISTRY_OF = () => registry().SKILL_REGISTRY;
-const TOOL_REGISTRY_OF = () => registry().TOOL_REGISTRY;
-const AGENT_REGISTRY_OF = () => registry().AGENT_REGISTRY;
+const executionRuleRuntime = createExecutionRules({
+    fs,
+    path,
+    configDir: CONFIG_DIR,
+    readText,
+    allTools: () => TOOLS_OF(),
+    resolveTools,
+    getPolicyEngine: () => POLICY_ENGINE
+});
+
+const {
+    executionRules,
+    systemPrompt,
+    filterExecutionRules
+} = executionRuleRuntime;
+
+
+const POLICY_ENGINE_HOLDER = { engine: null };
+
+const agentRegistries = createAgentRegistries({
+    path,
+    settings,
+    registryLoader,
+    AgentRegistry,
+    ToolRegistry,
+    SkillRegistry,
+    events,
+    policyEngineHolder: POLICY_ENGINE_HOLDER,
+    registryDir: REGISTRY_DIR,
+    schemaDir: SCHEMA_DIR,
+    runtimeDir: RUNTIME_DIR
+});
+
+const {
+    registrySignature,
+    loadRegistries,
+    PERSONAS_OF,
+    SKILLS_OF,
+    TOOLS_OF,
+    TOOL_GROUPS_OF,
+    POLICY_OF,
+    AGENTS_OF,
+    RESPONSE_FORMAT_OF,
+    CONFIGURED_RUNTIME_OF,
+    PERSONA_REGISTRY_OF,
+    SKILL_REGISTRY_OF,
+    TOOL_REGISTRY_OF,
+    AGENT_REGISTRY_OF
+} = agentRegistries;
 
 
 /*
@@ -1124,9 +740,9 @@ function refreshMemoryMessage(messages, memory) {
 }
 
 
-async function maintainContext(messages, scope) {
+async function maintainContext(messages, scope, tools, agentDefinition) {
 
-    return contextKit.maintainContext(messages, scope);
+    return contextKit.maintainContext(messages, scope, tools, agentDefinition);
 
 }
 
@@ -1737,30 +1353,13 @@ function consumeAgentBudget(
 |--------------------------------------------------------------------------
 */
 
-/*
-| The tools an MCP server offers are not in tools.json, because the
-| server is what declares them and it may not have been running when
-| this process started. They are resolved from the live catalogue and
-| only when the runtime is set to declare them by name.
-*/
+const mcpRuntime = createMcpRuntime({
+    settings,
+    tools: toolRuntime,
+    logLine
+});
 
-function mcpToolDeclarations() {
-
-    if (settings.get("MCP_EXPOSE_TOOLS") === "gateway") {
-        return [];
-    }
-
-    try {
-
-        return toolRuntime
-            .mcpToolDeclarations()
-            .slice(0, settings.get("MCP_MAX_TOOLS"));
-
-    } catch {
-
-        return [];
-    }
-}
+const { mcpToolDeclarations, discoverMcpTools } = mcpRuntime;
 
 
 function mcpToolRegistry() {
@@ -1770,49 +1369,6 @@ function mcpToolRegistry() {
 }
 
 
-/*
-| Contacting the configured servers once, at the start of a run. It
-| never rejects: a server that is down is a capability this run does
-| not have, which the model is told about through mcp_servers, and not
-| a reason for the run to fail before it began.
-*/
-
-async function discoverMcpTools() {
-
-    if (
-        settings.get("MCP_ENABLED") === false ||
-        settings.get("MCP_AUTO_DISCOVER") === false
-    ) {
-        return [];
-    }
-
-    try {
-
-        const discovered =
-            await toolRuntime.discoverMcpTools();
-
-        if (discovered.length > 0) {
-
-            logLine(
-                "main_agent",
-                `${discovered.length} MCP tool(s) available from ${
-                    new Set(discovered.map(entry => entry.server)).size
-                } server(s).`
-            );
-        }
-
-        return discovered;
-
-    } catch (error) {
-
-        logLine(
-            "main_agent",
-            `MCP discovery failed: ${error.message}`
-        );
-
-        return [];
-    }
-}
 
 
 function resolveTools(toolNames) {
@@ -1842,237 +1398,24 @@ function resolveSkills(skillNames) {
 |--------------------------------------------------------------------------
 */
 
-function resolvePersona(personaName) {
+const profileResolver = createAgentProfileResolver({
+    personaRegistry: PERSONA_REGISTRY_OF,
+    agentRegistry: AGENT_REGISTRY_OF,
+    toolRegistry: TOOL_REGISTRY_OF,
+    skillRegistry: SKILL_REGISTRY_OF,
+    hasDiscoveredTool: name => toolRuntime.mcp._hasDiscoveredTool(name),
+    discoveredToolNames: () => toolRuntime.mcp._discoveredToolNames(),
+    resolveTools,
+    resolveSkills
+});
 
-    if (!personaName) {
-        return null;
-    }
-
-    const persona =
-        PERSONA_REGISTRY_OF().get(
-            personaName
-        );
-
-    if (!persona) {
-
-        throw new Error(
-            `Unknown persona: ${personaName}`
-        );
-    }
-
-    return persona;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Agent Profile Resolution
-|--------------------------------------------------------------------------
-*/
-
-function resolveAgentProfile(
-    agentName
-) {
-
-    const agent =
-        AGENT_REGISTRY_OF().get(
-            agentName
-        );
-
-    if (!agent) {
-
-        throw new Error(
-            `Unknown agent profile: ${agentName}`
-        );
-    }
-
-    return agent;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Ad-Hoc Agent Profile
-|--------------------------------------------------------------------------
-|
-| A delegation may either reference a registered Agent Profile:
-|
-|     { "agent": "code_analysis" }
-|
-| or compose a new one from the registries:
-|
-|     { "persona": "code_architect",
-|       "skills": ["codebase_analysis"],
-|       "tools": ["fs_read", "search_start"] }
-|
-| An ad-hoc profile can never exceed the tools of the agent that
-| created it, and is never allowed to delegate further.
-|--------------------------------------------------------------------------
-*/
-
-function buildAdHocProfile(
-    delegation,
-    parentAllowedTools
-) {
-
-    const persona =
-        resolvePersona(
-            delegation.persona
-        );
-
-    if (!persona) {
-
-        throw new Error(
-            `An ad-hoc delegation requires either an agent profile or a persona. Personas: ${
-                [...PERSONA_REGISTRY_OF().keys()].sort().join(", ")
-            }.`
-        );
-    }
-
-    const requestedTools =
-        Array.isArray(delegation.tools)
-            ? delegation.tools
-            : [];
-
-    for (
-        const toolName
-        of requestedTools
-    ) {
-
-        if (
-            !TOOL_REGISTRY_OF().has(toolName) &&
-            !toolRuntime.mcp._hasDiscoveredTool(toolName)
-        ) {
-
-            /*
-            | Naming what exists costs nothing here and saves the agent
-            | an iteration of guessing. A run once died on "fs_search",
-            | a name this project's own prompt used to suggest.
-            */
-
-            throw new Error(
-                `Tool is not available: ${toolName}. The tools that exist are: ${
-                    [
-                        ...TOOL_REGISTRY_OF().keys(),
-                        ...toolRuntime.mcp._discoveredToolNames()
-                    ].sort().join(", ")
-                }.`
-            );
-        }
-
-        if (
-            !parentAllowedTools.has(
-                toolName
-            )
-        ) {
-
-            throw new Error(
-                `Ad-hoc agent cannot be granted "${toolName}" because the delegating agent does not have it. It may be given any of: ${
-                    [...parentAllowedTools].sort().join(", ")
-                }.`
-            );
-        }
-    }
-
-    const requestedSkills =
-        Array.isArray(delegation.skills)
-            ? delegation.skills
-            : [];
-
-    for (
-        const skillName
-        of requestedSkills
-    ) {
-
-        if (!SKILL_REGISTRY_OF().has(skillName)) {
-
-            throw new Error(
-                `Unknown skill: ${skillName}. The skills that exist are: ${
-                    [...SKILL_REGISTRY_OF().keys()].sort().join(", ")
-                }.`
-            );
-        }
-    }
-
-    return {
-        name:
-            `adhoc:${persona.name}`,
-
-        description:
-            `Ad-hoc agent composed from persona "${persona.name}".`,
-
-        persona:
-            persona.name,
-
-        skills:
-            requestedSkills,
-
-        tools:
-            requestedTools,
-
-        output_contract: [
-            "Report only results confirmed by runtime execution."
-        ],
-
-        delegation: {
-            enabled: false,
-            max_depth: 0,
-            max_children: 0
-        }
-    };
-}
-
-
-function resolveDelegationProfile(
-    delegation,
-    parentAllowedTools
-) {
-
-    if (delegation.agent) {
-
-        return resolveAgentProfile(
-            delegation.agent
-        );
-    }
-
-    return buildAdHocProfile(
-        delegation,
-        parentAllowedTools
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Agent Capabilities
-|--------------------------------------------------------------------------
-*/
-
-function resolveAgentCapabilities(
-    agentDefinition
-) {
-
-    const persona =
-        resolvePersona(
-            agentDefinition.persona
-        );
-
-    const skills =
-        resolveSkills(
-            agentDefinition.skills
-        );
-
-    const tools =
-        resolveTools(
-            agentDefinition.tools
-        );
-
-    return {
-        persona,
-        skills,
-        tools
-    };
-}
+const {
+    resolvePersona,
+    resolveAgentProfile,
+    buildAdHocProfile,
+    resolveDelegationProfile,
+    resolveAgentCapabilities
+} = profileResolver;
 
 
 /*
@@ -2603,187 +1946,14 @@ function readModelAction(data) {
 }
 
 
-/*
-| Some endpoints return the model's reasoning next to the answer. It is
-| not part of the contract and never re-enters the conversation, but a
-| console that shows it is far easier to debug, so it is reported as an
-| event and nothing else.
-*/
+const responseReporter = createResponseReporter({ settings, events });
 
-/*
-| Providers do not agree on the name or shape of a reasoning field. OpenAI
-| compatible gateways commonly use reasoning_content, OpenRouter responses
-| may use reasoning, and newer APIs can return reasoning_details as an array
-| of typed parts. Keep the normalisation here so the UI never has to know
-| which provider produced a response.
-*/
-function reasoningText(message) {
-
-    const parts = [];
-    const seen = new Set();
-
-    const add = value => {
-
-        if (typeof value !== "string") {
-            return;
-        }
-
-        const text = value.trim();
-
-        if (text !== "" && !seen.has(text)) {
-            seen.add(text);
-            parts.push(text);
-        }
-    };
-
-    const read = value => {
-
-        if (typeof value === "string") {
-            add(value);
-            return;
-        }
-
-        if (Array.isArray(value)) {
-            for (const item of value) {
-                read(item);
-            }
-            return;
-        }
-
-        if (value && typeof value === "object") {
-            /* Different gateways call the useful part text, content,
-               summary, or reasoning. Prefer the most specific value and
-               do not stringify the metadata wrapper. */
-            for (const key of ["text", "content", "summary", "reasoning"]) {
-                if (Object.prototype.hasOwnProperty.call(value, key)) {
-                    read(value[key]);
-                }
-            }
-        }
-    };
-
-    read(message?.reasoning_content);
-    read(message?.reasoning);
-    read(message?.reasoning_details);
-
-    return parts.join("\n\n");
-}
-
-
-function modelMessageText(message) {
-
-    if (!message || typeof message !== "object") {
-        return "";
-    }
-
-    if (typeof message.content === "string") {
-        return message.content.trim();
-    }
-
-    if (message.content !== undefined && message.content !== null) {
-        try {
-            return JSON.stringify(message.content, null, 2);
-        } catch {
-            return String(message.content);
-        }
-    }
-
-    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-        try {
-            return JSON.stringify({ tool_calls: message.tool_calls }, null, 2);
-        } catch {
-            return "";
-        }
-    }
-
-    if (typeof message.refusal === "string") {
-        return message.refusal.trim();
-    }
-
-    return "";
-}
-
-
-/*
-| Report both halves of a model response before parsing it. This is
-| deliberately before readModelAction(): a malformed action is still a
-| valuable response to show in the console, and its reasoning is often the
-| only clue explaining why validation failed.
-*/
-function reportModelResponse(data, scope, agent, depth, iteration) {
-
-    const message =
-        data?.choices?.[0]?.message;
-
-    if (!message) {
-        return null;
-    }
-
-    const thinking =
-        reportThinking(message, scope, agent, depth, iteration);
-
-    const raw =
-        modelMessageText(message);
-
-    const maxChars =
-        Math.max(
-            settings.get("THINKING_MAX_CHARS"),
-            4000
-        );
-
-    const content =
-        raw.length > maxChars
-            ? `${raw.slice(0, maxChars)}…`
-            : raw;
-
-    const response =
-        content === ""
-            ? null
-            : events.emit("agent:response", {
-                agent: agent || "main_agent",
-                scope: scope || "main_agent",
-                depth: depth || 0,
-                iteration: iteration || null,
-                content,
-                chars: raw.length,
-                truncated: raw.length > maxChars,
-                finish_reason:
-                    data?.choices?.[0]?.finish_reason || null,
-                model: data?.model || null
-            });
-
-    return response || thinking;
-}
-
-
-function reportThinking(message, scope, agent, depth, iteration) {
-
-    const text = reasoningText(message);
-
-    if (text === "") {
-        return null;
-    }
-
-    const limit =
-        settings.get("THINKING_MAX_CHARS");
-
-    return events.emit("agent:thinking", {
-        agent: agent || "main_agent",
-
-        scope: scope || "main_agent",
-
-        depth: depth || 0,
-
-        iteration: iteration || null,
-
-        content:
-            text.length > limit
-                ? `${text.slice(0, limit)}…`
-                : text,
-
-        chars: text.length
-    });
-}
+const {
+    reasoningText,
+    modelMessageText,
+    reportThinking,
+    reportModelResponse
+} = responseReporter;
 
 
 function adaptNativeToolCalls(message) {
@@ -3447,7 +2617,8 @@ contextKit.bind({
     logLine,
     currentRun,
     assertRunActive,
-    summariseTranscript
+    summariseTranscript,
+    buildAgentRequest
 });
 
 runtimeEngine.bind({

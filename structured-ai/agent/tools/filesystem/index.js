@@ -8,12 +8,14 @@
 
 const ReadTools = require("./ReadTools");
 const WriteTools = require("./WriteTools");
+const PatchTools = require("./PatchTools");
 const DirectoryTools = require("./DirectoryTools");
 const FileMetadataTools = require("./FileMetadataTools");
 
 module.exports = {
     ...ReadTools,
     ...WriteTools,
+    ...PatchTools,
     ...DirectoryTools,
     ...FileMetadataTools
 };

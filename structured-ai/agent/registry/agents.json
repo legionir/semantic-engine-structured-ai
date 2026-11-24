@@ -273,6 +273,7 @@
       "search_get",
       "fs_write",
       "fs_edit",
+      "apply_patch",
       "fs_mkdir",
       "fs_move",
       "terminal_exec",

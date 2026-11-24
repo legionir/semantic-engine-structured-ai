@@ -37,7 +37,8 @@
     "test:context": "node test/context/context.test.js && node test/context/archive.test.js",
     "test:p1": "node test/p1/p11.test.js && node test/p1/p12.test.js && node test/p1/p13.test.js && node test/p1/p14.test.js && node test/p1/p15.test.js && node test/p1/p16.test.js",
     "test:p1:benchmark": "node test/p1/p17.benchmark.js",
-    "test:coverage": "npx --yes c8@11.0.0 --check-coverage node ci/run-tests.js"
+    "test:coverage": "npx --yes c8@11.0.0 --check-coverage --reporter=text --reporter=json-summary node ci/run-tests.js && node ci/check-coverage.js",
+    "test:semantic:live": "node ci/semantic-engine-smoke.js"
   },
   "engines": {
     "node": ">=18"

@@ -131,6 +131,12 @@ class RuntimeContextBuilder {
                 max_context_chars:
                     settings.get("MAX_CONTEXT_CHARS"),
 
+                context_window_tokens:
+                    settings.get("CONTEXT_WINDOW_TOKENS") || null,
+
+                context_window_safety_fraction:
+                    settings.get("CONTEXT_WINDOW_SAFETY_FRACTION"),
+
                 run_remaining_ms:
                     deps.runStartedAt()
                         ? Math.max(0, deps.runRemainingMs())

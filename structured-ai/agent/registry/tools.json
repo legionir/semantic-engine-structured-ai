@@ -272,6 +272,54 @@
   {
     "type": "function",
     "function": {
+      "name": "apply_patch",
+      "description": "Apply a strict unified diff to UTF-8 workspace files. Existing files can be edited; /dev/null headers can add files (parent directory must exist) or delete a whole file. All hunks and paths are validated before writes; one checkpoint covers the whole patch and a failed write rolls back.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Workspace-relative paths, one for every file section in the patch."
+          },
+          "patch": {
+            "type": "string",
+            "description": "Unified diff with ---/+++ headers and @@ hunks; use /dev/null for file creation or whole-file deletion. Rename and partial-delete patches are unsupported; use fs_move or another filesystem tool."
+          }
+        },
+        "required": [
+          "paths",
+          "patch"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "checkpoint_undo",
+      "description": "Restore files, directories, moves or deletes to the exact state captured by an earlier filesystem mutation. The undo itself creates a rollback checkpoint.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "description": "Checkpoint id returned by the earlier file mutation."
+          }
+        },
+        "required": [
+          "checkpoint_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "fs_mkdir",
       "description": "Create a directory, including missing parents.",
       "parameters": {
@@ -293,7 +341,7 @@
     "type": "function",
     "function": {
       "name": "fs_move",
-      "description": "Move or rename a file or directory inside the workspace.",
+      "description": "Move or rename a file or directory inside the workspace. Returns a checkpoint_id that can undo the move and restore an overwritten destination.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -322,7 +370,7 @@
     "type": "function",
     "function": {
       "name": "fs_delete",
-      "description": "Delete a file or directory. This is destructive and cannot be undone by the runtime.",
+      "description": "Delete a file, symlink, or (with recursive=true) directory. Returns a checkpoint_id that can restore the deleted contents with checkpoint_undo.",
       "parameters": {
         "type": "object",
         "properties": {

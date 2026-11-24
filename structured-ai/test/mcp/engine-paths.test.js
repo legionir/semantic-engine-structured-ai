@@ -193,6 +193,23 @@ async function main() {
         );
     });
 
+    await test("stdio sidecar uses the same configured data directory as staleness checks", () => {
+
+        const dataHome = fs.mkdtempSync(path.join(os.tmpdir(), "engine-sidecar-data-"));
+        settings.set("SEMANTIC_ENGINE_DATA_DIR", dataHome);
+        try {
+            const definition = semantic.definition();
+            const dataFlag = definition.args.indexOf("--data-dir");
+            assert.notEqual(dataFlag, -1);
+            assert.equal(definition.args[dataFlag + 1], dataHome);
+            assert.equal(definition.cwd, WORKSPACE);
+        } finally {
+            settings.reset("SEMANTIC_ENGINE_DATA_DIR");
+            fs.rmSync(dataHome, { recursive: true, force: true });
+        }
+    });
+
+
     await test("checkStaleness finds an index in the data directory", () => {
 
         const dataHome = fs.mkdtempSync(path.join(os.tmpdir(), "engine-data-"));

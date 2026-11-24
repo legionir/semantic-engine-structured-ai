@@ -292,6 +292,52 @@
       ],
       "action": "require_approval",
       "reason": "connects an external server and grants the run its capabilities"
+    },
+    {
+      "id": "protect_version_control_metadata_patch",
+      "tools": [
+        "apply_patch"
+      ],
+      "when": {
+        "argument_matches": {
+          "paths": [
+            "(^|/)\\.git(/|$)"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "the .git directory must not be modified through filesystem tools"
+    },
+    {
+      "id": "runtime_configuration_patch",
+      "tools": [
+        "apply_patch"
+      ],
+      "when": {
+        "argument_matches": {
+          "paths": [
+            "agent/(registry|config|schema|policy|context)/",
+            "agent/agent\\.js$"
+          ]
+        }
+      },
+      "action": "require_approval",
+      "reason": "changes the agent runtime's own configuration or enforcement code"
+    },
+    {
+      "id": "protect_policy_definition_patch",
+      "tools": [
+        "apply_patch"
+      ],
+      "when": {
+        "argument_matches": {
+          "paths": [
+            "registry/policy\\.json$"
+          ]
+        }
+      },
+      "action": "deny",
+      "reason": "the policy that governs the agent cannot be rewritten by the agent"
     }
   ]
 }

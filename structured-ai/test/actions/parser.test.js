@@ -407,7 +407,7 @@ async function main() {
 
         const repairSource =
             fs.readFileSync(
-                path.join(REPO, "agent", "actions", "ResponseRepair.js"),
+                path.join(REPO, "agent", "actions", "ActionCorrection.js"),
                 "utf8"
             );
 

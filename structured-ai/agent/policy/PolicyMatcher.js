@@ -77,7 +77,7 @@ function argumentValues(args, argumentPath) {
             .filter(item => item !== undefined && item !== null);
     }
 
-    return [value];
+    return Array.isArray(value) ? value : [value];
 }
 
 

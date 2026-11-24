@@ -129,7 +129,7 @@ async function runSubAgentLoop({
             `sub-agent ${agentName}`
         );
 
-        await h.maintainContext(messages, scope);
+        await h.maintainContext(messages, scope, capabilities.tools, agentDefinition);
 
         if (typeof h.refreshRepositoryContext === "function") {
             await h.refreshRepositoryContext();
@@ -319,7 +319,7 @@ async function runMainLoop({
 
         h.assertRunActive("main agent");
 
-        await h.maintainContext(messages, "main_agent");
+        await h.maintainContext(messages, "main_agent", mainAgentTools, mainAgentDefinition);
 
         if (typeof h.refreshRepositoryContext === "function") {
             await h.refreshRepositoryContext();

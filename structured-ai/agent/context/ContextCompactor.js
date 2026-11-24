@@ -239,16 +239,25 @@ function compactConversation(
 ) {
 
     const budget =
+        options.maxSize ??
         options.maxChars ??
         settings.get("MAX_CONTEXT_CHARS");
 
+    const measure = typeof options.measure === "function"
+        ? options.measure
+        : conversationSize;
+
     const before =
         conversationSize(messages);
+
+    const budgetBefore = measure(messages);
 
     const report = {
         compacted: false,
         before,
         after: before,
+        budget_before: budgetBefore,
+        budget_after: budgetBefore,
         light: 0,
         medium: 0,
         heavy: 0,
@@ -263,7 +272,7 @@ function compactConversation(
         retained_unarchived: 0
     };
 
-    if (before <= budget) {
+    if (budgetBefore <= budget) {
         return report;
     }
 
@@ -293,7 +302,7 @@ function compactConversation(
             position++
         ) {
 
-            if (conversationSize(messages) <= budget) {
+            if (measure(messages) <= budget) {
                 break;
             }
 
@@ -338,7 +347,7 @@ function compactConversation(
             }
         }
 
-        if (conversationSize(messages) <= budget) {
+        if (measure(messages) <= budget) {
             break;
         }
     }
@@ -348,7 +357,7 @@ function compactConversation(
     | exchanges leave, and the model is told how many.
     */
 
-    while (conversationSize(messages) > budget) {
+    while (measure(messages) > budget) {
 
         const remaining =
             findExchanges(messages);
@@ -450,6 +459,9 @@ function compactConversation(
 
     report.after =
         conversationSize(messages);
+
+    report.budget_after =
+        measure(messages);
 
     return report;
 }

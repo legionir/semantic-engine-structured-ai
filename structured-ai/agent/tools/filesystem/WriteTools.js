@@ -6,6 +6,8 @@ const path = require("path");
 const settings = require("../../config");
 
 const PathBoundary = require("./PathBoundary");
+const checkpoints = require("../../persistence/FileCheckpointRepository");
+const AtomicFile = require("../../persistence/AtomicFile");
 
 
 /*
@@ -35,14 +37,11 @@ async function fsWrite(args, context) {
             ? "append"
             : "overwrite";
 
-    if (args.create_parents !== false) {
-
-        await fs.promises.mkdir(
-            path.dirname(target),
-            {
-                recursive: true
-            }
-        );
+    if (
+        args.create_parents === false &&
+        !fs.existsSync(path.dirname(target))
+    ) {
+        throw new Error(`Parent directory does not exist for ${args.path}.`);
     }
 
     const existed =
@@ -71,6 +70,19 @@ async function fsWrite(args, context) {
         }
     }
 
+    const checkpoint =
+        checkpoints.createCheckpoint(
+            args.create_parents === false
+                ? [target]
+                : checkpoints.withMissingParents(target, ctx),
+            ctx,
+            `before fs_write ${mode}`
+        );
+
+    if (args.create_parents !== false) {
+        await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    }
+
     if (mode === "append") {
 
         await fs.promises.appendFile(
@@ -81,7 +93,7 @@ async function fsWrite(args, context) {
 
     } else {
 
-        await fs.promises.writeFile(
+        AtomicFile.writeFile(
             target,
             args.content,
             "utf8"
@@ -99,6 +111,9 @@ async function fsWrite(args, context) {
 
         created:
             !existed,
+
+        checkpoint_id:
+            checkpoint.checkpoint_id,
 
         bytes_written:
             Buffer.byteLength(
@@ -259,15 +274,21 @@ async function fsEdit(args, context) {
         content.split(args.old_text)
             .join(args.new_text);
 
-    await fs.promises.writeFile(
-        target,
-        updated,
-        "utf8"
-    );
+    const checkpoint =
+        checkpoints.createCheckpoint(
+            [target],
+            ctx,
+            "before fs_edit"
+        );
+
+    AtomicFile.writeFile(target, updated, "utf8");
 
     return {
         path:
             ctx.relative(target),
+
+        checkpoint_id:
+            checkpoint.checkpoint_id,
 
         replacements:
             occurrences,
@@ -278,7 +299,15 @@ async function fsEdit(args, context) {
 }
 
 
+async function checkpointUndo(args = {}, context) {
+
+    const ctx = PathBoundary.bound(context);
+    return checkpoints.undoCheckpoint(args.checkpoint_id, ctx);
+}
+
+
 module.exports = {
     fs_write: fsWrite,
-    fs_edit: fsEdit
+    fs_edit: fsEdit,
+    checkpoint_undo: checkpointUndo
 };

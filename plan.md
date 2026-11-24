@@ -318,7 +318,7 @@ interface واحد LLMProvider با adapterهای OpenAI (Chat و Responses)، A
 - فرمان runaway پس از timeout با کل درخت پروسه kill می‌شود (Windows: taskkill /T).
 - agent doctor نوع sandbox فعال و قابلیت‌ها را گزارش می‌دهد.
 
-**وضعیت اجرا (۲۴ نوامبر ۲۰۲۶):** قراردادهای launch برای bwrap و Docker/Podman، محدودیت منابع، deny-by-default، گزارش doctor و تست درخت فرایند پیاده شده‌اند. تست process-tree برای Windows از `taskkill /T` استفاده می‌کند. تست integration واقعی Docker به workflow جداگانهٔ Linux افزوده شده است (خواندن فایل SSH میزبان، عدم اثر نوشتن خارج workspace، قطع شبکه در حالت `none` و smoke تست npm/pip/git با egress صریح `bridge`). این محیط Docker/Podman/bwrap ندارد، پس اجرای واقعی آن در CI بعد از push باید تأیید شود. egress allowlist وجود ندارد؛ `bridge` دسترسی عمومی شبکه می‌دهد.
+**وضعیت اجرا (۲۳ نوامبر ۲۰۲۶):** قراردادهای launch برای bwrap و Docker/Podman، محدودیت منابع، deny-by-default، گزارش doctor و تست درخت فرایند پیاده شده‌اند. تست process-tree برای Windows از `taskkill /T` استفاده می‌کند. تست integration واقعی Docker در workflow جداگانه Linux اجرا شد و CI در commit `273ea0d` سبز است (خواندن فایل SSH میزبان، عدم اثر نوشتن خارج workspace، قطع شبکه در حالت `none` و smoke تست npm/pip/git با egress صریح `bridge`). هنوز egress allowlist پیاده نشده؛ `bridge` دسترسی عمومی شبکه می‌دهد و این تفاوت باید پیش از بستن P1-2 حل شود.
 
 ### P1-3 — ترمینال تعاملی (PTY)
 
@@ -373,14 +373,23 @@ GitHub Actions روی ubuntu، windows و macos با Node 20/22/24؛ حذف وا
 
 | آیتم | وضعیت و شواهد | آنچه هنوز مانده |
 |---|---|---|
-| P1-1 Provider | قرارداد mock برای ۸ provider، 83 تست؛ nightly workflow برای سناریوی واقعی ≥۴ provider اضافه شد. | اجرای nightly وابسته به تنظیم حداقل چهار جفت secret مدل/کلید در GitHub است و هنوز نتیجهٔ واقعی ثبت نشده. |
-| P1-2 Sandbox | قراردادهای launch/doctor و workflow integration واقعی Docker برای Linux اضافه شد. | اجرای workflow واقعی Docker پس از push باید سبز شود؛ egress allowlist پیاده‌سازی نشده. |
-| P1-3 PTY | node-pty/ConPTY، نشست interactive، resize، Ctrl-C و stream زندهٔ redacted به SSE؛ تست‌های p13 و WebServer اضافه شدند. | ماتریس CI این تغییر باید Windows را تأیید کند؛ backend واقعی sandbox+PTY باید در Docker workflow بررسی شود. |
-| P1-4 Policy | طبقه‌بندی 268 فرمان: 268/268 درست در مرجع فعلی. | افزودن نمونه‌های مرجع جدید در صورت تغییر parser. |
-| P1-5 CI | full suite روی Ubuntu/Windows و Node 20/22/24 پیکربندی شده؛ macOS مسدودکننده عمداً حذف شده است. | پوشش خطی >۸۰٪ هنوز اندازه‌گیری/گیت نشده؛ نتیجهٔ ماتریس جدید لازم است. |
-| P1-6 Runtime | درخواست Provider از agent.js جدا شد؛ تشخیص Git async/cache شد؛ regex کاربر در worker با timeout ۲ثانیه‌ای اجرا می‌شود؛ تست ۱۰MiB اضافه شد. | `agent.js` هنوز حدود 90KB است و شرط اندازهٔ ≤15KB و benchmark lag زیر بار ۱۰ عامل تکمیل نشده است. |
+| P1-1 Provider | قرارداد fixture/mock برای ۸ provider، 83 تست؛ workflow nightly برای ≥۴ provider واقعی و matrix CI همه سبز در commit `273ea0d`. | نتیجهٔ واقعی nightly همچنان وابسته به چهار جفت secret مدل/کلید در GitHub است و در CI معمولی اثبات نشده. |
+| P1-2 Sandbox | workflow integration واقعی Docker روی Linux سبز در run [45394759690](https://github.com/legionir/semantic-engine-structured-ai/actions/runs/45394759690): مرز workspace، محرمانگی SSH، قطع egress در `none` و smoke تست ابزارها. | egress allowlist و isolation واقعی روی Windows/macOS باقی است؛ `bridge` هنوز egress عمومی دارد. |
+| P1-3 PTY | node-pty/ConPTY، نشست interactive، resize، Ctrl-C و stream redacted به SSE؛ تست‌های p13 و WebServer در ماتریس CI سبز. | اثبات backend PTY در sandbox واقعی روی هر سه OS هنوز کامل نیست؛ macOS runner در گیت مسدودکننده نیست. |
+| P1-4 Policy | طبقه‌بندی 268 فرمان: 268/268 درست در مرجع فعلی؛ تست‌ها در CI سبز. | معیار فعلی پاس است؛ مجموعهٔ مرجع باید با تغییرات parser توسعه یابد. |
+| P1-5 CI | آخرین CI کامل روی Ubuntu/Windows و Node 20/22/24 برای commit `273ea0d` سبز است (run [45394759562](https://github.com/legionir/semantic-engine-structured-ai/actions/runs/45394759562)). پس از آخرین تغییرها، `npm run test:coverage` محلی اجرا شد: 67/67 فایل در 115.1s؛ statements/lines=85.22%، branches=76.00%، functions=84.26%، policy=89.71%، mcp=83.10%، tools=85.47% و همه گیت‌های 80% پاس. benchmark مستقل p99 <100ms و run تست قبلی [45394759632](https://github.com/legionir/semantic-engine-structured-ai/actions/runs/45394759632) سبز هستند؛ تغییرات فعلی هنوز CI تازه نگرفته‌اند. | تنها ماتریس macOS عمداً از گیت مسدودکننده حذف شده است؛ معیارهای Ubuntu/Windows و coverage ناحیه‌ای در کد گیت می‌شوند. |
+| P1-6 Runtime | request provider، endpoint profiles، MCP runtime، profile resolution، execution-rule/prompt text، response reporter و registry loader از `agent.js` جدا شده‌اند؛ Git detection async/cache و regex worker با timeout ۲ثانیه؛ ToolGraphExecutor به validation/scheduler/reference/runner تفکیک شد؛ HookRunner به execution/lifecycle تفکیک شد؛ MCP registry، memory merge، REPL handlers و persona data نیز ماژولار شدند. focused runtime/e2e/p16 (107/107، 58/58، 1/1) و hook suites (10/10، 10/10، 5/5، 5/5) و full coverage 67/67 سبز؛ benchmark ۱۰ عامل قبلی CI مستقل سبز. | `agent.js` هنوز 71,777 بایت است؛ `persistence/ArchiveRepository.js` هنوز 30,739 بایت و `mcp/transports/WebSocketTransport.js` 16,352 بایت است. هیچ فایل منبع `agent/` نباید >15KB بماند، بنابراین این معیار هنوز با فاصله باز است؛ egress allowlist، اثبات sandbox/PTy سه‌سیستمی و smoke واقعی چهار provider نیز بازند. |
 
-بنابراین P1 هنوز **بسته نیست**: کارکرد PTY و guardهای محلی تست شده، اما خروجی CI جدید، sandbox واقعی، providerهای واقعی و refactor کامل/benchmark P1-6 هنوز معیارهای خروج‌اند.
+بنابراین P1 هنوز **بسته نیست**: CI جاری (full suite، benchmark و Docker integration لینوکس) سبز است، اما egress allowlist و اثبات چندسکویی sandbox/PTy، اجرای حداقل چهار provider واقعی در nightly، و refactor کامل همهٔ منابع `agent/` به سقف 15KB هنوز معیارهای خروج باز هستند. به درخواست کاربر، این موارد به‌عنوان **باز/منتقل‌شده به پیگیری بعدی** ثبت شدند و شروع P2 به‌معنای بستن یا چشم‌پوشی از آن‌ها نیست. وضعیت فوق در ۲۳ نوامبر ۲۰۲۶ به‌روزرسانی شد.
+
+**موارد P1 باز برای پیگیری:**
+
+1. P1-2: egress allowlist واقعی؛ `bridge` فعلی دسترسی عمومی شبکه می‌دهد، و شواهد isolation واقعی Windows/macOS هنوز وجود ندارد.
+2. P1-3: اجرای PTY در sandbox واقعی و اثبات آن روی Windows/macOS/Linux کامل نیست.
+3. P1-1: نتیجهٔ nightly برای سناریوی واقعی با حداقل چهار provider هنوز در دسترس/اثبات‌شده نیست؛ fixture/mock tests جایگزین smoke واقعی نیستند.
+4. P1-6: فایل‌های منبع بزرگ‌تر از 15KB باقی‌اند، از جمله `agent.js` (71,777 B)، `ArchiveRepository.js` (30,739 B)، `McpManager.js` (19,656 B) و `WebSocketTransport.js` (16,352 B).
+5. P1-5: تست coverage محلی سبز است، اما تغییرات working tree هنوز CI تازهٔ Ubuntu/Windows نگرفته‌اند؛ macOS نیز عمداً blocking نیست.
+
 
 ## P2 — عامل همه‌فن‌حریف (هفته ۱۶ تا ۳۰)
 
@@ -422,6 +431,8 @@ sampling، elicitation، progress، cancellation، tools/list_changed؛ OAuth 2.
 - اتصال به سرور راه دور با OAuth بدون کپی دستی توکن.
 - ابزار با destructiveHint=true بدون approval اجرا نمی‌شود.
 
+**پیشرفت P2-3 (۲۳ نوامبر ۲۰۲۶):** گیت `mcp_destructive_hint` افزوده شد و برای ابزارهای namespaced و gateway (`mcp_call`) annotation را بررسی می‌کند؛ `destructiveHint=true` حتی با `MCP_APPROVAL=never` نیز approval لازم دارد. تست unit مستقیم پاس شد و آزمون‌های policy و MCP به‌ترتیب 13/13 و 37/37 سبز هستند. OAuth 2.1/PKCE، progress/cancellation/elicitation و اتصال CI به سرورهای مرجع هنوز بازند.
+
 ### P2-4 — ویرایش کد پیشرفته و Checkpoint
 
 apply_patch با unified diff، چند ویرایش اتمیک، حفظ EOL و BOM، checkpoint خودکار پیش از هر تغییر و undo؛ نمایش diff در approval.
@@ -433,6 +444,8 @@ apply_patch با unified diff، چند ویرایش اتمیک، حفظ EOL و B
 - patch ناسازگار بدون تغییر فایل رد می‌شود.
 - undo به هر checkpoint فایل‌ها را بایت‌به‌بایت بازمی‌گرداند.
 - فایل CRLF پس از ویرایش CRLF باقی می‌ماند.
+
+**پیشرفت P2-4 (۲۳ نوامبر ۲۰۲۶):** تغییرات `fs_write`، `fs_edit`، `fs_mkdir`، `fs_move` و `fs_delete` پیش از mutation checkpoint محدود و durable می‌سازند و `checkpoint_id` می‌دهند. `checkpoint_undo` محتوای فایل، درخت پوشه، move/overwrite و symlink را برمی‌گرداند؛ undo خودش checkpoint جبرانی دارد تا قابل redo باشد. Snapshotها سقف فایل/بایت دارند، parentهای تازه‌ساخته را هم rollback می‌کنند، فایل‌های بیش‌ازحد را پیش از تغییر رد می‌کنند و مسیر/رکوردهای دستکاری‌شده یا خود مخزن checkpoint را برای restore نمی‌پذیرند. ابزار `apply_patch` unified diff سخت‌گیرانه را روی چند فایل UTF-8 اعمال می‌کند؛ edit فایل موجود و `/dev/null` add/delete کامل پشتیبانی می‌شوند، در حالی که rename با `fs_move` و delete جزئی پشتیبانی نمی‌شود. BOM/EOL فایل‌های ویرایش‌شده حفظ می‌شوند، pathها قبل از mutation validate می‌شوند، diff در approval prompt می‌آید و خطای write باعث rollback checkpoint می‌شود. ساخت فایل جدید به والد موجود نیاز دارد. تست‌های fault injection، patch نامعتبر، BOM/CRLF، undo/redo، symlink بیرون workspace و limitها پاس شدند. آخرین full coverage پس از پشتیبانی add/delete در `apply_patch` و request-aware context budgets، 67/67 سبز با 85.22% statement coverage است؛ tools 65/65، tool-runtime 8/8، policy 13/13 و runtime 107/107 نیز پاس شدند. atomicity در برابر crash پروسه/سیستم تضمین نمی‌شود؛ rename و حذف جزئی در unified diff پشتیبانی نمی‌شوند و باید از `fs_move` یا ابزارهای فایل استفاده کرد؛ بنابراین P2-4 هنوز کامل نیست.
 
 ### P2-5 — Security Risk Analyzer
 
@@ -456,6 +469,8 @@ apply_patch با unified diff، چند ویرایش اتمیک، حفظ EOL و B
 - جلسه ۲۰۰ مرحله‌ای روی مدل 32k بدون context overflow اجرا می‌شود.
 - متن تزریق‌شده از صفحه وب بدون تأیید وارد حافظه دائمی نمی‌شود.
 - شکست آرشیو هیچ داده‌ای را از بین نمی‌برد (تست fault injection).
+
+**پیشرفت P2-6 (۲۳ نوامبر ۲۰۲۶):** محافظت archive failure مانع حذف exchangeهاست؛ نتایج `net_*`، `browser_*` و `mcp_*` از memory fold قرنطینه می‌شوند و در transcript باقی می‌مانند، اما دیگر جلوی fold شدن exchangeهای محلیِ بعدی را نمی‌گیرند؛ آزمون تزریق اطمینان می‌دهد متن مشکوک نه به summarizer می‌رسد و نه وارد حافظه دائمی می‌شود. provenance دسته‌ای و per-item (هش آیتم، run id، ابزارها و source refs) ذخیره/بازیابی می‌شود و از `memory_get` قابل مشاهده است. برای جلوگیری از prompt injection در داده‌های قدیمی نیز working memory اکنون با نقش user و برچسب صریحِ دادهٔ تاریخیِ غیرقابل‌اعتماد وارد می‌شود؛ system prompt و قواعد recall می‌گویند محتوای memory/archive هرگز دستور محسوب نمی‌شود و ادعاهای مهم باید دوباره راستی‌آزمایی شوند. `ENDPOINT_<ROLE>_CONTEXT_TOKENS`، fallback سراسری `CONTEXT_WINDOW_TOKENS` و safety fraction اضافه شدند؛ compactor سقف ترکیبی کاراکتر/token-estimate را اعمال می‌کند؛ تخمین هر درخواست اکنون پیام‌ها، schema ابزارهای فعال همان agent و response-format schema را حساب می‌کند تا metadata درخواست از safety reserve کسر شود. runtime context و README مقادیر را گزارش می‌کنند. تست ۲۰۰ exchange با پنجرهٔ role-specific 32k و سقف estimate برابر 22.4k پاس است؛ همچنین سقف مستقل endpoint L1 آزموده شد. اندازه‌گیری هنوز تخمینی و provider-independent است، نه tokenizer/native count؛ آزمون adapterهای Anthropic/Gemini برای endpoint شمارش native موجود است، اما مسیر فعال `ContextManager` هنوز به آن‌ها وصل نیست و `AgentRequestExecutor` درخواست‌های اصلی را مستقیم به `/chat/completions` می‌فرستد. اتصال شمارنده باید پس از یکپارچه‌شدن transport فعال provider انجام شود تا توکن‌های شمارش‌شده با همان مدل/endpoint درخواست واقعی مطابقت داشته باشند. smoke واقعی با مدل 32k نیز هنوز باز است. **اتصال semantic-engine اکنون به‌صورت زنده آزموده شد:** semantic-engine از سورس build شد، یک workspace موقت با یک فایل ایندکس شد و Structured AI از مسیر stdio MCP با `code_find_symbol` هر دو symbol (کلاس و متد) را از index تازه بازیابی کرد. smoke تکرارپذیر به `structured-ai/ci/semantic-engine-smoke.js` و `npm run test:semantic:live` اضافه شد؛ در همین حال اصلاح شد که sidecar همان `SEMANTIC_ENGINE_DATA_DIR` را بگیرد که staleness checker می‌خواند. تست‌های fault-injection، تزریق وب/MCP، provenance persistence و stress در `test/context/context.test.js` پاس هستند؛ بنابراین P2-6 هنوز باز است تا smoke مدل 32k و اندازه‌گیری token-native/اعتبارسنجی نهایی انجام شود.
 
 ### P2-7 — Observability و کنترل هزینه
 

@@ -18,6 +18,7 @@ const REPO = path.resolve(__dirname, "..", "..");
 
 const policy = require(path.join(REPO, "agent", "policy"));
 const legacy = require(path.join(REPO, "agent", "policy"));
+const { mcpEscalation } = require(path.join(REPO, "agent", "policy", "PolicyEngine"));
 
 const results = [];
 
@@ -93,6 +94,44 @@ async function main() {
         assert.equal(legacy.ApprovalManager, policy.ApprovalManager);
         assert.equal(legacy.ApprovalStore, policy.ApprovalStore);
         assert.equal(typeof policy.PolicyErrors.PolicyDeniedError, "function");
+
+    });
+
+
+    await test("P2-3: destructive MCP annotations require approval even when MCP_APPROVAL=never", async () => {
+
+        const entry = {
+            name: "mcp__files__delete",
+            server: "files",
+            tool: "delete",
+            annotations: { destructiveHint: true }
+        };
+        const manager = {
+            catalogueEntry: name => name === entry.name ? entry : null,
+            catalogueEntries: () => [entry]
+        };
+        const settingsStore = { get: () => "never" };
+
+        const direct = mcpEscalation(entry.name, {
+            settingsStore,
+            mcpManager: manager
+        });
+        assert.equal(direct.decision, "require_approval");
+        assert.equal(direct.rule, "mcp_destructive_hint");
+
+        const gateway = mcpEscalation("mcp_call", {
+            settingsStore,
+            mcpManager: manager,
+            args: { server: "files", tool: "delete" }
+        });
+        assert.equal(gateway.decision, "require_approval");
+        assert.equal(gateway.rule, "mcp_destructive_hint");
+
+        entry.annotations.destructiveHint = false;
+        assert.equal(mcpEscalation(entry.name, {
+            settingsStore,
+            mcpManager: manager
+        }), null);
 
     });
 

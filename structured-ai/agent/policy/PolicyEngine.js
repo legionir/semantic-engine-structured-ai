@@ -201,7 +201,42 @@ function restrictedServer(manager, toolName, args) {
 }
 
 
-function mcpEscalation(toolName, { settingsStore = settings, args } = {}) {
+function destructiveHintEntry(manager, toolName, args) {
+
+    const requested = toolName === "mcp_call"
+        ? args && (args.tool || args.name)
+        : toolName;
+
+    if (typeof requested !== "string") {
+        return null;
+    }
+
+    try {
+
+        const direct = manager.catalogueEntry(requested);
+        if (direct) {
+            return direct;
+        }
+
+        const parsed = require("../mcp/McpManager").parseToolName(requested);
+        const server = parsed ? parsed.server : args && args.server;
+        const tool = parsed ? parsed.tool : requested;
+        if (!server || typeof manager.catalogueEntries !== "function") {
+            return null;
+        }
+
+        return manager.catalogueEntries().find(entry =>
+            entry.server === String(server) && entry.tool === String(tool)
+        ) || null;
+
+    } catch {
+
+        return null;
+    }
+}
+
+
+function mcpEscalation(toolName, { settingsStore = settings, args, mcpManager } = {}) {
 
     const isGatewayCall =
         toolName === "mcp_call";
@@ -216,10 +251,6 @@ function mcpEscalation(toolName, { settingsStore = settings, args } = {}) {
     const mode =
         settingsStore.get("MCP_APPROVAL");
 
-    if (mode === "never") {
-        return null;
-    }
-
     if (mode === "always") {
 
         return {
@@ -229,11 +260,29 @@ function mcpEscalation(toolName, { settingsStore = settings, args } = {}) {
         };
     }
 
-    let manager;
+    let manager = mcpManager;
 
-    try {
-        ({ manager } = require("../mcp/McpManager"));
-    } catch {
+    if (!manager) {
+        try {
+            ({ manager } = require("../mcp/McpManager"));
+        } catch {
+            manager = null;
+        }
+    }
+
+    const annotated = manager
+        ? destructiveHintEntry(manager, toolName, args || {})
+        : null;
+
+    if (annotated?.annotations?.destructiveHint === true) {
+        return {
+            decision: DECISIONS.REQUIRE_APPROVAL,
+            reason: "the MCP tool declares destructiveHint=true",
+            rule: "mcp_destructive_hint"
+        };
+    }
+
+    if (mode === "never" || !manager) {
         return null;
     }
 

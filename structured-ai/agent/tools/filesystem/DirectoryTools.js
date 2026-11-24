@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PathBoundary = require("./PathBoundary");
+const checkpoints = require("../../persistence/FileCheckpointRepository");
 
 const {
     lexists
@@ -312,6 +313,19 @@ async function fsMkdir(args, context) {
     const existed =
         fs.existsSync(target);
 
+    if (existed) {
+        return {
+            path: ctx.relative(target),
+            created: false
+        };
+    }
+
+    const checkpoint = checkpoints.createCheckpoint(
+        checkpoints.withMissingParents(target, ctx),
+        ctx,
+        "before fs_mkdir"
+    );
+
     await fs.promises.mkdir(
         target,
         {
@@ -323,8 +337,9 @@ async function fsMkdir(args, context) {
         path:
             ctx.relative(target),
 
-        created:
-            !existed
+        created: true,
+
+        checkpoint_id: checkpoint.checkpoint_id
     };
 }
 
@@ -383,6 +398,15 @@ async function fsMove(args, context) {
         );
     }
 
+    const checkpoint = checkpoints.createCheckpoint(
+        [
+            source,
+            ...checkpoints.withMissingParents(destination, ctx)
+        ],
+        ctx,
+        "before fs_move"
+    );
+
     await fs.promises.mkdir(
         path.dirname(destination),
         {
@@ -403,7 +427,10 @@ async function fsMove(args, context) {
             ctx.relative(destination),
 
         overwritten:
-            args.overwrite === true
+            args.overwrite === true,
+
+        checkpoint_id:
+            checkpoint.checkpoint_id
     };
 }
 
@@ -441,6 +468,11 @@ async function fsDelete(args, context) {
 
     if (stats.isSymbolicLink()) {
 
+        const checkpoint = checkpoints.createCheckpoint(
+            [target],
+            ctx,
+            "before fs_delete"
+        );
         await removeLink(target);
 
         return {
@@ -451,7 +483,9 @@ async function fsDelete(args, context) {
 
             was_directory: false,
 
-            was_symlink: true
+            was_symlink: true,
+
+            checkpoint_id: checkpoint.checkpoint_id
         };
     }
 
@@ -464,6 +498,12 @@ async function fsDelete(args, context) {
             `Path is a directory: ${args.path}. Set recursive to delete it.`
         );
     }
+
+    const checkpoint = checkpoints.createCheckpoint(
+        [target],
+        ctx,
+        "before fs_delete"
+    );
 
     await fs.promises.rm(
         target,
@@ -482,7 +522,9 @@ async function fsDelete(args, context) {
         deleted: true,
 
         was_directory:
-            stats.isDirectory()
+            stats.isDirectory(),
+
+        checkpoint_id: checkpoint.checkpoint_id
     };
 }
 

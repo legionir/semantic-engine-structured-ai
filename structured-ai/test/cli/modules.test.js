@@ -122,6 +122,21 @@ async function main() {
     assert.equal(await handler({ agent: "worker", tool: "fs_write", reason: "review" }, { path: "a" }), true);
     assert.match(output.value, /approval required/);
     assert.match(output.value, /approved/);
+
+    const patchOutput = { value: "", write(value) { this.value += value; } };
+    const patchHandler = createApprovalHandler({
+      readAnswer: async () => "no",
+      colours,
+      output: patchOutput
+    });
+    const diff = "--- a/example.txt\n+++ b/example.txt\n" + "@@ hunk @@\n" + "-old\n+new\n".repeat(80);
+    assert.equal(await patchHandler({ agent: "worker", tool: "apply_patch", reason: "review diff" }, {
+      paths: ["example.txt"],
+      patch: diff
+    }), false);
+    assert.match(patchOutput.value, /example.txt/);
+    assert.match(patchOutput.value, /-old/);
+    assert.ok(patchOutput.value.length > 200, "patch preview was truncated to the generic 200-character limit");
   });
 
   await test("InteractiveCommand resolves the extracted REPL path", async () => {

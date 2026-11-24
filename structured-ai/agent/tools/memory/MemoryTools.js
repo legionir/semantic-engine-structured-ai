@@ -45,6 +45,12 @@ function memory_get(args = {}, context) {
         chunks_absorbed:
             memory.chunks_absorbed,
 
+        provenance:
+            memory.provenance,
+
+        item_provenance:
+            memory.item_provenance,
+
         size_chars:
             memoryStore.memorySize(memory),
 

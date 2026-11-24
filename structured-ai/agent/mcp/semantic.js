@@ -46,6 +46,7 @@ settings.bus.on("change", event => {
         event.key === "SEMANTIC_ENGINE_BIN" ||
         event.key === "SEMANTIC_ENABLED" ||
         event.key === "SEMANTIC_ENGINE_URL" ||
+        event.key === "SEMANTIC_ENGINE_DATA_DIR" ||
         event.key === "SEMANTIC_TRANSPORT"
     ) {
 
@@ -165,6 +166,12 @@ function definition() {
         return null;
     }
 
+    const args = ["serve", "--stdio", "--root", workspaceRoot()];
+    const dataDirectory = String(settings.get("SEMANTIC_ENGINE_DATA_DIR") || "").trim();
+    if (dataDirectory) {
+        args.push("--data-dir", dataDirectory);
+    }
+
     cachedDefinition = {
         name: SERVER_NAME,
         builtin: true,
@@ -173,7 +180,7 @@ function definition() {
         description:
             "Semantic code index, dependency graph and language server operations.",
         command: bin,
-        args: ["serve", "--stdio", "--root", workspaceRoot()],
+        args,
         cwd: workspaceRoot(),
         env: { NODE_ENV: "production" },
         callTimeoutMs:

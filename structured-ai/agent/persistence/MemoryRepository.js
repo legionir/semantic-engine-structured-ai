@@ -5,6 +5,7 @@ const path = require("path");
 const dataRoot = require("../persistence/DataRoot");
 const JsonRepository = require("./JsonRepository");
 const SchemaVersion = require("./SchemaVersion");
+const { sanitizeItemProvenance } = require("./MemoryProvenance");
 
 
 /*
@@ -46,7 +47,9 @@ function emptyMemory() {
     const memory = {
         version: SchemaVersion.CURRENT.memory,
         updated_at: null,
-        chunks_absorbed: 0
+        chunks_absorbed: 0,
+        provenance: [],
+        item_provenance: []
     };
 
     for (const field of FIELDS) {
@@ -85,6 +88,32 @@ function loadMemory(root) {
 
         memory.chunks_absorbed =
             Number(parsed.chunks_absorbed) || 0;
+
+        memory.provenance = Array.isArray(parsed.provenance)
+            ? parsed.provenance
+                .filter(item => item && typeof item === "object")
+                .slice(-100)
+                .map(item => ({
+                    run_id: typeof item.run_id === "string"
+                        ? item.run_id.slice(0, 160)
+                        : null,
+                    source: typeof item.source === "string"
+                        ? item.source.slice(0, 40)
+                        : "transcript-fold",
+                    exchange_count: Math.max(0, Number(item.exchange_count) || 0),
+                    tools: Array.isArray(item.tools)
+                        ? [...new Set(item.tools
+                            .filter(tool => typeof tool === "string")
+                            .map(tool => tool.slice(0, 100)))].slice(0, 50)
+                        : [],
+                    recorded_at: typeof item.recorded_at === "string"
+                        ? item.recorded_at.slice(0, 40)
+                        : null
+                }))
+            : [];
+
+        memory.item_provenance =
+            sanitizeItemProvenance(parsed.item_provenance, FIELDS);
 
         return memory;
 
