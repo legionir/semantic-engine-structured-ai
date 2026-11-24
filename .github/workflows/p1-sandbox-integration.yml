@@ -3,9 +3,9 @@ name: P1 sandbox integration
 on:
   pull_request:
     paths:
-      - "structured-ai/agent/tools/process/**"
-      - "structured-ai/test/p1/**"
-      - "structured-ai/ci/sandbox-smoke.Dockerfile"
+      - "agent/tools/process/**"
+      - "test/p1/**"
+      - "ci/sandbox-smoke.Dockerfile"
       - ".github/workflows/p1-sandbox-integration.yml"
   workflow_dispatch:
 
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 25
     defaults:
       run:
-        working-directory: structured-ai
+        working-directory: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

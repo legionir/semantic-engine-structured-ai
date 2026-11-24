@@ -68,7 +68,7 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ### [🟢] گام ۳: atomic persistence و migration کامل
 
-`structured-ai/agent/tools/planning/PlanRepository.js:83-94` و session save pathهای `structured-ai` را به temp+rename یا `JsonRepository` atomic تبدیل کن. در `structured-ai/agent/persistence/DataRoot.js:23-32` و `ProjectMigration.js:56-64,199-206` directory `discussion` و transcriptهای legacy را migrate کن. در `semantic-engine/src/export/SQLiteExporter.ts:114-122,124-137` schema قدیمی را با migration/rebuild واقعی سازگار کن؛ migration باید idempotent، قابل rollback و project-scoped باشد.
+`agent/tools/planning/PlanRepository.js:83-94` و session save pathهای `agent` را به temp+rename یا `JsonRepository` atomic تبدیل کن. در `agent/persistence/DataRoot.js:23-32` و `ProjectMigration.js:56-64,199-206` directory `discussion` و transcriptهای legacy را migrate کن. در `semantic-engine/src/export/SQLiteExporter.ts:114-122,124-137` schema قدیمی را با migration/rebuild واقعی سازگار کن؛ migration باید idempotent، قابل rollback و project-scoped باشد.
 
 ### [🟢] گام ۴: جلوگیری از حذف cross-project در export و data root
 
@@ -177,7 +177,7 @@ manifestها و scriptهای package هر دو پروژه را بخوان و dep
 
 ### [🟢] گام ۳: اصلاح visualization API و frontend states
 
-در `src/server/routes/visualizationRoutes.ts:123-145` و routeهای مشابه nullish semantics و range validation را اعمال کن تا depth/minConfidence صفر حفظ شود. در `public/visualizer.js:172-181,187-200,1111-1195` هر tab را به endpoint business mapping/impact/hotspots مربوط وصل کن؛ failure/empty را به graph sample تبدیل نکن و preview را explicit label و opt-in کن. visualizer node coverage در `structured-ai/web/public/visualizer/node-details.js:60-63` باید lookup واقعی یا `unknown/not checked` داشته باشد.
+در `src/server/routes/visualizationRoutes.ts:123-145` و routeهای مشابه nullish semantics و range validation را اعمال کن تا depth/minConfidence صفر حفظ شود. در `public/visualizer.js:172-181,187-200,1111-1195` هر tab را به endpoint business mapping/impact/hotspots مربوط وصل کن؛ failure/empty را به graph sample تبدیل نکن و preview را explicit label و opt-in کن. visualizer node coverage در `web/public/visualizer/node-details.js:60-63` باید lookup واقعی یا `unknown/not checked` داشته باشد.
 
 ### [🟢] گام ۴: project-scoped history و dashboard
 

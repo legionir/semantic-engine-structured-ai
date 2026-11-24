@@ -16,3 +16,14 @@
 
 # ruflo/claude-flow tool state
 **/.claude-flow/
+# Runtime state of a workspace, never source
+/.agent/
+**/.semantic-engine/
+
+# The event store is derived state, regenerable from sessions via
+# `npm run backfill:eventstore`; it is never committed.
+**/.agent/eventstore/
+
+# scratch: pristine HEAD copies and throwaway repros used by the audit
+# workflow (see FIX-PLAN-REVIEW-FINDINGS.md, section 10) - never commit
+/tmp-baseline/
