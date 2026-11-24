@@ -91,7 +91,8 @@ async function main() {
             ].join(" && ");
             const result = await run("terminal_exec", { command, timeout_ms: 180000 });
             assert.equal(result.exit_code, 0, `${result.stderr}\n${result.stdout}`);
-            assert.match(result.stdout, /Cloning into/);
+            /* git clone writes its progress/status to stderr by default. */
+            assert.match(`${result.stdout}\n${result.stderr}`, /Cloning into/);
         });
     } finally {
         try {
