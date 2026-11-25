@@ -55,6 +55,7 @@ const state = {
     historyOpening: false,
     mcpOpening: false,
     settings: [],
+    modelCatalog: new Map(),
     logFilter: "",
     logType: "",
     openExecutionKeys: new Set(),
@@ -4836,6 +4837,49 @@ function isLlmSetting(setting) {
 }
 
 
+function modelCatalogConfigChanged(key) {
+
+    return [
+        "AGENT_PROVIDER", "AGENT_PROVIDER_REGION", "AGENT_BASE_URL", "AGENT_API_KEY",
+        "AZURE_OPENAI_API_VERSION", "BEDROCK_ACCESS_KEY_ID", "BEDROCK_SECRET_ACCESS_KEY",
+        "BEDROCK_SESSION_TOKEN"
+    ].includes(key) ||
+        /^ENDPOINT_(MAIN|L1|L2|L3|SUMMARY)_(BASE_URL|API_KEY)$/.test(key);
+}
+
+
+function loadModelCatalog(role) {
+
+    const cached = state.modelCatalog.get(role);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.promise;
+    }
+
+    const entry = { expiresAt: Infinity, promise: null };
+    entry.promise = fetch(`/api/models?role=${encodeURIComponent(role)}`)
+        .then(async response => {
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || `Model endpoint returned HTTP ${response.status}.`);
+            }
+            if (!Array.isArray(payload.models)) {
+                throw new Error(payload.error || "Model endpoint returned an invalid model list.");
+            }
+            entry.expiresAt = Date.now() + 60_000;
+            return payload.models;
+        })
+        .catch(error => {
+            /* Cache failures briefly too: a modal refresh must not fan out a
+               second burst of identical failed requests. */
+            entry.expiresAt = Date.now() + 10_000;
+            throw error;
+        });
+
+    state.modelCatalog.set(role, entry);
+    return entry.promise;
+}
+
+
 function settingsBody(list) {
 
     const container = node("div", "settings");
@@ -4934,18 +4978,17 @@ function settingRow(setting) {
 
     const label = node("div");
 
-    label.append(
-        node("div", "label", setting.key),
-        node(
-            "div",
-            "hint",
-            `${setting.description}${
-                setting.fixed
-                    ? " (fixed at startup)"
-                    : ""
-            }`
-        )
+    const hint = node(
+        "div",
+        "hint",
+        `${setting.description}${
+            setting.fixed
+                ? " (fixed at startup)"
+                : ""
+        }`
     );
+
+    label.append(node("div", "label", setting.key), hint);
 
     let input;
 
@@ -4971,11 +5014,9 @@ function settingRow(setting) {
 
         if (isModel) {
             const role = setting.key.match(/^ENDPOINT_(MAIN|L1|L2|L3|SUMMARY)_MODEL$/)?.[1] || "MAIN";
-            fetch(`/api/models?role=${encodeURIComponent(role)}`)
-                .then(response => response.json())
-                .then(payload => {
-                    if (!Array.isArray(payload.models)) throw new Error(payload.error || "Model list unavailable");
-                    for (const modelName of payload.models) {
+            loadModelCatalog(role)
+                .then(models => {
+                    for (const modelName of models) {
                         if ([...input.children].some(option => option.value === modelName)) continue;
                         const option = node("option", null, modelName);
                         option.value = modelName;
@@ -4985,6 +5026,8 @@ function settingRow(setting) {
                 })
                 .catch(error => {
                     input.title = error.message;
+                    hint.textContent = `Could not load models: ${error.message}`;
+                    row.classList.add("model-list-unavailable");
                 });
         }
 
@@ -5047,6 +5090,10 @@ function settingRow(setting) {
 
         row.classList.add("saved");
 
+        if (modelCatalogConfigChanged(setting.key)) {
+            state.modelCatalog.clear();
+        }
+
         setTimeout(
             () => row.classList.remove("saved"),
             800
@@ -5076,6 +5123,10 @@ function settingRow(setting) {
                     reset: true
                 })
             });
+
+            if (modelCatalogConfigChanged(setting.key)) {
+                state.modelCatalog.clear();
+            }
 
             loadSettings();
         };

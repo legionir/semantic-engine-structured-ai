@@ -1215,6 +1215,7 @@ body.modal-open { overflow: hidden; }
 .setting .src.environment { color: var(--warn); border-color: rgba(240, 184, 76, .5); background: rgba(240, 184, 76, .08); }
 .setting.saved { animation: flash .8s; }
 .setting.rejected .hint { color: var(--bad); }
+.setting.model-list-unavailable .hint { color: var(--warn); }
 @keyframes flash { from { background: rgba(62, 207, 154, .18); } to { background: transparent; } }
 
 /* ------------------------------------------------------------------- mcp */

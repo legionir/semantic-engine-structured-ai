@@ -1679,7 +1679,7 @@ async function main() {
         );
     });
 
-    await test("settings open in a modal from the header button", () => {
+    await test("settings open in a modal from the header button", async () => {
 
         document.getElementById("settingsButton").dispatch("click");
 
@@ -1705,6 +1705,16 @@ async function main() {
         assert.ok(proxyInput, "proxy credentials use a password input");
         assert.equal(proxyInput.value, "", "masked credentials are never written back into the field");
         assert.match(proxyInput.placeholder, /enter a replacement/);
+
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const modelRequests = console_.posted
+            .filter(item => item.url.startsWith("/api/models?role="))
+            .map(item => item.url);
+        assert.deepStrictEqual(
+            modelRequests,
+            ["/api/models?role=MAIN", "/api/models?role=L1"],
+            "rebuilding the Settings body reuses the first model-list requests"
+        );
 
         Modal.closeTop("test");
 
@@ -2744,6 +2754,22 @@ function loadConsole() {
             source: "environment",
             secret: true,
             description: "Optional outbound HTTP or SOCKS5 proxy."
+        },
+        {
+            key: "ENDPOINT_MAIN_MODEL",
+            group: "endpoint.main",
+            type: "string",
+            value: "main-model",
+            source: "default",
+            description: "Main model."
+        },
+        {
+            key: "ENDPOINT_L1_MODEL",
+            group: "endpoint.l1",
+            type: "string",
+            value: "layer-model",
+            source: "default",
+            description: "Layer model."
         }
     ];
 
