@@ -357,6 +357,23 @@ async function main() {
     });
 
 
+    await test("unscoped uploads use the runtime workspace root", async () => {
+
+        const form = new FormData();
+        form.append("files", new Blob(["default workspace file"]), "workspace.txt");
+        const response = await fetch(`${baseUrl}/api/uploads`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${master}` },
+            body: form
+        });
+        const payload = await response.json();
+
+        assert.equal(response.status, 201);
+        assert.equal(path.dirname(payload.files[0].path), path.join(WORKSPACE, "upload_tmp"));
+        assert.equal(fs.readFileSync(payload.files[0].path, "utf8"), "default workspace file");
+    });
+
+
     await test("uploads enforce project write scope", async () => {
 
         const form = new FormData();

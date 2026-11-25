@@ -2229,7 +2229,13 @@ function createServer(runtime, options = {}) {
                                 throw error;
                             }
                         } else {
-                            rootPath = runtime.createRuntimeContext().workspace_root;
+                            const context = runtime.createRuntimeContext();
+                            rootPath = context?.runtime?.workspace_root || context?.workspace_root;
+                            if (typeof rootPath !== "string" || rootPath.trim() === "") {
+                                const error = new Error("workspace root is unavailable for uploads");
+                                error.status = 500;
+                                throw error;
+                            }
                         }
                         const realRoot = fs.realpathSync(rootPath);
                         const uploadDirectory = path.join(realRoot, "upload_tmp");
