@@ -438,6 +438,20 @@ async function main() {
 
             assert.equal(response.status, 200);
         }
+
+        /* the stylesheet is split over several files; each one linked must load as CSS */
+        const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map(match => match[1]);
+
+        assert.ok(sheets.length >= 3, "index.html links its stylesheets");
+
+        for (const sheet of sheets) {
+
+            const response =
+                await fetch(`${baseUrl}${sheet}`);
+
+            assert.equal(response.status, 200, sheet);
+            assert.match(response.headers.get("content-type"), /text\/css/, sheet);
+        }
     });
 
     await test("every module the browser imports is served as JavaScript", async () => {

@@ -1,0 +1,245 @@
+/* Settings, MCP and discussion dialogs.
+   Part of the console stylesheet: index.html links app.css and then the
+   files in styles/ in a fixed order, and later rules rely on that order. */
+
+/* -------------------------------------------------------------- settings */
+
+.settings { display: flex; flex-direction: column; gap: 4px; }
+.settings > .filter { margin-bottom: 6px; align-self: flex-start; min-width: 220px; }
+.settings .group { margin-top: 10px; }
+.settings .group > h3 {
+  margin: 8px 0 6px; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); font-weight: 650;
+}
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  gap: 8px; align-items: center;
+  padding: 6px 4px; border-radius: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, .04);
+}
+.setting:hover { background: rgba(255, 255, 255, .02); }
+.setting .label { font-family: var(--mono); font-size: 12px; }
+.setting .hint { color: var(--muted); font-size: 11px; }
+.setting input, .setting select {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; color: var(--text); padding: 5px 7px;
+  font: inherit; font-size: 12px; width: 100%;
+  transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.setting input:focus, .setting select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 155, 255, .18); outline: none; }
+.setting input:disabled { opacity: .45; }
+.setting .src {
+  font-size: 10px; font-weight: 550; padding: 1.5px 7px; border-radius: var(--r-pill);
+  border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  background: var(--panel-2);
+}
+.setting .src.override { color: var(--accent); border-color: rgba(109, 155, 255, .5); background: var(--accent-soft); }
+.setting .src.environment { color: var(--warn); border-color: rgba(240, 184, 76, .5); background: rgba(240, 184, 76, .08); }
+.setting.saved { animation: flash .8s; }
+.setting.rejected .hint { color: var(--bad); }
+.setting.model-list-unavailable .hint { color: var(--warn); }
+@keyframes flash { from { background: rgba(62, 207, 154, .18); } to { background: transparent; } }
+
+/* ------------------------------------------------------------------- mcp */
+
+.mcp { display: flex; flex-direction: column; gap: 8px; }
+.mcp-workspace { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.mcp-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); }
+.mcp-tab { background: transparent; border: 0; border-radius: 7px 7px 0 0; color: var(--muted); box-shadow: none; padding: 6px 11px; }
+.mcp-tab.active { color: var(--text); background: var(--panel-2); box-shadow: inset 0 -2px var(--accent); }
+.mcp-tab-panel { min-width: 0; max-height: 58vh; overflow: auto; }
+.mcp-raw-json {
+  display: block; min-height: 280px; max-height: 55vh; resize: vertical;
+  font-family: var(--mono); font-size: 12px; white-space: pre; tab-size: 2;
+}
+.mcp-config-path { margin: 0 0 6px; font-size: 11px; overflow-wrap: anywhere; }
+.mcp-config-message { min-height: 18px; margin: 6px 0 0; color: var(--ok); font-size: 11px; }
+.mcp-config-message.bad { color: var(--bad); }
+
+.mcp-server {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  padding: 9px 11px;
+  transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.mcp-server:hover { box-shadow: 0 6px 18px -12px rgba(3, 7, 18, .9); }
+.mcp-server.ready { border-left-color: var(--ok); }
+.mcp-server.failed { border-left-color: var(--bad); }
+.mcp-server.connecting { border-left-color: var(--warn); }
+.mcp-server.off { border-left-color: var(--line); opacity: .55; }
+
+.mcp-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mcp-head .name { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.mcp-head .chip {
+  font-size: 10px; padding: 1.5px 7px; border-radius: var(--r-pill);
+  border: 1px solid var(--line); color: var(--muted); background: var(--panel);
+}
+.mcp-head .state { font-size: 11px; color: var(--muted); }
+.mcp-head .state.ready { color: var(--ok); }
+.mcp-head .state.failed { color: var(--bad); }
+.mcp-head .state.connecting { color: var(--warn); }
+
+.mcp-server .facts {
+  color: var(--muted); font-size: 11px; margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.mcp-error {
+  color: var(--bad); font-size: 11px; margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.mcp-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+.mcp-tools { margin-top: 6px; }
+.mcp-tools > h3 {
+  margin: 8px 0 6px; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); font-weight: 650;
+}
+.mcp-tool {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, .04);
+}
+.mcp-tool .name { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.mcp-tool .facts {
+  color: var(--muted); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.mcp-add { margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.mcp-add > h3 {
+  margin: 0 0 8px; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); font-weight: 650;
+}
+.mcp-field {
+  display: grid; grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px; align-items: center; padding: 3px 0;
+}
+.mcp-field .label { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.mcp-field input, .mcp-field select {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; color: var(--text); padding: 5px 7px;
+  font: inherit; font-size: 12px; width: 100%;
+  transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.mcp-field input:focus, .mcp-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 155, 255, .18); outline: none; }
+.mcp-message { color: var(--warn); font-size: 11px; min-height: 14px; margin: 6px 0 0; }
+.modal-row button.danger:hover { border-color: var(--bad); color: var(--bad); }
+
+/* ------------------------------------------------------------ discussion */
+
+.discussion { display: flex; flex-direction: column; gap: 10px; }
+
+.discussion-status {
+  font-family: var(--mono); font-size: 11px; color: var(--accent);
+  border-bottom: 1px solid var(--line-soft); padding-bottom: 6px;
+}
+
+.discussion-task { margin: 0; color: var(--text); font-size: 13px; font-weight: 550; }
+
+.discussion-persona-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted);
+}
+
+.discussion-persona-head .link { margin-left: auto; }
+.discussion-persona-head .link:last-child { margin-left: 6px; }
+
+.discussion-personas {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+}
+
+.discussion-persona {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 9px; cursor: pointer;
+  font-family: var(--mono); font-size: 11px;
+  transition: border-color .18s var(--ease), background .18s var(--ease), transform .18s var(--ease);
+}
+
+.discussion-persona:hover { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+
+.discussion-round-head {
+  margin: 8px 0 0; font-size: 11px; font-weight: 650; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+  border-top: 1px solid var(--line-soft); padding-top: 8px;
+}
+
+.discussion-message {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 6px; margin: 4px 0;
+  transition: border-color .18s var(--ease);
+}
+.discussion-message:hover { border-color: var(--panel-3); }
+
+.discussion-message > summary {
+  cursor: pointer; padding: 6px 11px;
+  font-family: var(--mono); font-size: 11px; color: var(--text);
+}
+
+.discussion-message-body {
+  padding: 0 11px 9px; font-size: 12px; color: var(--text);
+  max-height: 320px; overflow: auto;
+}
+
+.discussion-observer {
+  background: rgba(109, 155, 255, .08); border: 1px solid rgba(109, 155, 255, .3);
+  border-radius: var(--r-sm); padding: 7px 11px; margin: 6px 0; font-size: 12px;
+}
+
+.discussion-observer.finish {
+  background: rgba(62, 207, 154, .08); border-color: rgba(62, 207, 154, .35);
+}
+
+.discussion-observer p { margin: 3px 0; }
+.discussion-observer .muted { color: var(--muted); font-size: 11px; }
+
+.discussion-report {
+  border-top: 1px solid var(--line-soft); padding-top: 10px;
+}
+
+.discussion-report h3 { margin: 0 0 8px; font-size: 14px; font-weight: 650; }
+.discussion-report h4 {
+  margin: 12px 0 4px; font-size: 11px; font-weight: 650; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+.discussion-summary { margin: 0 0 4px; font-size: 13px; }
+.discussion-points { margin: 4px 0; padding-left: 20px; font-size: 12px; }
+.discussion-unresolved { margin: 6px 0; font-size: 12px; }
+.discussion-unresolved p { margin: 2px 0 2px 12px; color: var(--muted); }
+.discussion-step { margin: 3px 0; font-size: 12px; font-family: var(--mono); }
+
+/* the options row that appears under the task textarea in discussion mode */
+
+.discussion-options-row {
+  margin-top: 10px; padding: 9px 11px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+.discussion-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted);
+}
+
+.discussion-meta input {
+  width: 56px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; color: var(--text); padding: 3px 6px; font: inherit; font-size: 12px;
+}
+.discussion-meta input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(109, 155, 255, .18); }
+
+.discussion-status-line { margin-left: auto; }
+
+.discussion-status-line.bad { color: var(--bad); }
+
+button.ghost.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}

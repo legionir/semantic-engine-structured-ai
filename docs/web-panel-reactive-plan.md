@@ -8,6 +8,7 @@
 > - stubهای قدیمی `api.js`، `event-stream.js`، `task-runner.js`، `modal-manager.js` و `project-state.js` حذف شدند. `rollout.contract` جلوی برگشتنشان را می‌گیرد.
 > - `console.js` به ۱۲ ماژول جدا برای هر بخش (`console-core.js`، `*-controller.js`، `project-*.js`) شکسته شد و فقط اتصال کنترل‌های صفحه در آن ماند. هیچ ماژولی بیش از ۵۰۰ خط ندارد و یک تست جلوی import حلقوی را می‌گیرد.
 > - ردیف پنهان `#rowTwo` حذف شد. Execution و Events دیگر نسخهٔ صفحه ندارند و فقط وقتی مودالشان باز است رسم می‌شوند.
+> - تست‌های UI به گروه‌های جدا در `test/ui/scenarios/` تقسیم شدند (همان ترتیب و همان خروجی)، و `app.css` به یک فایل پایه و پنج فایل در `web/public/styles/` که به همان ترتیب لینک می‌شوند.
 > - Projects manager و فرم New Project هنوز به‌صورت imperative ساخته می‌شوند، ولی خطاهای آن‌ها گزارش می‌شود.
 > - کارایی: replay یک snapshot با ۵۰۰ رویداد روی happy-dom حدود ۲۴۰ms طول می‌کشد، در برابر حدود ۶۰۰۰ms در نسخهٔ legacy. خود reduce حدود ۲ms است و بقیه هزینهٔ DOM شبیه‌سازی‌شده است. سقف تست ۱۵۰۰ms گذاشته شد تا CI ناپایدار نشود.
 
