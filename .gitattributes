@@ -1,0 +1,3 @@
+# Vendored browser modules are pinned by sha256 in web/public/vendor/manifest.json;
+# keep their bytes exactly as committed on every OS (no CRLF conversion).
+web/public/vendor/** -text

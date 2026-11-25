@@ -277,12 +277,20 @@ async function main() {
 
     await require(path.join(REPO, "agent", "tools")).mcp._manager.shutdown();
     await server.close();
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
 
     const failed = results.filter(item => !item.ok);
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    fs.rmSync(TRUST_HOME, { recursive: true, force: true });
+    /* best effort: Windows can still hold a handle a moment after the last write */
+    for (const dir of [WORKSPACE, TRUST_HOME]) {
+        try {
+            fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+        } catch (error) {
+            console.log(`  (left ${dir}: ${error.code || error.message})`);
+        }
+    }
 
     process.exit(failed.length === 0 ? 0 : 1);
 }
