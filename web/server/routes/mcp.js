@@ -87,7 +87,8 @@ module.exports = async function McpRoutes(shared, request) {
 
             const entries = loader.entriesOf(document);
             const normalized = new Map();
-            for (const [name, definition] of entries) {
+            /* entriesOf() skips entries that are not objects; check what will be written */
+            for (const [name, definition] of Object.entries(container)) {
                 if (typeof name !== "string" || !definition || typeof definition !== "object" || Array.isArray(definition)) {
                     throw new Error("each MCP server must have a name and an object definition");
                 }
@@ -110,7 +111,7 @@ module.exports = async function McpRoutes(shared, request) {
             }
 
             fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, `${JSON.stringify(document, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+            loader.writePrivateFile(file, `${JSON.stringify(document, null, 2)}\n`);
             manager.invalidate();
             manager.load();
             await toolRuntime.discoverMcpTools({ force: true }).catch(() => {});
@@ -246,11 +247,17 @@ module.exports = async function McpRoutes(shared, request) {
             return true;
         }
 
-        await runtime.policyEngine.enforce(
-            "mcp_remove",
-            { name },
-            "web_console"
-        );
+        try {
+            await runtime.policyEngine.enforce(
+                "mcp_remove",
+                { name },
+                "web_console"
+            );
+        } catch (error) {
+            /* a refusal is the caller's answer, as for POST and PUT, not a server fault */
+            sendJson(res, error.status || 400, { error: error.message });
+            return true;
+        }
 
         const removed =
             await toolRuntime.mcp._manager.remove(name);
@@ -298,11 +305,16 @@ module.exports = async function McpRoutes(shared, request) {
             return true;
         }
 
-        await runtime.policyEngine.enforce(
-            "mcp_add",
-            { name, enabled: body.enabled !== false },
-            "web_console"
-        );
+        try {
+            await runtime.policyEngine.enforce(
+                "mcp_add",
+                { name, enabled: body.enabled !== false },
+                "web_console"
+            );
+        } catch (error) {
+            sendJson(res, error.status || 400, { error: error.message });
+            return true;
+        }
 
         const changed =
             toolRuntime.mcp._manager.setEnabled(

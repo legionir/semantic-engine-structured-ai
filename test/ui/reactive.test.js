@@ -59,6 +59,10 @@ async function staticChecks() {
     console.log("static invariants");
 
     await require("./scenarios/static-invariants")({ test });
+
+    console.log("\nsafe markdown");
+
+    await require("./scenarios/markdown")({ test });
 }
 
 
