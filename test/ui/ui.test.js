@@ -2586,7 +2586,7 @@ function loadConsole() {
         "plan", "planSummary", "log", "approvalsCount", "discussionOptions",
         "taskScope", "taskScopeList", "projectDashboard", "dashboardTitle",
         "dashboardSubtitle", "dashboardTabs", "dashboardBody", "consoleMain",
-        "planPanel", "consoleHeader", "consoleMenu", "autoSwitchStatus"
+        "planPanel", "consoleHeader", "consoleMenu", "autoSwitchStatus", "attachmentList"
     ]) {
         document.register(id, "div");
     }
@@ -2596,7 +2596,8 @@ function loadConsole() {
         "settingsButton", "mcpButton", "approvalsButton", "clearLog",
         "historyButton", "executionButton", "eventsButton",
         "discussionButton", "newProjectButton", "projectsButton",
-        "dashboardBack", "llmSettingsButton", "planButton", "mobileMenuToggle"
+        "dashboardBack", "llmSettingsButton", "planButton", "mobileMenuToggle",
+        "attachFilesButton"
     ]) {
         document.register(id, "button");
     }
@@ -2606,7 +2607,7 @@ function loadConsole() {
     document.getElementById("discussionOptions").hidden = true;
     document.getElementById("runButton").textContent = "Run task";
 
-    for (const id of ["task", "logFilter"]) {
+    for (const id of ["task", "logFilter", "attachmentInput"]) {
         document.register(id, "input");
     }
 

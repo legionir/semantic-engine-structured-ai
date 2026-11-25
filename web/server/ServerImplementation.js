@@ -44,6 +44,7 @@ const {
     RateLimiter
 } = require("./Middleware");
 const { readBody } = require("./RequestBody");
+const { readMultipart } = require("./Multipart");
 const {
     sendJson,
     setConsoleCookie
@@ -2191,6 +2192,83 @@ function createServer(runtime, options = {}) {
                     }
 
                     sendJson(res, 200, { call });
+
+                    return;
+                }
+
+                /* ---------------------------------------------- uploads */
+
+                if (
+                    pathname === "/api/uploads" &&
+                    req.method === "POST"
+                ) {
+                    const projectId = url.searchParams.get("projectId") || null;
+                    const permission = projectId
+                        ? consoleAuth.authorize(claims, { projectId, permission: "project:write" })
+                        : consoleAuth.authorizeUnscoped(claims, "project:write");
+
+                    if (refuse(permission)) return;
+
+                    let saved = [];
+
+                    try {
+                        const multipart = await readMultipart(req);
+                        const files = multipart.files.filter(file => ["file", "files"].includes(file.fieldName));
+
+                        if (files.length === 0) {
+                            sendJson(res, 400, { error: "select at least one file to upload" });
+                            return;
+                        }
+
+                        let rootPath;
+                        if (projectId) {
+                            try {
+                                rootPath = runtime.projects.registry().get(projectId).rootPath;
+                            } catch (error) {
+                                error.status = 404;
+                                throw error;
+                            }
+                        } else {
+                            rootPath = runtime.createRuntimeContext().workspace_root;
+                        }
+                        const realRoot = fs.realpathSync(rootPath);
+                        const uploadDirectory = path.join(realRoot, "upload_tmp");
+
+                        fs.mkdirSync(uploadDirectory, { recursive: true });
+                        const realUploadDirectory = fs.realpathSync(uploadDirectory);
+                        const rootPrefix = realRoot.endsWith(path.sep) ? realRoot : `${realRoot}${path.sep}`;
+                        if (realUploadDirectory === realRoot || !realUploadDirectory.startsWith(rootPrefix)) {
+                            throw new Error("upload_tmp must remain inside the project root");
+                        }
+
+                        for (const file of files) {
+                            const suppliedName = path.win32.basename(path.basename(file.filename || "file"));
+                            const originalExtension = path.extname(suppliedName);
+                            const extension = originalExtension.toLowerCase().replace(/[^a-z0-9.]/g, "").slice(0, 16);
+                            const stem = path.basename(suppliedName, originalExtension)
+                                .normalize("NFKC")
+                                .replace(/[^a-zA-Z0-9_-]+/g, "_")
+                                .replace(/^[_-]+|[_-]+$/g, "")
+                                .slice(0, 72) || "file";
+                            const storedName = `${stem}_${crypto.randomBytes(6).toString("hex")}${extension}`;
+                            const filePath = path.join(realUploadDirectory, storedName);
+
+                            fs.writeFileSync(filePath, file.data, { flag: "wx", mode: 0o600 });
+                            saved.push({
+                                name: suppliedName || "file",
+                                path: filePath,
+                                size: file.data.length,
+                                type: file.contentType
+                            });
+                        }
+
+                        sendJson(res, 201, { files: saved, project_id: projectId });
+                    } catch (error) {
+                        for (const file of saved) {
+                            try { fs.unlinkSync(file.path); } catch { /* cleanup best-effort */ }
+                        }
+                        sendJson(res, error.status || 400, { error: error.message || "file upload failed" });
+                    }
 
                     return;
                 }

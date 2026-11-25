@@ -66,7 +66,10 @@
       <div class="panel-head">
         <h2>Conversation</h2>
         <div class="head-tools">
+          <div class="attachment-list" id="attachmentList" aria-live="polite"></div>
           <span class="muted" id="sessionTitle"></span>
+          <button type="button" id="attachFilesButton" class="chip button" title="Attach files to the next task" aria-label="Attach files"><span>Attach</span></button>
+          <input type="file" id="attachmentInput" multiple hidden>
         </div>
       </div>
 

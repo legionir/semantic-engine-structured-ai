@@ -66,6 +66,8 @@ const state = {
     dashboard: { open: false, projectId: null, tab: "overview" },
     eventSource: null,
     multiQueue: [],
+    attachments: [],
+    attachmentError: null,
     gatewayHealth: null
 };
 
@@ -5481,6 +5483,85 @@ function selectedTaskProjectIds() {
 }
 
 
+function renderAttachments() {
+
+    const list = el("attachmentList");
+    if (!list) return;
+
+    list.innerHTML = "";
+    for (const [index, attachment] of state.attachments.entries()) {
+        const chip = node("span", "attachment-chip");
+        chip.appendChild(node("span", "attachment-name", attachment.file.name));
+        const remove = node("button", null, "×");
+        remove.type = "button";
+        remove.setAttribute("aria-label", `Remove ${attachment.file.name}`);
+        remove.addEventListener("click", () => {
+            state.attachments.splice(index, 1);
+            state.attachmentError = null;
+            renderAttachments();
+        });
+        chip.appendChild(remove);
+        list.appendChild(chip);
+    }
+
+    if (state.attachmentError) {
+        list.appendChild(node("span", "attachment-error", state.attachmentError));
+    }
+}
+
+
+async function uploadAttachmentsForProject(projectId, attachments = state.attachments) {
+
+    const key = projectId || "__default__";
+    const pending = attachments.filter(attachment => !attachment.uploaded.has(key));
+
+    if (pending.length > 0) {
+        const form = new FormData();
+        for (const attachment of pending) {
+            form.append("files", attachment.file, attachment.file.name);
+        }
+
+        const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+        const response = await fetch(`/api/uploads${query}`, {
+            method: "POST",
+            body: form
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok || !Array.isArray(payload.files) || payload.files.length !== pending.length) {
+            throw new Error(payload.error || `File upload failed (${response.status}).`);
+        }
+
+        pending.forEach((attachment, index) => {
+            attachment.uploaded.set(key, payload.files[index]);
+        });
+    }
+
+    return attachments.map(attachment => attachment.uploaded.get(key));
+}
+
+
+function taskWithAttachments(task, files) {
+
+    if (!files || files.length === 0) return task;
+
+    return `${task}\n\nAttached files (stored locally on the server):\n${files
+        .map(file => `- ${JSON.stringify(file.name)}: ${JSON.stringify(file.path)}`)
+        .join("\n")}\n\nTreat these as user-provided input files. Inspect or extract them as appropriate for the task; do not execute uploaded code unless the task explicitly requires it.`;
+}
+
+
+function setUploadingState(uploading) {
+
+    const runButton = el("runButton");
+    if (!runButton || state.status === "running") return;
+    runButton.disabled = uploading;
+    runButton.textContent = uploading
+        ? "Uploading files…"
+        : state.discussionMode ? "Start discussion" : "Run task";
+}
+
+
 function labelChatForProject(projectId) {
 
     const project = projectById(projectId);
@@ -5495,11 +5576,14 @@ function labelChatForProject(projectId) {
 }
 
 
-function startLabeledProjectQueue(task, projectIds) {
+function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = new Map()) {
 
     state.multiQueue = projectIds.map(id => ({
         projectId: id,
-        task: `[${(projectById(id) || { name: id }).name}] ${task}`
+        task: taskWithAttachments(
+            `[${(projectById(id) || { name: id }).name}] ${task}`,
+            attachmentFilesByProject.get(id) || []
+        )
     }));
 
     drainProjectTaskQueue();
@@ -6103,6 +6187,19 @@ function bindProjectControls() {
 
     el("newProjectButton")?.addEventListener("click", openNewProjectModal);
     el("projectsButton")?.addEventListener("click", openProjectsManager);
+
+    const attachButton = el("attachFilesButton");
+    const attachmentInput = el("attachmentInput");
+    attachButton?.addEventListener("click", () => attachmentInput?.click());
+    attachmentInput?.addEventListener("change", event => {
+        const files = [...(event.target.files || [])];
+        for (const file of files) {
+            state.attachments.push({ file, uploaded: new Map() });
+        }
+        state.attachmentError = null;
+        renderAttachments();
+        event.target.value = "";
+    });
     el("dashboardBack")?.addEventListener("click", () => {
 
         closeProjectDashboard();
@@ -6257,11 +6354,13 @@ el("taskForm").addEventListener("submit", async submitEvent => {
 
     submitEvent.preventDefault();
 
-    const task =
-        el("task").value.trim();
+    let task = el("task").value.trim();
 
-    if (task === "") {
+    if (task === "" && state.attachments.length === 0) {
         return;
+    }
+    if (task === "" && state.attachments.length > 0) {
+        task = "Inspect the attached file(s) and determine the appropriate next step.";
     }
 
     /*
@@ -6295,6 +6394,21 @@ el("taskForm").addEventListener("submit", async submitEvent => {
                 Math.min(10, Number(el("discussionRounds")?.value) || 5)
             );
 
+        let discussionTask = task;
+        if (state.attachments.length > 0) {
+            setUploadingState(true);
+            try {
+                const files = await uploadAttachmentsForProject(state.currentProjectId);
+                discussionTask = taskWithAttachments(task, files);
+            } catch (error) {
+                state.attachmentError = error.message;
+                renderAttachments();
+                setUploadingState(false);
+                return;
+            }
+            setUploadingState(false);
+        }
+
         el("runButton").disabled = true;
 
         const discussionUrl =
@@ -6306,12 +6420,15 @@ el("taskForm").addEventListener("submit", async submitEvent => {
             await fetch(discussionUrl, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ task, personas, max_rounds: maxRounds })
+                body: JSON.stringify({ task: discussionTask, personas, max_rounds: maxRounds })
             });
 
         if (response.ok) {
 
             el("task").value = "";
+            state.attachments = [];
+            state.attachmentError = null;
+            renderAttachments();
 
             /* the stream confirms with discussion:start; this keeps
                the composer honest in the meantime */
@@ -6320,7 +6437,7 @@ el("taskForm").addEventListener("submit", async submitEvent => {
                     (await response.json().catch(() => ({}))).id ||
                     null,
                 status: "running",
-                task,
+                task: discussionTask,
                 personas,
                 max_rounds: maxRounds,
                 rounds: [],
@@ -6351,15 +6468,43 @@ el("taskForm").addEventListener("submit", async submitEvent => {
     }
 
     const targets = selectedTaskProjectIds();
+    const projectIds = targets.length > 0 ? targets : [null];
+    const attachmentFilesByProject = new Map();
+
+    if (state.attachments.length > 0) {
+        setUploadingState(true);
+        try {
+            for (const projectId of projectIds) {
+                const files = await uploadAttachmentsForProject(projectId);
+                if (projectId) attachmentFilesByProject.set(projectId, files);
+                else attachmentFilesByProject.set("__default__", files);
+            }
+        } catch (error) {
+            state.attachmentError = error.message;
+            renderAttachments();
+            setUploadingState(false);
+            return;
+        }
+        setUploadingState(false);
+    }
 
     if (targets.length > 1) {
 
-        startLabeledProjectQueue(task, targets);
+        startLabeledProjectQueue(task, targets, attachmentFilesByProject);
         el("task").value = "";
+        state.attachments = [];
+        state.attachmentError = null;
+        renderAttachments();
         return;
     }
 
     const projectId = targets[0] || null;
+    if (state.attachments.length > 0) {
+        task = taskWithAttachments(
+            task,
+            attachmentFilesByProject.get(projectId || "__default__")
+        );
+    }
     state.activeProjectId = projectId;
     setStatus("running");
 
@@ -6378,6 +6523,9 @@ el("taskForm").addEventListener("submit", async submitEvent => {
     if (response.ok) {
 
         el("task").value = "";
+        state.attachments = [];
+        state.attachmentError = null;
+        renderAttachments();
 
         if (projectId) {
             labelChatForProject(projectId);

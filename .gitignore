@@ -2,6 +2,9 @@
 # Runtime state of any demo/test workspace, never source
 **/.agent/
 
+# User-provided chat uploads are temporary runtime input, never source
+**/upload_tmp/
+
 # Node dependencies and generated coverage are restored/recomputed locally.
 **/node_modules/
 **/coverage/

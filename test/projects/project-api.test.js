@@ -337,6 +337,39 @@ async function main() {
     });
 
 
+    await test("uploads are stored under the authorized project upload_tmp directory", async () => {
+
+        const form = new FormData();
+        form.append("files", new Blob(["uploaded contents\n"], { type: "text/plain" }), "notes.txt");
+        const response = await fetch(`${baseUrl}/api/uploads?projectId=prj-a`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${SCOPED_A}` },
+            body: form
+        });
+        const payload = await response.json();
+
+        assert.equal(response.status, 201);
+        assert.equal(payload.files.length, 1);
+        assert.equal(payload.files[0].name, "notes.txt");
+        assert.match(path.basename(payload.files[0].path), /^notes_[a-f0-9]+\.txt$/);
+        assert.equal(path.dirname(payload.files[0].path), path.join(WORKSPACE, "upload_tmp"));
+        assert.equal(fs.readFileSync(payload.files[0].path, "utf8"), "uploaded contents\n");
+    });
+
+
+    await test("uploads enforce project write scope", async () => {
+
+        const form = new FormData();
+        form.append("files", new Blob(["no"], { type: "text/plain" }), "blocked.txt");
+        const response = await fetch(`${baseUrl}/api/uploads?projectId=prj-a`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${SCOPED_B}` },
+            body: form
+        });
+        assert.equal(response.status, 403);
+    });
+
+
     await test("token limited to A cannot read B (403)", async () => {
 
         const denied = await request(
