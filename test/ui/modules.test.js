@@ -64,7 +64,9 @@ async function main() {
     "chat.js", "execution-view.js", "event-view.js", "settings-view.js",
     "mcp-view.js", "history-view.js", "plan-view.js", "modal-manager.js",
     "markdown.js", "direction.js", "dom.js", "formatters.js",
-    "project-state.js", "project-view.js", "runtime-state.js", "approval-state.js"
+    "project-state.js", "project-view.js", "runtime-state.js", "approval-state.js",
+    "execution-model.js", "conversation-model.js", "discussion-model.js",
+    "discussion-view.js", "composer-view.js"
   ];
 
   await test("the frontend domain module inventory is present", () => {
@@ -169,13 +171,16 @@ async function main() {
     }
   });
 
-  await test("store.js declares isolated domain state and additive event reducers", () => {
+  await test("store.js declares isolated domain state and the reducer handles approvals", () => {
     const store = source("store.js");
     [
       "runtimeState", "conversationState", "executionState", "eventState",
       "approvalState", "settingsState", "mcpState", "historyState",
-      "planState", "projectState", "approval:request", "approval:resolved"
-    ].forEach(value => assert.match(store, new RegExp(value.replace(":", "\\:")), value));
+      "planState", "projectState"
+    ].forEach(value => assert.match(store, new RegExp(value), value));
+    const reducer = source("runtime-state.js");
+    ["approval:request", "approval:resolved"]
+      .forEach(value => assert.match(reducer, new RegExp(value.replace(":", "\\:")), value));
   });
 
   await test("api.js uses relative URLs and encodes project routes", () => {
@@ -195,8 +200,10 @@ async function main() {
   });
 
   await test("security-sensitive frontend helpers keep safe markdown and direction boundaries", () => {
-    assert.match(source("markdown.js"), /textContent/);
-    assert.match(source("markdown.js"), /https:\/\/structured-ai\.invalid/);
+    const markdown = source("markdown.js");
+    assert.match(markdown, /https:\/\/structured-ai\.invalid/);
+    assert.match(markdown, /\["http:", "https:", "mailto:"\]/);
+    assert.doesNotMatch(markdown, /innerHTML|dangerouslySetInnerHTML|insertAdjacentHTML/);
     assert.match(source("direction.js"), /RTL_TEXT/);
     assert.match(source("dom.js"), /textContent/);
     assert.doesNotMatch(source("api.js"), /innerHTML/);

@@ -1,48 +1,46 @@
-"use strict";
-
 /*
-| Compatibility renderer. The no-build ESM entry point at app/main.js imports
-| this file while domain modules in app/ own the migration seams; the file is
-| kept as a classic-compatible asset for existing embeds and UI tests.
+|--------------------------------------------------------------------------
+| Console controller
+|--------------------------------------------------------------------------
 |
-| The console keeps no state of its own beyond what the runtime reports:
-| every box on screen is rebuilt from the event stream, so a reload
-| reproduces the same picture from the snapshot.
+| The console keeps no state of its own beyond what the runtime reports.
+| Events from the stream go through the reducer in runtime-state.js into
+| the store (store.js); the panels are views mounted on store regions and
+| redraw themselves (execution-view, plan-view, chat, event-view,
+| discussion-view, approval-state). This file owns what is left: the
+| request/response flows (task submit, settings, MCP, history, projects),
+| the stream connection, and the wiring of index.html's controls.
 |
 | Three things are deliberately modal rather than inline, because they
 | interrupt: settings, an approval request, and the full detail of one
 | executed call. They share the Modal service in modal.js.
 */
 
+import { state, touch, batch, REGIONS } from "./store.js";
+import { mount, bind, stickToBottom, mountInModal } from "./dom.js";
+import { describeSession } from "./formatters.js";
+import { reduce, applySnapshot as reduceSnapshot, setRunStatus } from "./runtime-state.js";
+import { resetRun, currentRun, treeSummary } from "./execution-model.js";
+import { normalizeConversationMessage, normalizeConversationMessages } from "./conversation-model.js";
+import { Tree, Archive, openCallDetail as showCallDetail } from "./execution-view.js";
+import { Plan, planSummary } from "./plan-view.js";
+import { Chat, waitingText } from "./chat.js";
+import { LogRows, LogTypeOptions, logViews, logCountText, describeEvent } from "./event-view.js";
+import { Discussion } from "./discussion-view.js";
+import { createApprovals } from "./approval-state.js";
+import { Attachments } from "./composer-view.js";
+
 const el = id => document.getElementById(id);
 
-const escape = Modal.escape;
 
-const state = {
-    agents: new Map(),
-    order: [],
-    graphs: new Map(),
-    calls: new Map(),
-    approvals: new Map(),
-    loops: [],
-    hooks: new Map(),
-    hookOrder: [],
-    currentTask: null,
-    plan: null,
-    messages: [],
-    events: [],
-    waiting: null,
-    waitingElapsed: null,
-    waitingTimer: null,
-    session: null,
-    sessions: [],
+/*
+| Handles of open modals and in-flight flags. They describe the page, not
+| the runtime, so they live beside the store's data rather than in it.
+*/
+Object.assign(state, {
     historyModal: null,
     executionModal: null,
     eventsModal: null,
-    status: "idle",
-    startedAt: null,
-    timer: null,
-    approvalModal: null,
     settingsModal: null,
     llmSettingsModal: null,
     planModal: null,
@@ -53,30 +51,10 @@ const state = {
     mcpConfigError: null,
     mcpConfigNotice: "",
     discussionModal: null,
-    discussion: null,
-    discussionEl: null,
-    discussionMode: false,
-    discussionPersonas: [],
     historyOpening: false,
     mcpOpening: false,
-    settings: [],
-    modelCatalog: null,
-    logFilter: "",
-    logType: "",
-    openExecutionKeys: new Set(),
-    projects: [],
-    currentProjectId: null,
-    taskScopeMode: "current",
-    taskProjectIds: [],
-    activeProjectId: null,
-    stopPending: false,
-    dashboard: { open: false, projectId: null, tab: "overview" },
-    eventSource: null,
-    multiQueue: [],
-    attachments: [],
-    attachmentError: null,
-    gatewayHealth: null
-};
+    eventSource: null
+});
 
 const PROJECT_STORAGE_KEY = "structured-ai.currentProjectId";
 
@@ -92,34 +70,6 @@ const DASHBOARD_TABS = [
     ["logs", "Logs"],
     ["settings", "Settings"]
 ];
-
-
-/* ---------------------------------------------------------------- helpers */
-
-function shorten(value, max = 90) {
-
-    const text =
-        typeof value === "string"
-            ? value
-            : JSON.stringify(value ?? "");
-
-    return text.length > max
-        ? `${text.slice(0, max)}…`
-        : text;
-}
-
-
-function singleLine(value, max = 90) {
-
-    const text =
-        String(value || "")
-            .replace(/\s+/g, " ")
-            .trim();
-
-    return text.length > max
-        ? `${text.slice(0, max)}…`
-        : text || "Untitled task";
-}
 
 
 function node(tag, className, text) {
@@ -139,1811 +89,7 @@ function node(tag, className, text) {
 }
 
 
-function agentNode(scope, depth, extra = {}) {
-
-    if (!state.agents.has(scope)) {
-
-        state.agents.set(scope, {
-            scope,
-            name: extra.name || scope,
-            depth: depth || 0,
-            parent: null,
-            parentScope: null,
-            persona: null,
-            delegationId: null,
-            task: null,
-            status: "running",
-            iterations: 0,
-            graphs: [],
-            skills: [],
-            loops: []
-        });
-
-        state.order.push(scope);
-    }
-
-    const item =
-        state.agents.get(scope);
-
-    if (depth !== undefined && depth !== null) {
-        item.depth = depth;
-    }
-
-    for (const [key, value] of Object.entries(extra)) {
-
-        if (value !== undefined && value !== null) {
-            item[key] = value;
-        }
-    }
-
-    return item;
-}
-
-
-function graphNode(event) {
-
-    const id =
-        event.graph_id || `${event.agent}:loose`;
-
-    if (!state.graphs.has(id)) {
-
-        state.graphs.set(id, {
-            id,
-            agent: event.agent || "main_agent",
-            kind: "tools",
-            shape: event.shape || "single",
-            waves: event.waves || [],
-            waveBasis: event.wave_basis || "planned",
-            maxParallel: event.max_parallel || null,
-            iteration: event.iteration ?? null,
-            order: [],
-            calls: new Map()
-        });
-
-        const owner =
-            agentNode(event.agent || "main_agent");
-
-        owner.graphs.push(id);
-    }
-
-    const graph =
-        state.graphs.get(id);
-
-    if (event.shape) {
-        graph.shape = event.shape;
-    }
-
-    if (event.waves) {
-        graph.waves = event.waves;
-    }
-
-    if (event.wave_basis) {
-        graph.waveBasis = event.wave_basis;
-    }
-
-    if (event.iteration !== undefined && event.iteration !== null) {
-        graph.iteration = event.iteration;
-    }
-
-    return graph;
-}
-
-
-/*
-| A wave index is what the scheduler planned, not what it did: items dispatch
-| continuously, so two calls sharing a wave need not overlap and two calls in
-| different waves may run together. The honest record of concurrency is the
-| interval every call carries, so "in parallel" and "ran alongside" are read
-| from those, and the planned grouping is only a fallback for a call that has
-| no timestamps (a replayed run from before they were recorded).
-*/
-function intervalOf(call) {
-
-    if (!call) {
-        return null;
-    }
-
-    const start =
-        call.startedAt ??
-        (
-            call.finishedAt && call.duration
-                ? call.finishedAt - call.duration
-                : null
-        );
-
-    if (start === null || start === undefined) {
-        return null;
-    }
-
-    /* a call still running has no end yet, so it overlaps everything open */
-    return {
-        start,
-        end: call.finishedAt ?? Number.MAX_SAFE_INTEGER
-    };
-}
-
-
-function ranAlongside(graph, call) {
-
-    const own = intervalOf(call);
-
-    if (!own) {
-        return (graph.waves[call.wave] || []).filter(id => id !== call.id);
-    }
-
-    const alongside = [];
-
-    for (const id of graph.order) {
-
-        if (id === call.id) {
-            continue;
-        }
-
-        const other = intervalOf(graph.calls.get(id));
-
-        if (other && other.start < own.end && own.start < other.end) {
-            alongside.push(id);
-        }
-    }
-
-    return alongside;
-}
-
-
-/* ------------------------------------------------------------------ tree */
-
-const SHAPE_LABEL = {
-    single: "single call",
-    parallel: "parallel",
-    sequential: "sequential",
-    graph: "dependency graph"
-};
-
-
-function statusIcon(status) {
-
-    return status === "running"
-        ? "◌"
-        : status === "failed"
-            ? "✕"
-            : status === "skipped"
-                ? "–"
-                : status === "exit" || status === "warned"
-                ? "!"
-                : "✓";
-}
-
-
-function archiveCurrentExecution() {
-
-    if (
-        state.order.length === 0 &&
-        state.hookOrder.length === 0
-    ) {
-        return false;
-    }
-
-    const tree = el("tree");
-    const archive = el("executionArchive");
-
-    if (!tree || !archive) {
-        return false;
-    }
-
-    const execSummary = el("execSummary");
-
-    const details = node("details", "execution-run");
-    const summary = node("summary");
-
-    summary.append(
-        node("span", "archived-title", singleLine(state.currentTask, 100)),
-        node(
-            "span",
-            "archived-summary",
-            execSummary ? execSummary.textContent : ""
-        )
-    );
-
-    const body = node("div", "archived-tree");
-
-    while (tree.firstChild) {
-        body.appendChild(tree.removeChild(tree.firstChild));
-    }
-
-    details.append(summary, body);
-    archive.appendChild(details);
-
-    while (archive.children.length > 50) {
-        archive.removeChild(archive.firstChild);
-    }
-
-    return true;
-}
-
-
-function renderTree() {
-
-    const container = el("tree");
-
-    /*
-    | renderTree runs from the event stream. A missing container must
-    | not throw, because the exception would take down the handler for
-    | every event after it, not just this one.
-    */
-
-    if (!container) {
-        return;
-    }
-
-    const summary = el("execSummary");
-
-    if (state.order.length === 0) {
-
-        container.innerHTML =
-            '<p class="empty">No run yet. Send a task to see the agent tree.</p>';
-
-        if (summary) {
-            summary.textContent = "";
-        }
-
-        return;
-    }
-
-    container.innerHTML = "";
-
-    let calls = 0;
-    let failures = 0;
-
-    if (state.hookOrder.length > 0) {
-
-        const routine = node("div", "routine");
-        routine.appendChild(node("div", "routine-title", "Runtime routine"));
-
-        for (const id of state.hookOrder) {
-
-            const hook = state.hooks.get(id);
-
-            if (!hook) {
-                continue;
-            }
-
-            routine.appendChild(
-                node(
-                    "div",
-                    `hook ${hook.status}`,
-                    `${statusIcon(hook.status)} ${hook.phase} · ${hook.id} · ${hook.hook_type}${
-                        hook.summary ? ` — ${shorten(hook.summary, 100)}` : ""
-                    }`
-                )
-            );
-        }
-
-        container.appendChild(routine);
-    }
-
-    for (const scope of state.order) {
-
-        const agent =
-            state.agents.get(scope);
-
-        const box = node("div", `node depth-${agent.depth}`);
-
-        box.style.marginLeft = `${agent.depth * 16}px`;
-
-        const head = node("div", "node-head");
-
-        head.append(
-            node("span", "node-name", agent.name),
-            node("span", `badge ${agent.status}`, agent.status)
-        );
-
-        if (agent.depth > 0) {
-            head.appendChild(
-                node("span", "badge depth", `depth ${agent.depth}`)
-            );
-        }
-
-        if (agent.iterations) {
-            head.appendChild(
-                node("span", "badge", `iteration ${agent.iterations}`)
-            );
-        }
-
-        if (agent.parentScope || agent.parent) {
-            head.appendChild(
-                node(
-                    "span",
-                    "badge parent",
-                    `↳ from ${agent.parentScope || agent.parent}`
-                )
-            );
-        }
-
-        if (agent.persona) {
-            head.appendChild(
-                node("span", "badge muted", agent.persona)
-            );
-        }
-
-        if (agent.task) {
-            head.appendChild(
-                node("span", "node-task", shorten(agent.task, 80))
-            );
-        }
-
-        box.appendChild(head);
-
-        for (const name of agent.skills || []) {
-
-            box.appendChild(
-                node("div", "skill", `Loaded skill ${name}`)
-            );
-        }
-
-        for (const loop of agent.loops) {
-
-            box.appendChild(
-                node(
-                    "div",
-                    `loop ${loop.outcome}`,
-                    `${
-                        loop.outcome === "malformed" ||
-                        loop.outcome === "malformed_stopped"
-                            ? `⚠ unreadable answer ×${loop.repeats}`
-                            : loop.outcome === "stalled"
-                                ? "↻ no progress"
-                                : `↻ repeated failure ×${loop.repeats}`
-                    } — ${shorten(loop.signature || loop.reason || "", 90)}${
-                        loop.outcome === "malformed_stopped"
-                            ? " (retry budget exhausted; run stopped)"
-                            : loop.outcome === "stopped"
-                                ? " (run stopped)"
-                                : ""
-                    }`
-                )
-            );
-        }
-
-        for (const graphId of agent.graphs) {
-
-            const graph =
-                state.graphs.get(graphId);
-
-            if (!graph) {
-                continue;
-            }
-
-            const group = node("div", "graph");
-
-            const groupHead = node("div", "graph-head");
-
-            groupHead.append(
-                node(
-                    "span",
-                    `badge shape ${graph.shape}`,
-                    SHAPE_LABEL[graph.shape] || graph.shape
-                ),
-                node(
-                    "span",
-                    "muted",
-                    `${graph.calls.size} call${
-                        graph.calls.size === 1 ? "" : "s"
-                    } · ${graph.waves.length || 1} wave${
-                        (graph.waves.length || 1) === 1 ? "" : "s"
-                    }${
-                        graph.iteration
-                            ? ` · iteration ${graph.iteration}`
-                            : ""
-                    }`
-                )
-            );
-
-            group.appendChild(groupHead);
-
-            let lastWave = null;
-
-            for (const id of graph.order) {
-
-                const call = graph.calls.get(id);
-
-                calls++;
-
-                if (call.status === "failed") {
-                    failures++;
-                }
-
-                if (
-                    graph.shape !== "single" &&
-                    call.wave !== null &&
-                    call.wave !== lastWave
-                ) {
-
-                    lastWave = call.wave;
-
-                    /* counted from the intervals, not from the planned
-                       grouping: this is who really ran with this call */
-                    const alongside = ranAlongside(graph, call);
-
-                    group.appendChild(
-                        node(
-                            "div",
-                            "wave-label",
-                            `wave ${call.wave + 1}${
-                                alongside.length > 0
-                                    ? ` · ${alongside.length + 1} in parallel`
-                                    : ""
-                            }`
-                        )
-                    );
-                }
-
-                group.appendChild(callRow(call, graph));
-            }
-
-            box.appendChild(group);
-        }
-
-        container.appendChild(box);
-    }
-
-    if (summary) {
-
-        summary.textContent =
-            `${state.order.length} agent${
-                state.order.length === 1 ? "" : "s"
-            } · ${calls} call${calls === 1 ? "" : "s"}${
-                failures ? ` · ${failures} failed` : ""
-            }${
-                state.hookOrder.length ? ` · ${state.hookOrder.length} hook` : ""
-            }${
-                state.loops.length ? ` · ${state.loops.length} loop` : ""
-            }`;
-    }
-}
-
-
-function renderPlan() {
-
-    const container = el("plan");
-    const plan = state.plan;
-
-    container.innerHTML = "";
-
-    if (!plan || !plan.exists) {
-
-        container.appendChild(
-            node(
-                "p",
-                "empty",
-                plan?.error
-                    ? `Plan unavailable: ${plan.error}`
-                    : "No plan yet."
-            )
-        );
-
-        el("planSummary").textContent = "";
-        return;
-    }
-
-    el("planSummary").textContent =
-        `${plan.done || 0}/${plan.steps || 0} done${
-            plan.blocked ? ` · ${plan.blocked} blocked` : ""
-        }`;
-
-    if (plan.objective) {
-        container.appendChild(
-            node("p", "plan-objective", plan.objective)
-        );
-    }
-
-    for (const [index, phase] of (plan.phases || []).entries()) {
-
-        const details = node("details", "plan-phase");
-
-        details.open =
-            phase.status === "in_progress" ||
-            (
-                index === 0 &&
-                !(plan.phases || []).some(item => item.status === "in_progress")
-            );
-
-        const summary = node("summary");
-
-        summary.append(
-            node("span", null, `${phase.id || `phase ${index + 1}`} · ${phase.title || "Untitled phase"}`),
-            node("span", `badge ${phase.status || "pending"}`, phase.status || "pending")
-        );
-
-        details.appendChild(summary);
-
-        if (phase.goal) {
-            details.appendChild(node("div", "plan-goal", phase.goal));
-        }
-
-        const steps = node("ol", "plan-steps");
-
-        for (const step of phase.steps || []) {
-
-            const item = node("li", `plan-step ${step.status || "pending"}`);
-            const head = node("div", "plan-step-head");
-
-            head.append(
-                node("span", "plan-step-id", step.id),
-                node("span", "plan-step-title", step.title),
-                node("span", `badge ${step.status || "pending"}`, step.status || "pending")
-            );
-
-            if (step.agent) {
-                head.appendChild(
-                    node("span", "plan-step-agent", `@${step.agent}`)
-                );
-            }
-
-            item.appendChild(head);
-
-            if (step.evidence) {
-                item.appendChild(
-                    node("div", "plan-evidence", step.evidence)
-                );
-            }
-
-            steps.appendChild(item);
-        }
-
-        if ((phase.steps || []).length === 0) {
-            steps.appendChild(node("li", "empty", "No steps defined."));
-        }
-
-        details.appendChild(steps);
-        container.appendChild(details);
-    }
-
-    if (plan.routine?.enabled) {
-
-        container.appendChild(
-            node(
-                "div",
-                "plan-routine",
-                `Runtime routine · before: ${
-                    (plan.routine.before_task || []).join(", ") || "none"
-                } · after: ${
-                    (plan.routine.after_task || []).join(", ") || "none"
-                }`
-            )
-        );
-    }
-}
-
-
-function callRow(call, graph) {
-
-    const row =
-        node("button", `tool ${call.status}`);
-
-    row.type = "button";
-    row.title = "click for the full call";
-
-    row.append(
-        node("span", "icon", statusIcon(call.status)),
-        node("span", "name", call.name),
-        node("span", "args", shorten(call.argumentsPreview, 70))
-    );
-
-    if ((call.depends_on || []).length > 0) {
-
-        row.appendChild(
-            node(
-                "span",
-                "badge dep",
-                `after ${call.depends_on.join(", ")}`
-            )
-        );
-    }
-
-    if (call.exitCode) {
-        row.appendChild(node("span", "badge dep", `exit ${call.exitCode}`));
-    }
-
-    if (call.warning) {
-        row.appendChild(node("span", "badge dep", "warning"));
-    }
-
-    if (call.duration !== undefined && call.duration !== null) {
-        row.appendChild(node("span", "ms", `${call.duration} ms`));
-    }
-
-    row.addEventListener(
-        "click",
-        () => openCallDetail(call, graph)
-    );
-
-    return row;
-}
-
-
-/* ----------------------------------------------------------- call detail */
-
-function definition(list, label, value) {
-
-    if (value === undefined || value === null || value === "") {
-        return;
-    }
-
-    list.append(
-        node("dt", null, label),
-        node("dd", null, String(value))
-    );
-}
-
-
-async function openCallDetail(call, graph) {
-
-    const body = node("div", "detail");
-
-    const list = node("dl", "detail-grid");
-
-    definition(list, "tool", call.name);
-    definition(list, "status", call.status);
-    definition(list, "exit code", call.exitCode);
-    definition(list, "warning", call.warning);
-    definition(list, "executed by", call.agent);
-
-    const owner =
-        state.agents.get(call.agent);
-
-    if (owner && (owner.parentScope || owner.parent)) {
-        definition(
-            list,
-            "agent parent",
-            `${owner.parentScope || owner.parent} (depth ${owner.depth})`
-        );
-    }
-
-    definition(list, "iteration", call.iteration);
-    definition(list, "call id", call.id);
-
-    if (graph) {
-
-        definition(
-            list,
-            "execution",
-            `${SHAPE_LABEL[graph.shape] || graph.shape}, wave ${
-                (call.wave ?? 0) + 1
-            } of ${graph.waves.length || 1}`
-        );
-
-        definition(list, "graph", graph.id);
-
-        if (graph.maxParallel) {
-            definition(list, "max parallel", graph.maxParallel);
-        }
-
-        const siblings = ranAlongside(graph, call);
-
-        if (siblings.length > 0) {
-            definition(list, "ran alongside", siblings.join(", "));
-        }
-    }
-
-    if ((call.depends_on || []).length > 0) {
-        definition(list, "depends on", call.depends_on.join(", "));
-    }
-
-    definition(
-        list,
-        "duration",
-        call.duration === undefined || call.duration === null
-            ? null
-            : `${call.duration} ms`
-    );
-
-    body.appendChild(list);
-
-    const argumentsBlock = node("div", "detail-block");
-
-    argumentsBlock.append(
-        node("h3", null, "Arguments"),
-        node("pre", null, call.argumentsPreview || "{}")
-    );
-
-    body.appendChild(argumentsBlock);
-
-    const resultBlock = node("div", "detail-block");
-
-    resultBlock.append(
-        node("h3", null, call.status === "failed" ? "Error" : "Result"),
-        node(
-            "pre",
-            call.status === "failed" ? "bad" : null,
-            call.error || call.resultPreview || "(pending)"
-        )
-    );
-
-    body.appendChild(resultBlock);
-
-    const handle =
-        Modal.open({
-            title: `${call.name}`,
-
-            subtitle:
-                `${call.agent} · ${call.status}${
-                    call.duration !== undefined && call.duration !== null
-                        ? ` · ${call.duration} ms`
-                        : ""
-                }`,
-
-            size: "large",
-
-            body,
-
-            footer:
-                Modal.row(
-                    Modal.button(
-                        "Copy as JSON",
-                        "ghost",
-                        () => copyCall(call)
-                    ),
-                    Modal.button(
-                        "Close",
-                        "",
-                        () => handle.close("footer")
-                    )
-                )
-        });
-
-    /*
-    | The stream carries a preview so a 40K result does not travel with
-    | every event. The full record is fetched only when it is opened.
-    */
-
-    if (call.key) {
-
-        try {
-
-            const response =
-                await fetch(`/api/calls/${encodeURIComponent(call.key)}`);
-
-            if (response.ok) {
-
-                const payload = await response.json();
-
-                const full = payload.call;
-
-                call.full = full;
-
-                argumentsBlock.querySelector("pre").textContent =
-                    JSON.stringify(full.arguments ?? {}, null, 2);
-
-                resultBlock.querySelector("pre").textContent =
-                    full.error ||
-                    JSON.stringify(full.result ?? null, null, 2);
-            }
-
-        } catch {
-
-            /* the preview stays on screen */
-        }
-    }
-}
-
-
-function copyCall(call) {
-
-    const text =
-        JSON.stringify(call.full || call, null, 2);
-
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).catch(() => {});
-    }
-}
-
-
-/* ------------------------------------------------------------------ chat */
-
-const WHO = {
-    user: "you",
-    assistant: "agent"
-};
-
-
-function updateWaitingElapsed() {
-
-    if (!state.waitingElapsed || !state.waiting) {
-        return;
-    }
-
-    state.waitingElapsed.textContent =
-        `${((Date.now() - state.waiting.since) / 1000).toFixed(1)} s`;
-}
-
-
-/*
-| Older session files did not store turn_id on reasoning messages. Recovering
-| it from the nearest preceding user message lets those sessions use the new
-| per-iteration renderer too, instead of falling back to one aggregate box.
-*/
-function normalizeConversationMessage(message, previous = state.messages) {
-
-    if (!message || typeof message !== "object") {
-        return message;
-    }
-
-    const normalized = { ...message };
-
-    if (
-        normalized.role !== "assistant" ||
-        !["model", "thinking"].includes(normalized.kind)
-    ) {
-        return normalized;
-    }
-
-    if (!normalized.turn_id && normalized.execution_key) {
-        normalized.turn_id = String(normalized.execution_key).split("|")[0];
-    }
-
-    if (!normalized.turn_id) {
-
-        for (let index = previous.length - 1; index >= 0; index--) {
-
-            const candidate = previous[index];
-
-            if (candidate.role === "user" && candidate.turn_id) {
-                normalized.turn_id = candidate.turn_id;
-                break;
-            }
-        }
-    }
-
-    if (normalized.turn_id && !normalized.execution_key) {
-        normalized.execution_key = messageExecutionKey(normalized);
-    }
-
-    return normalized;
-}
-
-
-function normalizeConversationMessages(messages) {
-
-    const normalized = [];
-
-    for (const message of Array.isArray(messages) ? messages : []) {
-        normalized.push(normalizeConversationMessage(message, normalized));
-    }
-
-    return normalized;
-}
-
-
-function renderChat() {
-
-    const container = el("chat");
-
-    if (!container) {
-        return;
-    }
-
-    state.waitingElapsed = null;
-
-    /* Preserve blocks the operator explicitly expanded when a newly arrived
-       reasoning message causes the chat to be rebuilt. */
-    for (const existing of container.querySelectorAll("details.turn-execution")) {
-        const key = existing.getAttribute("data-execution-key");
-        if (!key) continue;
-        if (existing.open) state.openExecutionKeys.add(key);
-        else state.openExecutionKeys.delete(key);
-    }
-
-    container.innerHTML = "";
-
-    if (state.messages.length === 0) {
-
-        container.innerHTML =
-            '<p class="empty">No messages yet. Describe a task to start.</p>';
-
-    } else {
-
-        /*
-        | A single user turn can contain many model messages. Build one
-        | execution block per assistant response (agent + iteration), and
-        | place it immediately before the reasoning/action message that
-        | produced it. The previous implementation keyed only by turn_id,
-        | so every iteration was merged into one large block.
-        */
-        const assistantTurns = new Set(
-            state.messages
-                .filter(message =>
-                    message.role === "assistant" &&
-                    ["model", "thinking"].includes(message.kind) &&
-                    message.turn_id
-                )
-                .map(message => message.turn_id)
-        );
-
-        const renderedExecutions = new Set();
-
-        for (const message of state.messages) {
-
-            const isExecutionMessage =
-                message.role === "assistant" &&
-                ["model", "thinking"].includes(message.kind);
-
-            const key =
-                isExecutionMessage
-                    ? messageExecutionKey(message)
-                    : null;
-
-            if (key && !renderedExecutions.has(key)) {
-
-                const block = turnExecutionBlock(key);
-
-                if (block) {
-                    /* The raw structured model envelope is retained in the
-                       session for diagnostics, but is not a user-facing
-                       bubble. The execution block belongs before reasoning
-                       so each AI step reads as one unit. */
-                    container.appendChild(block);
-                    renderedExecutions.add(key);
-                }
-            }
-
-            /* The provider's raw content is the action protocol JSON, not a
-               useful chat message. Final response and thinking bubbles are
-               rendered normally; model envelopes stay available in Events
-               and session storage without polluting the conversation. */
-            if (message.kind !== "model") {
-                container.appendChild(bubble(message));
-            }
-
-            if (
-                message.role === "user" &&
-                message.turn_id &&
-                !assistantTurns.has(message.turn_id)
-            ) {
-
-                /* Backwards compatibility for sessions written before model
-                   response messages were stored: keep their tool events
-                   visible under the user message until a new response arrives. */
-                const fallbackKey = `${message.turn_id}|all`;
-
-                if (!renderedExecutions.has(fallbackKey)) {
-                    const block = turnExecutionBlock(fallbackKey);
-
-                    if (block) {
-                        container.appendChild(block);
-                        renderedExecutions.add(fallbackKey);
-                    }
-                }
-            }
-        }
-    }
-
-    /*
-    | While a request is in flight there is nothing to show yet, and a
-    | two minute silence looks like a hang. The bubble is the wait
-    | itself, and it disappears when the answer arrives.
-    */
-
-    if (state.waiting) {
-
-        const pending =
-            node("div", "bubble assistant pending");
-
-        const elapsed = node("span", "text");
-        state.waitingElapsed = elapsed;
-
-        pending.append(
-            node(
-                "span",
-                "who",
-                `${state.waiting.agent} · thinking`
-            ),
-            elapsed
-        );
-
-        container.appendChild(pending);
-        updateWaitingElapsed();
-    }
-
-    container.scrollTop = container.scrollHeight;
-}
-
-
-/*
-| A model response is identified by the turn, the agent scope, and the
-| iteration that produced it. Every tool event emitted during that action
-| carries the same three correlation fields. `execution_key` is accepted
-| when present so newer servers can provide an explicit stable key.
-*/
-function messageExecutionKey(value) {
-
-    if (value.execution_key || value.ai_message_id) {
-        return value.execution_key || value.ai_message_id;
-    }
-
-    if (!value.turn_id) {
-        return null;
-    }
-
-    return [
-        value.turn_id,
-        value.scope || value.agent || "main_agent",
-        value.iteration ?? "all"
-    ].join("|");
-}
-
-
-function turnEventsOf(executionKey) {
-
-    if (!executionKey) {
-        return [];
-    }
-
-    const relevant = new Set([
-        "agent:iteration",
-        "agent:action",
-        "tool:graph",
-        "tool:start",
-        "tool:end",
-        "run:malformed"
-    ]);
-
-    const parts = executionKey.split("|");
-    const isTurnFallback = parts.length === 2 && parts[1] === "all";
-
-    return state.events.filter(event => {
-
-        if (!relevant.has(event.type)) {
-            return false;
-        }
-
-        if (isTurnFallback) {
-            return event.turn_id === parts[0];
-        }
-
-        return messageExecutionKey(event) === executionKey;
-    });
-}
-
-
-function turnSummaryText(events) {
-
-    /* Count calls by id, not lifecycle events. A tool has a start and an end,
-       but it is still one call. This also remains correct for a result event
-       that arrives without a start after reconnect/replay. */
-    const calls = new Map();
-
-    for (const event of events) {
-
-        if (event.type !== "tool:start" && event.type !== "tool:end") {
-            continue;
-        }
-
-        const id =
-            event.id || `${event.name || "tool"}-${calls.size + 1}`;
-
-        const call = calls.get(id) || { success: null };
-
-        if (event.type === "tool:end") {
-            call.success = event.success === true;
-        }
-
-        calls.set(id, call);
-    }
-
-    const success =
-        [...calls.values()].filter(call => call.success === true).length;
-
-    const fail =
-        [...calls.values()].filter(call => call.success === false).length;
-
-    const retried =
-        events.filter(event => event.type === "run:malformed").length;
-
-    return (
-        `execution · ${calls.size} tool call(s) · ${success} success · ` +
-        `${fail} fail · ${retried} retried`
-    );
-}
-
-
-function turnExecutionLine(event) {
-
-    const kind =
-        event.type === "tool:end"
-            ? (event.success === false ? "tool-fail" : "tool-ok")
-            : event.type === "tool:start"
-                ? "tool-ok"
-                : event.type === "agent:action"
-                    ? "action"
-                    : event.type === "run:malformed"
-                        ? "malformed"
-                        : "";
-
-    const line = node(
-        "div",
-        `turn-execution-line${kind ? ` ${kind}` : ""}`
-    );
-
-    if (event.type === "tool:start" || event.type === "tool:end") {
-        line.appendChild(node("span", "tool-chip", event.name || ""));
-    }
-
-    line.appendChild(node("span", "turn-line-text", eventLabel(event)));
-
-    return line;
-}
-
-
-function turnExecutionBody(events) {
-
-    const body = node("div", "turn-execution-body");
-
-    for (const event of events) {
-        body.appendChild(turnExecutionLine(event));
-    }
-
-    return body;
-}
-
-
-function turnExecutionBlock(executionKey) {
-
-    const events = turnEventsOf(executionKey);
-
-    if (events.length === 0) {
-        return null;
-    }
-
-    const details = node("details", "turn-execution");
-
-    details.setAttribute("data-execution-key", executionKey);
-
-    /* Keep the old attribute for stored sessions and integrations that used
-       it to locate a turn, while the new key distinguishes iterations. */
-    const turnId = executionKey.split("|")[0];
-    if (turnId) {
-        details.setAttribute("data-turn-id", turnId);
-    }
-
-    /* Keep the block collapsible and closed by default. CSS must not impose
-       a fixed height: when the user clicks the summary, the full body can
-       expand normally. */
-    details.open = state.openExecutionKeys.has(executionKey);
-    details.addEventListener("toggle", () => {
-        if (details.open) state.openExecutionKeys.add(executionKey);
-        else state.openExecutionKeys.delete(executionKey);
-    });
-
-    details.appendChild(
-        node("summary", null, turnSummaryText(events))
-    );
-
-    details.appendChild(turnExecutionBody(events));
-
-    return details;
-}
-
-
-/*
-| Updates only the execution block for one model response in place, instead
-| of re-rendering the whole conversation. An already-open block stays open.
-*/
-function refreshTurnExecution(executionKey) {
-
-    if (!executionKey) {
-        return;
-    }
-
-    const chat = el("chat");
-
-    if (!chat) {
-        return;
-    }
-
-    let existing = null;
-
-    for (const candidate of chat.querySelectorAll("details.turn-execution")) {
-
-        if (candidate.getAttribute("data-execution-key") === executionKey) {
-            existing = candidate;
-            break;
-        }
-    }
-
-    if (!existing) {
-        renderChat();
-        return;
-    }
-
-    const events = turnEventsOf(executionKey);
-    const summary = existing.querySelector("summary");
-    const body = existing.querySelector(".turn-execution-body");
-
-    if (!summary || !body) {
-        renderChat();
-        return;
-    }
-
-    summary.textContent = turnSummaryText(events);
-
-    const wasOpen = existing.open;
-
-    existing.replaceChild(turnExecutionBody(events), body);
-    existing.open = wasOpen;
-}
-
-function eventLabel(event) {
-
-    switch (event.type) {
-
-        case "agent:iteration":
-            return `iter ${event.iteration} · ${event.agent || event.scope}`;
-
-        case "agent:action":
-            return `action: ${event.action}`;
-
-        case "tool:start":
-            return event.id ? `start (${event.id})` : "start";
-
-        case "tool:end":
-            return event.success === false
-                ? (event.error ? String(event.error).slice(0, 60) : "failed")
-                : "done";
-
-        case "run:malformed":
-            return `retry: ${String(event.reason || "").slice(0, 60)}`;
-
-        default:
-            return event.type;
-    }
-}
-
-
-/*
-| Reasoning is rendered as a dedicated expandable entry so provider
-| reasoning never disappears from the conversation.
-*/
-
-/* ----------------------------------------------------------- markdown */
-
-const RTL_TEXT = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
-
-
-function containsRtlText(value) {
-    return RTL_TEXT.test(String(value ?? ""));
-}
-
-
-function safeMarkdownHref(value) {
-
-    const href = String(value ?? "").trim();
-
-    if (href.startsWith("//")) {
-        return null;
-    }
-
-    if (
-        href === "" ||
-        href.startsWith("#") ||
-        (href.startsWith("/") && !href.startsWith("//")) ||
-        href.startsWith("./") ||
-        href.startsWith("../")
-    ) {
-        return href;
-    }
-
-    try {
-        const baseUrl =
-            typeof window !== "undefined" && window.location
-                ? window.location.href
-                : "http://localhost/";
-        const parsed = new URL(href, baseUrl);
-
-        return ["http:", "https:", "mailto:"].includes(parsed.protocol)
-            ? parsed.href
-            : null;
-    } catch {
-        return null;
-    }
-}
-
-
-function appendInlineMarkdown(parent, value, depth = 0) {
-
-    const text = String(value ?? "");
-
-    /* A depth limit prevents malformed nested delimiters from recursing
-       forever while still supporting normal emphasis inside links/bold. */
-    if (depth > 8 || text === "") {
-        if (text !== "") parent.appendChild(node("span", null, text));
-        return;
-    }
-
-    let index = 0;
-    let plainStart = 0;
-
-    const flushPlain = end => {
-        if (end > plainStart) {
-            parent.appendChild(node("span", null, text.slice(plainStart, end)));
-        }
-    };
-
-    const findClosing = (delimiter, from) => {
-        const closing = text.indexOf(delimiter, from);
-        return closing > from ? closing : -1;
-    };
-
-    while (index < text.length) {
-
-        let delimiter = null;
-        let closing = -1;
-        let tag = null;
-
-        if (text[index] === "`") {
-            delimiter = "`";
-            closing = findClosing(delimiter, index + 1);
-            tag = "code";
-        } else if (text.startsWith("**", index)) {
-            delimiter = "**";
-            closing = findClosing(delimiter, index + 2);
-            tag = "strong";
-        } else if (text.startsWith("__", index)) {
-            delimiter = "__";
-            closing = findClosing(delimiter, index + 2);
-            tag = "strong";
-        } else if (text.startsWith("~~", index)) {
-            delimiter = "~~";
-            closing = findClosing(delimiter, index + 2);
-            tag = "del";
-        } else if (
-            (text[index] === "*" || text[index] === "_") &&
-            (index === 0 || /\s/.test(text[index - 1] || ""))
-        ) {
-            delimiter = text[index];
-            closing = findClosing(delimiter, index + 1);
-            tag = "em";
-        }
-
-        /* Markdown links are parsed before ordinary text. Unsafe schemes are
-           emitted as their literal markdown instead of becoming a link. */
-        if (text[index] === "[") {
-            const labelEnd = text.indexOf("](", index + 1);
-            const urlEnd = labelEnd === -1 ? -1 : text.indexOf(")", labelEnd + 2);
-
-            if (labelEnd > index && urlEnd > labelEnd) {
-                const href = safeMarkdownHref(text.slice(labelEnd + 2, urlEnd));
-
-                if (href !== null) {
-                    flushPlain(index);
-                    const link = node("a");
-                    link.href = href;
-                    appendInlineMarkdown(
-                        link,
-                        text.slice(index + 1, labelEnd),
-                        depth + 1
-                    );
-                    link.target = "_blank";
-                    link.rel = "noopener noreferrer";
-                    parent.appendChild(link);
-                    index = urlEnd + 1;
-                    plainStart = index;
-                    continue;
-                }
-            }
-        }
-
-        if (tag && closing !== -1) {
-            flushPlain(index);
-            const element = node(tag, tag === "code" ? "inline-code" : null);
-            const inner = text.slice(index + delimiter.length, closing);
-
-            if (tag === "code") {
-                element.textContent = inner;
-            } else {
-                appendInlineMarkdown(element, inner, depth + 1);
-            }
-
-            parent.appendChild(element);
-            index = closing + delimiter.length;
-            plainStart = index;
-            continue;
-        }
-
-        index++;
-    }
-
-    flushPlain(text.length);
-}
-
-
-function isMarkdownBlockStart(line) {
-    return (
-        /^\s{0,3}#{1,6}\s+/.test(line) ||
-        /^\s{0,3}(```|~~~)/.test(line) ||
-        /^\s{0,3}>/.test(line) ||
-        /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line) ||
-        /^\s*(?:[-+*]|\d+[.)])\s+/.test(line)
-    );
-}
-
-
-function appendMarkdownParagraph(parent, lines) {
-
-    const paragraph = node("p", "md-paragraph");
-
-    lines.forEach((line, index) => {
-        if (index > 0) paragraph.appendChild(node("br"));
-        appendInlineMarkdown(paragraph, line);
-    });
-
-    parent.appendChild(paragraph);
-}
-
-
-function markdownTableCells(line) {
-
-    const normalized = String(line ?? "").trim().replace(/^\|/, "").replace(/\|$/, "");
-    return normalized.split("|").map(cell => cell.trim());
-}
-
-
-function isMarkdownTableSeparator(line) {
-
-    const cells = markdownTableCells(line);
-
-    return (
-        cells.length > 0 &&
-        cells.every(cell => /^:?-{1,}:?$/.test(cell))
-    );
-}
-
-
-function appendMarkdownTable(parent, headerLine, rows) {
-
-    const table = node("table", "md-table");
-    const head = node("thead");
-    const headRow = node("tr");
-
-    for (const cell of markdownTableCells(headerLine)) {
-        const th = node("th");
-        appendInlineMarkdown(th, cell);
-        headRow.appendChild(th);
-    }
-
-    head.appendChild(headRow);
-    table.appendChild(head);
-
-    const body = node("tbody");
-    const headerCount = markdownTableCells(headerLine).length;
-
-    for (const row of rows) {
-        const tr = node("tr");
-        const cells = markdownTableCells(row);
-
-        for (let index = 0; index < headerCount; index++) {
-            const td = node("td");
-            appendInlineMarkdown(td, cells[index] || "");
-            tr.appendChild(td);
-        }
-
-        body.appendChild(tr);
-    }
-
-    table.appendChild(body);
-    parent.appendChild(table);
-}
-
-
-function renderMarkdown(parent, value) {
-
-    const markdown = String(value ?? "").replace(/\r\n?/g, "\n");
-    parent.innerHTML = "";
-
-    if (markdown.trim() === "") {
-        return;
-    }
-
-    const lines = markdown.split("\n");
-    let index = 0;
-
-    while (index < lines.length) {
-
-        const line = lines[index];
-
-        if (line.trim() === "") {
-            index++;
-            continue;
-        }
-
-        if (
-            line.includes("|") &&
-            index + 1 < lines.length &&
-            isMarkdownTableSeparator(lines[index + 1])
-        ) {
-            const tableRows = [];
-            index += 2;
-
-            while (
-                index < lines.length &&
-                lines[index].trim() !== "" &&
-                lines[index].includes("|")
-            ) {
-                tableRows.push(lines[index]);
-                index++;
-            }
-
-            appendMarkdownTable(parent, line, tableRows);
-            continue;
-        }
-
-        const fence = /^\s{0,3}(```|~~~)\s*([^\s]*)\s*$/.exec(line);
-
-        if (fence) {
-            const marker = fence[1];
-            const language = fence[2] || "";
-            const codeLines = [];
-            index++;
-
-            while (index < lines.length && !new RegExp(`^\\s{0,3}${marker}`).test(lines[index])) {
-                codeLines.push(lines[index]);
-                index++;
-            }
-
-            if (index < lines.length) index++;
-
-            const pre = node("pre", "md-code-block");
-            const code = node("code");
-            if (language) code.className = `language-${language}`;
-            code.textContent = codeLines.join("\n");
-            pre.appendChild(code);
-            parent.appendChild(pre);
-            continue;
-        }
-
-        const heading = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-        if (heading) {
-            const headingNode = node(`h${heading[1].length}`, "md-heading");
-            appendInlineMarkdown(headingNode, heading[2]);
-            parent.appendChild(headingNode);
-            index++;
-            continue;
-        }
-
-        if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
-            parent.appendChild(node("hr"));
-            index++;
-            continue;
-        }
-
-        if (/^\s{0,3}>/.test(line)) {
-            const quoteLines = [];
-            while (index < lines.length && /^\s{0,3}>/.test(lines[index])) {
-                quoteLines.push(lines[index].replace(/^\s{0,3}>\s?/, ""));
-                index++;
-            }
-            const quote = node("blockquote", "md-quote");
-            renderMarkdown(quote, quoteLines.join("\n"));
-            parent.appendChild(quote);
-            continue;
-        }
-
-        const listItem = /^\s*((?:[-+*])|(?:\d+[.)]))\s+(.+)$/.exec(line);
-        if (listItem) {
-            const ordered = /^\d/.test(listItem[1]);
-            const list = node(ordered ? "ol" : "ul", "md-list");
-
-            while (index < lines.length) {
-                const item = /^\s*((?:[-+*])|(?:\d+[.)]))\s+(.+)$/.exec(lines[index]);
-                if (!item || /^\d/.test(item[1]) !== ordered) break;
-
-                const listEntry = node("li");
-                appendInlineMarkdown(listEntry, item[2]);
-                list.appendChild(listEntry);
-                index++;
-            }
-
-            parent.appendChild(list);
-            continue;
-        }
-
-        const paragraphLines = [line.trim()];
-        index++;
-
-        while (
-            index < lines.length &&
-            lines[index].trim() !== "" &&
-            !isMarkdownBlockStart(lines[index])
-        ) {
-            paragraphLines.push(lines[index].trim());
-            index++;
-        }
-
-        appendMarkdownParagraph(parent, paragraphLines);
-    }
-}
-
-
-function applyBubbleDirection(box, content) {
-
-    const rtl = containsRtlText(content);
-    const direction = rtl ? "rtl" : "ltr";
-    box.dir = direction;
-    box.setAttribute("dir", direction);
-    box.classList.add(direction);
-}
-
-
-function appendMessageContent(box, content, className = "message-content") {
-
-    const body = node("div", className);
-    renderMarkdown(body, content);
-    box.appendChild(body);
-    return body;
-}
-
-
-function bubble(message) {
-
-    const kind =
-        message.kind || "message";
-
-    const content = String(message.content || "");
-
-    const box =
-        node(
-            "div",
-            `bubble ${message.role} ${kind === "message" ? "" : kind}`.trim()
-        );
-
-    applyBubbleDirection(box, content);
-
-    if (kind === "thinking") {
-
-        const details = node("details");
-
-        /* Open reasoning by default so the agent's visible text is not
-           hidden behind a collapsed summary — the user reported that no AI
-           text was showing, only a "thinking" label. */
-        details.open = true;
-
-        details.appendChild(
-            node(
-                "summary",
-                null,
-                `thinking${
-                    message.agent
-                        ? ` · ${message.agent}`
-                        : ""
-                }${
-                    message.iteration
-                        ? ` · iteration ${message.iteration}`
-                        : ""
-                }`
-            )
-        );
-
-        appendMessageContent(box, content, "thinking-content message-content");
-
-        /* Keep the reasoning details wrapper as the first child for the
-           existing console contract; the rendered markdown sits inside it. */
-        const thinkingBody = box.children[box.children.length - 1];
-        details.appendChild(thinkingBody);
-        box.appendChild(details);
-
-        return box;
-    }
-
-    if (kind === "model") {
-
-        box.appendChild(
-            node(
-                "span",
-                "who",
-                `${message.agent || "agent"} · response${
-                    message.iteration
-                        ? ` · iteration ${message.iteration}`
-                        : ""
-                }`
-            )
-        );
-
-        appendMessageContent(box, content);
-
-        if (message.truncated) {
-            box.appendChild(
-                node("span", "truncated", "response preview truncated")
-            );
-        }
-
-        if (message.at) {
-            box.appendChild(
-                node(
-                    "span",
-                    "stamp",
-                    new Date(message.at).toLocaleTimeString(
-                        "en-GB",
-                        { hour12: false }
-                    )
-                )
-            );
-        }
-
-        return box;
-    }
-
-    if (kind === "git-report") {
-
-        box.appendChild(
-            node(
-                "span",
-                "who",
-                `git${message.branch ? ` · ${message.branch}` : ""}`
-            )
-        );
-
-        appendMessageContent(box, content);
-
-        if (message.at) {
-
-            box.appendChild(
-                node(
-                    "span",
-                    "stamp",
-                    new Date(message.at).toLocaleTimeString(
-                        "en-GB",
-                        { hour12: false }
-                    )
-                )
-            );
-        }
-
-        return box;
-    }
-
-    box.appendChild(
-        node(
-            "span",
-            "who",
-            `${WHO[message.role] || message.role}${
-                kind === "error"
-                    ? " · failed"
-                    : ""
-            }`
-        )
-    );
-    appendMessageContent(box, content);
-
-    if (message.at) {
-
-        box.appendChild(
-            node(
-                "span",
-                "stamp",
-                new Date(message.at).toLocaleTimeString(
-                    "en-GB",
-                    { hour12: false }
-                )
-            )
-        );
-    }
-
-    return box;
-}
-
-
 /* -------------------------------------------------------------- sessions */
-
-function describeSession(session) {
-
-    return `${session.turns || 0} turn${
-        (session.turns || 0) === 1 ? "" : "s"
-    } · ${session.events || 0} events · ${
-        new Date(session.updated_at).toLocaleString("en-GB", {
-            hour12: false
-        })
-    }`;
-}
-
 
 async function openHistory() {
 
@@ -2599,200 +745,6 @@ async function openMcp() {
 | so it gets its own section once discussion:finish lands.
 */
 
-function discussionStatusLine() {
-
-    const discussion = state.discussion;
-
-    if (!discussion) {
-        return "no discussion yet";
-    }
-
-    if (discussion.status === "running") {
-        const round =
-            discussion.rounds && discussion.rounds.length
-                ? `round ${discussion.rounds.length} of ${discussion.max_rounds}`
-                : "starting";
-
-        return `${round} · ${discussion.personas.length} personas`;
-    }
-
-    if (discussion.status === "done") {
-        return `done · ${discussion.total_rounds} round(s)${discussion.hit_max_rounds ? " · max rounds reached" : ""}`;
-    }
-
-    return `failed · ${discussion.error || "unknown error"}`;
-}
-
-
-function discussionReportView(report) {
-
-    const section = node("div", "discussion-report");
-
-    section.appendChild(node("h3", null, "Final report"));
-
-    if (report.summary) {
-        const summary = node("p", "discussion-summary");
-        appendMarkdownParagraph(summary, [report.summary]);
-        section.appendChild(summary);
-    }
-
-    if (report.agreed_points?.length) {
-        section.appendChild(node("h4", null, "Agreed"));
-
-        const list = node("ul", "discussion-points");
-
-        for (const point of report.agreed_points) {
-            list.appendChild(node("li", null, point));
-        }
-
-        section.appendChild(list);
-    }
-
-    if (report.unresolved?.length) {
-        section.appendChild(node("h4", null, "Unresolved"));
-
-        for (const item of report.unresolved) {
-            const entry = node("div", "discussion-unresolved");
-
-            entry.appendChild(node("strong", null, item.topic || "(topic)"));
-
-            for (const side of item.sides || []) {
-                entry.appendChild(
-                    node(
-                        "p",
-                        null,
-                        `${side.persona}: ${side.reasoning}`
-                    )
-                );
-            }
-
-            section.appendChild(entry);
-        }
-    }
-
-    if (report.next_steps?.length) {
-        section.appendChild(node("h4", null, "Next steps"));
-
-        const ordered =
-            [...report.next_steps].sort((a, b) => a.order - b.order);
-
-        for (const step of ordered) {
-            section.appendChild(
-                node(
-                    "p",
-                    "discussion-step",
-                    `${step.order}. [${step.layer}] ${step.action}`
-                )
-            );
-        }
-    }
-
-    return section;
-}
-
-
-function discussionMessageView(message) {
-
-    const details = node("details", "discussion-message");
-
-    details.appendChild(
-        node("summary", null, `${message.persona_name || message.persona} · round ${message.round}`)
-    );
-
-    const body = node("div", "discussion-message-body");
-    appendMarkdownParagraph(body, [message.content || "(empty)"]);
-    details.appendChild(body);
-
-    return details;
-}
-
-
-function discussionObserverView(decision) {
-
-    const box =
-        node("div", `discussion-observer ${decision.decision === "FINISH" ? "finish" : "continue"}`);
-
-    box.appendChild(
-        node(
-            "strong",
-            null,
-            `observer · round ${decision.round} → ${decision.decision}`
-        )
-    );
-
-    for (const point of decision.open_points || []) {
-        box.appendChild(
-            node(
-                "p",
-                null,
-                `${point.topic}${point.disagreeing?.length ? ` — ${point.disagreeing.join("; ")}` : ""}`
-            )
-        );
-    }
-
-    for (const instruction of Object.values(decision.instructions || {})) {
-        box.appendChild(node("p", "muted", instruction));
-    }
-
-    return box;
-}
-
-
-function discussionHistoryView(container) {
-
-    /* Rebuilds the modal body from state, used when the modal opens
-       and when a snapshot arrives: the live stream only appends. */
-
-    container.innerHTML = "";
-
-    const discussion = state.discussion;
-
-    const status = node("div", "discussion-status", discussionStatusLine());
-    status.id = "discussionStatus";
-    container.appendChild(status);
-
-    if (!discussion) {
-        return null;
-    }
-
-    container.appendChild(
-        node("p", "discussion-task", discussion.task)
-    );
-
-    for (const round of discussion.rounds || []) {
-
-        container.appendChild(
-            node("h4", "discussion-round-head", `Round ${round.round}`)
-        );
-
-        for (const message of round.messages || []) {
-            container.appendChild(discussionMessageView(message));
-        }
-    }
-
-    for (const decision of discussion.observer_decisions || []) {
-        container.appendChild(discussionObserverView(decision));
-    }
-
-    if (discussion.status === "failed" && discussion.error) {
-        container.appendChild(node("p", "bad", discussion.error));
-    }
-
-    if (discussion.final_report) {
-        container.appendChild(discussionReportView(discussion.final_report));
-    }
-
-    return container;
-}
-
-
-/*
-| The composer's discussion options: persona checkboxes, the round
-| limit and a live status line. The row sits under the task textarea
-| and only exists while Discussion mode is on, so the default task
-| flow stays untouched.
-*/
-
 function discussionOptionsRow() {
 
     const container =
@@ -2879,48 +831,27 @@ function selectedDiscussionPersonas() {
 }
 
 
+/*
+| The composer's discussion status line and the Discussion button. The run
+| button is not touched here: its label and state are derived from the
+| store in bindRunControls().
+*/
 function refreshDiscussionComposerStatus() {
 
     const button = el("discussionButton");
-    const run = el("runButton");
     const line = el("discussionStatusLine");
-
     const discussion = state.discussion;
 
     if (button) {
         button.classList.toggle("active", state.discussionMode);
     }
 
-    if (!run) {
+    if (!line || line.dataset.error === "1") {
         return;
     }
 
-    if (discussion?.status === "running") {
-
-        run.disabled = true;
-        run.dataset.discussionBusy = "1";
-        run.textContent = "Discussion running…";
-
-    } else if (run.dataset.discussionBusy) {
-
-        /* a task and a discussion never run at once (the server
-           refuses one while the other is going), so finishing a
-           discussion always gives the button straight back */
-
-        delete run.dataset.discussionBusy;
-        run.disabled = false;
-
-        run.textContent =
-            state.discussionMode
-                ? "Start discussion"
-                : "Run task";
-    }
-
-    if (!line) {
-        return;
-    }
-
-    line.innerHTML = "";
+    line.className = "muted discussion-status-line";
+    line.replaceChildren();
 
     if (!discussion) {
         return;
@@ -2933,7 +864,6 @@ function refreshDiscussionComposerStatus() {
             discussion.rounds?.length
                 ? `${discussion.rounds.length} of ${discussion.max_rounds}`
                 : "starting";
-
         text = `round ${round} ·`;
     } else if (discussion.status === "done") {
         text = `done in ${discussion.total_rounds} round(s) ·`;
@@ -2944,9 +874,32 @@ function refreshDiscussionComposerStatus() {
     line.appendChild(node("span", null, text));
 
     if (discussion.status !== "failed") {
-        line.appendChild(
-            Modal.button("view", "link", () => openDiscussion())
-        );
+        line.appendChild(Modal.button("view", "link", () => openDiscussion()));
+    }
+}
+
+
+/* an error on the composer line stays until the operator acts again */
+function showDiscussionError(message) {
+
+    const line = el("discussionStatusLine");
+
+    if (!line) {
+        return;
+    }
+
+    line.dataset.error = "1";
+    line.className = "bad";
+    line.textContent = message;
+}
+
+
+function clearDiscussionError() {
+
+    const line = el("discussionStatusLine");
+
+    if (line) {
+        delete line.dataset.error;
     }
 }
 
@@ -2961,30 +914,20 @@ async function toggleDiscussionMode() {
         return;
     }
 
-    state.discussionMode =
-        !state.discussionMode;
+    state.discussionMode = !state.discussionMode;
 
-    if (
-        state.discussionMode &&
-        state.discussionPersonas.length === 0
-    ) {
+    if (state.discussionMode && state.discussionPersonas.length === 0) {
 
         try {
-            const response =
-                await fetch("/api/discussion/personas");
-
-            const payload =
-                await response.json();
-
-            state.discussionPersonas =
-                payload.personas || [];
+            const response = await fetch("/api/discussion/personas");
+            const payload = await response.json();
+            state.discussionPersonas = response.ok ? payload.personas || [] : [];
         } catch {
             state.discussionPersonas = [];
         }
     }
 
-    const options =
-        el("discussionOptions");
+    const options = el("discussionOptions");
 
     if (options) {
         options.hidden = !state.discussionMode;
@@ -2994,199 +937,36 @@ async function toggleDiscussionMode() {
         discussionOptionsRow();
     }
 
-    const run =
-        el("runButton");
-
-    /* the label mirrors the mode in both directions, and only while
-       no discussion owns the button */
-
-    if (run && !run.dataset.discussionBusy) {
-        run.textContent =
-            state.discussionMode
-                ? "Start discussion"
-                : "Run task";
-    }
-
-    refreshDiscussionComposerStatus();
+    touch("composer");
 }
 
 
-async function openDiscussion() {
+function openDiscussion() {
 
     if (state.discussionModal && state.discussionModal.isOpen()) {
         return state.discussionModal;
     }
 
-    const container = node("div", "discussion");
-
-    if (state.discussion) {
-        discussionHistoryView(container);
-    } else {
-        container.appendChild(
-            node(
-                "p",
-                "muted",
-                "No discussion yet. Enable Discussion under the task box, pick your personas, and send the task."
-            )
-        );
-    }
-
-    state.discussionEl = container;
+    let dispose = () => {};
 
     const handle =
         Modal.open({
             title: "Discussion",
             subtitle: "specialist personas deliberate in rounds; an observer decides when to finish",
             size: "large",
-            body: container,
             footer: Modal.row(Modal.button("Close", "", () => handle.close("footer"))),
             onClose: () => {
+                dispose();
                 state.discussionModal = null;
-                state.discussionEl = null;
             }
         });
+
+    dispose = mountInModal(handle, Discussion, ["discussion"], { state }, "discussion");
 
     state.discussionModal = handle;
 
     return handle;
 }
-
-
-function pushDiscussionEvent(event) {
-
-    const discussion = state.discussion;
-
-    /* A discussion may also be started from the CLI; the first start
-       event adopts it, a second one is dropped. */
-
-    if (event.type === "discussion:start") {
-
-        if (
-            !discussion ||
-            discussion.status !== "running"
-        ) {
-            state.discussion = {
-                id: event.id,
-                status: "running",
-                task: event.task,
-                personas: event.personas,
-                max_rounds: event.max_rounds,
-                rounds: [],
-                observer_decisions: [],
-                final_report: null
-            };
-        } else if (discussion.id && event.id && discussion.id !== event.id) {
-            return;
-        }
-
-    } else if (!discussion) {
-        return;
-    }
-
-    const target = state.discussion;
-
-    switch (event.type) {
-
-        case "discussion:start": {
-            const status = el("discussionStatus");
-            if (status) {
-                status.textContent = discussionStatusLine();
-            }
-
-            if (state.discussionEl) {
-                /* swap the placeholder for the live view */
-                discussionHistoryView(state.discussionEl);
-            }
-
-            refreshDiscussionComposerStatus();
-
-            break;
-        }
-
-        case "discussion:message": {
-            let round =
-                target.rounds.find(item => item.round === event.round);
-
-            if (!round) {
-                round = { round: event.round, messages: [] };
-                target.rounds.push(round);
-                target.rounds.sort((a, b) => a.round - b.round);
-            }
-
-            round.messages.push({
-                persona: event.persona,
-                persona_name: event.persona_name,
-                content: event.content,
-                round: event.round
-            });
-
-            if (state.discussionEl) {
-                state.discussionEl.appendChild(discussionMessageView({ ...event, round: event.round }));
-            }
-
-            break;
-        }
-
-        case "discussion:observer": {
-            target.observer_decisions.push(event);
-
-            if (state.discussionEl) {
-                state.discussionEl.appendChild(discussionObserverView(event));
-            }
-            break;
-        }
-
-        case "discussion:round": {
-            /* keeps the composer's "round N of M" label current */
-            refreshDiscussionComposerStatus();
-            break;
-        }
-
-        case "discussion:finish": {
-            target.status = "done";
-            target.total_rounds = event.total_rounds;
-            target.hit_max_rounds = event.hit_max_rounds;
-            target.stopped_reason = event.stopped_reason || null;
-            target.final_report = event.final_report;
-
-            const status = el("discussionStatus");
-            if (status) {
-                status.textContent = discussionStatusLine();
-            }
-
-            if (state.discussionEl && event.final_report) {
-                state.discussionEl.appendChild(
-                    discussionReportView(event.final_report)
-                );
-            }
-
-            refreshDiscussionComposerStatus();
-
-            break;
-        }
-
-        case "discussion:error": {
-            target.status = "failed";
-            target.error = event.error;
-
-            const status = el("discussionStatus");
-            if (status) {
-                status.textContent = discussionStatusLine();
-            }
-
-            if (state.discussionEl) {
-                state.discussionEl.appendChild(
-                    node("p", "bad", event.error)
-                );
-            }
-
-            refreshDiscussionComposerStatus();
-
-            break;
-        }
-    }
-}
-
 
 /*
 | Execution and Events live in a hidden row and are shown as header modals.
@@ -3194,9 +974,6 @@ function pushDiscussionEvent(event) {
 | renderers working: el("tree")/el("log") still find the node wherever it
 | is, and on close the node is returned to its hidden home.
 */
-
-const hiddenSection = () => el("rowTwo");
-
 
 /*
 | Borrowing has to be reversible exactly, so where each node came from
@@ -3376,10 +1153,6 @@ function openEventsModal() {
 
     state.eventsModal = handle;
 
-    /* the filter only makes sense next to the count of what it kept */
-
-    applyLogFilter();
-
     return handle;
 }
 
@@ -3428,1414 +1201,313 @@ async function loadSession(id) {
 }
 
 
-function applySession(session) {
+/* ------------------------------------------------------------ store glue */
 
-    resetRun(true);
+/*
+| Side effects an event asks for. Run for live events only: a snapshot or
+| a stored session is replayed to redraw the past, not to re-trigger it.
+*/
+function runEffects(effects) {
 
-    state.messages = normalizeConversationMessages(session.messages);
+    for (const effect of effects) {
 
-    state.session = {
-        id: session.id,
-        title: session.title,
-        turns: session.turns
-    };
-
-    el("sessionTitle").textContent =
-        session.title || "new conversation";
-
-    state.events = [];
-    el("log").innerHTML = "";
-
-    for (const event of session.events || []) {
-        apply(event);
-    }
-
-    for (const call of session.calls || []) {
-
-        if (call.key && !state.calls.has(call.key)) {
-
-            state.calls.set(call.key, {
-                ...call,
-                argumentsPreview:
-                    JSON.stringify(call.arguments ?? {}, null, 2),
-                duration: call.duration_ms
-            });
+        if (effect.type === "drainQueue") {
+            drainProjectTaskQueue();
+        } else if (effect.type === "loadSettings") {
+            loadSettings();
+        } else if (effect.type === "refreshSession") {
+            refreshSession(effect.id);
         }
     }
-
-    renderChat();
-    renderTree();
 }
 
 
-/* ------------------------------------------------------------- approvals */
+/* one live event: reduce it, redraw what changed once, then run its effects */
+function apply(event) {
 
-function renderApprovals() {
+    let result = null;
 
-    const pending =
-        [...state.approvals.values()];
+    batch(() => {
 
-    const button = el("approvalsButton");
-
-    button.hidden = pending.length === 0;
-
-    el("approvalsCount").textContent = String(pending.length);
-
-    if (pending.length === 0) {
-
-        if (state.approvalModal) {
-
-            const handle = state.approvalModal;
-
-            state.approvalModal = null;
-
-            handle.close("resolved");
+        if (state.reconnecting) {
+            state.reconnecting = false;
+            touch("run");
         }
 
-        return;
-    }
+        result = reduce(state, event);
 
-    if (!state.approvalModal) {
-        openApprovalModal();
-
-        return;
-    }
-
-    fillApprovalModal();
-}
-
-
-function openApprovalModal() {
-
-    state.approvalModal =
-        Modal.open({
-            title: "Approval required",
-            size: "medium",
-            dismissible: true,
-
-            onClose: () => {
-
-                state.approvalModal = null;
-            }
-        });
-
-    fillApprovalModal();
-}
-
-
-function fillApprovalModal() {
-
-    const handle = state.approvalModal;
-
-    if (!handle) {
-        return;
-    }
-
-    const pending =
-        [...state.approvals.values()];
-
-    const current = pending[0];
-
-    handle.setTitle(`Approval required — ${current.tool}`);
-
-    handle.setSubtitle(
-        `1/${pending.length} pending · requested by ${current.agent}`
-    );
-
-    const body = node("div", "detail");
-
-    const list = node("dl", "detail-grid");
-
-    definition(list, "tool", current.tool);
-    definition(list, "agent", current.agent);
-    definition(list, "reason", current.reason);
-
-    definition(
-        list,
-        "groups",
-        (current.groups || []).join(", ")
-    );
-
-    body.appendChild(list);
-
-    const block = node("div", "detail-block");
-
-    block.append(
-        node("h3", null, "Arguments"),
-        node(
-            "pre",
-            null,
-            JSON.stringify(current.arguments ?? {}, null, 2)
-        )
-    );
-
-    body.appendChild(block);
-
-    if (pending.length > 1) {
-
-        const queue = node("div", "detail-block");
-
-        queue.appendChild(node("h3", null, "Also waiting"));
-
-        const rest = node("ul", "queue");
-
-        for (const item of pending.slice(1)) {
-
-            rest.appendChild(
-                node(
-                    "li",
-                    null,
-                    `${item.tool} · ${item.agent} · ${shorten(
-                        JSON.stringify(item.arguments ?? {}),
-                        60
-                    )}`
-                )
-            );
+        if (result.regions.size > 0) {
+            touch(...result.regions);
         }
-
-        queue.appendChild(rest);
-
-        body.appendChild(queue);
-    }
-
-    handle.setBody(body);
-
-    handle.setFooter(
-        Modal.row(
-            Modal.button(
-                "Deny",
-                "refuse",
-                () => answerApproval(current.id, false)
-            ),
-            Modal.button(
-                "Approve",
-                "allow",
-                () => answerApproval(current.id, true)
-            ),
-            pending.length > 1
-                ? Modal.button(
-                    `Approve all (${pending.length})`,
-                    "ghost",
-                    () => approveAll()
-                )
-                : null
-        )
-    );
-}
-
-
-async function answerApproval(id, approved) {
-
-    state.approvals.delete(id);
-
-    renderApprovals();
-
-    await fetch(`/api/approvals/${encodeURIComponent(id)}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ approved })
     });
+
+    runEffects(result.effects);
 }
 
 
-async function approveAll() {
+/* a snapshot is reduced in full and drawn once */
+function applySnapshot(snapshot) {
 
-    const ids =
-        [...state.approvals.keys()];
+    batch(() => {
+        reduceSnapshot(state, snapshot || {});
+        touch(...REGIONS);
+    });
 
-    state.approvals.clear();
-
-    renderApprovals();
-
-    for (const id of ids) {
-
-        await fetch(`/api/approvals/${encodeURIComponent(id)}`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ approved: true })
-        });
+    /* a queued multi-project run continues if the runtime is idle again */
+    if (state.status !== "running" && state.multiQueue.length > 0) {
+        drainProjectTaskQueue();
     }
-}
-
-
-/* -------------------------------------------------------------- log line */
-
-function describeEvent(event) {
-
-    switch (event.type) {
-
-        case "process:output":
-            return `${event.process_id || "process"} ${event.stream || "stdout"}: ${shorten(event.text || "", 120)}`;
-
-        case "hook:start":
-            return `${event.phase} ${event.id} (${event.hook_type})`;
-
-        case "hook:end":
-            return `${event.phase} ${event.id} ${event.status}: ${shorten(event.summary || "", 70)}`;
-
-        case "hook:phase:start":
-            return `${event.phase}: ${event.hooks.join(", ")}`;
-
-        case "hook:phase:end":
-            return `${event.phase} ${event.stopped ? "stopped" : event.ok ? "ok" : "reported failures"}`;
-
-        case "plan:autoroute:start":
-            return `${event.step} → ${event.agent}`;
-
-        case "plan:autoroute:end":
-            return `${event.step} ${event.ok ? "done" : "failed"} by ${event.agent}`;
-
-        case "tool:start":
-            return `${event.agent} ${event.name} ${shorten(
-                event.arguments_preview ?? event.arguments,
-                60
-            )}`;
-
-        case "tool:end":
-            return `${event.name} ${
-                event.success
-                    ? event.exit_code
-                        ? `exit ${event.exit_code}`
-                        : event.warning
-                            ? "ok, with a warning"
-                            : "ok"
-                    : "failed"
-            } ${event.duration_ms} ms`;
-
-        case "tool:graph":
-            return `${event.agent} ${event.shape}, ${
-                event.calls.length
-            } call(s), ${event.waves.length} wave(s)`;
-
-        case "policy:decision":
-            return `${event.tool} ${event.decision}`;
-
-        case "agent:iteration":
-            return `${event.agent} iteration ${event.iteration}`;
-
-        case "agent:action":
-            return `${event.agent} ${event.action}`;
-
-        case "agent:start":
-            return `${event.scope || event.agent}${
-                event.parent_scope
-                    ? ` from ${event.parent_scope}`
-                    : ""
-            }`;
-
-        case "delegation:start":
-            return `${event.parent} → ${
-                event.delegations.map(item => item.agent).join(", ")
-            }`;
-
-        case "delegation:graph":
-            return `${event.parent} ${event.shape}, ${
-                event.delegations.length
-            } sub-agent(s)`;
-
-        case "delegation:end":
-            return `${event.agent} ${
-                event.success
-                    ? `ok ${event.duration_ms} ms`
-                    : `failed: ${shorten(event.error, 60)}`
-            }`;
-
-        case "tool:arguments_ignored":
-            return `${event.name} ignored ${event.dropped.join(", ")}`;
-
-        case "skill:loaded":
-            return `loaded ${event.skills.join(", ")} (${event.chars} chars)`;
-
-        case "skill:read":
-            return `${event.skill}/${event.resource} (${event.chars} chars)`;
-
-        case "run:delegation_hint":
-            return `${event.agents_remaining} agents unused, ${
-                event.open_steps
-            } open steps`;
-
-        case "report:mismatch":
-            return `claimed work the runtime did not do: ${
-                shorten(event.problems.join("; "), 70)
-            }`;
-
-        case "request:start":
-            return `${event.agent} → ${event.model}`;
-
-        case "request:end":
-            return `${event.agent} ${event.outcome} in ${
-                event.duration_ms
-            } ms`;
-
-        case "run:loop":
-            return `${event.scope || event.agent} ${
-                event.outcome
-            } ${shorten(event.signature || event.reason || "", 60)}`;
-
-        case "run:malformed":
-            return `${event.scope || event.agent} ${event.code} ${
-                event.attempt
-            }/${event.max_attempts || event.limit} ${shorten(event.reason || "", 60)}`;
-
-        case "response:repaired":
-            if (event.repair === "action_envelope") {
-
-                const changes = [
-                    (event.moved_fields || []).length
-                        ? `moved ${event.moved_fields.join(", ")}`
-                        : null,
-                    (event.defaulted_fields || []).length
-                        ? `defaulted ${event.defaulted_fields.join(", ")}`
-                        : null,
-                    (event.removed_items || []).length
-                        ? `removed ${event.removed_items.join(", ")}`
-                        : null,
-                    (event.argument_repairs || []).length
-                        ? "cleaned linked path arguments"
-                        : null
-                ].filter(Boolean);
-
-                return `action envelope repaired: ${changes.join("; ")}`;
-            }
-
-            if (event.repair === "markdown_path") {
-                return `${event.tool} cleaned Markdown links in ${
-                    (event.repaired_fields || []).join(", ")
-                }`;
-            }
-
-            return `${event.tool} arguments repaired${
-                (event.dropped || []).length
-                    ? `, dropped ${event.dropped.join(", ")}`
-                    : ""
-            }`;
-
-        case "context:compacted":
-            return `${event.before} → ${event.after} chars`;
-
-        case "context:memory":
-            return `${event.folded_exchanges} exchanges folded with ${
-                event.summary_calls ?? event.chunks ?? 0
-            }/${event.chunks || 0} summary calls${
-                event.skipped_chunks
-                    ? `, ${event.skipped_chunks} archive-only`
-                    : ""
-            }, ${event.archived || 0} newly archived`;
-
-        case "agent:thinking":
-            return `${event.scope || event.agent} ${
-                event.chars
-            } chars of reasoning`;
-
-        case "agent:response":
-            return `${event.scope || event.agent} response${
-                event.truncated ? " (preview truncated)" : ""
-            }`;
-
-        case "session:message":
-            return `${event.message.role} ${event.message.kind}`;
-
-        case "session:switched":
-            return `${event.session.title || event.session.id}`;
-
-        case "endpoint:degraded":
-            return `${event.role} ${event.model} dropped ${event.dropped}`;
-
-        case "discussion:start":
-            return `start · ${event.personas?.length || 0} personas, max ${event.max_rounds} rounds`;
-
-        case "discussion:message":
-            return `${event.persona} (round ${event.round})`;
-
-        case "discussion:observer":
-            return `observer → ${event.decision} (round ${event.round})`;
-
-        case "discussion:finish":
-            return `done in ${event.total_rounds} round(s)`;
-
-        case "discussion:error":
-            return event.error;
-
-        case "run:wrapup":
-            return `${
-                Math.round(event.remaining_ms / 1000)
-            }s left of ${
-                Math.round(event.max_run_ms / 1000)
-            }s, asking for a final answer`;
-
-        case "run:deadline":
-            return `budget spent: ${
-                event.elapsed_ms
-            } ms of ${event.max_run_ms} ms`;
-
-        default:
-            return shorten(
-                event.task ||
-                event.message ||
-                event.status ||
-                event.reason ||
-                "",
-                70
-            );
-    }
-}
-
-
-function log(event) {
-
-    const list = el("log");
-
-    /*
-    | log() runs for every message on the stream. If the list is missing
-    | the event is dropped rather than thrown away with an exception,
-    | because throwing here would break the handler for every event that
-    | follows, not just this one.
-    */
-
-    if (!list) {
-        return;
-    }
-
-    const item = node("li");
-
-    if (
-        event.type.includes("error") ||
-        event.success === false ||
-        (event.type === "hook:end" && event.status === "failed") ||
-        event.decision === "deny"
-    ) {
-        item.className = "bad";
-    } else if (
-        event.type === "report:mismatch" ||
-        event.type === "run:delegation_hint" ||
-        event.type === "run:loop" ||
-        event.type === "run:wrapup" ||
-        event.type === "run:deadline" ||
-        event.type === "run:malformed" ||
-        event.type === "response:repaired" ||
-        event.type.startsWith("approval") ||
-        event.decision === "require_approval"
-    ) {
-        item.className = "warn";
-    }
-
-    const time =
-        new Date(event.at || Date.now())
-            .toLocaleTimeString("en-GB", { hour12: false });
-
-    item.append(
-        node("span", "t", time),
-        node("span", "k", event.type),
-        node("span", "v", describeEvent(event))
-    );
-
-    if (event.call_key) {
-
-        item.classList.add("clickable");
-
-        item.addEventListener("click", () => {
-
-            const call =
-                state.calls.get(event.call_key);
-
-            if (call) {
-                openCallDetail(call, state.graphs.get(call.graph_id));
-            }
-        });
-    }
-
-    item.dataset.text =
-        `${event.type} ${item.textContent}`.toLowerCase();
-
-    item.dataset.type = event.type;
-
-    /*
-    | Judged by the same predicate the filter uses, so a row arriving
-    | while a filter is on cannot disagree with the rows already there.
-    */
-
-    item.hidden = !matchesLogFilter(item);
-
-    list.appendChild(item);
-
-    while (list.children.length > 400) {
-        list.removeChild(list.firstChild);
-    }
-
-    list.scrollTop = list.scrollHeight;
-
-    /*
-    | Only the type list and the count need refreshing here; every other
-    | row was judged when it arrived.
-    */
-
-    refreshLogTypes();
-
-    updateLogCount();
-}
-
-
-function updateLogCount() {
-
-    const count = el("logCount");
-
-    const list = el("log");
-
-    if (!count || !list) {
-        return;
-    }
-
-    const total = list.children.length;
-
-    if (state.logFilter === "" && !state.logType) {
-
-        count.textContent = `${total} event${total === 1 ? "" : "s"}`;
-        count.hidden = total === 0;
-
-        return;
-    }
-
-    let shown = 0;
-
-    for (const item of list.children) {
-        shown += item.hidden ? 0 : 1;
-    }
-
-    count.textContent = `${shown} of ${total}`;
-    count.hidden = total === 0;
 }
 
 
 /*
-| Two filters over the same list, and a row survives only if it passes
-| both: the text box matches any part of a word anywhere in the row, and
-| the dropdown narrows to one kind of event.
-|
-| The types offered are the ones actually present, so the list never
-| offers a choice that would empty the panel, and it is rebuilt as new
-| kinds arrive. A type that is selected and then disappears is kept in
-| the list rather than silently switching the operator back to "all".
+| Opening a conversation replays the events it stored, so the Execution
+| and Events cards are rebuilt by the same code that draws them live.
 */
+function applySession(session) {
 
-function logTypesPresent() {
+    batch(() => {
 
-    const list = el("log");
+        resetRun(state, true);
 
-    if (!list) {
-        return [];
-    }
+        state.messages = normalizeConversationMessages(session.messages);
+        state.session = { id: session.id, title: session.title, turns: session.turns };
+        state.events = [];
+        state.logRows = [];
 
-    const types = new Set();
-
-    for (const item of list.children) {
-
-        if (item.dataset.type) {
-            types.add(item.dataset.type);
+        for (const event of session.events || []) {
+            if (event.type !== "session:message") {
+                reduce(state, event);
+            }
         }
-    }
 
-    if (state.logType) {
-        types.add(state.logType);
-    }
+        for (const call of session.calls || []) {
 
-    return [...types].sort();
+            if (call.key && !state.calls.has(call.key)) {
+
+                state.calls.set(call.key, {
+                    ...call,
+                    argumentsPreview: JSON.stringify(call.arguments ?? {}, null, 2),
+                    duration: call.duration_ms
+                });
+            }
+        }
+
+        touch(...REGIONS);
+    });
 }
 
-
-function refreshLogTypes() {
-
-    const select = el("logType");
-
-    if (!select) {
-        return;
-    }
-
-    const types = logTypesPresent();
-
-    const signature = types.join("|");
-
-    if (select.dataset.signature === signature) {
-        return;
-    }
-
-    select.dataset.signature = signature;
-
-    select.innerHTML = "";
-
-    const all = node("option", null, "all types");
-
-    all.value = "";
-
-    select.appendChild(all);
-
-    for (const type of types) {
-
-        const option = node("option", null, type);
-
-        option.value = type;
-
-        select.appendChild(option);
-    }
-
-    select.value = state.logType || "";
-}
-
-
-function matchesLogFilter(item) {
-
-    if (
-        state.logType &&
-        item.dataset.type !== state.logType
-    ) {
-        return false;
-    }
-
-    if (state.logFilter === "") {
-        return true;
-    }
-
-    return (item.dataset.text || "").includes(state.logFilter);
-}
-
-
-function applyLogFilter() {
-
-    const list = el("log");
-
-    if (!list) {
-        return;
-    }
-
-    refreshLogTypes();
-
-    let shown = 0;
-
-    for (const item of list.children) {
-
-        const matched = matchesLogFilter(item);
-
-        item.hidden = !matched;
-
-        shown += matched ? 1 : 0;
-    }
-
-    const count = el("logCount");
-
-    if (count) {
-
-        const total = list.children.length;
-
-        count.textContent =
-            state.logFilter === "" && !state.logType
-                ? `${total} event${total === 1 ? "" : "s"}`
-                : `${shown} of ${total}`;
-
-        count.hidden = total === 0;
-    }
-
-    return shown;
-}
-
-
-/* ---------------------------------------------------------------- status */
 
 function setStatus(status) {
 
-    state.status = status;
-
-    el("statusDot").className = `dot ${status}`;
-    el("statusText").textContent = status;
-
-    el("runButton").disabled = status === "running";
-    if (status !== "running") {
-        state.stopPending = false;
-        state.activeProjectId = null;
-    }
-    el("cancelButton").disabled = status !== "running" || state.stopPending;
-    el("cancelButton").textContent = state.stopPending ? "Stopping…" : "Stop";
-
-    if (status === "running") {
-
-        state.startedAt = state.startedAt || Date.now();
-
-        if (!state.timer) {
-
-            state.timer =
-                setInterval(
-                    () => {
-
-                        el("runTimer").textContent =
-                            `${(
-                                (Date.now() - state.startedAt) / 1000
-                            ).toFixed(1)} s`;
-                    },
-                    100
-                );
-        }
-
-    } else {
-
-        clearInterval(state.timer);
-
-        state.timer = null;
-        state.startedAt = null;
-    }
-}
-
-
-/* ---------------------------------------------------------------- events */
-
-function resetRun(clearArchive = false) {
-
-    state.agents.clear();
-    state.order = [];
-    state.graphs.clear();
-    state.calls.clear();
-    state.approvals.clear();
-    state.loops = [];
-    state.hooks.clear();
-    state.hookOrder = [];
-    state.currentTask = null;
-    state.openExecutionKeys.clear();
-
-    if (clearArchive) {
-        el("executionArchive").innerHTML = "";
-    }
+    batch(() => {
+        setRunStatus(state, status);
+        touch("run");
+    });
 }
 
 
 function pushMessage(message) {
 
-    state.messages.push(
-        normalizeConversationMessage(message)
+    state.messages.push(normalizeConversationMessage(message, state.messages));
+    touch("chat");
+}
+
+
+/*
+| A request the operator made failed. The conversation is where the
+| console has always reported that ("Could not start …"), so failures of
+| every action are reported the same way.
+*/
+function notifyError(text) {
+
+    pushMessage({ role: "assistant", kind: "error", content: text, at: Date.now() });
+}
+
+
+async function failureText(response, fallback) {
+
+    const payload = await response.json().catch(() => ({}));
+
+    return `${fallback}: ${payload.error || `request failed (${response.status})`}`;
+}
+
+
+/* drops the previous project's live cards while the new snapshot is in flight */
+function resetProjectView() {
+
+    batch(() => {
+        resetRun(state, true);
+        state.messages = [];
+        state.events = [];
+        state.logRows = [];
+        state.approvals.clear();
+        touch("tree", "chat", "log", "approvals", "plan");
+    });
+}
+
+
+function openCallDetail(call, graph, run = currentRun(state)) {
+
+    return showCallDetail({ Modal, call, graph, run, touchTree: () => touch("tree") });
+}
+
+
+function openCallByKey(key) {
+
+    const call = state.calls.get(key);
+
+    if (call) {
+        openCallDetail(call, state.graphs.get(call.graph_id));
+    }
+}
+
+
+const approvals = createApprovals({ Modal, state, touch });
+
+
+/* ------------------------------------------------------------ views */
+
+function mountViews() {
+
+    mount(el("tree"), () => Tree({ run: currentRun(state), onOpenCall: openCallDetail }), ["tree"]);
+
+    mount(el("executionArchive"), () => Archive({ archive: state.archive, onOpenCall: openCallDetail }), ["tree"]);
+
+    mount(el("plan"), () => Plan({ plan: state.plan }), ["plan"]);
+
+    mount(
+        el("chat"),
+        () => Chat({
+            state,
+            onToggleExecution: (key, open) => {
+                if (open) state.openExecutionKeys.add(key);
+                else state.openExecutionKeys.delete(key);
+            }
+        }),
+        ["chat"],
+        {},
+        stickToBottom
     );
 
-    renderChat();
+    mount(el("log"), () => LogRows({ state, onOpenCallKey: openCallByKey }), ["log"], {}, stickToBottom);
+
+    mount(el("logType"), () => LogTypeOptions({ state }), ["log"]);
+
+    bind(["tree"], () => {
+        const summary = el("execSummary");
+        if (summary) summary.textContent = treeSummary(currentRun(state));
+    });
+
+    bind(["plan"], () => {
+        const summary = el("planSummary");
+        if (summary) summary.textContent = planSummary(state.plan);
+    });
+
+    bind(["log"], () => {
+        const count = el("logCount");
+        if (!count) return;
+        const views = logViews(state.logRows);
+        count.textContent = logCountText(views, state.logFilter, state.logType);
+        count.hidden = views.length === 0;
+    });
+
+    bind(["header"], () => {
+
+        const set = (id, text) => {
+            const target = el(id);
+            if (target) target.textContent = text;
+        };
+
+        set("workspace", state.workspace ?? "");
+        set("model", state.model ?? "");
+        set("turns", state.turnsText);
+        set("sessionTitle", state.session ? state.session.title || "new conversation" : "");
+        set("autoSwitchStatus", `auto-switch · ${state.autoContinue ? "on" : "off"}`);
+
+        /* the policy controls live here or inside the Settings modal; either
+           way a render must not break because one is momentarily absent */
+        const approvalMode = el("approvalMode");
+        if (approvalMode && state.approvalMode !== null && state.approvalMode !== undefined) {
+            approvalMode.value = state.approvalMode;
+        }
+
+        const autoContinue = el("autoContinue");
+        if (autoContinue) autoContinue.checked = Boolean(state.autoContinue);
+    });
+
+    bindRunControls();
+
+    bind(["approvals"], () => approvals.sync());
+
+    bind(["discussion", "composer"], () => refreshDiscussionComposerStatus());
 }
 
 
-function eventVisibleForCurrentProject(event) {
-
-    if (!state.currentProjectId) {
-        return true;
-    }
-
-    if (!event || !event.project_id) {
-        return true;
-    }
-
-    return event.project_id === state.currentProjectId;
-}
+let runTimer = null;
+let waitingTimer = null;
 
 
-function apply(event) {
+/* status dot, run/stop buttons and the run timer are derived from the store */
+function bindRunControls() {
 
-    if (!eventVisibleForCurrentProject(event)) {
-        return;
-    }
+    bind(["run", "composer", "discussion"], () => {
 
-    if (event.plan) {
-        state.plan = event.plan;
-        renderPlan();
-    }
+        const dot = el("statusDot");
+        const text = el("statusText");
+        const run = el("runButton");
+        const cancel = el("cancelButton");
+        const discussionRunning = state.discussion?.status === "running";
 
-    /* Keep every event so a user message's execution can be re-rendered
-       as a stage-by-stage block under that message (keyed by turn_id).
-       Bounded so a long session does not grow without limit in the page. */
-    state.events.push(event);
+        if (dot) dot.className = `dot ${state.status}`;
+        if (text) text.textContent = state.reconnecting ? "reconnecting" : state.status;
 
-    if (state.events.length > 5000) {
-        state.events = state.events.slice(-5000);
-    }
+        if (run) {
+            run.disabled =
+                state.status === "running" || state.uploading || state.submitting || discussionRunning;
+            run.textContent =
+                state.uploading && state.status !== "running"
+                    ? "Uploading files…"
+                    : discussionRunning
+                        ? "Discussion running…"
+                        : state.discussionMode ? "Start discussion" : "Run task";
+        }
 
-    /* Execution steps that appear under a user message refresh that turn's
-       block in place rather than re-rendering the whole conversation, so
-       the UI stays stable and open blocks do not close on every event. */
-    if (
-        ["agent:iteration", "agent:action", "tool:start", "tool:end", "run:malformed"].includes(event.type)
-    ) {
-        refreshTurnExecution(messageExecutionKey(event));
-    }
+        if (cancel) {
+            cancel.disabled = state.status !== "running" || state.stopPending;
+            cancel.textContent = state.stopPending ? "Stopping…" : "Stop";
+        }
 
-    switch (event.type) {
-
-        case "run:start":
-            archiveCurrentExecution();
-            resetRun();
-
-            state.currentTask = event.task;
-
-            agentNode("main_agent", 0, { task: event.task });
-
-            setStatus("running");
-
-            renderTree();
-            renderApprovals();
-            break;
-
-        case "agent:start":
-            agentNode(
-                event.scope || event.agent,
-                event.depth,
-                {
-                    name: event.agent,
-                    task: event.task,
-                    parent: event.parent,
-                    parentScope: event.parent_scope,
-                    persona: event.persona,
-                    delegationId: event.delegation_id
+        if (state.status === "running" && !runTimer) {
+            runTimer = setInterval(() => {
+                const timer = el("runTimer");
+                if (timer && state.startedAt) {
+                    timer.textContent = `${((Date.now() - state.startedAt) / 1000).toFixed(1)} s`;
                 }
-            );
-
-            renderTree();
-            break;
-
-        case "agent:iteration": {
-
-            const agent =
-                agentNode(event.scope || event.agent, event.depth);
-
-            agent.iterations = event.iteration;
-
-            renderTree();
-            break;
+            }, 100);
+        } else if (state.status !== "running" && runTimer) {
+            clearInterval(runTimer);
+            runTimer = null;
         }
+    });
 
-        case "agent:end": {
+    /*
+    | Only the elapsed text of the waiting bubble changes while the
+    | endpoint works; the conversation itself is not redrawn for it.
+    */
+    bind(["chat"], () => {
 
-            const agent =
-                agentNode(event.scope || event.agent, event.depth);
-
-            agent.status =
-                event.success
-                    ? "done"
-                    : "failed";
-
-            renderTree();
-            break;
+        if (state.waiting && !waitingTimer) {
+            waitingTimer = setInterval(() => {
+                const text = el("chat")?.querySelector(".bubble.pending .text");
+                if (text && state.waiting) text.textContent = waitingText(state.waiting);
+            }, 200);
+        } else if (!state.waiting && waitingTimer) {
+            clearInterval(waitingTimer);
+            waitingTimer = null;
         }
-
-        case "delegation:start":
-            for (const item of event.delegations) {
-
-                agentNode(
-                    `${item.agent}#${(event.depth || 0) + 1}`,
-                    (event.depth || 0) + 1,
-                    {
-                        name: item.agent,
-                        task: item.task,
-                        parent: event.parent,
-                        parentScope: event.parent_scope,
-                        delegationId: item.id
-                    }
-                );
-            }
-
-            renderTree();
-            break;
-
-        case "delegation:graph": {
-
-            const parent =
-                agentNode(
-                    event.parent_scope || event.parent,
-                    Math.max(0, (event.depth || 1) - 1)
-                );
-
-            parent.delegationShape = event.shape;
-
-            renderTree();
-            break;
-        }
-
-        case "hook:start": {
-
-            const key = `${event.phase}:${event.id}`;
-
-            state.hooks.set(key, {
-                ...event,
-                status: "running",
-                summary: null
-            });
-
-            if (!state.hookOrder.includes(key)) {
-                state.hookOrder.push(key);
-            }
-
-            renderTree();
-            break;
-        }
-
-        case "hook:end": {
-
-            const key = `${event.phase}:${event.id}`;
-            const before = state.hooks.get(key) || {};
-
-            state.hooks.set(key, {
-                ...before,
-                ...event,
-                hook_type: event.hook_type || before.hook_type,
-                status: event.status || (event.ok ? "done" : "failed")
-            });
-
-            if (!state.hookOrder.includes(key)) {
-                state.hookOrder.push(key);
-            }
-
-            renderTree();
-            break;
-        }
-
-        case "tool:graph": {
-
-            const graph = graphNode(event);
-
-            graph.maxParallel = event.max_parallel;
-
-            renderTree();
-            break;
-        }
-
-        case "tool:start": {
-
-            const graph = graphNode(event);
-
-            const call = {
-                key: event.call_key,
-                id: event.id,
-                agent: event.agent,
-                name: event.name,
-                graph_id: graph.id,
-                wave: event.wave ?? null,
-                iteration: event.iteration ?? null,
-                depends_on: event.depends_on || [],
-                argumentsPreview:
-                    event.arguments_preview ??
-                    JSON.stringify(event.arguments ?? {}, null, 2),
-                startedAt: event.at ?? null,
-                status: "running"
-            };
-
-            graph.calls.set(call.id, call);
-
-            if (!graph.order.includes(call.id)) {
-                graph.order.push(call.id);
-            }
-
-            if (call.key) {
-                state.calls.set(call.key, call);
-            }
-
-            renderTree();
-            break;
-        }
-
-        case "tool:end": {
-
-            const graph = graphNode(event);
-
-            const call =
-                graph.calls.get(event.id) || {
-                    id: event.id,
-                    agent: event.agent,
-                    name: event.name,
-                    graph_id: graph.id,
-                    depends_on: [],
-                    argumentsPreview: "{}"
-                };
-
-            call.key = event.call_key || call.key;
-
-            /*
-            | A non-zero exit code, or a tool that warned about what it
-            | did, is not a clean success and must not be drawn as one.
-            */
-
-            call.status =
-                !event.success
-                    ? "failed"
-                    : event.exit_code
-                        ? "exit"
-                        : event.warning
-                            ? "warned"
-                            : "done";
-
-            call.exitCode = event.exit_code ?? null;
-            call.warning = event.warning || null;
-            call.duration = event.duration_ms;
-
-            /* the interval is what "ran alongside" is measured on: prefer the
-               executor's own start, fall back to the envelope */
-            call.startedAt =
-                event.started_at ?? call.startedAt ?? event.at ?? null;
-            call.finishedAt = event.at ?? call.finishedAt ?? null;
-
-            call.wave = event.wave ?? call.wave ?? null;
-            call.iteration = event.iteration ?? call.iteration ?? null;
-            call.resultPreview = event.result_preview ?? null;
-            call.resultChars = event.result_chars ?? null;
-            call.error = event.error || null;
-
-            graph.calls.set(call.id, call);
-
-            if (!graph.order.includes(call.id)) {
-                graph.order.push(call.id);
-            }
-
-            if (call.key) {
-                state.calls.set(call.key, call);
-            }
-
-            renderTree();
-            break;
-        }
-
-        case "delegation:end": {
-
-            /*
-            | A delegation that failed before its agent existed has no
-            | node of its own, so the parent carries the failure.
-            */
-
-            if (!event.success) {
-
-                const parent =
-                    agentNode(
-                        event.parent_scope || event.parent || "main_agent"
-                    );
-
-                parent.loops.push({
-                    outcome: "stopped",
-                    repeats: 1,
-                    signature:
-                        `delegation ${event.id} to ${event.agent}: ${event.error}`
-                });
-
-                renderTree();
-            }
-
-            break;
-        }
-
-        case "run:loop": {
-
-            state.loops.push(event);
-
-            const agent =
-                agentNode(event.scope || event.agent || "main_agent");
-
-            agent.loops.push(event);
-
-            renderTree();
-            break;
-        }
-
-        case "skill:read": {
-
-            const agent =
-                agentNode(event.agent || "main_agent");
-
-            agent.skills = agent.skills || [];
-
-            const label =
-                `${event.skill} · ${event.resource}`;
-
-            if (!agent.skills.includes(label)) {
-                agent.skills.push(label);
-            }
-
-            renderTree();
-            break;
-        }
-
-        case "skill:loaded": {
-
-            const agent =
-                agentNode(
-                    event.scope || event.agent || "main_agent"
-                );
-
-            agent.skills = agent.skills || [];
-
-            for (const name of event.skills) {
-
-                if (!agent.skills.includes(name)) {
-                    agent.skills.push(name);
-                }
-            }
-
-            renderTree();
-            break;
-        }
-
-        case "report:mismatch": {
-
-            const agent =
-                agentNode(event.agent || "main_agent");
-
-            agent.loops.push({
-                outcome: "stopped",
-                repeats: event.problems.length,
-                signature:
-                    `answer claimed work that never ran: ${
-                        event.problems.join("; ")
-                    }`
-            });
-
-            renderTree();
-            break;
-        }
-
-        case "run:malformed": {
-
-            /*
-            | An answer the runtime could not read is a debugging fact,
-            | so it sits on the agent that produced it rather than only
-            | scrolling past in the log.
-            */
-
-            const agent =
-                agentNode(event.scope || event.agent || "main_agent");
-
-            agent.loops.push({
-                outcome:
-                    event.outcome === "stopped"
-                        ? "malformed_stopped"
-                        : "malformed",
-
-                repeats: event.attempt,
-
-                signature: event.reason,
-
-                reason: event.reason
-            });
-
-            renderTree();
-            break;
-        }
-
-        case "approval:request":
-            state.approvals.set(event.id, event);
-            renderApprovals();
-            break;
-
-        case "approval:resolved":
-            state.approvals.delete(event.id);
-            renderApprovals();
-            break;
-
-        case "run:end":
-            for (const agent of state.agents.values()) {
-
-                if (agent.status === "running") {
-                    agent.status = "done";
-                }
-            }
-
-            renderTree();
-            break;
-
-        case "run:auto_continue":
-            el("turns").textContent = `cycle ${event.cycle}`;
-            break;
-
-        case "run:status":
-            setStatus(event.status);
-
-            state.waiting = null;
-
-            clearInterval(state.waitingTimer);
-
-            state.waitingTimer = null;
-
-            renderChat();
-
-            /* Phase 11: a multi-project composer run is a sequence of
-               labelled single-project tasks, not a parallel fan-out. */
-            if (event.status !== "running") {
-                drainProjectTaskQueue();
-            }
-
-            break;
-
-        case "request:start":
-            state.waiting = {
-                agent: event.agent,
-                role: event.role,
-                since: Date.now()
-            };
-
-            if (!state.waitingTimer) {
-
-                /* Only the elapsed text changes while the endpoint works.
-                   Rebuilding the conversation here used to destroy text
-                   selection, scroll position and open reasoning details five
-                   times a second. */
-                state.waitingTimer =
-                    setInterval(updateWaitingElapsed, 200);
-            }
-
-            renderChat();
-            break;
-
-        case "request:end":
-            state.waiting = null;
-
-            clearInterval(state.waitingTimer);
-
-            state.waitingTimer = null;
-
-            renderChat();
-            break;
-
-        case "session:message":
-            /*
-            | The server owns the conversation, so the browser draws what
-            | it is told rather than guessing from the run.
-            */
-            pushMessage(event.message);
-            break;
-
-        case "session:switched": {
-
-            const same =
-                state.session &&
-                state.session.id === event.session.id;
-
-            state.session = event.session;
-
-            el("sessionTitle").textContent =
-                event.session.title || "new conversation";
-
-            /*
-            | Another console, or the history dialog, moved to a
-            | different conversation. Load it rather than showing the
-            | previous one under a new name.
-            */
-
-            if (!same) {
-                refreshSession(event.session.id);
-            }
-
-            break;
-        }
-
-        case "settings:changed":
-            loadSettings();
-            break;
-
-        case "session:cleared":
-            resetRun(true);
-
-            state.messages = [];
-
-            el("log").innerHTML = "";
-
-            setStatus("idle");
-
-            renderChat();
-            renderTree();
-            renderApprovals();
-            break;
-
-        case "discussion:start":
-        case "discussion:message":
-        case "discussion:observer":
-        case "discussion:round":
-        case "discussion:finish":
-        case "discussion:error":
-            pushDiscussionEvent(event);
-            break;
-
-        default:
-            break;
-    }
-
-    log(event);
+    });
 }
-
-
-function applySnapshot(snapshot) {
-
-    resetRun(true);
-    state.events = [];
-    el("log").innerHTML = "";
-    renderTree();
-
-    state.plan = snapshot.plan || null;
-    renderPlan();
-
-    el("workspace").textContent = snapshot.workspace;
-    el("model").textContent = snapshot.model;
-
-    /* the policy controls live here while Settings is closed and inside the
-       modal while it is open; either way they are in the document, but a
-       render must never break because one of them is momentarily not */
-    const approvalMode = el("approvalMode");
-
-    if (approvalMode) {
-        approvalMode.value = snapshot.approval_mode;
-    }
-
-    if (snapshot.settings) {
-        state.settings = snapshot.settings;
-    }
-
-    el("turns").textContent =
-        `${snapshot.turns} turns${
-            snapshot.cycles
-                ? `, cycle ${snapshot.cycles}`
-                : ""
-        }`;
-
-    const autoContinue = el("autoContinue");
-
-    if (autoContinue) {
-        autoContinue.checked = Boolean(snapshot.auto_continue);
-    }
-    el("autoSwitchStatus").textContent = `auto-switch · ${snapshot.auto_continue ? "on" : "off"}`;
-
-    state.messages = normalizeConversationMessages(snapshot.messages);
-
-    state.session = snapshot.session || null;
-
-    /* A running or finished discussion redraws from the snapshot, so a
-       reload mid-discussion resumes the transcript at the right round. */
-    state.discussion = snapshot.discussion || null;
-
-    if (state.discussionModal && state.discussionModal.isOpen()) {
-        discussionHistoryView(state.discussionEl);
-    }
-
-    refreshDiscussionComposerStatus();
-
-    state.sessions = snapshot.sessions || [];
-
-    el("sessionTitle").textContent =
-        snapshot.session
-            ? snapshot.session.title || "new conversation"
-            : "";
-
-    renderChat();
-
-    for (const event of snapshot.events || []) {
-        /* Messages are already authoritative in snapshot.messages. Replaying
-           their transport events would duplicate every bubble after reload. */
-        if (event.type !== "session:message") {
-            apply(event);
-        }
-    }
-
-    for (const approval of snapshot.pending_approvals || []) {
-
-        state.approvals.set(approval.id, approval);
-    }
-
-    renderApprovals();
-
-    setStatus(snapshot.status);
-}
-
 
 /* -------------------------------------------------------------- settings */
 
@@ -5539,28 +2211,15 @@ function selectedTaskProjectIds() {
 
 function renderAttachments() {
 
-    const list = el("attachmentList");
-    if (!list) return;
+    touch("attachments");
+}
 
-    list.innerHTML = "";
-    for (const [index, attachment] of state.attachments.entries()) {
-        const chip = node("span", "attachment-chip");
-        chip.appendChild(node("span", "attachment-name", attachment.file.name));
-        const remove = node("button", null, "×");
-        remove.type = "button";
-        remove.setAttribute("aria-label", `Remove ${attachment.file.name}`);
-        remove.addEventListener("click", () => {
-            state.attachments.splice(index, 1);
-            state.attachmentError = null;
-            renderAttachments();
-        });
-        chip.appendChild(remove);
-        list.appendChild(chip);
-    }
 
-    if (state.attachmentError) {
-        list.appendChild(node("span", "attachment-error", state.attachmentError));
-    }
+function removeAttachment(index) {
+
+    state.attachments.splice(index, 1);
+    state.attachmentError = null;
+    touch("attachments");
 }
 
 
@@ -5607,12 +2266,8 @@ function taskWithAttachments(task, files) {
 
 function setUploadingState(uploading) {
 
-    const runButton = el("runButton");
-    if (!runButton || state.status === "running") return;
-    runButton.disabled = uploading;
-    runButton.textContent = uploading
-        ? "Uploading files…"
-        : state.discussionMode ? "Start discussion" : "Run task";
+    state.uploading = Boolean(uploading);
+    touch("composer");
 }
 
 
@@ -5645,6 +2300,58 @@ function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = n
 }
 
 
+/*
+| The labelled runs of a multi-project task go one after another. The
+| next one starts when the current one finishes: a run of the project on
+| screen reports that on the event stream (run:status), but the stream is
+| scoped to that project, so a run of any other project is followed by
+| polling its run slot instead. Without that, the queue waited forever for
+| a status it could never receive.
+*/
+let queueToken = 0;
+
+const QUEUE_POLL_MS = 1500;
+
+
+function watchProjectRun(item, token) {
+
+    const poll = async () => {
+
+        if (token !== queueToken || state.status !== "running") {
+            return;
+        }
+
+        try {
+
+            const response = await fetch(`/api/projects/${encodeURIComponent(item.projectId)}/run`);
+            const slot = response.ok ? await response.json() : null;
+
+            if (token !== queueToken || state.status !== "running") {
+                return;
+            }
+
+            if (
+                slot &&
+                slot.task === item.task &&
+                typeof slot.status === "string" &&
+                !["running", "queued"].includes(slot.status)
+            ) {
+                setStatus(slot.status);
+                drainProjectTaskQueue();
+                return;
+            }
+
+        } catch {
+            /* a transient failure: the next poll tries again */
+        }
+
+        setTimeout(poll, QUEUE_POLL_MS);
+    };
+
+    setTimeout(poll, QUEUE_POLL_MS);
+}
+
+
 async function drainProjectTaskQueue() {
 
     if (state.status === "running" || state.multiQueue.length === 0) {
@@ -5652,32 +2359,46 @@ async function drainProjectTaskQueue() {
     }
 
     const next = state.multiQueue.shift();
+    const token = ++queueToken;
 
     state.activeProjectId = next.projectId;
     setStatus("running");
     labelChatForProject(next.projectId);
 
-    const response =
-        await fetch(
-            `/api/projects/${encodeURIComponent(next.projectId)}/tasks`,
-            {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    task: next.task,
-                    ...(next.reasoningEffort ? { reasoning_effort: next.reasoningEffort } : {})
-                })
-            }
-        );
+    let failure = null;
 
-    if (!response.ok) {
+    try {
+
+        const response =
+            await fetch(
+                `/api/projects/${encodeURIComponent(next.projectId)}/tasks`,
+                {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        task: next.task,
+                        ...(next.reasoningEffort ? { reasoning_effort: next.reasoningEffort } : {})
+                    })
+                }
+            );
+
+        if (!response.ok) {
+            failure = await failureText(response, `Could not start ${next.projectId}`);
+        }
+
+    } catch (error) {
+        failure = `Could not start ${next.projectId}: ${error.message || "network error"}`;
+    }
+
+    if (failure) {
         setStatus("idle");
-        pushMessage({
-            role: "assistant",
-            kind: "error",
-            content: `Could not start ${next.projectId}`
-        });
+        notifyError(failure);
         drainProjectTaskQueue();
+        return;
+    }
+
+    if (next.projectId !== state.currentProjectId) {
+        watchProjectRun(next, token);
     }
 }
 
@@ -5725,20 +2446,7 @@ function setCurrentProject(projectId, options = {}) {
 
     /* Drop the previous project's live cards so B cannot linger in A
        while the new stream snapshot is in flight. */
-    resetRun(true);
-    state.messages = [];
-    state.events = [];
-    state.approvals.clear();
-
-    const log = el("log");
-
-    if (log) {
-        log.innerHTML = "";
-    }
-
-    renderChat();
-    renderTree();
-    renderApprovals();
+    resetProjectView();
 
     connect();
 
@@ -6286,7 +2994,7 @@ function bindProjectControls() {
     attachmentInput?.addEventListener("change", event => {
         const files = [...(event.target.files || [])];
         for (const file of files) {
-            state.attachments.push({ file, uploaded: new Map() });
+            state.attachments.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, file, uploaded: new Map() });
         }
         state.attachmentError = null;
         renderAttachments();
@@ -6380,7 +3088,7 @@ function connect() {
         try {
             state.eventSource.close();
         } catch {
-            /* the shim EventSource has no close */
+            /* already closed */
         }
     }
 
@@ -6391,13 +3099,25 @@ function connect() {
 
     source.onmessage = message => {
 
-        const payload =
-            JSON.parse(message.data);
+        /* a stream from a previous project must not draw into this one */
+        if (state.eventSource !== source) {
+            return;
+        }
+
+        let payload;
+
+        try {
+            payload = JSON.parse(message.data);
+        } catch {
+            return;
+        }
+
+        if (!payload || typeof payload !== "object") {
+            return;
+        }
 
         if (payload.type === "snapshot") {
-
             applySnapshot(payload.snapshot);
-
             return;
         }
 
@@ -6406,12 +3126,216 @@ function connect() {
 
     source.onerror = () => {
 
-        const status = el("statusText");
-
-        if (status) {
-            status.textContent = "reconnecting";
+        if (state.eventSource !== source) {
+            return;
         }
+
+        state.reconnecting = true;
+        touch("run");
     };
+}
+
+
+/* ---------------------------------------------------------- task submit */
+
+function selectedReasoningEffort() {
+
+    const selected = el("taskEffort")?.value || "inherit";
+
+    return ["low", "medium", "high", "xhigh"].includes(selected) ? selected : null;
+}
+
+
+function clearComposer() {
+
+    const task = el("task");
+
+    if (task) task.value = "";
+
+    state.attachments = [];
+    state.attachmentError = null;
+    touch("attachments");
+}
+
+
+/* uploads the attachments for each target; false (and a chip error) on failure */
+async function uploadFor(projectIds, filesByProject) {
+
+    if (state.attachments.length === 0) {
+        return true;
+    }
+
+    setUploadingState(true);
+
+    try {
+        for (const projectId of projectIds) {
+            filesByProject.set(projectId || "__default__", await uploadAttachmentsForProject(projectId));
+        }
+        return true;
+    } catch (error) {
+        state.attachmentError = error.message;
+        touch("attachments");
+        return false;
+    } finally {
+        setUploadingState(false);
+    }
+}
+
+
+/*
+| Discussion mode sends the same task box to the panel instead of the
+| delegation tree: the personas and the round limit come from the options
+| row, and the live view opens as it runs.
+*/
+async function submitDiscussion(task, reasoningEffort) {
+
+    clearDiscussionError();
+
+    const personas = selectedDiscussionPersonas();
+
+    if (personas.length === 0) {
+        showDiscussionError("select at least one persona");
+        return;
+    }
+
+    const maxRounds =
+        Math.max(1, Math.min(10, Number(el("discussionRounds")?.value) || 5));
+
+    const files = new Map();
+
+    if (!(await uploadFor([state.currentProjectId], files))) {
+        return;
+    }
+
+    const discussionTask =
+        state.attachments.length > 0
+            ? taskWithAttachments(task, files.get(state.currentProjectId || "__default__"))
+            : task;
+
+    const url =
+        state.currentProjectId
+            ? `/api/projects/${encodeURIComponent(state.currentProjectId)}/discussions`
+            : "/api/discussion";
+
+    state.submitting = true;
+    touch("composer");
+
+    try {
+
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                task: discussionTask,
+                personas,
+                max_rounds: maxRounds,
+                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
+            })
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            showDiscussionError(payload.error || `request failed (${response.status})`);
+            return;
+        }
+
+        const payload = await response.json().catch(() => ({}));
+
+        clearComposer();
+
+        /* the stream confirms with discussion:start; this keeps the
+           composer honest in the meantime */
+        state.discussion = {
+            id: payload.id || null,
+            status: "running",
+            task: discussionTask,
+            personas,
+            max_rounds: maxRounds,
+            rounds: [],
+            observer_decisions: [],
+            final_report: null
+        };
+
+        touch("discussion", "composer");
+        openDiscussion();
+
+    } catch (error) {
+        showDiscussionError(`the discussion could not be started (${error.message || "network error"})`);
+    } finally {
+        state.submitting = false;
+        touch("composer");
+    }
+}
+
+
+async function submitTask(task, reasoningEffort) {
+
+    const targets = selectedTaskProjectIds();
+    const projectIds = targets.length > 0 ? targets : [null];
+    const files = new Map();
+
+    if (!(await uploadFor(projectIds, files))) {
+        return;
+    }
+
+    if (targets.length > 1) {
+        startLabeledProjectQueue(task, targets, files, reasoningEffort);
+        clearComposer();
+        return;
+    }
+
+    const projectId = targets[0] || null;
+
+    if (state.attachments.length > 0) {
+        task = taskWithAttachments(task, files.get(projectId || "__default__"));
+    }
+
+    state.activeProjectId = projectId;
+    setStatus("running");
+
+    const url =
+        projectId
+            ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
+            : "/api/tasks";
+
+    let response;
+
+    try {
+        response = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                task,
+                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
+            })
+        });
+    } catch (error) {
+        setStatus("idle");
+        notifyError(`The task could not be sent: ${error.message || "network error"}`);
+        return;
+    }
+
+    if (!response.ok) {
+        setStatus("idle");
+        notifyError(await failureText(response, "The task was not started"));
+        return;
+    }
+
+    clearComposer();
+
+    if (projectId) {
+        labelChatForProject(projectId);
+    }
+
+    try {
+        const snapshot = await (await fetch("/api/state")).json();
+        if (snapshot && snapshot.turns !== undefined) {
+            state.turnsText = `${snapshot.turns} turns`;
+            touch("header");
+        }
+    } catch {
+        /* the next snapshot carries the count */
+    }
 }
 
 
@@ -6424,208 +3348,29 @@ el("taskForm").addEventListener("submit", async submitEvent => {
     if (task === "" && state.attachments.length === 0) {
         return;
     }
-    if (task === "" && state.attachments.length > 0) {
+
+    if (task === "") {
         task = "Inspect the attached file(s) and determine the appropriate next step.";
     }
-    const selectedEffort = el("taskEffort")?.value || "inherit";
-    const reasoningEffort = ["low", "medium", "high", "xhigh"].includes(selectedEffort)
-        ? selectedEffort
-        : null;
 
-    /*
-    | Discussion mode sends the same task box to the panel instead of
-    | the delegation tree: the personas and the round limit come from
-    | the options row, and the live view opens as it runs.
-    */
+    const reasoningEffort = selectedReasoningEffort();
 
     if (state.discussionMode) {
-
-        const personas =
-            selectedDiscussionPersonas();
-
-        const line =
-            el("discussionStatusLine");
-
-        if (personas.length === 0) {
-
-            if (line) {
-                line.className = "bad";
-                line.textContent =
-                    "select at least one persona";
-            }
-
-            return;
-        }
-
-        const maxRounds =
-            Math.max(
-                1,
-                Math.min(10, Number(el("discussionRounds")?.value) || 5)
-            );
-
-        let discussionTask = task;
-        if (state.attachments.length > 0) {
-            setUploadingState(true);
-            try {
-                const files = await uploadAttachmentsForProject(state.currentProjectId);
-                discussionTask = taskWithAttachments(task, files);
-            } catch (error) {
-                state.attachmentError = error.message;
-                renderAttachments();
-                setUploadingState(false);
-                return;
-            }
-            setUploadingState(false);
-        }
-
-        el("runButton").disabled = true;
-
-        const discussionUrl =
-            state.currentProjectId
-                ? `/api/projects/${encodeURIComponent(state.currentProjectId)}/discussions`
-                : "/api/discussion";
-
-        const response =
-            await fetch(discussionUrl, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    task: discussionTask,
-                    personas,
-                    max_rounds: maxRounds,
-                    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
-                })
-            });
-
-        if (response.ok) {
-
-            el("task").value = "";
-            state.attachments = [];
-            state.attachmentError = null;
-            renderAttachments();
-
-            /* the stream confirms with discussion:start; this keeps
-               the composer honest in the meantime */
-            state.discussion = {
-                id:
-                    (await response.json().catch(() => ({}))).id ||
-                    null,
-                status: "running",
-                task: discussionTask,
-                personas,
-                max_rounds: maxRounds,
-                rounds: [],
-                observer_decisions: [],
-                final_report: null
-            };
-
-            refreshDiscussionComposerStatus();
-
-            openDiscussion();
-
-        } else {
-
-            const payload =
-                await response.json().catch(() => ({}));
-
-            el("runButton").disabled = false;
-
-            if (line) {
-                line.className = "bad";
-                line.textContent =
-                    payload.error ||
-                    `request failed (${response.status})`;
-            }
-        }
-
-        return;
-    }
-
-    const targets = selectedTaskProjectIds();
-    const projectIds = targets.length > 0 ? targets : [null];
-    const attachmentFilesByProject = new Map();
-
-    if (state.attachments.length > 0) {
-        setUploadingState(true);
-        try {
-            for (const projectId of projectIds) {
-                const files = await uploadAttachmentsForProject(projectId);
-                if (projectId) attachmentFilesByProject.set(projectId, files);
-                else attachmentFilesByProject.set("__default__", files);
-            }
-        } catch (error) {
-            state.attachmentError = error.message;
-            renderAttachments();
-            setUploadingState(false);
-            return;
-        }
-        setUploadingState(false);
-    }
-
-    if (targets.length > 1) {
-
-        startLabeledProjectQueue(task, targets, attachmentFilesByProject, reasoningEffort);
-        el("task").value = "";
-        state.attachments = [];
-        state.attachmentError = null;
-        renderAttachments();
-        return;
-    }
-
-    const projectId = targets[0] || null;
-    if (state.attachments.length > 0) {
-        task = taskWithAttachments(
-            task,
-            attachmentFilesByProject.get(projectId || "__default__")
-        );
-    }
-    state.activeProjectId = projectId;
-    setStatus("running");
-
-    const url =
-        projectId
-            ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
-            : "/api/tasks";
-
-    const response =
-        await fetch(url, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                task,
-                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
-            })
-        });
-
-    if (response.ok) {
-
-        el("task").value = "";
-        state.attachments = [];
-        state.attachmentError = null;
-        renderAttachments();
-
-        if (projectId) {
-            labelChatForProject(projectId);
-        }
-
-        const snapshot =
-            await (await fetch("/api/state")).json();
-
-        el("turns").textContent = `${snapshot.turns} turns`;
-
+        await submitDiscussion(task, reasoningEffort);
     } else {
-
-        setStatus("idle");
+        await submitTask(task, reasoningEffort);
     }
 });
 
 
+/* ------------------------------------------------------------- controls */
+
 el("cancelButton").addEventListener("click", async () => {
 
     state.multiQueue = [];
+    queueToken++;
     state.stopPending = true;
-    el("cancelButton").disabled = true;
-    el("cancelButton").textContent = "Stopping…";
+    touch("run");
 
     const projectId = state.activeProjectId;
     const url = projectId
@@ -6635,75 +3380,108 @@ el("cancelButton").addEventListener("click", async () => {
     try {
         const response = await fetch(url, { method: "POST" });
         if (!response.ok) throw new Error(`Stop request failed (${response.status}).`);
-    } catch {
+    } catch (error) {
         state.stopPending = false;
-        el("cancelButton").disabled = state.status !== "running";
-        el("cancelButton").textContent = "Stop";
+        touch("run");
+        notifyError(error.message || "Stop request failed.");
     }
 });
 
 
 el("clearButton").addEventListener("click", async () => {
 
-    await fetch("/api/clear", { method: "POST" });
-
-    el("turns").textContent = "0 turns";
+    try {
+        const response = await fetch("/api/clear", { method: "POST" });
+        if (!response.ok) {
+            notifyError(await failureText(response, "The conversation was not cleared"));
+            return;
+        }
+        state.turnsText = "0 turns";
+        touch("header");
+    } catch (error) {
+        notifyError(`The conversation was not cleared: ${error.message || "network error"}`);
+    }
 });
+
+
+/*
+| The two runtime policy controls take effect on the server. The control
+| shows the new value at once and goes back to the previous one, with a
+| message, if the server does not accept it.
+*/
+async function saveRuntimePolicy({ url, body, apply, revert, label }) {
+
+    apply();
+    touch("header");
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            revert();
+            touch("header");
+            notifyError(await failureText(response, `${label} was not changed`));
+        }
+    } catch (error) {
+        revert();
+        touch("header");
+        notifyError(`${label} was not changed: ${error.message || "network error"}`);
+    }
+}
 
 
 el("autoContinue").addEventListener("change", event => {
 
-    el("autoSwitchStatus").textContent = `auto-switch · ${event.target.checked ? "on" : "off"}`;
+    const previous = Boolean(state.autoContinue);
+    const next = Boolean(event.target.checked);
 
-    fetch("/api/settings", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-            key: "AUTO_CONTINUE",
-            value: event.target.checked
-        })
+    saveRuntimePolicy({
+        url: "/api/settings",
+        body: { key: "AUTO_CONTINUE", value: next },
+        apply: () => { state.autoContinue = next; },
+        revert: () => { state.autoContinue = previous; },
+        label: "Auto-continue"
     });
 });
 
 
+el("approvalMode").addEventListener("change", event => {
+
+    const previous = state.approvalMode;
+    const next = event.target.value;
+
+    saveRuntimePolicy({
+        url: "/api/approval-mode",
+        body: { mode: next },
+        apply: () => { state.approvalMode = next; },
+        revert: () => { state.approvalMode = previous; },
+        label: "Approval mode"
+    });
+});
+
+
+/* clearing the panel clears its rows; the type list follows what is left */
 el("clearLog").addEventListener("click", () => {
 
-    el("log").innerHTML = "";
-
-    /*
-    | The type list is built from the rows that exist, so emptying the
-    | list has to rebuild it or it would keep offering types that are
-    | no longer there.
-    */
-
-    applyLogFilter();
+    state.logRows = [];
+    touch("log");
 });
 
 
 el("logFilter").addEventListener("input", event => {
 
-    state.logFilter =
-        event.target.value.trim().toLowerCase();
-
-    applyLogFilter();
+    state.logFilter = event.target.value.trim().toLowerCase();
+    touch("log");
 });
 
 
 el("logType").addEventListener("change", event => {
 
     state.logType = event.target.value;
-
-    applyLogFilter();
-});
-
-
-el("approvalMode").addEventListener("change", event => {
-
-    fetch("/api/approval-mode", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: event.target.value })
-    });
+    touch("log");
 });
 
 
@@ -6725,36 +3503,24 @@ el("consoleMenu").addEventListener("click", event => {
 });
 
 el("mcpButton").addEventListener("click", openMcp);
-
-
 el("historyButton").addEventListener("click", openHistory);
-
 el("executionButton").addEventListener("click", openExecutionModal);
-
 el("eventsButton").addEventListener("click", openEventsModal);
-
 el("discussionButton").addEventListener("click", toggleDiscussionMode);
-
-
-el("approvalsButton").addEventListener("click", () => {
-
-    if (!state.approvalModal) {
-        openApprovalModal();
-    }
-});
+el("approvalsButton").addEventListener("click", () => approvals.open());
 
 
 el("task").addEventListener("keydown", event => {
 
-    if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key === "Enter"
-    ) {
-
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         el("taskForm").requestSubmit();
     }
 });
 
+
+mountViews();
+
+mount(el("attachmentList"), () => Attachments({ state, onRemove: removeAttachment }), ["attachments"]);
 
 connect();
 

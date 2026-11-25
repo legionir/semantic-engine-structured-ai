@@ -9,6 +9,7 @@
 
 const assert = require("assert");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const harness = require("./harness");
 
 const results = [];
@@ -260,7 +261,7 @@ async function main() {
 
     console.log("\nconsole rendering");
 
-    const console_ = loadConsole();
+    const console_ = await loadConsole();
 
     await test("an agent says who it belongs to and how deep it sits", () => {
 
@@ -1871,6 +1872,9 @@ async function main() {
             ]
         });
 
+        /* earlier tests leave a run marked running; the composer is idle here */
+        console_.send({ type: "run:status", status: "idle" });
+
         const toggle =
             document.getElementById("discussionButton");
         const options =
@@ -2190,7 +2194,7 @@ async function main() {
 | network and the event stream.
 */
 
-function loadConsole() {
+async function loadConsole() {
 
     /* index.html ships the dashboard hidden; the console relies on it */
     document.getElementById("projectDashboard").hidden = true;
@@ -2257,8 +2261,8 @@ function loadConsole() {
 
     global.EventSource = EventSource;
 
-    require(
-        path.join(harness.PUBLIC_DIR, "app", "console.js")
+    await import(
+        pathToFileURL(path.join(harness.PUBLIC_DIR, "app", "main.js")).href
     );
 
     return {

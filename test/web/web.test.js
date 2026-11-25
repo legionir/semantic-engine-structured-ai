@@ -440,6 +440,35 @@ async function main() {
         }
     });
 
+    await test("every module the browser imports is served as JavaScript", async () => {
+
+        /* walk the import graph from the entry the auth gate loads */
+        const seen = new Set();
+        const queue = ["/app/main.js"];
+
+        while (queue.length > 0) {
+
+            const url = queue.shift();
+
+            if (seen.has(url)) continue;
+            seen.add(url);
+
+            const response = await fetch(`${baseUrl}${url}`);
+
+            assert.equal(response.status, 200, url);
+            assert.match(response.headers.get("content-type"), /javascript/, url);
+
+            const text = await response.text();
+
+            for (const match of text.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?from\s+"(\.{1,2}\/[^"]+)"|(?:^|\n)\s*import\s+"(\.{1,2}\/[^"]+)"/g)) {
+                queue.push(new URL(match[1] || match[2], `http://x${url}`).pathname);
+            }
+        }
+
+        assert.ok(seen.has("/vendor/preact.module.js"), "the vendored renderer is reachable");
+        assert.ok(seen.has("/app/console.js"), "the controller is reachable");
+    });
+
     await test("static serving cannot escape the public directory", async () => {
 
         const response =
