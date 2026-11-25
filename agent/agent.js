@@ -225,6 +225,7 @@ const DEFAULT_BASE_URL =
 const endpointProfiles = createEndpointProfiles({
     settings,
     defaultBaseUrl: DEFAULT_BASE_URL,
+    getRunEffort: () => runManager.current()?.reasoningEffort || null,
     schemaAllowed: (endpoint, role) =>
         responseFormatAllowed(schemaKeyFor(endpoint, role))
 });
@@ -2417,7 +2418,8 @@ async function runAgentModular(options = {}) {
         runManager.createRun({
             task: options.task || "",
             parentRunId: options.parent_run_id || null,
-            project: projectContext
+            project: projectContext,
+            reasoningEffort: options.reasoning_effort || null
         });
 
     const projectId =

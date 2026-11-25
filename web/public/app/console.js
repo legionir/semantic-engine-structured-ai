@@ -47,6 +47,11 @@ const state = {
     llmSettingsModal: null,
     planModal: null,
     mcpModal: null,
+    mcpTab: "servers",
+    mcpConfigText: "",
+    mcpConfigPath: "",
+    mcpConfigError: null,
+    mcpConfigNotice: "",
     discussionModal: null,
     discussion: null,
     discussionEl: null,
@@ -2347,7 +2352,7 @@ function mcpAddForm(refresh) {
 }
 
 
-function mcpBody(payload, refresh) {
+function mcpServersBody(payload, refresh) {
 
     const container = node("div", "mcp");
 
@@ -2414,6 +2419,85 @@ function mcpBody(payload, refresh) {
 }
 
 
+function mcpBody(payload, refresh) {
+
+    const container = node("div", "mcp-workspace");
+    const tabs = node("div", "mcp-tabs");
+    const serversTab = node("button", "mcp-tab", "Servers");
+    const jsonTab = node("button", "mcp-tab", "Raw JSON");
+    serversTab.type = jsonTab.type = "button";
+    tabs.append(serversTab, jsonTab);
+
+    const serversPane = node("div", "mcp-tab-panel");
+    serversPane.appendChild(mcpServersBody(payload, refresh));
+
+    const jsonPane = node("section", "mcp-tab-panel mcp-json-editor");
+    const pathLine = node("p", "muted mcp-config-path", state.mcpConfigPath
+        ? `Workspace config: ${state.mcpConfigPath}`
+        : "Workspace MCP config (.agent/mcp.json)");
+    const textarea = node("textarea", "mcp-raw-json");
+    textarea.value = state.mcpConfigText || '{\n  "mcpServers": {}\n}\n';
+    textarea.spellcheck = false;
+    textarea.setAttribute("aria-label", "Raw MCP server JSON");
+    const message = node("p", "mcp-config-message", state.mcpConfigError || state.mcpConfigNotice || "");
+    if (state.mcpConfigError) message.classList.add("bad");
+
+    const save = Modal.button("Save JSON", "", async () => {
+        let parsed;
+        try {
+            parsed = JSON.parse(textarea.value);
+        } catch (error) {
+            message.className = "mcp-config-message bad";
+            message.textContent = `Invalid JSON: ${error.message}`;
+            return;
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            message.className = "mcp-config-message bad";
+            message.textContent = "MCP config must be a JSON object.";
+            return;
+        }
+
+        save.disabled = true;
+        message.className = "mcp-config-message";
+        message.textContent = "Saving…";
+        try {
+            const response = await fetch("/api/mcp/config", {
+                method: "PUT",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ text: textarea.value })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error || `Save failed (${response.status})`);
+            state.mcpConfigText = textarea.value;
+            state.mcpConfigPath = result.path || state.mcpConfigPath;
+            state.mcpConfigError = null;
+            state.mcpConfigNotice = "Saved. MCP servers are reloading.";
+            await refresh(false);
+        } catch (error) {
+            message.className = "mcp-config-message bad";
+            message.textContent = error.message;
+        } finally {
+            save.disabled = false;
+        }
+    });
+    jsonPane.append(pathLine, textarea, save, message);
+
+    const selectTab = tab => {
+        state.mcpTab = tab;
+        serversPane.hidden = tab !== "servers";
+        jsonPane.hidden = tab !== "json";
+        serversTab.classList.toggle("active", tab === "servers");
+        jsonTab.classList.toggle("active", tab === "json");
+    };
+    serversTab.addEventListener("click", () => selectTab("servers"));
+    jsonTab.addEventListener("click", () => selectTab("json"));
+
+    container.append(tabs, serversPane, jsonPane);
+    selectTab(state.mcpTab || "servers");
+    return container;
+}
+
+
 async function openMcp() {
 
     if (state.mcpModal && state.mcpModal.isOpen()) {
@@ -2443,6 +2527,18 @@ async function openMcp() {
         return null;
     }
 
+    state.mcpConfigError = null;
+    state.mcpConfigNotice = "";
+    try {
+        const response = await fetch("/api/mcp/config");
+        const config = await response.json();
+        if (!response.ok) throw new Error(config.error || `Config load failed (${response.status})`);
+        state.mcpConfigText = config.text || '{\n  "mcpServers": {}\n}\n';
+        state.mcpConfigPath = config.path || "";
+    } catch (error) {
+        state.mcpConfigError = error.message;
+    }
+
     const refresh = async (force) => {
 
         let next;
@@ -2455,6 +2551,9 @@ async function openMcp() {
 
         if (state.mcpModal && state.mcpModal.isOpen()) {
 
+            state.mcpModal.setSubtitle(
+                `${next.tool_count} tool(s) from ${next.servers.filter(server => server.state === "ready").length} connected server(s)`
+            );
             state.mcpModal.setBody(mcpBody(next, () => refresh(false)));
         }
     };
@@ -5232,19 +5331,33 @@ function openLlmSettings() {
 }
 
 
+function isMobilePlanViewport() {
+
+    if (typeof window === "undefined") return false;
+    if (typeof window.matchMedia === "function") {
+        return window.matchMedia("(max-width: 900px)").matches;
+    }
+    return Number(window.innerWidth || 0) <= 900;
+}
+
+
 function openPlanModal() {
 
-    if (state.planModal && state.planModal.isOpen()) return;
+    if (!isMobilePlanViewport() || (state.planModal && state.planModal.isOpen())) return;
     const panel = el("planPanel");
     if (!panel) return;
-    panel.hidden = false;
+
+    const home = panel.parentNode;
+    panel.classList.remove("panel");
+    panel.classList.add("plan-modal-content");
+
     state.planModal = Modal.open({
         title: "Plan",
         size: "large",
         body: panel,
         onClose: () => {
-            panel.hidden = true;
-            const home = el("consoleMain");
+            panel.classList.remove("plan-modal-content");
+            panel.classList.add("panel");
             if (home && panel.parentNode !== home) home.appendChild(panel);
             state.planModal = null;
         }
@@ -5379,6 +5492,7 @@ function navigateConsole(projectId, tab, replace) {
         if (history && typeof history[method] === "function") {
             history[method]({ projectId, tab }, "", path);
         }
+
 
     } catch {
         /* tests */
@@ -5516,14 +5630,15 @@ function labelChatForProject(projectId) {
 }
 
 
-function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = new Map()) {
+function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = new Map(), reasoningEffort = null) {
 
     state.multiQueue = projectIds.map(id => ({
         projectId: id,
         task: taskWithAttachments(
             `[${(projectById(id) || { name: id }).name}] ${task}`,
             attachmentFilesByProject.get(id) || []
-        )
+        ),
+        reasoningEffort
     }));
 
     drainProjectTaskQueue();
@@ -5548,7 +5663,10 @@ async function drainProjectTaskQueue() {
             {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ task: next.task })
+                body: JSON.stringify({
+                    task: next.task,
+                    ...(next.reasoningEffort ? { reasoning_effort: next.reasoningEffort } : {})
+                })
             }
         );
 
@@ -6309,6 +6427,10 @@ el("taskForm").addEventListener("submit", async submitEvent => {
     if (task === "" && state.attachments.length > 0) {
         task = "Inspect the attached file(s) and determine the appropriate next step.";
     }
+    const selectedEffort = el("taskEffort")?.value || "inherit";
+    const reasoningEffort = ["low", "medium", "high", "xhigh"].includes(selectedEffort)
+        ? selectedEffort
+        : null;
 
     /*
     | Discussion mode sends the same task box to the panel instead of
@@ -6367,7 +6489,12 @@ el("taskForm").addEventListener("submit", async submitEvent => {
             await fetch(discussionUrl, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ task: discussionTask, personas, max_rounds: maxRounds })
+                body: JSON.stringify({
+                    task: discussionTask,
+                    personas,
+                    max_rounds: maxRounds,
+                    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
+                })
             });
 
         if (response.ok) {
@@ -6437,7 +6564,7 @@ el("taskForm").addEventListener("submit", async submitEvent => {
 
     if (targets.length > 1) {
 
-        startLabeledProjectQueue(task, targets, attachmentFilesByProject);
+        startLabeledProjectQueue(task, targets, attachmentFilesByProject, reasoningEffort);
         el("task").value = "";
         state.attachments = [];
         state.attachmentError = null;
@@ -6464,7 +6591,10 @@ el("taskForm").addEventListener("submit", async submitEvent => {
         await fetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ task })
+            body: JSON.stringify({
+                task,
+                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
+            })
         });
 
     if (response.ok) {

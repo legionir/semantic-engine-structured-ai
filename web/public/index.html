@@ -79,7 +79,17 @@
 
       <form id="taskForm" class="composer">
         <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
-
+        <label class="effort-control" for="taskEffort">
+          <span>Effort</span>
+          <select id="taskEffort" aria-label="Reasoning effort for all agent layers">
+            <option value="inherit" selected>inherit</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="xhigh">extra high</option>
+          </select>
+          <span class="effort-hint">applies to all layers when changed</span>
+        </label>
         <div id="discussionOptions" class="discussion-options-row" hidden></div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
@@ -92,7 +102,7 @@
       </form>
     </div>
 
-    <div class="panel plan-panel" id="planPanel" hidden>
+    <div class="panel plan-panel" id="planPanel">
       <div class="panel-head">
         <h2>Plan</h2>
         <span class="muted" id="planSummary"></span>

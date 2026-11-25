@@ -97,6 +97,13 @@ function createServer(runtime, options = {}) {
             )
         );
 
+    const requestReasoningEffort = body => {
+        const value = body && body.reasoning_effort;
+        if (value === undefined || value === null || value === "" || value === "inherit") return null;
+        if (["low", "medium", "high", "xhigh"].includes(value)) return value;
+        throw Object.assign(new Error("reasoning_effort must be inherit, low, medium, high, or xhigh"), { status: 400 });
+    };
+
     const state = {
         status: "idle",
 
@@ -1056,7 +1063,8 @@ function createServer(runtime, options = {}) {
                 await runtime.runAgent({
                     task,
                     history: slot.history,
-                    projectId
+                    projectId,
+                    ...(runOptions.reasoningEffort ? { reasoning_effort: runOptions.reasoningEffort } : {})
                 });
 
             slot.answer = action.response ? action.response.content : null;
@@ -1178,6 +1186,9 @@ function createServer(runtime, options = {}) {
 
                     ...(runOptions.projectId
                         ? { projectId: runOptions.projectId }
+                        : {}),
+                    ...(runOptions.reasoningEffort
+                        ? { reasoning_effort: runOptions.reasoningEffort }
                         : {})
                 });
 
@@ -1424,7 +1435,8 @@ function createServer(runtime, options = {}) {
         personas,
         maxRounds,
         projectId = null,
-        projectContext = null
+        projectContext = null,
+        reasoningEffort = null
     }) {
 
         const {
@@ -1446,8 +1458,8 @@ function createServer(runtime, options = {}) {
 
         const caller =
             typeof runtime.callAI === "function"
-                ? createLlmCaller({ callAI: runtime.callAI })
-                : createLlmCaller({ endpointFor: runtime.endpointFor });
+                ? createLlmCaller({ callAI: runtime.callAI, reasoningEffort })
+                : createLlmCaller({ endpointFor: runtime.endpointFor, reasoningEffort });
 
         const started =
             discussionService.start({
@@ -1739,6 +1751,91 @@ function createServer(runtime, options = {}) {
                 }
 
                 /* ----------------------------------------------- mcp */
+
+                if (
+                    pathname === "/api/mcp/config" &&
+                    req.method === "GET"
+                ) {
+                    if (requireAdmin()) return;
+
+                    const manager = toolRuntime.mcp._manager;
+                    manager.load();
+                    const loader = require(path.join(__dirname, "..", "..", "agent", "mcp", "McpConfigLoader"));
+                    const file = loader.workspaceFile(manager.workspaceRoot);
+                    const text = fs.existsSync(file)
+                        ? fs.readFileSync(file, "utf8")
+                        : `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`;
+
+                    sendJson(res, 200, { text, path: file });
+                    return;
+                }
+
+                if (
+                    pathname === "/api/mcp/config" &&
+                    req.method === "PUT"
+                ) {
+                    if (requireAdmin()) return;
+
+                    if (runtime.settings.get("MCP_ALLOW_RUNTIME_ADD") === false) {
+                        sendJson(res, 403, { error: "runtime MCP server management is disabled" });
+                        return;
+                    }
+
+                    try {
+                        const body = await readBody(req);
+                        const text = typeof body.text === "string" ? body.text : "";
+                        const document = JSON.parse(text);
+                        if (!document || typeof document !== "object" || Array.isArray(document)) {
+                            throw new Error("MCP config must be a JSON object");
+                        }
+
+                        const loader = require(path.join(__dirname, "..", "..", "agent", "mcp", "McpConfigLoader"));
+                        const validator = require(path.join(__dirname, "..", "..", "agent", "mcp", "McpConfigValidator"));
+                        const manager = toolRuntime.mcp._manager;
+                        manager.load();
+                        const root = manager.workspaceRoot;
+                        const file = loader.workspaceFile(root);
+                        const container = document.mcpServers || document.mcp_servers || document.servers;
+                        if (!container || typeof container !== "object" || Array.isArray(container)) {
+                            throw new Error('MCP config must contain an object under "mcpServers"');
+                        }
+
+                        const entries = loader.entriesOf(document);
+                        const normalized = new Map();
+                        for (const [name, definition] of entries) {
+                            if (typeof name !== "string" || !definition || typeof definition !== "object" || Array.isArray(definition)) {
+                                throw new Error("each MCP server must have a name and an object definition");
+                            }
+                            const checked = validator.normalizeOne(name, definition, root);
+                            normalized.set(name, checked);
+                        }
+
+                        const previousDocument = loader.readJsonFile(file) || { mcpServers: {} };
+                        const previousEntries = new Map(loader.entriesOf(previousDocument));
+                        for (const [name, definition] of entries) {
+                            const previous = previousEntries.get(name);
+                            if (!previous || JSON.stringify(previous) !== JSON.stringify(definition)) {
+                                await runtime.policyEngine.enforce("mcp_add", { name, ...definition }, "web_console");
+                            }
+                        }
+                        for (const name of previousEntries.keys()) {
+                            if (!normalized.has(name)) {
+                                await runtime.policyEngine.enforce("mcp_remove", { name }, "web_console");
+                            }
+                        }
+
+                        fs.mkdirSync(path.dirname(file), { recursive: true });
+                        fs.writeFileSync(file, `${JSON.stringify(document, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+                        manager.invalidate();
+                        manager.load();
+                        await toolRuntime.discoverMcpTools({ force: true }).catch(() => {});
+
+                        sendJson(res, 200, { ok: true, path: file });
+                    } catch (error) {
+                        sendJson(res, error.status || 400, { error: error.message || "invalid MCP config" });
+                    }
+                    return;
+                }
 
                 if (
                     pathname === "/api/mcp" &&
@@ -2297,6 +2394,13 @@ function createServer(runtime, options = {}) {
                         typeof body.task === "string"
                             ? body.task.trim()
                             : "";
+                    let reasoningEffort;
+                    try {
+                        reasoningEffort = requestReasoningEffort(body);
+                    } catch (error) {
+                        sendJson(res, error.status || 400, { error: error.message });
+                        return;
+                    }
 
                     if (task === "") {
 
@@ -2327,7 +2431,7 @@ function createServer(runtime, options = {}) {
 
                     /* the run continues in the background */
 
-                    startTask(task).catch(() => {});
+                    startTask(task, { reasoningEffort }).catch(() => {});
 
                     sendJson(res, 202, { accepted: true });
 
@@ -2552,6 +2656,13 @@ function createServer(runtime, options = {}) {
                             ? body.personas.filter(id => typeof id === "string").map(id => id.trim()).filter(Boolean)
                             : [];
                         const maxRounds = Number.isInteger(body.max_rounds) ? body.max_rounds : 5;
+                        let reasoningEffort;
+                        try {
+                            reasoningEffort = requestReasoningEffort(body);
+                        } catch (error) {
+                            sendJson(res, error.status || 400, { error: error.message });
+                            return;
+                        }
 
                         if (task === "" || personas.length === 0 || maxRounds < 1 || maxRounds > 10) {
                             sendJson(res, 400, {
@@ -2589,7 +2700,8 @@ function createServer(runtime, options = {}) {
                             personas,
                             maxRounds,
                             projectId: record.id,
-                            projectContext: ctx
+                            projectContext: ctx,
+                            reasoningEffort
                         }).catch(() => {});
 
                         sendJson(res, 202, {
@@ -2749,6 +2861,13 @@ function createServer(runtime, options = {}) {
                                 : typeof body.message === "string"
                                     ? body.message.trim()
                                     : "";
+                        let reasoningEffort;
+                        try {
+                            reasoningEffort = requestReasoningEffort(body);
+                        } catch (error) {
+                            sendJson(res, error.status || 400, { error: error.message });
+                            return;
+                        }
 
                         if (task === "") {
 
@@ -2786,7 +2905,7 @@ function createServer(runtime, options = {}) {
                             return;
                         }
 
-                        startTask(task, { projectId: record.id }).catch(() => {});
+                        startTask(task, { projectId: record.id, reasoningEffort }).catch(() => {});
 
                         sendJson(res, 202, {
                             accepted: true,
@@ -2876,6 +2995,13 @@ function createServer(runtime, options = {}) {
                         Number.isInteger(body.max_rounds)
                             ? body.max_rounds
                             : 5;
+                    let reasoningEffort;
+                    try {
+                        reasoningEffort = requestReasoningEffort(body);
+                    } catch (error) {
+                        sendJson(res, error.status || 400, { error: error.message });
+                        return;
+                    }
 
                     if (task === "") {
                         sendJson(res, 400, { error: "task is required" });
@@ -2929,7 +3055,7 @@ function createServer(runtime, options = {}) {
                     /* the rounds continue in the background, their
                        events stream out through /api/events */
 
-                    startDiscussion({ task, personas, maxRounds })
+                    startDiscussion({ task, personas, maxRounds, reasoningEffort })
                         .catch(error => {
                             /*
                             | A rejection before the discussion was

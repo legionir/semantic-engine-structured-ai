@@ -174,7 +174,8 @@ class RunManager {
         parentRunId = null,
         project = null,
         turnId = null,
-        messages = []
+        messages = [],
+        reasoningEffort = null
     } = {}) {
 
         const context =
@@ -185,7 +186,8 @@ class RunManager {
                 task,
                 parentRunId,
                 turnId,
-                messages
+                messages,
+                reasoningEffort
             });
 
         return context;

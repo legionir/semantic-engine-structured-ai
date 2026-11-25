@@ -29,7 +29,8 @@ class AgentRunContext {
         task = "",
         parentRunId = null,
         turnId = null,
-        messages = []
+        messages = [],
+        reasoningEffort = null
     } = {}) {
 
         this.runId = runId;
@@ -39,6 +40,8 @@ class AgentRunContext {
         this.project = project;
 
         this.task = task;
+
+        this.reasoningEffort = reasoningEffort;
 
         this.parentRunId = parentRunId;
 

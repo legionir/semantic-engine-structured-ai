@@ -2386,6 +2386,8 @@ async function main() {
         settings.set("ENDPOINT_L2_API_KEY", "cheap-key");
         settings.set("ENDPOINT_SUMMARY_MODEL", "tiny-model");
         settings.set("ENDPOINT_SUMMARY_TEMPERATURE", 0);
+        settings.set("AGENT_REASONING_EFFORT", "medium");
+        settings.set("ENDPOINT_L1_REASONING_EFFORT", "high");
 
         assert.equal(
             runtime.endpointFor("L1", null).model,
@@ -2398,6 +2400,24 @@ async function main() {
         assert.equal(level2.base_url, "http://cheap/v1");
         assert.equal(level2.api_key, "cheap-key");
         assert.equal(level2.endpoint, "http://cheap/v1/chat/completions");
+        assert.equal(level2.reasoning_effort, "medium", "unset layer effort inherits AGENT_REASONING_EFFORT");
+        assert.equal(runtime.endpointFor("L1", null).reasoning_effort, "high", "a layer-specific effort overrides the agent default");
+
+        const request = runtime.buildAgentRequest({
+            messages: [{ role: "user", content: "test" }],
+            agentDefinition: null,
+            tools: [],
+            responseFormat: null,
+            role: "L1"
+        });
+        assert.equal(request.reasoning_effort, "high");
+
+        const runContext = runtime.runManager.createRun({ reasoningEffort: "low" });
+        const runEffort = await runtime.runManager.execute(
+            runContext,
+            () => runtime.endpointFor("L2", null).reasoning_effort
+        );
+        assert.equal(runEffort, "low", "a per-task effort selection overrides all endpoint layers");
 
         /* a role model outranks the profile's own */
         assert.equal(
@@ -2422,6 +2442,8 @@ async function main() {
             "ENDPOINT_L2_API_KEY",
             "ENDPOINT_SUMMARY_MODEL",
             "ENDPOINT_SUMMARY_TEMPERATURE",
+            "AGENT_REASONING_EFFORT",
+            "ENDPOINT_L1_REASONING_EFFORT",
             "AGENT_MODEL",
             "AGENT_BASE_URL"
         ]) {

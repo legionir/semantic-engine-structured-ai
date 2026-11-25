@@ -61,7 +61,8 @@ function createAgentRequestExecutor(deps) {
         tools,
         responseFormat,
         timeoutMs,
-        role
+        role,
+        reasoning_effort
     }, profile, schemaKey) {
         const request = deps.buildAgentRequest({
             messages,
@@ -69,6 +70,7 @@ function createAgentRequestExecutor(deps) {
             tools,
             responseFormat,
             role,
+            reasoningEffort: reasoning_effort,
             withSchema: responseFormatAllowed(schemaKey)
         });
 

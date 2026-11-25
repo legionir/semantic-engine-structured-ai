@@ -35,6 +35,7 @@ class RequestBuilder {
         tools,
         responseFormat,
         role,
+        reasoningEffort,
         withSchema = true
     }) {
 
@@ -65,6 +66,11 @@ class RequestBuilder {
                 agentDefinition.max_tokens
             ) {
                 request.max_tokens = agentDefinition.max_tokens;
+            }
+
+            const effort = reasoningEffort || profile.reasoning_effort;
+            if (["low", "medium", "high", "xhigh"].includes(effort)) {
+                request.reasoning_effort = effort;
             }
 
             return request;
@@ -110,6 +116,11 @@ class RequestBuilder {
 
         if (ceiling > 0) {
             request.max_tokens = ceiling;
+        }
+
+        const effort = reasoningEffort || profile.reasoning_effort;
+        if (["low", "medium", "high", "xhigh"].includes(effort)) {
+            request.reasoning_effort = effort;
         }
 
         return request;

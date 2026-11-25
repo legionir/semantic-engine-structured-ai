@@ -508,12 +508,6 @@ function backdrops() {
 }
 
 
-function descendants(root) {
-
-    return [root, ...root.children.flatMap(descendants)];
-}
-
-
 async function main() {
 
     console.log("modal service");
@@ -1741,16 +1735,63 @@ async function main() {
         );
     });
 
-    await test("the Plan action opens the card as its own modal", () => {
+    await test("Plan stays beside the conversation on desktop and uses one mobile modal", () => {
 
+        const panel = document.getElementById("planPanel");
+        const before = Modal.openCount;
+        window.innerWidth = 1280;
         document.getElementById("planButton").dispatch("click");
-        const dialog =
-            document.body.children.filter(
-                child => child.classList.contains("modal-backdrop")
-            )[0].children[0];
+        assert.equal(Modal.openCount, before, "desktop uses the inline plan panel");
+
+        window.innerWidth = 390;
+        document.getElementById("planButton").dispatch("click");
+        const backdrop = document.body.children.find(child => child.classList.contains("modal-backdrop"));
+        const dialog = backdrop.children[0];
         assert.match(dialog.textContent, /Plan/);
+        assert.equal(dialog.querySelectorAll(".panel").length, 0, "the plan does not create a second nested card");
         Modal.closeTop("test");
-        assert.equal(document.getElementById("planPanel").hidden, true);
+        assert.equal(panel.classList.contains("plan-modal-content"), false);
+        window.innerWidth = 1280;
+    });
+
+
+    await test("MCP modal has a raw JSON tab that saves the workspace config", async () => {
+
+        console_.reply("/api/mcp", {
+            enabled: true,
+            servers: [],
+            tools: [],
+            problems: [],
+            tool_count: 0
+        });
+        console_.reply("/api/mcp/config", {
+            text: '{\n  "mcpServers": {}\n}\n',
+            path: "/workspace/.agent/mcp.json"
+        });
+        document.getElementById("mcpButton").dispatch("click");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const backdrop = document.body.children.find(child => child.classList.contains("modal-backdrop"));
+        const dialog = backdrop.children[0];
+        const tabs = dialog.querySelectorAll(".mcp-tab");
+        assert.equal(tabs.length, 2);
+        tabs[1].dispatch("click");
+
+        const textarea = dialog.querySelectorAll(".mcp-raw-json")[0];
+        assert.ok(textarea.value.includes("mcpServers"));
+        textarea.value = '{\n  "mcpServers": {\n    "local": { "command": "node", "args": ["server.js"] }\n  }\n}\n';
+        dialog.querySelectorAll(".mcp-json-editor")[0].querySelector("button").dispatch("click");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        assert.ok(console_.posted.some(item =>
+            item.url === "/api/mcp/config" &&
+            item.method === "PUT" &&
+            item.body &&
+            item.body.text.includes('"local"')
+        ));
+        Modal.closeTop("test");
     });
 
 
@@ -2387,12 +2428,16 @@ async function main() {
         document.getElementById("projectsButton").dispatch("click");
         await tick();
 
-        let items = descendants(backdrops().at(-1));
-        let boxes = items.filter(item => item.classList.contains("project-picker-checkbox"));
-        let confirm = items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
+        const backdrop = backdrops().at(-1);
+        const walk = root => [root, ...root.children.flatMap(walk)];
+        const descendants = walk(backdrop);
+        const boxes = descendants.filter(item => item.classList.contains("project-picker-checkbox"));
+        const confirm = descendants.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
+
         assert.equal(boxes.length, 2);
-        assert.equal(confirm.disabled, false, "Default Workspace is selected by default");
+        assert.equal(confirm.disabled, false, "Default Workspace is preselected and confirmable");
         boxes.forEach(box => { box.checked = true; box.dispatch("change"); });
+        assert.equal(confirm.disabled, false, "Confirm enables after project selection");
         confirm.dispatch("click");
         await tick();
 
@@ -2402,30 +2447,34 @@ async function main() {
 
         document.getElementById("projectsButton").dispatch("click");
         await tick();
-        items = descendants(backdrops().at(-1));
-        const workspaceChoice = items.find(item => item.type === "radio" && item.name === "projectSelectionMode");
-        confirm = items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
-        assert.ok(workspaceChoice, "Default Workspace is an explicit choice");
+        const workspaceModal = backdrops().at(-1);
+        const workspaceNodes = walk(workspaceModal);
+        const workspaceChoice = workspaceNodes.find(item => item.type === "radio" && item.name === "projectSelectionMode");
+        const workspaceConfirm = workspaceNodes.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
+        assert.ok(workspaceChoice, "Default Workspace is available as a selection");
         workspaceChoice.checked = true;
         workspaceChoice.dispatch("change");
-        confirm.dispatch("click");
+        workspaceConfirm.dispatch("click");
         await tick();
         assert.equal(document.getElementById("activeProjectName").textContent, "Default Workspace");
     });
 
-    await test("a scoped task posts to the project route", async () => {
+    await test("a scoped task posts the selected effort to the project route", async () => {
 
         document.getElementById("projectsButton").dispatch("click");
         await tick();
-        let items = descendants(backdrops().at(-1));
-        const boxes = items.filter(item => item.classList.contains("project-picker-checkbox"));
+        const backdrop = backdrops().at(-1);
+        const walk = root => [root, ...root.children.flatMap(walk)];
+        const descendants = walk(backdrop);
+        const boxes = descendants.filter(item => item.classList.contains("project-picker-checkbox"));
         boxes.forEach((box, index) => {
             box.checked = index === 0;
             box.dispatch("change");
         });
-        items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm").dispatch("click");
+        descendants.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm").dispatch("click");
         await tick();
 
+        document.getElementById("taskEffort").value = "high";
         document.getElementById("task").value = "run tests";
         document.getElementById("taskForm").dispatch("submit");
 
@@ -2435,13 +2484,15 @@ async function main() {
             console_.posted.some(item =>
                 item.url === "/api/projects/prj-a/tasks" &&
                 item.body &&
-                item.body.task === "run tests"
+                item.body.task === "run tests" &&
+                item.body.reasoning_effort === "high"
             ),
-            "the selected project must receive the task"
+            "the selected project and all its layers must receive the chosen effort"
         );
+        document.getElementById("taskEffort").value = "inherit";
     });
 
-    await test("the project bar has no right-side inputs and shows the active project", () => {
+    await test("the project bar replaces its right-side controls with the active-project label", () => {
 
         assert.equal(document.getElementById("projectSwitcher"), null);
         assert.equal(document.getElementById("taskScopeMode"), null);
@@ -2529,11 +2580,14 @@ async function main() {
 
         document.getElementById("projectsButton").dispatch("click");
         await tick();
-        const items = descendants(backdrops().at(-1));
-        const boxes = items.filter(item => item.classList.contains("project-picker-checkbox"));
+        const backdrop = backdrops().at(-1);
+        const walk = root => [root, ...root.children.flatMap(walk)];
+        const descendants = walk(backdrop);
+        const boxes = descendants.filter(item => item.classList.contains("project-picker-checkbox"));
+        const confirm = descendants.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
         assert.ok(boxes.length >= 2, "both registered projects should be listed");
         boxes.forEach(box => { box.checked = true; box.dispatch("change"); });
-        items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm").dispatch("click");
+        confirm.dispatch("click");
         await tick();
 
         const before =
@@ -2620,6 +2674,8 @@ function loadConsole() {
     for (const id of ["task", "logFilter", "attachmentInput"]) {
         document.register(id, "input");
     }
+    const taskEffort = document.register("taskEffort", "select");
+    taskEffort.value = "inherit";
 
     document.register("logType", "select");
     document.register("logCount", "span");
@@ -2674,6 +2730,7 @@ function loadConsole() {
     const windowListeners = new Map();
 
     global.window = {
+        innerWidth: 1280,
         addEventListener(type, handler) {
 
             if (!windowListeners.has(type)) {

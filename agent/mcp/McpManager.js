@@ -37,6 +37,20 @@ const { createMcpManagerRegistry } = require("./McpManagerRegistry");
 | the run's projectId (the previous behaviour) made a child delegated to
 | project B use project A's servers and trust scope.
 */
+function closeClient(client) {
+
+    if (!client || typeof client.close !== "function") {
+        return Promise.resolve();
+    }
+
+    try {
+        return Promise.resolve(client.close()).catch(() => {});
+    } catch {
+        return Promise.resolve();
+    }
+}
+
+
 function currentProject() {
 
     try {
@@ -174,7 +188,7 @@ class McpManager {
 
             if (existing) {
 
-                void existing.close().catch(() => {});
+                void closeClient(existing);
             }
 
             this.clients.set(
@@ -189,7 +203,7 @@ class McpManager {
                 continue;
             }
 
-            void client.close().catch(() => {});
+            void closeClient(client);
 
             this.clients.delete(name);
         }
@@ -559,7 +573,7 @@ class McpManager {
 
         } catch (error) {
 
-            await client.close().catch(() => {});
+            await closeClient(client);
 
             throw new Error(
                 `MCP server "${normalized.name}" could not be reached: ${error.message}`
@@ -568,7 +582,7 @@ class McpManager {
 
         if (previous) {
 
-            await previous.close().catch(() => {});
+            await closeClient(previous);
         }
 
         this.clients.set(normalized.name, client);
@@ -617,7 +631,7 @@ class McpManager {
 
         if (client) {
 
-            await client.close().catch(() => {});
+            await closeClient(client);
 
             this.clients.delete(name);
         }
@@ -670,7 +684,7 @@ class McpManager {
 
         if (!enabled) {
 
-            void client.close().catch(() => {});
+            void closeClient(client);
 
             for (const key of [...this.catalogue.keys()]) {
 
@@ -763,9 +777,7 @@ class McpManager {
         const closing =
             [...this.clients.values()].map(
                 client =>
-                    client && typeof client.close === "function"
-                        ? client.close().catch(() => {})
-                        : Promise.resolve()
+                    closeClient(client)
             );
 
         this.clients.clear();

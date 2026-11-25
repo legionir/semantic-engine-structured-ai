@@ -67,12 +67,14 @@ function startModelStub() {
 
     return new Promise(resolve => {
 
+        const requests = [];
         const server = http.createServer((req, res) => {
 
             let body = "";
             req.on("data", chunk => (body += chunk));
             req.on("end", () => {
 
+                try { requests.push(JSON.parse(body)); } catch { /* ignored non-JSON request */ }
                 res.setHeader("content-type", "application/json");
                 res.end(JSON.stringify({
                     choices: [{
@@ -97,6 +99,7 @@ function startModelStub() {
 
             resolve({
                 port: server.address().port,
+                requests,
                 close: () => new Promise(done => server.close(done))
             });
         });
@@ -317,6 +320,23 @@ async function main() {
     const master = server.token;
 
 
+    await test("MCP raw workspace config can be read and saved as JSON", async () => {
+
+        const loaded = await request(baseUrl, "GET", "/api/mcp/config", { token: master });
+        assert.equal(loaded.status, 200);
+        assert.match(loaded.body.text, /mcpServers/);
+        assert.match(loaded.body.path, /\.agent[\\/]mcp\.json$/);
+
+        const text = '{\n  "mcpServers": {}\n}';
+        const saved = await request(baseUrl, "PUT", "/api/mcp/config", {
+            token: master,
+            body: { text }
+        });
+        assert.equal(saved.status, 200, saved.body.error);
+        assert.deepEqual(JSON.parse(fs.readFileSync(saved.body.path, "utf8")), { mcpServers: {} });
+    });
+
+
     await test("GET /api/projects lists registered projects", async () => {
 
         const listed = await request(baseUrl, "GET", "/api/projects", { token: master });
@@ -466,6 +486,30 @@ async function main() {
         }
 
         throw new Error("chat run never finished");
+    });
+
+
+    await test("a task effort override reaches the model and invalid values are rejected", async () => {
+
+        const invalid = await request(baseUrl, "POST", "/api/projects/prj-a/tasks", {
+            token: master,
+            body: { task: "invalid effort probe", reasoning_effort: "ultra" }
+        });
+        assert.equal(invalid.status, 400);
+
+        const before = stub.requests.length;
+        const submitted = await request(baseUrl, "POST", "/api/projects/prj-a/tasks", {
+            token: master,
+            body: { task: "effort probe", reasoning_effort: "high" }
+        });
+        assert.equal(submitted.status, 202);
+
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+            if (stub.requests.slice(before).some(payload => payload.reasoning_effort === "high")) return;
+            await new Promise(done => setTimeout(done, 25));
+        }
+        throw new Error("the model request did not receive reasoning_effort=high");
     });
 
 

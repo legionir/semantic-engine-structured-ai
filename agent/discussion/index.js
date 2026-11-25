@@ -25,7 +25,7 @@ const { LoopDetector } = require("./loopDetector");
  *               endpoint, for standalone use (tests, scripts, the CLI
  *               discussion mode) where the full runtime is not loaded.
  */
-function createLlmCaller({ callAI, endpointFor } = {}) {
+function createLlmCaller({ callAI, endpointFor, reasoningEffort } = {}) {
 
     if (typeof callAI === "function") {
 
@@ -40,7 +40,8 @@ function createLlmCaller({ callAI, endpointFor } = {}) {
                 tools: undefined,
                 responseFormat: null,
                 role: personaDef.model_role || "L1",
-                scope: personaDef.id
+                scope: personaDef.id,
+                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
             });
 
             const content =
@@ -72,7 +73,10 @@ function createLlmCaller({ callAI, endpointFor } = {}) {
                     body: JSON.stringify({
                         model: profile.model,
                         messages,
-                        temperature: 0.2
+                        temperature: 0.2,
+                        ...((reasoningEffort || profile.reasoning_effort)
+                            ? { reasoning_effort: reasoningEffort || profile.reasoning_effort }
+                            : {})
                     })
                 });
 

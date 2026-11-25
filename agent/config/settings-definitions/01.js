@@ -75,6 +75,14 @@ module.exports = [
         "description": "Sampling temperature used when a profile does not set one."
     },
     {
+        "key": "AGENT_REASONING_EFFORT",
+        "group": "endpoint",
+        "type": "enum",
+        "values": ["inherit", "low", "medium", "high", "xhigh"],
+        "default": "inherit",
+        "description": "Default reasoning effort inherited by layer models whose effort is set to inherit."
+    },
+    {
         "key": "RESPONSE_FORMAT_MODE",
         "group": "endpoint",
         "type": "enum",
@@ -218,6 +226,14 @@ module.exports = [
         "description": "Temperature for the root orchestrator. Minus one inherits the profile's value, then AGENT_TEMPERATURE."
     },
     {
+        "key": "ENDPOINT_MAIN_REASONING_EFFORT",
+        "group": "endpoint.main",
+        "type": "enum",
+        "values": ["inherit", "low", "medium", "high", "xhigh"],
+        "default": "inherit",
+        "description": "Reasoning effort for the root orchestrator. Inherit uses AGENT_REASONING_EFFORT."
+    },
+    {
         "key": "ENDPOINT_L1_BASE_URL",
         "group": "endpoint.l1",
         "type": "string",
@@ -256,6 +272,14 @@ module.exports = [
         "min": -1,
         "max": 2,
         "description": "Temperature for sub-agents at depth 1. Minus one inherits the profile's value, then AGENT_TEMPERATURE."
+    },
+    {
+        "key": "ENDPOINT_L1_REASONING_EFFORT",
+        "group": "endpoint.l1",
+        "type": "enum",
+        "values": ["inherit", "low", "medium", "high", "xhigh"],
+        "default": "inherit",
+        "description": "Reasoning effort for depth-1 agents. Inherit uses AGENT_REASONING_EFFORT."
     },
     {
         "key": "ENDPOINT_L2_BASE_URL",
@@ -298,6 +322,14 @@ module.exports = [
         "description": "Temperature for sub-agents at depth 2. Minus one inherits the profile's value, then AGENT_TEMPERATURE."
     },
     {
+        "key": "ENDPOINT_L2_REASONING_EFFORT",
+        "group": "endpoint.l2",
+        "type": "enum",
+        "values": ["inherit", "low", "medium", "high", "xhigh"],
+        "default": "inherit",
+        "description": "Reasoning effort for depth-2 agents. Inherit uses AGENT_REASONING_EFFORT."
+    },
+    {
         "key": "ENDPOINT_L3_BASE_URL",
         "group": "endpoint.l3",
         "type": "string",
@@ -338,6 +370,14 @@ module.exports = [
         "description": "Temperature for sub-agents at depth 3 and deeper. Minus one inherits the profile's value, then AGENT_TEMPERATURE."
     },
     {
+        "key": "ENDPOINT_L3_REASONING_EFFORT",
+        "group": "endpoint.l3",
+        "type": "enum",
+        "values": ["inherit", "low", "medium", "high", "xhigh"],
+        "default": "inherit",
+        "description": "Reasoning effort for depth-3+ agents. Inherit uses AGENT_REASONING_EFFORT."
+    },
+    {
         "key": "ENDPOINT_SUMMARY_BASE_URL",
         "group": "endpoint.summary",
         "type": "string",
@@ -376,6 +416,41 @@ module.exports = [
         "min": -1,
         "max": 2,
         "description": "Temperature for the context summariser. Minus one inherits the profile's value, then AGENT_TEMPERATURE."
+    },
+    {
+        "key": "ENDPOINT_SUMMARY_REASONING_EFFORT",
+        "group": "endpoint.summary",
+        "type": "enum",
+        "values": ["inherit", "low", "medium", "high", "xhigh"],
+        "default": "inherit",
+        "description": "Reasoning effort for the context summariser. Inherit uses AGENT_REASONING_EFFORT."
+    },
+    {
+        "key": "UPLOAD_MAX_REQUEST_BYTES",
+        "group": "tools",
+        "type": "number",
+        "default": 41943040,
+        "min": 1048576,
+        "max": 536870912,
+        "description": "Maximum size of one multipart upload request in bytes."
+    },
+    {
+        "key": "UPLOAD_MAX_FILE_BYTES",
+        "group": "tools",
+        "type": "number",
+        "default": 20971520,
+        "min": 1024,
+        "max": 268435456,
+        "description": "Maximum size of one uploaded file in bytes."
+    },
+    {
+        "key": "UPLOAD_MAX_FILES",
+        "group": "tools",
+        "type": "number",
+        "default": 8,
+        "min": 1,
+        "max": 32,
+        "description": "Maximum number of files accepted in one upload request."
     },
     {
         "key": "MAX_ITERATIONS",

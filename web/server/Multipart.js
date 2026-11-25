@@ -1,8 +1,6 @@
 "use strict";
 
-const DEFAULT_MAX_BYTES = 40 * 1024 * 1024;
-const DEFAULT_MAX_FILE_BYTES = 20 * 1024 * 1024;
-const DEFAULT_MAX_FILES = 8;
+const settings = require("../../agent/config");
 
 
 function tooLarge(message) {
@@ -41,7 +39,10 @@ function findBoundary(buffer, marker, from) {
 }
 
 
-function parseMultipart(buffer, boundary, { maxFileBytes = DEFAULT_MAX_FILE_BYTES, maxFiles = DEFAULT_MAX_FILES } = {}) {
+function parseMultipart(buffer, boundary, {
+    maxFileBytes = settings.get("UPLOAD_MAX_FILE_BYTES"),
+    maxFiles = settings.get("UPLOAD_MAX_FILES")
+} = {}) {
 
     const delimiter = Buffer.from(`--${boundary}`);
     const marker = Buffer.from(`\r\n--${boundary}`);
@@ -107,9 +108,9 @@ function parseMultipart(buffer, boundary, { maxFileBytes = DEFAULT_MAX_FILE_BYTE
 
 
 function readMultipart(req, {
-    maxBytes = DEFAULT_MAX_BYTES,
-    maxFileBytes = DEFAULT_MAX_FILE_BYTES,
-    maxFiles = DEFAULT_MAX_FILES
+    maxBytes = settings.get("UPLOAD_MAX_REQUEST_BYTES"),
+    maxFileBytes = settings.get("UPLOAD_MAX_FILE_BYTES"),
+    maxFiles = settings.get("UPLOAD_MAX_FILES")
 } = {}) {
 
     const contentType = String(req.headers["content-type"] || "");
@@ -154,9 +155,6 @@ function readMultipart(req, {
 
 
 module.exports = {
-    DEFAULT_MAX_BYTES,
-    DEFAULT_MAX_FILE_BYTES,
-    DEFAULT_MAX_FILES,
     parseMultipart,
     readMultipart
 };
