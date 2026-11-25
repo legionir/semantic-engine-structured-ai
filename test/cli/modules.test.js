@@ -38,7 +38,7 @@ async function main() {
   await test("all CLI and REPL modules exist and bin facades point to them", () => {
     [
       "ArgParser.js", "CommandRegistry.js", "OutputFormatter.js", "RunCommand.js",
-      "ServeCommand.js", "InteractiveCommand.js", "HelpCommand.js", "Cli.js", "index.js"
+      "ServeCommand.js", "WebServerOptions.js", "InteractiveCommand.js", "HelpCommand.js", "Cli.js", "index.js"
     ].forEach(name => assert.equal(fs.existsSync(path.join(CLI_DIR, name)), true, name));
     [
       "Repl.js", "ReplCommands.js", "InputReader.js", "OutputRenderer.js",
@@ -66,6 +66,28 @@ async function main() {
     assert.equal(options.timeoutSeconds, 5);
     assert.equal(options.maxAgents, 2);
     assert.equal(options.proxyUrl, "socks5h://proxy.example:1080");
+  });
+
+  await test("PORT automatically selects the web console unless another CLI command is explicit", () => {
+    const { resolveWebServerOptions } = require(path.join(CLI_DIR, "WebServerOptions"));
+    const automatic = resolveWebServerOptions({ positional: [] }, { PORT: "8765" });
+    assert.equal(automatic.serve, true);
+    assert.equal(automatic.autoServe, true);
+    assert.equal(automatic.port, 8765);
+    assert.equal(automatic.host, "0.0.0.0");
+
+    const explicitServe = resolveWebServerOptions({ serve: true, positional: [] }, { PORT: "8765" });
+    assert.equal(explicitServe.port, 8765);
+    assert.equal(explicitServe.host, "0.0.0.0");
+
+    const explicitPort = resolveWebServerOptions({ serve: true, port: 7788, positional: [] }, { PORT: "8765" });
+    assert.equal(explicitPort.port, 7788);
+    assert.equal(explicitPort.host, undefined);
+
+    const explicitTask = resolveWebServerOptions({ positional: ["run this task"] }, { PORT: "8765" });
+    assert.equal(explicitTask.serve, undefined);
+    assert.doesNotThrow(() => resolveWebServerOptions({ positional: ["run this task"] }, { PORT: "bad" }));
+    assert.throws(() => resolveWebServerOptions({ positional: [] }, { PORT: "bad" }), /PORT must be an integer/);
   });
 
   await test("CLI proxy URL becomes a validated runtime setting", () => {

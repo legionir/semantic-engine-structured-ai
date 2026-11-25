@@ -25,6 +25,7 @@ const { parseArguments: parseCliArguments } = require("./ArgParser");
 const { CommandRegistry } = require("./CommandRegistry");
 const { HelpCommand } = require("./HelpCommand");
 const { ServeCommand } = require("./ServeCommand");
+const { resolveWebServerOptions } = require("./WebServerOptions");
 const { InteractiveCommand } = require("./InteractiveCommand");
 const { actionError } = require("./OutputFormatter");
 const { createCliWorkflows } = require("./CliWorkflows");
@@ -93,6 +94,7 @@ Options
                             the running task instead of the session
   -s, --serve [port]        Serve the web console (default port 7777)
       --host <address>      Address to bind the console to (default 127.0.0.1)
+  PORT=<port>               Automatically start the web console and bind 0.0.0.0
   -w, -C, --workspace <dir> Directory the agent may act in (default: cwd)
       --project <id>      Run inside the registered project <id>: the root
                           comes from the project registry (-w must match it
@@ -237,6 +239,12 @@ async function main() {
 
         process.stdout.write(doctor.formatReport(report));
         process.exit(report.ok ? EXIT.SUCCESS : EXIT.FAILED);
+    }
+
+    try {
+        resolveWebServerOptions(options);
+    } catch (error) {
+        fail(error.message);
     }
 
     if (

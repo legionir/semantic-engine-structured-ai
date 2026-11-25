@@ -251,6 +251,67 @@ async function main() {
         assert.match(run.stdout.trim(), /^\d+\.\d+\.\d+$/);
     });
 
+    await test("PORT starts the web console automatically without --serve", async () => {
+
+        const workspace = makeWorkspace();
+        const dataHome = path.join(workspace, "data-home");
+        const probe = http.createServer();
+        await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
+        const port = probe.address().port;
+        await new Promise(resolve => probe.close(resolve));
+
+        const child = spawn(process.execPath, [BIN], {
+            cwd: REPO_ROOT,
+            env: {
+                ...process.env,
+                PORT: String(port),
+                WORKSPACE_ROOT: workspace,
+                STRUCTURED_AI_DATA_HOME: dataHome,
+                AGENT_VERBOSE: "0",
+                AGENT_PRINT_FINAL: "0",
+                AGENT_APPROVAL: "prompt"
+            },
+            stdio: ["ignore", "pipe", "pipe"]
+        });
+
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", chunk => { stdout += chunk; });
+        child.stderr.on("data", chunk => { stderr += chunk; });
+        const exited = new Promise(resolve => child.once("exit", resolve));
+
+        try {
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error(`console did not start: ${stderr}`)), 10000);
+                const checkReady = () => {
+                    if (stdout.includes("structured-ai console")) {
+                        clearTimeout(timer);
+                        resolve();
+                    }
+                };
+                child.stdout.on("data", checkReady);
+                checkReady();
+                child.once("error", error => {
+                    clearTimeout(timer);
+                    reject(error);
+                });
+                child.once("exit", code => {
+                    clearTimeout(timer);
+                    reject(new Error(`CLI exited before binding (${code}): ${stderr}`));
+                });
+            });
+
+            assert.match(stdout, new RegExp(`http://localhost:${port}`));
+            const status = await fetch(`http://127.0.0.1:${port}/auth/status`);
+            assert.equal(status.status, 200);
+            assert.equal((await status.json()).passwordRequired, false);
+        } finally {
+            child.kill("SIGTERM");
+            await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 3000))]);
+            fs.rmSync(workspace, { recursive: true, force: true });
+        }
+    });
+
     await test("doctor reports the configured sandbox without loading the agent loop", async () => {
 
         const run = await runCli(["doctor"], {
