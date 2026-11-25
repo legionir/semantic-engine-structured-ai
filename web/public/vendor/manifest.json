@@ -1,0 +1,26 @@
+{
+  "description": "Browser ESM dependencies vendored verbatim from the npm registry (source map comment stripped). Regenerate with: node tools/vendor-ui.js",
+  "files": {
+    "preact.module.js": {
+      "package": "preact",
+      "version": "10.29.8",
+      "source": "https://registry.npmjs.org/preact/-/preact-10.29.8.tgz#package/dist/preact.module.js",
+      "license": "MIT",
+      "sha256": "712517dd2a42c3c22b5ab0264ad7e9a2b1e8be6cf97fa00dbedd98203617e616"
+    },
+    "htm.module.js": {
+      "package": "htm",
+      "version": "3.1.1",
+      "source": "https://registry.npmjs.org/htm/-/htm-3.1.1.tgz#package/dist/htm.module.js",
+      "license": "MIT",
+      "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+    },
+    "signals-core.module.js": {
+      "package": "@preact/signals-core",
+      "version": "1.14.5",
+      "source": "https://registry.npmjs.org/@preact/signals-core/-/signals-core-1.14.5.tgz#package/dist/signals-core.module.js",
+      "license": "MIT",
+      "sha256": "9cbedfaa6e7830244458b8cb7bf32b51d5d0fd36e848bde986f5ba082a543d97"
+    }
+  }
+}

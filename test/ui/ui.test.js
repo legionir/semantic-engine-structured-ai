@@ -1,469 +1,15 @@
 "use strict";
 
-const assert = require("assert");
-const path = require("path");
-
 /*
-| The console has no build step and no framework, so its behaviour is
-| testable the same way the rest of the runtime is: with a document
-| small enough to fit in this file. The shim implements only what the
-| modal service actually touches, which keeps it honest, because a test
-| that needs a new method means the service grew a new dependency.
+| Console behaviour tests. They run against a happy-dom window loaded with
+| the real index.html (see harness.js), so a selector, a nesting or an id
+| that only works in a hand-written shim fails here the way it would fail
+| in a browser.
 */
 
-function createDocument() {
-
-    const listeners = new Map();
-
-
-    class ClassList {
-
-        constructor(owner) {
-            this.owner = owner;
-        }
-
-        add(...names) {
-
-            for (const name of names) {
-
-                if (!this.owner._classes.includes(name)) {
-                    this.owner._classes.push(name);
-                }
-            }
-        }
-
-        remove(...names) {
-
-            this.owner._classes =
-                this.owner._classes.filter(
-                    name => !names.includes(name)
-                );
-        }
-
-        toggle(name, force) {
-
-            /* mirrors DOMTokenList.toggle: with a second argument the
-               flag decides, without it the class flips */
-
-            const has =
-                this.owner._classes.includes(name);
-
-            const wanted =
-                force === undefined ? !has : Boolean(force);
-
-            if (wanted && !has) {
-                this.owner._classes.push(name);
-            } else if (!wanted && has) {
-                this.owner._classes =
-                    this.owner._classes.filter(n => n !== name);
-            }
-
-            return wanted;
-        }
-
-        contains(name) {
-
-            return this.owner._classes.includes(name);
-        }
-    }
-
-
-    class Element {
-
-        constructor(tag) {
-
-            this.tagName = String(tag).toUpperCase();
-            this.children = [];
-            this.parent = null;
-            this.hidden = false;
-            this.style = {};
-            this.dataset = {};
-            this.attributes = {};
-            this.focused = false;
-
-            this._classes = [];
-            this._text = "";
-            this._listeners = new Map();
-
-            this.classList = new ClassList(this);
-        }
-
-        get className() {
-            return this._classes.join(" ");
-        }
-
-        set className(value) {
-
-            this._classes =
-                String(value).split(/\s+/).filter(Boolean);
-        }
-
-        set textContent(value) {
-
-            this.children = [];
-            this._text = String(value ?? "");
-        }
-
-        get textContent() {
-
-            return this.children.length === 0
-                ? this._text
-                : this.children
-                    .map(child => child.textContent)
-                    .join("");
-        }
-
-        set innerHTML(value) {
-
-            this.children = [];
-            this._text = String(value ?? "");
-        }
-
-        get innerHTML() {
-            return this._text;
-        }
-
-        setAttribute(name, value) {
-            this.attributes[name] = String(value);
-        }
-
-        getAttribute(name) {
-            return this.attributes[name] ?? null;
-        }
-
-        appendChild(child) {
-
-            /*
-            | Node.appendChild moves: the child leaves its previous
-            | parent. Leaving a stale reference behind would let a test
-            | believe a node is in two places at once.
-            */
-
-            if (child.parent && child.parent !== this) {
-                child.parent.removeChild(child);
-            }
-
-            child.parent = this;
-
-            this.children =
-                this.children.filter(item => item !== child);
-
-            this.children.push(child);
-
-            return child;
-        }
-
-        /*
-        | The console restores a borrowed node to the exact place it came
-        | from, which needs the real insertBefore contract: a null anchor
-        | appends, and an anchor that is not a child here is an error
-        | rather than a silent append.
-        */
-
-        insertBefore(child, anchor) {
-
-            if (!anchor) {
-                return this.appendChild(child);
-            }
-
-            const index =
-                this.children.indexOf(anchor);
-
-            if (index === -1) {
-
-                throw new Error(
-                    "insertBefore: the anchor is not a child of this node"
-                );
-            }
-
-            if (child.parent && child.parent !== this) {
-                child.parent.removeChild(child);
-            }
-
-            this.children =
-                this.children.filter(item => item !== child);
-
-            child.parent = this;
-
-            this.children.splice(
-                this.children.indexOf(anchor),
-                0,
-                child
-            );
-
-            return child;
-        }
-
-        append(...nodes) {
-
-            for (const item of nodes) {
-                this.appendChild(item);
-            }
-        }
-
-        get firstChild() {
-            return this.children[0] || null;
-        }
-
-        /*
-        | parentNode and nextSibling are what the console reads to record
-        | where a node lives before it lends it to a modal. The shim used
-        | to expose only .parent, so code reading .parentNode saw
-        | undefined here and took a branch the browser never takes; a
-        | real bug rode out on exactly that gap.
-        */
-
-        get parentNode() {
-            return this.parent;
-        }
-
-        /*
-        | Element.parentElement, the other half of the same contract: the
-        | settings renderer walks up from a control to the label that borrows
-        | it, so without this the borrow silently found nothing here while
-        | working in every browser.
-        */
-
-        get parentElement() {
-            return this.parent;
-        }
-
-        get nextSibling() {
-
-            if (!this.parent) {
-                return null;
-            }
-
-            const index =
-                this.parent.children.indexOf(this);
-
-            return this.parent.children[index + 1] || null;
-        }
-
-        /*
-        | Mirrors Node.isConnected: true only while the node can be
-        | reached from the document body. Code under test uses this to
-        | decide whether a node it is holding is still on the page.
-        */
-
-        get isConnected() {
-
-            let current = this;
-
-            while (current) {
-
-                if (current._isDocumentRoot) {
-                    return true;
-                }
-
-                current = current.parent;
-            }
-
-            return false;
-        }
-
-        removeChild(child) {
-
-            this.children =
-                this.children.filter(item => item !== child);
-
-            child.parent = null;
-
-            return child;
-        }
-
-        remove() {
-
-            if (!this.parent) {
-                return;
-            }
-
-            this.parent.children =
-                this.parent.children.filter(
-                    child => child !== this
-                );
-
-            this.parent = null;
-        }
-
-        addEventListener(type, handler) {
-
-            if (!this._listeners.has(type)) {
-                this._listeners.set(type, []);
-            }
-
-            this._listeners.get(type).push(handler);
-        }
-
-        dispatch(type, event = {}) {
-
-            for (
-                const handler
-                of this._listeners.get(type) || []
-            ) {
-                /* form submissions and friends are cancellable in the
-                   browser, so the shim offers the same */
-                handler({
-                    target: this,
-                    preventDefault() {},
-                    ...event
-                });
-            }
-        }
-
-        focus() {
-
-            document.activeElement = this;
-        }
-
-        querySelector(selector) {
-
-            const tags =
-                selector
-                    .split(",")
-                    .map(part => part.trim().toUpperCase())
-                    .filter(part => /^[A-Z]+$/.test(part));
-
-            const walk = element => {
-
-                for (const child of element.children) {
-
-                    if (tags.includes(child.tagName)) {
-                        return child;
-                    }
-
-                    const found = walk(child);
-
-                    if (found) {
-                        return found;
-                    }
-                }
-
-                return null;
-            };
-
-            return walk(this);
-        }
-
-        querySelectorAll(selector) {
-
-            const wanted =
-                selector.trim().replace(/^\./, "");
-
-            const found = [];
-
-            const walk = element => {
-
-                for (const child of element.children) {
-
-                    if (child._classes.includes(wanted)) {
-                        found.push(child);
-                    }
-
-                    walk(child);
-                }
-            };
-
-            walk(this);
-
-            return found;
-        }
-    }
-
-
-    const body = new Element("body");
-
-    body._isDocumentRoot = true;
-
-    const registry = new Map();
-
-    const document = {
-
-        body,
-
-        activeElement: null,
-
-        createElement: tag => new Element(tag),
-
-        /*
-        | index.html is not parsed here, so the ids the console reads are
-        | registered by the test that needs them.
-        */
-
-        register(id, tag) {
-
-            const element = new Element(tag || "div");
-
-            element.id = id;
-
-            registry.set(id, element);
-
-            body.appendChild(element);
-
-            return element;
-        },
-
-        /*
-        | document.getElementById walks the tree, so a node that has been
-        | detached is not found. A registry lookup that ignores this hides
-        | exactly the bug where a node is moved into a modal and never
-        | returned, so the connectedness check is part of the shim.
-        */
-
-        getElementById(id) {
-
-            const element = registry.get(id);
-
-            return element && element.isConnected ? element : null;
-        },
-
-        addEventListener(type, handler) {
-
-            if (!listeners.has(type)) {
-                listeners.set(type, []);
-            }
-
-            listeners.get(type).push(handler);
-        },
-
-        dispatch(type, event = {}) {
-
-            for (
-                const handler
-                of listeners.get(type) || []
-            ) {
-                handler({ preventDefault() {}, ...event });
-            }
-        },
-
-        getElementsByName(name) {
-
-            const wanted = String(name);
-            const found = [];
-
-            const walk = element => {
-
-                if (
-                    element.name === wanted ||
-                    (element.attributes && element.attributes.name === wanted)
-                ) {
-                    found.push(element);
-                }
-
-                for (const child of element.children || []) {
-                    walk(child);
-                }
-            };
-
-            walk(body);
-
-            return found;
-        }
-    };
-
-    return document;
-}
-
+const assert = require("assert");
+const path = require("path");
+const harness = require("./harness");
 
 const results = [];
 
@@ -492,17 +38,19 @@ async function test(name, fn) {
 }
 
 
-global.document = createDocument();
+const browser = harness.createWindow();
+
+harness.installGlobals(browser);
 
 const Modal =
     require(
-        path.join(__dirname, "..", "..", "web", "public", "modal.js")
+        path.join(harness.PUBLIC_DIR, "modal.js")
     );
 
 
 function backdrops() {
 
-    return document.body.children.filter(
+    return [...document.body.children].filter(
         child => child.classList.contains("modal-backdrop")
     );
 }
@@ -805,7 +353,7 @@ async function main() {
     await test("a wave label counts real overlap, not the plan", () => {
 
         const groups = () =>
-            document.getElementById("tree").querySelectorAll(".graph");
+            [...document.getElementById("tree").querySelectorAll(".graph")];
 
         const send = (type, body) =>
             console_.send({
@@ -919,8 +467,8 @@ async function main() {
     await test("a row opens the full detail of what was executed", async () => {
 
         const rows =
-            document.getElementById("tree")
-                .querySelectorAll("tool");
+            [...document.getElementById("tree")
+                .querySelectorAll(".tool")];
 
         assert.ok(rows.length >= 3);
 
@@ -929,7 +477,7 @@ async function main() {
         await Promise.resolve();
 
         const dialog =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0];
 
@@ -989,8 +537,8 @@ async function main() {
         assert.match(tree, /exit 2/);
 
         const rows =
-            document.getElementById("tree")
-                .querySelectorAll("tool");
+            [...document.getElementById("tree")
+                .querySelectorAll(".tool")];
 
         const build =
             rows.find(
@@ -1017,8 +565,8 @@ async function main() {
         assert.match(tree, /Loaded skill codebase_analysis/);
 
         const marks =
-            document.getElementById("tree")
-                .querySelectorAll("skill");
+            [...document.getElementById("tree")
+                .querySelectorAll(".skill")];
 
         assert.equal(marks.length, 1);
 
@@ -1032,8 +580,8 @@ async function main() {
         });
 
         assert.equal(
-            document.getElementById("tree")
-                .querySelectorAll("skill").length,
+            [...document.getElementById("tree")
+                .querySelectorAll(".skill")].length,
             1
         );
     });
@@ -1240,7 +788,7 @@ async function main() {
         );
 
         const dialog =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0];
 
@@ -1251,7 +799,7 @@ async function main() {
         const footer = dialog.children[2];
 
         const labels =
-            footer.children[0].children.map(
+            [...footer.children[0].children].map(
                 button => button.textContent
             );
 
@@ -1269,7 +817,7 @@ async function main() {
         );
 
         assert.match(
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0].textContent,
             /1\/2 pending/
@@ -1277,7 +825,7 @@ async function main() {
 
         /* approve all empties the queue and closes the modal */
         const remaining =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0].children[2];
 
@@ -1289,7 +837,7 @@ async function main() {
         );
 
         assert.equal(
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             ).length,
             0
@@ -1350,7 +898,7 @@ async function main() {
             document.getElementById("chat");
 
         const bubbles =
-            chat.querySelectorAll("bubble");
+            [...chat.querySelectorAll(".bubble")];
 
         assert.equal(bubbles.length, 3);
 
@@ -1386,7 +934,7 @@ async function main() {
             }
         });
 
-        const bubbles = document.getElementById("chat").querySelectorAll("bubble");
+        const bubbles = [...document.getElementById("chat").querySelectorAll(".bubble")];
         const user = bubbles[bubbles.length - 2];
         const assistant = bubbles[bubbles.length - 1];
 
@@ -1457,7 +1005,7 @@ async function main() {
 
         /* an execution block appeared under the user message */
         const blocks =
-            chat.querySelectorAll("turn-execution");
+            [...chat.querySelectorAll(".turn-execution")];
 
         assert.equal(blocks.length, 1);
         assert.match(blocks[0].textContent, /execution/);
@@ -1483,7 +1031,7 @@ async function main() {
             document.getElementById("chat");
 
         const report =
-            chat.querySelectorAll("git-report");
+            [...chat.querySelectorAll(".git-report")];
 
         assert.equal(report.length, 1);
         assert.match(report[0].textContent, /git/);
@@ -1506,7 +1054,7 @@ async function main() {
         assert.match(chat.textContent, /main_agent · thinking/);
 
         const pending =
-            chat.querySelectorAll("pending");
+            [...chat.querySelectorAll(".pending")];
 
         assert.equal(pending.length, 1);
 
@@ -1525,7 +1073,7 @@ async function main() {
         );
         assert.equal(reasoning.open, true);
         assert.equal(chat.scrollTop, 37);
-        assert.equal(chat.querySelectorAll("pending")[0], pending[0]);
+        assert.equal([...chat.querySelectorAll(".pending")][0], pending[0]);
 
         const elapsed = /([\d.]+) s/.exec(pending[0].textContent);
         assert.ok(elapsed && Number(elapsed[1]) > 0);
@@ -1539,8 +1087,8 @@ async function main() {
         });
 
         assert.equal(
-            document.getElementById("chat")
-                .querySelectorAll("pending").length,
+            [...document.getElementById("chat")
+                .querySelectorAll(".pending")].length,
             0
         );
     });
@@ -1684,7 +1232,7 @@ async function main() {
         document.getElementById("settingsButton").dispatch("click");
 
         const dialog =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0];
 
@@ -1703,12 +1251,12 @@ async function main() {
         });
         document.getElementById("llmSettingsButton").dispatch("click");
         const llmDialog =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0];
         assert.match(llmDialog.textContent, /LLM settings/);
-        const proxyInput = llmDialog.querySelectorAll(".setting")
-            .flatMap(row => row.children)
+        const proxyInput = [...llmDialog.querySelectorAll(".setting")]
+            .flatMap(row => [...row.children])
             .find(child => child.tagName === "INPUT" && child.type === "password");
         assert.ok(proxyInput, "proxy credentials use a password input");
         assert.equal(proxyInput.value, "", "masked credentials are never written back into the field");
@@ -1719,7 +1267,7 @@ async function main() {
             .filter(item => item.url === "/api/models");
         assert.equal(modelRequests.length, 1, "all model rows share one aggregate catalog request");
 
-        const modelRows = llmDialog.querySelectorAll(".setting")
+        const modelRows = [...llmDialog.querySelectorAll(".setting")]
             .filter(row => row.dataset.key.endsWith("_MODEL"));
         const layerOptions = [...modelRows.find(row => row.dataset.key === "ENDPOINT_L1_MODEL").children[1].children]
             .map(option => option.value);
@@ -1728,7 +1276,7 @@ async function main() {
         Modal.closeTop("test");
 
         assert.equal(
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             ).length,
             0
@@ -1745,10 +1293,10 @@ async function main() {
 
         window.innerWidth = 390;
         document.getElementById("planButton").dispatch("click");
-        const backdrop = document.body.children.find(child => child.classList.contains("modal-backdrop"));
+        const backdrop = [...document.body.children].find(child => child.classList.contains("modal-backdrop"));
         const dialog = backdrop.children[0];
         assert.match(dialog.textContent, /Plan/);
-        assert.equal(dialog.querySelectorAll(".panel").length, 0, "the plan does not create a second nested card");
+        assert.equal([...dialog.querySelectorAll(".panel")].length, 0, "the plan does not create a second nested card");
         Modal.closeTop("test");
         assert.equal(panel.classList.contains("plan-modal-content"), false);
         window.innerWidth = 1280;
@@ -1772,16 +1320,16 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 0));
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        const backdrop = document.body.children.find(child => child.classList.contains("modal-backdrop"));
+        const backdrop = [...document.body.children].find(child => child.classList.contains("modal-backdrop"));
         const dialog = backdrop.children[0];
-        const tabs = dialog.querySelectorAll(".mcp-tab");
+        const tabs = [...dialog.querySelectorAll(".mcp-tab")];
         assert.equal(tabs.length, 2);
         tabs[1].dispatch("click");
 
-        const textarea = dialog.querySelectorAll(".mcp-raw-json")[0];
+        const textarea = [...dialog.querySelectorAll(".mcp-raw-json")][0];
         assert.ok(textarea.value.includes("mcpServers"));
         textarea.value = '{\n  "mcpServers": {\n    "local": { "command": "node", "args": ["server.js"] }\n  }\n}\n';
-        dialog.querySelectorAll(".mcp-json-editor")[0].querySelector("button").dispatch("click");
+        [...dialog.querySelectorAll(".mcp-json-editor")][0].querySelector("button").dispatch("click");
         await new Promise(resolve => setTimeout(resolve, 0));
         await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -1804,17 +1352,17 @@ async function main() {
         document.getElementById("settingsButton").dispatch("click");
 
         const dialog =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0];
 
         /* moved into the modal, not copied: the home is empty while open */
         assert.equal(home.children.length, 0, "the home is emptied on open");
         assert.ok(
-            dialog.querySelectorAll(".policy-row").length === 1,
+            [...dialog.querySelectorAll(".policy-row")].length === 1,
             "the borrowed row is in the modal"
         );
-        const settings = dialog.querySelectorAll(".settings")[0];
+        const settings = [...dialog.querySelectorAll(".settings")][0];
         assert.ok(settings.children[0].classList.contains("filter"), "filter remains first");
         assert.ok(settings.children[1].classList.contains("runtime-policy-settings"), "policy follows the filter");
         assert.ok(
@@ -1830,8 +1378,8 @@ async function main() {
             "and the controls are on the page again, not detached"
         );
         assert.equal(
-            dialog.querySelectorAll(".policy-row")
-                .flatMap(row => row.children)
+            [...dialog.querySelectorAll(".policy-row")]
+                .flatMap(row => [...row.children])
                 .filter(child => child.tagName === "LABEL")
                 .length,
             0,
@@ -1843,13 +1391,13 @@ async function main() {
         document.getElementById("settingsButton").dispatch("click");
 
         const again =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             )[0].children[0];
 
         assert.equal(home.children.length, 0, "the second open borrows again");
         assert.equal(
-            again.querySelectorAll(".policy-row").length,
+            [...again.querySelectorAll(".policy-row")].length,
             1,
             "into its own row"
         );
@@ -1864,7 +1412,7 @@ async function main() {
         document.getElementById("executionButton").dispatch("click");
 
         let backdrops =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             );
 
@@ -1874,7 +1422,7 @@ async function main() {
         Modal.closeTop("test");
 
         backdrops =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             );
 
@@ -1883,7 +1431,7 @@ async function main() {
         document.getElementById("eventsButton").dispatch("click");
 
         backdrops =
-            document.body.children.filter(
+            [...document.body.children].filter(
                 child => child.classList.contains("modal-backdrop")
             );
 
@@ -1927,7 +1475,7 @@ async function main() {
 
             homes.set(id, {
                 parent: element.parentNode,
-                index: element.parentNode.children.indexOf(element)
+                index: [...element.parentNode.children].indexOf(element)
             });
         }
 
@@ -1988,7 +1536,7 @@ async function main() {
             );
 
             assert.equal(
-                element.parentNode.children.indexOf(element),
+                [...element.parentNode.children].indexOf(element),
                 homes.get(id).index,
                 `${id} must be back in the position it came from`
             );
@@ -2071,7 +1619,7 @@ async function main() {
         }
 
         const visible = () =>
-            list.children.filter(item => !item.hidden);
+            [...list.children].filter(item => !item.hidden);
 
         assert.equal(visible().length, 3, "every row shows with no filter");
 
@@ -2144,12 +1692,12 @@ async function main() {
         }
 
         const visible = () =>
-            list.children.filter(item => !item.hidden);
+            [...list.children].filter(item => !item.hidden);
 
         /* the dropdown offers exactly the types that are present */
 
         assert.deepEqual(
-            type.children
+            [...type.children]
                 .map(option => option.value)
                 .filter(Boolean)
                 .sort(),
@@ -2262,8 +1810,8 @@ async function main() {
         console_.send({ type: "agent:iteration", agent: "main_agent", iteration: 2 });
 
         assert.equal(
-            document.getElementById("log")
-                .children.filter(item => !item.hidden).length,
+            [...document.getElementById("log")
+                .children].filter(item => !item.hidden).length,
             1,
             "the filter still applies to rows arriving while the modal is open"
         );
@@ -2275,8 +1823,8 @@ async function main() {
         document.getElementById("logType").dispatch("change");
 
         assert.equal(
-            document.getElementById("log")
-                .children.filter(item => !item.hidden).length,
+            [...document.getElementById("log")
+                .children].filter(item => !item.hidden).length,
             3,
             "the filter still works after the controls went home"
         );
@@ -2340,14 +1888,14 @@ async function main() {
         assert.equal(options.hidden, false, "the options row appears");
         assert.equal(run.textContent, "Start discussion");
         assert.equal(
-            options.querySelectorAll(".persona-box").length,
+            [...options.querySelectorAll(".persona-box")].length,
             2,
             "every persona is selectable"
         );
 
         /* nothing selected, nothing sent */
 
-        for (const box of options.querySelectorAll(".persona-box")) {
+        for (const box of [...options.querySelectorAll(".persona-box")]) {
             box.checked = false;
         }
 
@@ -2364,7 +1912,7 @@ async function main() {
 
         /* a selection goes to the discussion endpoint, not /api/tasks */
 
-        options.querySelectorAll(".persona-box")[0].checked = true;
+        [...options.querySelectorAll(".persona-box")][0].checked = true;
 
         document.getElementById("taskForm").dispatch("submit");
 
@@ -2429,7 +1977,7 @@ async function main() {
         await tick();
 
         const backdrop = backdrops().at(-1);
-        const walk = root => [root, ...root.children.flatMap(walk)];
+        const walk = root => [root, ...[...root.children].flatMap(walk)];
         const descendants = walk(backdrop);
         const boxes = descendants.filter(item => item.classList.contains("project-picker-checkbox"));
         const confirm = descendants.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
@@ -2464,7 +2012,7 @@ async function main() {
         document.getElementById("projectsButton").dispatch("click");
         await tick();
         const backdrop = backdrops().at(-1);
-        const walk = root => [root, ...root.children.flatMap(walk)];
+        const walk = root => [root, ...[...root.children].flatMap(walk)];
         const descendants = walk(backdrop);
         const boxes = descendants.filter(item => item.classList.contains("project-picker-checkbox"));
         boxes.forEach((box, index) => {
@@ -2581,7 +2129,7 @@ async function main() {
         document.getElementById("projectsButton").dispatch("click");
         await tick();
         const backdrop = backdrops().at(-1);
-        const walk = root => [root, ...root.children.flatMap(walk)];
+        const walk = root => [root, ...[...root.children].flatMap(walk)];
         const descendants = walk(backdrop);
         const boxes = descendants.filter(item => item.classList.contains("project-picker-checkbox"));
         const confirm = descendants.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
@@ -2638,166 +2186,20 @@ async function main() {
 
 
 /*
-| Loads the canonical console renderer against the shim, with the ids index.html
-| provides and stubs for the two browser APIs it uses.
+| Loads the canonical console renderer into the page, with stubs for the
+| network and the event stream.
 */
 
 function loadConsole() {
 
-    for (const id of [
-        "statusDot", "statusText", "workspace", "model", "turns",
-        "runTimer", "execSummary", "tree", "executionArchive", "chat", "sessionTitle",
-        "plan", "planSummary", "log", "approvalsCount", "discussionOptions",
-        "projectDashboard", "dashboardTitle",
-        "dashboardSubtitle", "dashboardTabs", "dashboardBody", "consoleMain",
-        "planPanel", "consoleHeader", "consoleMenu", "autoSwitchStatus", "attachmentList"
-    ]) {
-        document.register(id, "div");
-    }
-
-    for (const id of [
-        "runButton", "cancelButton", "clearButton",
-        "settingsButton", "mcpButton", "approvalsButton", "clearLog",
-        "historyButton", "executionButton", "eventsButton",
-        "discussionButton", "newProjectButton", "projectsButton",
-        "dashboardBack", "llmSettingsButton", "planButton", "mobileMenuToggle",
-        "attachFilesButton"
-    ]) {
-        document.register(id, "button");
-    }
-
-    /* index.html ships the row hidden and the run button labelled;
-       the shim has no parser, so the initial state is declared here */
-    document.getElementById("discussionOptions").hidden = true;
-    document.getElementById("runButton").textContent = "Run task";
-
-    for (const id of ["task", "logFilter", "attachmentInput"]) {
-        document.register(id, "input");
-    }
-    const taskEffort = document.register("taskEffort", "select");
-    taskEffort.value = "inherit";
-
-    document.register("logType", "select");
-    document.register("logCount", "span");
-
-    /*
-    | index.html keeps the two runtime policy controls inside labels in a
-    | hidden #policyHome, and the Settings modal borrows those labels. The
-    | shim has to nest them the same way, otherwise the borrow is tested
-    | against a page structure that does not exist.
-    */
-    const policyHome = document.register("policyHome", "div");
-
-    const approvalChip = document.createElement("label");
-
-    approvalChip.classList.add("chip", "select");
-    approvalChip.appendChild(document.register("approvalMode", "select"));
-    policyHome.appendChild(approvalChip);
-
-    const continueChip = document.createElement("label");
-
-    continueChip.classList.add("chip", "checkbox");
-    continueChip.appendChild(document.register("autoContinue", "input"));
-    policyHome.appendChild(continueChip);
-
-    document.register("activeProjectName", "div");
-    document.register("gatewayHealth", "a");
-    document.register("taskForm", "form");
-
+    /* index.html ships the dashboard hidden; the console relies on it */
     document.getElementById("projectDashboard").hidden = true;
 
-    const store = {};
+    const { store, storage } = harness.createStorage();
 
-    global.localStorage = {
-        getItem: key => Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
-        setItem: (key, value) => { store[key] = String(value); },
-        removeItem: key => { delete store[key]; }
-    };
+    global.localStorage = storage;
 
-    global.location = { pathname: "/", search: "", hash: "", href: "http://localhost/" };
-
-    global.history = {
-        pushState(state, title, url) {
-            const parsed = new URL(String(url || "/"), "http://localhost");
-            global.location.pathname = parsed.pathname;
-            global.location.search = parsed.search;
-        },
-        replaceState(state, title, url) {
-            this.pushState(state, title, url);
-        }
-    };
-
-    const windowListeners = new Map();
-
-    global.window = {
-        innerWidth: 1280,
-        addEventListener(type, handler) {
-
-            if (!windowListeners.has(type)) {
-                windowListeners.set(type, []);
-            }
-
-            windowListeners.get(type).push(handler);
-        },
-        dispatch(type, event = {}) {
-
-            for (const handler of windowListeners.get(type) || []) {
-                handler({ preventDefault() {}, ...event });
-            }
-        }
-    };
-
-    /*
-    | In index.html the execution and events cards live inside #rowTwo,
-    | and the modals move them out and back. Registering them flat under
-    | body would make hiddenSection() return null and skip the path that
-    | matters here, so the nesting is reproduced.
-    */
-
-    /*
-    | The real page nests these cards two levels deep: the execution
-    | pair lives in .execution-scroll and the events controls in
-    | .log-panel, both inside #rowTwo. Registering them flat under
-    | #rowTwo would hide exactly the bug this nesting caused, where a
-    | modal was handed the shared scroller instead of the cards, so the
-    | structure is reproduced rather than approximated.
-    */
-
-    const rowTwo = document.register("rowTwo", "section");
-
-    const executionPanel = document.createElement("div");
-
-    executionPanel.className = "panel scroller execution-panel";
-
-    const executionScroll = document.createElement("div");
-
-    executionScroll.className = "execution-scroll";
-
-    for (const id of ["executionArchive", "tree"]) {
-        executionScroll.appendChild(document.getElementById(id));
-    }
-
-    executionPanel.appendChild(executionScroll);
-
-    const logPanel = document.createElement("div");
-
-    logPanel.className = "panel scroller log-panel";
-
-    const logHead = document.createElement("div");
-
-    logHead.className = "head-tools";
-
-    for (const id of ["logFilter", "logType", "logCount", "clearLog"]) {
-        logHead.appendChild(document.getElementById(id));
-    }
-
-    logPanel.appendChild(logHead);
-    logPanel.appendChild(document.getElementById("log"));
-
-    rowTwo.appendChild(executionPanel);
-    rowTwo.appendChild(logPanel);
-
-    const posted = [];
+    window.innerWidth = 1280;
 
     const settings = [
         {
@@ -2835,59 +2237,28 @@ function loadConsole() {
         }
     ];
 
-    const replies = new Map();
+    const { fetch, posted, replies } =
+        harness.createFetch(url =>
+            url === "/api/settings"
+                ? { settings }
+                : url === "/api/state"
+                    ? { turns: 1 }
+                    : url === "/api/sessions"
+                        ? { current: "s-1", sessions: [] }
+                        : { call: { name: "fs_read", arguments: {}, result: {} } }
+        );
 
-    global.fetch = async (url, options = {}) => {
+    global.fetch = fetch;
 
-        posted.push({
-            url,
-            method: options.method || "GET",
-            body:
-                options.body
-                    ? JSON.parse(options.body)
-                    : null
-        });
-
-        const payload =
-            replies.has(url)
-                ? replies.get(url)
-                : url === "/api/settings"
-                    ? { settings }
-                    : url === "/api/state"
-                        ? { turns: 1 }
-                        : url === "/api/sessions"
-                            ? { current: "s-1", sessions: [] }
-                            : { call: { name: "fs_read", arguments: {}, result: {} } };
-
-        return {
-            ok: true,
-            status: 200,
-            json: async () => payload
-        };
-    };
-
-    global.__reply = (url, payload) => replies.set(url, payload);
-
-    /* the browser loads modal.js first, so the shim does the same */
+    /* the browser loads modal.js first, so the harness does the same */
     global.Modal = Modal;
 
-    let stream = null;
-    let lastSourceUrl = "/api/events";
+    const { EventSource, box } = harness.createEventSource();
 
-    global.EventSource = class {
-
-        constructor(url) {
-
-            lastSourceUrl = url || "/api/events";
-            global.__lastEventSourceUrl = lastSourceUrl;
-            stream = this;
-        }
-
-        close() {}
-    };
+    global.EventSource = EventSource;
 
     require(
-        path.join(__dirname, "..", "..", "web", "public", "app", "console.js")
+        path.join(harness.PUBLIC_DIR, "app", "console.js")
     );
 
     return {
@@ -2896,24 +2267,23 @@ function loadConsole() {
         storage: store,
 
         sourceUrl() {
-            return global.__lastEventSourceUrl || lastSourceUrl;
+            return box.url;
         },
 
         reply(url, payload) {
-
-            global.__reply(url, payload);
+            replies.set(url, payload);
         },
 
         send(event) {
 
-            stream.onmessage({
+            box.stream.onmessage({
                 data: JSON.stringify(event)
             });
         },
 
         snapshot(value) {
 
-            stream.onmessage({
+            box.stream.onmessage({
                 data: JSON.stringify({
                     type: "snapshot",
                     snapshot: value

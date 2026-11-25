@@ -40,7 +40,7 @@
     "test:proxy": "node test/providers/proxy.test.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "license": "MIT",
   "bin": {
@@ -51,5 +51,8 @@
     "https-proxy-agent": "^7.0.6",
     "node-pty": "^1.1.0",
     "socks-proxy-agent": "^8.0.5"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.6"
   }
 }
