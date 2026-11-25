@@ -1693,6 +1693,14 @@ async function main() {
         assert.match(dialog.textContent, /applied on next use/);
         Modal.closeTop("test");
 
+        console_.reply("/api/models", {
+            models: ["main-model"],
+            byRole: {
+                MAIN: ["main-model"],
+                L1: ["main-model", "layer-model"]
+            },
+            errors: {}
+        });
         document.getElementById("llmSettingsButton").dispatch("click");
         const llmDialog =
             document.body.children.filter(
@@ -1708,13 +1716,14 @@ async function main() {
 
         await new Promise(resolve => setTimeout(resolve, 0));
         const modelRequests = console_.posted
-            .filter(item => item.url.startsWith("/api/models?role="))
-            .map(item => item.url);
-        assert.deepStrictEqual(
-            modelRequests,
-            ["/api/models?role=MAIN", "/api/models?role=L1"],
-            "rebuilding the Settings body reuses the first model-list requests"
-        );
+            .filter(item => item.url === "/api/models");
+        assert.equal(modelRequests.length, 1, "all model rows share one aggregate catalog request");
+
+        const modelRows = llmDialog.querySelectorAll(".setting")
+            .filter(row => row.dataset.key.endsWith("_MODEL"));
+        const layerOptions = [...modelRows.find(row => row.dataset.key === "ENDPOINT_L1_MODEL").children[1].children]
+            .map(option => option.value);
+        assert.ok(layerOptions.includes("layer-model"), "the backend's per-role catalog populates the layer select");
 
         Modal.closeTop("test");
 

@@ -51,7 +51,11 @@ const {
 const { SseHub } = require("./SseHub");
 
 const consoleAuth = require("../../agent/config/ConsoleAuth");
-const { listModels } = require("../../agent/providers/ModelCatalog");
+const {
+    listModels,
+    listModelCatalog,
+    clearModelCatalogCache
+} = require("../../agent/providers/ModelCatalog");
 const { ApprovalStore } = require("../../agent/policy");
 const ProcessOutputBus = require("../../agent/tools/process/ProcessOutputBus");
 const { DiscussionService } = require("../../agent/discussion/DiscussionService");
@@ -3064,8 +3068,15 @@ function createServer(runtime, options = {}) {
                 ) {
                     if (requireAdmin()) return;
                     try {
-                        const models = await listModels({ role: url.searchParams.get("role") || "MAIN" });
-                        sendJson(res, 200, { models });
+                        const role = url.searchParams.get("role");
+
+                        if (role) {
+                            const models = await listModels({ role });
+                            sendJson(res, 200, { models });
+                        } else {
+                            const catalog = await listModelCatalog();
+                            sendJson(res, 200, catalog);
+                        }
                     } catch (error) {
                         sendJson(res, 502, { error: error.message });
                     }
@@ -3114,6 +3125,12 @@ function createServer(runtime, options = {}) {
                             runtime.settings.describe(
                                 runtime.settings.definitionOf(body.key)
                             );
+
+                        if (
+                            /^(AGENT_PROVIDER|AGENT_PROVIDER_REGION|AGENT_BASE_URL|AGENT_API_KEY|AGENT_PROXY_URL|AZURE_OPENAI_API_VERSION|BEDROCK_ACCESS_KEY_ID|BEDROCK_SECRET_ACCESS_KEY|BEDROCK_SESSION_TOKEN|ENDPOINT_(MAIN|L1|L2|L3|SUMMARY)_(BASE_URL|API_KEY))$/.test(String(body.key))
+                        ) {
+                            clearModelCatalogCache();
+                        }
 
                         runtime.events.emit("settings:changed", {
                             key: body.key,

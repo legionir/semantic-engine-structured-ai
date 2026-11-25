@@ -55,7 +55,7 @@ const state = {
     historyOpening: false,
     mcpOpening: false,
     settings: [],
-    modelCatalog: new Map(),
+    modelCatalog: null,
     logFilter: "",
     logType: "",
     openExecutionKeys: new Set(),
@@ -4848,34 +4848,33 @@ function modelCatalogConfigChanged(key) {
 }
 
 
-function loadModelCatalog(role) {
+function loadModelCatalog() {
 
-    const cached = state.modelCatalog.get(role);
-    if (cached && cached.expiresAt > Date.now()) {
-        return cached.promise;
+    if (state.modelCatalog && state.modelCatalog.expiresAt > Date.now()) {
+        return state.modelCatalog.promise;
     }
 
     const entry = { expiresAt: Infinity, promise: null };
-    entry.promise = fetch(`/api/models?role=${encodeURIComponent(role)}`)
+    entry.promise = fetch("/api/models")
         .then(async response => {
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
                 throw new Error(payload.error || `Model endpoint returned HTTP ${response.status}.`);
             }
-            if (!Array.isArray(payload.models)) {
-                throw new Error(payload.error || "Model endpoint returned an invalid model list.");
+            if (!Array.isArray(payload.models) || !payload.byRole) {
+                throw new Error(payload.error || "Model endpoint returned an invalid catalog.");
             }
-            entry.expiresAt = Date.now() + 60_000;
-            return payload.models;
+            entry.expiresAt = Infinity;
+            return payload;
         })
         .catch(error => {
-            /* Cache failures briefly too: a modal refresh must not fan out a
-               second burst of identical failed requests. */
+            /* A failed catalog stays memoized briefly too, so a settings body
+               rebuild does not repeat the same upstream fan-out. */
             entry.expiresAt = Date.now() + 10_000;
             throw error;
         });
 
-    state.modelCatalog.set(role, entry);
+    state.modelCatalog = entry;
     return entry.promise;
 }
 
@@ -5014,8 +5013,9 @@ function settingRow(setting) {
 
         if (isModel) {
             const role = setting.key.match(/^ENDPOINT_(MAIN|L1|L2|L3|SUMMARY)_MODEL$/)?.[1] || "MAIN";
-            loadModelCatalog(role)
-                .then(models => {
+            loadModelCatalog()
+                .then(catalog => {
+                    const models = catalog.byRole[role] || catalog.models;
                     for (const modelName of models) {
                         if ([...input.children].some(option => option.value === modelName)) continue;
                         const option = node("option", null, modelName);
@@ -5023,6 +5023,10 @@ function settingRow(setting) {
                         input.appendChild(option);
                     }
                     input.value = String(setting.value || "");
+                    if (catalog.errors && catalog.errors[role]) {
+                        hint.textContent = `Using the main model list: ${catalog.errors[role]}`;
+                        row.classList.add("model-list-unavailable");
+                    }
                 })
                 .catch(error => {
                     input.title = error.message;
@@ -5091,7 +5095,7 @@ function settingRow(setting) {
         row.classList.add("saved");
 
         if (modelCatalogConfigChanged(setting.key)) {
-            state.modelCatalog.clear();
+            state.modelCatalog = null;
         }
 
         setTimeout(
@@ -5125,7 +5129,7 @@ function settingRow(setting) {
             });
 
             if (modelCatalogConfigChanged(setting.key)) {
-                state.modelCatalog.clear();
+                state.modelCatalog = null;
             }
 
             loadSettings();

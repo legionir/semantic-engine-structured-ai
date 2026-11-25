@@ -1,7 +1,13 @@
 "use strict";
 
 const assert = require("assert");
-const { listModels, modelNames, requestFor } = require("../../agent/providers/ModelCatalog");
+const {
+    listModels,
+    listModelCatalog,
+    clearModelCatalogCache,
+    modelNames,
+    requestFor
+} = require("../../agent/providers/ModelCatalog");
 
 const fakeStore = values => ({
     get: key => values[key] ?? "",
@@ -43,6 +49,51 @@ async function main() {
 
     assert.equal(requested.url, "http://localhost:11434/api/tags");
     assert.deepStrictEqual(names, ["llama", "qwen"]);
+
+    clearModelCatalogCache();
+    const sharedSettings = fakeStore({
+        AGENT_PROVIDER: "openai-compatible",
+        AGENT_BASE_URL: "https://main.example/v1",
+        AGENT_API_KEY: "shared-secret"
+    });
+    const sharedCalls = [];
+    const sharedTransport = {
+        request: async options => {
+            sharedCalls.push(options.url);
+            return { status: 200, text: async () => JSON.stringify({ data: [{ id: "main-model" }] }) };
+        }
+    };
+    const sharedCatalog = await listModelCatalog({ settingsStore: sharedSettings, transport: sharedTransport });
+
+    assert.equal(sharedCalls.length, 1, "unconfigured roles reuse the MAIN endpoint request");
+    for (const role of ["MAIN", "L1", "L2", "L3", "SUMMARY"]) {
+        assert.deepStrictEqual(sharedCatalog.byRole[role], ["main-model"]);
+    }
+
+    clearModelCatalogCache();
+    const distinctSettings = fakeStore({
+        AGENT_PROVIDER: "openai-compatible",
+        AGENT_BASE_URL: "https://main.example/v1",
+        AGENT_API_KEY: "shared-secret",
+        ENDPOINT_L1_BASE_URL: "https://layer.example/v1"
+    });
+    const distinctCalls = [];
+    const distinctCatalog = await listModelCatalog({
+        settingsStore: distinctSettings,
+        transport: {
+            request: async options => {
+                distinctCalls.push(options.url);
+                const id = options.url.includes("layer.example") ? "layer-model" : "main-model";
+                return { status: 200, text: async () => JSON.stringify({ data: [{ id }] }) };
+            }
+        }
+    });
+
+    assert.equal(distinctCalls.length, 2, "a newly configured endpoint adds one upstream request");
+    assert.deepStrictEqual(distinctCatalog.byRole.MAIN, ["main-model"]);
+    assert.deepStrictEqual(distinctCatalog.byRole.L1, ["layer-model"]);
+    assert.deepStrictEqual(distinctCatalog.byRole.L2, ["main-model"]);
+
     assert.throws(() => requestFor({
         provider: "bedrock",
         baseUrl: "https://unused.invalid",

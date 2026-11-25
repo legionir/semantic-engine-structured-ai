@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const settings = require("../config");
 const { httpTransport } = require("./HttpTransport");
 const { signRequest } = require("./AwsSigV4");
@@ -15,6 +16,7 @@ const DEFAULT_BASE_URLS = Object.freeze({
     ollama: "http://localhost:11434",
     openrouter: "https://openrouter.ai/api/v1"
 });
+const catalogCache = new Map();
 
 
 function appendPath(baseUrl, suffix) {
@@ -104,12 +106,89 @@ function requestFor({ provider, baseUrl, apiKey, store }) {
 }
 
 
-async function listModels({ role = "MAIN", settingsStore = settings, transport = httpTransport } = {}) {
-    const roleName = String(role).toUpperCase();
-    if (!ROLES.has(roleName)) throw new Error("role must be MAIN, L1, L2, L3 or SUMMARY.");
+function requestCacheKey(provider, request, store) {
 
+    const headers = { ...request.headers };
+    const isIamSigned = provider === "bedrock" &&
+        String(headers.authorization || "").startsWith("AWS4-HMAC-SHA256");
+
+    if (isIamSigned) {
+        /* SigV4 timestamps/signatures vary per request; identity is the
+           credential set and target, not the ephemeral signature. */
+        delete headers.authorization;
+        delete headers["x-amz-date"];
+        delete headers["x-amz-security-token"];
+    }
+
+    const identity = {
+        provider,
+        url: request.url,
+        headers,
+        iam: isIamSigned
+            ? {
+                accessKeyId: store.get("BEDROCK_ACCESS_KEY_ID"),
+                secretAccessKey: store.get("BEDROCK_SECRET_ACCESS_KEY"),
+                sessionToken: store.get("BEDROCK_SESSION_TOKEN")
+            }
+            : null
+    };
+
+    return crypto.createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+}
+
+
+async function fetchModelsForRequest({ provider, request, settingsStore, transport }) {
+
+    const key = requestCacheKey(provider, request, settingsStore);
+    const cached = catalogCache.get(key);
+
+    if (cached && cached.transport === transport && cached.expiresAt > Date.now()) {
+        return cached.promise;
+    }
+
+    const entry = { transport, expiresAt: Infinity, promise: null };
+
+    entry.promise = (async () => {
+        const response = await transport.request({
+            method: "GET",
+            url: request.url,
+            headers: request.headers,
+            timeoutMs: 20000
+        });
+
+        if (response.status < 200 || response.status >= 300) {
+            throw new Error(`The ${provider} model endpoint returned HTTP ${response.status}.`);
+        }
+
+        let payload;
+        try {
+            payload = JSON.parse(await response.text());
+        } catch {
+            throw new Error(`The ${provider} model endpoint did not return valid JSON.`);
+        }
+
+        return modelNames(payload);
+    })().then(
+        models => {
+            entry.expiresAt = Infinity;
+            return models;
+        },
+        error => {
+            /* Avoid retry storms on an unavailable endpoint. A changed
+               endpoint/key gets a different cache key immediately. */
+            entry.expiresAt = Date.now() + 10000;
+            throw error;
+        }
+    );
+
+    catalogCache.set(key, entry);
+    return entry.promise;
+}
+
+
+function endpointForRole(role, settingsStore) {
     const provider = settingsStore.get("AGENT_PROVIDER");
-    const roleBase = settingsStore.get(`ENDPOINT_${roleName}_BASE_URL`);
+    const roleBase = settingsStore.get(`ENDPOINT_${role}_BASE_URL`);
     const configuredBase = roleBase || settingsStore.get("AGENT_BASE_URL");
     const baseIsDefault = typeof settingsStore.sourceOf === "function" &&
         settingsStore.sourceOf("AGENT_BASE_URL") === "default";
@@ -117,30 +196,76 @@ async function listModels({ role = "MAIN", settingsStore = settings, transport =
         ? configuredBase
         : DEFAULT_BASE_URLS[provider]);
 
-    if (!baseUrl) throw new Error(`Set ENDPOINT_${roleName}_BASE_URL or AGENT_BASE_URL before loading models.`);
+    if (!baseUrl) throw new Error(`Set ENDPOINT_${role}_BASE_URL or AGENT_BASE_URL before loading models.`);
 
-    const apiKey = settingsStore.get(`ENDPOINT_${roleName}_API_KEY`) || settingsStore.get("AGENT_API_KEY");
-    const request = requestFor({ provider, baseUrl, apiKey, store: settingsStore });
-    const response = await transport.request({
-        method: "GET",
-        url: request.url,
-        headers: request.headers,
-        timeoutMs: 20000
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-        throw new Error(`The ${provider} model endpoint returned HTTP ${response.status}.`);
-    }
-
-    let payload;
-    try {
-        payload = JSON.parse(await response.text());
-    } catch {
-        throw new Error(`The ${provider} model endpoint did not return valid JSON.`);
-    }
-
-    return modelNames(payload);
+    const apiKey = settingsStore.get(`ENDPOINT_${role}_API_KEY`) || settingsStore.get("AGENT_API_KEY");
+    return { provider, request: requestFor({ provider, baseUrl, apiKey, store: settingsStore }) };
 }
 
 
-module.exports = { listModels, modelNames, requestFor, appendPath, ROLES };
+async function listModels({ role = "MAIN", settingsStore = settings, transport = httpTransport } = {}) {
+    const roleName = String(role).toUpperCase();
+    if (!ROLES.has(roleName)) throw new Error("role must be MAIN, L1, L2, L3 or SUMMARY.");
+
+    const endpoint = endpointForRole(roleName, settingsStore);
+    return fetchModelsForRequest({ ...endpoint, settingsStore, transport });
+}
+
+
+async function listModelCatalog({ settingsStore = settings, transport = httpTransport } = {}) {
+
+    const byRole = Object.create(null);
+    const errors = Object.create(null);
+    let mainModels = [];
+
+    try {
+        mainModels = await listModels({ role: "MAIN", settingsStore, transport });
+        byRole.MAIN = mainModels;
+    } catch (error) {
+        errors.MAIN = error.message;
+        byRole.MAIN = [];
+    }
+
+    const explicitRoles = [...ROLES].filter(role =>
+        role !== "MAIN" && (
+            settingsStore.get(`ENDPOINT_${role}_BASE_URL`) ||
+            settingsStore.get(`ENDPOINT_${role}_API_KEY`)
+        )
+    );
+
+    await Promise.all([...ROLES].filter(role => role !== "MAIN").map(async role => {
+        if (!explicitRoles.includes(role)) {
+            byRole[role] = mainModels;
+            return;
+        }
+
+        try {
+            byRole[role] = await listModels({ role, settingsStore, transport });
+        } catch (error) {
+            errors[role] = error.message;
+            byRole[role] = mainModels;
+        }
+    }));
+
+    if (Object.values(byRole).every(models => models.length === 0)) {
+        throw new Error(errors.MAIN || Object.values(errors)[0] || "No model catalog is available.");
+    }
+
+    return { models: mainModels, byRole, errors };
+}
+
+
+function clearModelCatalogCache() {
+    catalogCache.clear();
+}
+
+
+module.exports = {
+    listModels,
+    listModelCatalog,
+    clearModelCatalogCache,
+    modelNames,
+    requestFor,
+    appendPath,
+    ROLES
+};
