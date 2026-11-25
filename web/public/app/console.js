@@ -2227,19 +2227,31 @@ function openNewProjectModal() {
         footer: Modal.row(
             Modal.button("Create", "", async () => {
 
-                const response = await fetch("/api/projects", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({
-                        name: name.value.trim() || undefined,
-                        rootPath: root.value.trim(),
-                        createIfMissing: true
-                    })
-                });
+                if (root.value.trim() === "") {
+                    message.textContent = "a root path is required";
+                    return;
+                }
+
+                let response;
+
+                try {
+                    response = await fetch("/api/projects", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({
+                            name: name.value.trim() || undefined,
+                            rootPath: root.value.trim(),
+                            createIfMissing: true
+                        })
+                    });
+                } catch (error) {
+                    message.textContent = `could not register: ${error.message || "network error"}`;
+                    return;
+                }
 
                 const payload = await response.json().catch(() => ({}));
 
-                if (!response.ok) {
+                if (!response.ok || !payload.project) {
                     message.textContent = payload.error || "could not register";
                     return;
                 }
@@ -2310,9 +2322,18 @@ async function openProjectsManager() {
         );
         row.appendChild(
             Modal.button("Delete", "ghost danger", async () => {
-                await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
-                    method: "DELETE"
-                });
+                try {
+                    const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+                        method: "DELETE"
+                    });
+                    if (!response.ok) {
+                        notifyError(await failureText(response, `${project.name || project.id} was not deleted`));
+                        return;
+                    }
+                } catch (error) {
+                    notifyError(`${project.name || project.id} was not deleted: ${error.message || "network error"}`);
+                    return;
+                }
                 await loadProjects();
                 if (state.currentProjectId === project.id) setCurrentProject(null);
                 handle.close("deleted");
