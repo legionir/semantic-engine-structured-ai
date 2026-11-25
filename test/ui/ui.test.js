@@ -18,7 +18,11 @@ async function test(name, fn) {
 
     try {
 
-        await fn();
+        try {
+            await fn();
+        } finally {
+            card.close();
+        }
 
         results.push({ name, ok: true });
 
@@ -46,6 +50,9 @@ const Modal =
     require(
         path.join(harness.PUBLIC_DIR, "modal.js")
     );
+
+
+const card = harness.panels(document);
 
 
 function backdrops() {
@@ -279,7 +286,7 @@ async function main() {
         });
 
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /code_analysis/);
         assert.match(tree, /from main_agent/);
@@ -337,7 +344,7 @@ async function main() {
         }
 
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /dependency graph/);
         assert.match(tree, /wave 1 · 2 in parallel/);
@@ -345,7 +352,7 @@ async function main() {
         assert.match(tree, /after a, b/);
 
         assert.match(
-            document.getElementById("execSummary").textContent,
+            card.execSummary().textContent,
             /2 agents · 3 calls · 1 failed/
         );
     });
@@ -353,7 +360,7 @@ async function main() {
     await test("a wave label counts real overlap, not the plan", () => {
 
         const groups = () =>
-            [...document.getElementById("tree").querySelectorAll(".graph")];
+            [...card.tree().querySelectorAll(".graph")];
 
         const send = (type, body) =>
             console_.send({
@@ -467,7 +474,7 @@ async function main() {
     await test("a row opens the full detail of what was executed", async () => {
 
         const rows =
-            [...document.getElementById("tree")
+            [...card.tree()
                 .querySelectorAll(".tool")];
 
         assert.ok(rows.length >= 3);
@@ -476,10 +483,8 @@ async function main() {
 
         await Promise.resolve();
 
-        const dialog =
-            [...document.body.children].filter(
-                child => child.classList.contains("modal-backdrop")
-            )[0].children[0];
+        /* the detail opens over the Execution modal */
+        const dialog = backdrops().at(-1).children[0];
 
         const text = dialog.textContent;
 
@@ -532,12 +537,12 @@ async function main() {
         });
 
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /exit 2/);
 
         const rows =
-            [...document.getElementById("tree")
+            [...card.tree()
                 .querySelectorAll(".tool")];
 
         const build =
@@ -560,12 +565,12 @@ async function main() {
         });
 
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /Loaded skill codebase_analysis/);
 
         const marks =
-            [...document.getElementById("tree")
+            [...card.tree()
                 .querySelectorAll(".skill")];
 
         assert.equal(marks.length, 1);
@@ -580,7 +585,7 @@ async function main() {
         });
 
         assert.equal(
-            [...document.getElementById("tree")
+            [...card.tree()
                 .querySelectorAll(".skill")].length,
             1
         );
@@ -609,13 +614,13 @@ async function main() {
         });
 
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /Runtime routine/);
         assert.match(tree, /after_task · verify · agent/);
         assert.match(tree, /npm test passed/);
         assert.match(
-            document.getElementById("execSummary").textContent,
+            card.execSummary().textContent,
             /1 hook/
         );
     });
@@ -628,7 +633,7 @@ async function main() {
         });
 
         const archive =
-            document.getElementById("executionArchive");
+            card.archive();
 
         assert.equal(archive.children.length >= 1, true);
 
@@ -641,7 +646,7 @@ async function main() {
         assert.equal(previous.children[0].textContent.includes("\n"), false);
 
         assert.match(
-            document.getElementById("tree").textContent,
+            card.tree().textContent,
             /second task/
         );
     });
@@ -718,7 +723,7 @@ async function main() {
         });
 
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /repeated failure ×3/);
         assert.match(tree, /missing\.md/);
@@ -740,12 +745,12 @@ async function main() {
         });
 
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /unreadable answer ×1/);
         assert.match(tree, /fs_write/);
         assert.match(
-            document.getElementById("log").textContent,
+            card.log().textContent,
             /MALFORMED_TOOL_ARGUMENTS 1\/3/
         );
 
@@ -762,7 +767,7 @@ async function main() {
             outcome: "stopped"
         });
 
-        const stopped = document.getElementById("tree").textContent;
+        const stopped = card.tree().textContent;
         assert.match(stopped, /unreadable answer ×3/);
         assert.match(stopped, /retry budget exhausted; run stopped/);
     });
@@ -1208,7 +1213,7 @@ async function main() {
 
         /* the execution card */
         const tree =
-            document.getElementById("tree").textContent;
+            card.tree().textContent;
 
         assert.match(tree, /git_analysis/);
         assert.match(tree, /from main_agent/);
@@ -1218,7 +1223,7 @@ async function main() {
 
         /* the events card */
         assert.ok(
-            document.getElementById("log").children.length >= 5
+            card.log().children.length >= 5
         );
 
         assert.match(
@@ -1438,84 +1443,54 @@ async function main() {
     /*
     | The Execution and Events modals used to borrow the page's own nodes,
     | and every bug in giving them back left the console dead (a stranded
-    | #log made every later event throw). They now draw their own copy
-    | from the store, so the page cards never move and both copies agree.
+    | #log made every later event throw). They now have no page copy at
+    | all: each opening draws from the store, and what the operator set in
+    | one opening (the filter, the type) is there in the next.
     */
 
-    await test("the execution and events modals draw a live copy and leave the page cards in place", () => {
+    await test("execution and events exist only as modals and keep their settings between openings", () => {
 
-        const ids = [
-            "log", "logFilter", "logType", "logCount", "clearLog",
-            "tree", "executionArchive"
-        ];
+        for (const id of ["rowTwo", "log", "logFilter", "logType", "logCount", "clearLog", "tree", "executionArchive", "execSummary"]) {
+            assert.equal(document.getElementById(id), null, `#${id} has no page copy`);
+        }
+        assert.equal(document.querySelectorAll(".tree, ul.log").length, 0, "nothing is drawn while both are closed");
 
-        const homes = new Map(ids.map(id => {
-            const element = document.getElementById(id);
-            assert.ok(element, `${id} should start on the page`);
-            return [id, { element, parent: element.parentNode, index: [...element.parentNode.children].indexOf(element) }];
-        }));
-
-        const unchanged = when => {
-            for (const [id, home] of homes) {
-                assert.equal(document.getElementById(id), home.element, `${id} is the same node ${when}`);
-                assert.equal(home.element.parentNode, home.parent, `${id} is in its home ${when}`);
-                assert.equal([...home.parent.children].indexOf(home.element), home.index, `${id} kept its position ${when}`);
-                assert.equal(document.querySelectorAll(`#${id}`).length, 1, `#${id} stays unique ${when}`);
-            }
-        };
-
-        document.getElementById("eventsButton").dispatch("click");
-
-        const events = backdrops().at(-1);
-        const modalLog = events.querySelector("ul.log");
-        const pageLog = document.getElementById("log");
-
-        unchanged("while the Events modal is open");
-        assert.equal(modalLog.children.length, pageLog.children.length, "the modal shows the same rows");
-
+        const rows = card.log();
+        const before = rows.children.length;
         console_.send({ type: "agent:iteration", agent: "main_agent", iteration: 41 });
-        assert.equal(modalLog.children.length, pageLog.children.length, "a new event reaches both");
-        assert.match(modalLog.lastElementChild.textContent, /41/);
+        assert.equal(rows.children.length, before + 1, "an event reaches the open modal");
+        assert.match(rows.lastElementChild.textContent, /41/);
 
-        /* the modal's filter is the panel's filter */
-        const modalFilter = events.querySelector(".log-filter");
-        modalFilter.value = "iteration";
-        modalFilter.dispatch("input");
-        assert.equal(document.getElementById("logFilter").value, "iteration", "the page box follows");
-        assert.deepEqual(
-            [...modalLog.children].map(item => item.hidden),
-            [...pageLog.children].map(item => item.hidden),
-            "both lists hide the same rows"
-        );
-        modalFilter.value = "";
-        modalFilter.dispatch("input");
+        card.filter().value = "iteration";
+        card.filter().dispatch("input");
+        const hidden = [...card.log().children].map(item => item.hidden);
+        assert.ok(hidden.includes(true), "the filter hides rows");
+        card.close();
 
-        Modal.closeTop("test");
-        unchanged("after the Events modal closed");
+        assert.equal(card.filter().value, "iteration", "the next opening shows the same filter");
+        assert.deepEqual([...card.log().children].map(item => item.hidden), hidden, "and hides the same rows");
+        card.filter().value = "";
+        card.filter().dispatch("input");
+        card.close();
 
-        document.getElementById("executionButton").dispatch("click");
-        const execution = backdrops().at(-1);
-        unchanged("while the Execution modal is open");
-        assert.equal(
-            execution.querySelectorAll(".tree button.tool").length,
-            document.getElementById("tree").querySelectorAll("button.tool").length,
-            "the modal draws the same tree"
-        );
-        Modal.closeTop("test");
+        const tools = card.tree().querySelectorAll("button.tool").length;
+        card.close();
+        assert.equal(card.tree().querySelectorAll("button.tool").length, tools, "the tree is drawn the same each time");
+        card.close();
 
         for (const button of ["eventsButton", "executionButton", "eventsButton", "executionButton"]) {
             document.getElementById(button).dispatch("click");
             Modal.closeTop("test");
         }
 
-        unchanged("after repeated round trips");
         assert.equal(backdrops().length, 0);
+        assert.equal(document.querySelectorAll(".tree, ul.log").length, 0, "closing leaves nothing behind");
     });
 
     await test("the event stream keeps drawing after a modal round trip", () => {
 
         const before =
-            document.getElementById("log").children.length;
+            card.log().children.length;
 
         document.getElementById("eventsButton").dispatch("click");
         Modal.closeTop("test");
@@ -1527,7 +1502,7 @@ async function main() {
         });
 
         const list =
-            document.getElementById("log");
+            card.log();
 
         assert.ok(list, "the list survived the round trip");
 
@@ -1540,14 +1515,14 @@ async function main() {
     await test("the events filter matches any part of a word, in the type or the text", () => {
 
         const list =
-            document.getElementById("log");
+            card.log();
 
         const filter =
-            document.getElementById("logFilter");
+            card.filter();
 
         list.innerHTML = "";
 
-        document.getElementById("clearLog").dispatch("click");
+        card.clear().dispatch("click");
 
         for (
             const event
@@ -1610,17 +1585,17 @@ async function main() {
     await test("the events filter narrows to one type, and combines with the text", () => {
 
         const list =
-            document.getElementById("log");
+            card.log();
 
         const filter =
-            document.getElementById("logFilter");
+            card.filter();
 
         const type =
-            document.getElementById("logType");
+            card.type();
 
         list.innerHTML = "";
 
-        document.getElementById("clearLog").dispatch("click");
+        card.clear().dispatch("click");
 
         for (
             const event
@@ -1674,7 +1649,7 @@ async function main() {
         /* the count reports what survived, out of what there is */
 
         assert.equal(
-            document.getElementById("logCount").textContent,
+            card.count().textContent,
             "1 of 3"
         );
 
@@ -1715,7 +1690,7 @@ async function main() {
         assert.equal(visible().length, 5, "clearing both filters shows everything");
 
         assert.equal(
-            document.getElementById("logCount").textContent,
+            card.count().textContent,
             "5 events"
         );
     });
@@ -1723,18 +1698,18 @@ async function main() {
     await test("the events filter survives the modal round trip", () => {
 
         const list =
-            document.getElementById("log");
+            card.log();
 
         list.innerHTML = "";
 
-        document.getElementById("clearLog").dispatch("click");
+        card.clear().dispatch("click");
 
         console_.send({ type: "tool:start", agent: "main_agent", name: "fs_read" });
         console_.send({ type: "agent:iteration", agent: "main_agent", iteration: 1 });
 
-        document.getElementById("logType").value = "tool:start";
+        card.type().value = "tool:start";
 
-        document.getElementById("logType").dispatch("change");
+        card.type().dispatch("change");
 
         /*
         | The controls move into the modal with the list, so the filter
@@ -1744,7 +1719,7 @@ async function main() {
         document.getElementById("eventsButton").dispatch("click");
 
         assert.equal(
-            document.getElementById("logType").value,
+            card.type().value,
             "tool:start",
             "the chosen type came along into the modal"
         );
@@ -1752,7 +1727,7 @@ async function main() {
         console_.send({ type: "agent:iteration", agent: "main_agent", iteration: 2 });
 
         assert.equal(
-            [...document.getElementById("log")
+            [...card.log()
                 .children].filter(item => !item.hidden).length,
             1,
             "the filter still applies to rows arriving while the modal is open"
@@ -1760,12 +1735,12 @@ async function main() {
 
         Modal.closeTop("test");
 
-        document.getElementById("logType").value = "";
+        card.type().value = "";
 
-        document.getElementById("logType").dispatch("change");
+        card.type().dispatch("change");
 
         assert.equal(
-            [...document.getElementById("log")
+            [...card.log()
                 .children].filter(item => !item.hidden).length,
             3,
             "the filter still works after the controls went home"
@@ -2047,7 +2022,7 @@ async function main() {
 
     await test("events from another project do not enter the current view", () => {
 
-        const before = document.getElementById("log").children.length;
+        const before = card.log().children.length;
 
         console_.send({
             type: "run:start",
@@ -2056,12 +2031,12 @@ async function main() {
         });
 
         assert.equal(
-            document.getElementById("log").children.length,
+            card.log().children.length,
             before,
             "project B events must not appear while A is selected"
         );
         assert.equal(
-            document.getElementById("tree").textContent.includes("secret-of-b"),
+            card.tree().textContent.includes("secret-of-b"),
             false
         );
     });

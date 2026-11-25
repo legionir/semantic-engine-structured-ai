@@ -888,25 +888,20 @@ button.link:hover { color: var(--accent); background: var(--accent-soft); border
   background: rgba(255, 255, 255, .015);
 }
 .log-controls > .filter { flex: 0 1 auto; }
-.log-controls > #logFilter,
 .log-controls > .log-filter { flex: 1 1 auto; min-width: 120px; }
-.log-controls > #logCount,
 .log-controls > .log-count { margin-left: auto; }
 
 /*
-| The type dropdown sits beside the text box in both homes: the hidden
-| panel header and the modal. It wears .filter so it inherits the shape
-| the search input already has.
+| The type dropdown sits beside the text box in the Events modal. It
+| wears .filter so it inherits the shape the search input already has.
 */
 
-select#logType,
 select.log-type {
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: 6px; color: var(--text);
   padding: 4px 6px; font: inherit; font-size: 12px;
   max-width: 170px;
 }
-#logCount,
 .log-count { font-size: 11px; white-space: nowrap; }
 
 .log { list-style: none; margin: 0; padding: 8px 11px; overflow: auto; font-family: var(--mono); font-size: 12px; }
@@ -1650,8 +1645,7 @@ button.ghost.active {
 #settingsButton::before, #projectsButton::before, #newProjectButton::before,
 #planButton::before, #llmSettingsButton::before, #attachFilesButton::before,
 #gatewayHealth::before, #approvalsButton::before,
-.conversation .panel-head h2::before, .plan-panel .panel-head h2::before,
-.execution-panel .panel-head h2::before, .log-panel .panel-head h2::before {
+.conversation .panel-head h2::before, .plan-panel .panel-head h2::before {
   content: "";
   width: 14px; height: 14px;
   margin-right: 7px;
@@ -1662,8 +1656,7 @@ button.ghost.active {
 }
 
 /* panel headers already flex; the gap carries the spacing instead */
-.conversation .panel-head h2::before, .plan-panel .panel-head h2::before,
-.execution-panel .panel-head h2::before, .log-panel .panel-head h2::before {
+.conversation .panel-head h2::before, .plan-panel .panel-head h2::before {
   margin-right: 0;
   width: 15px; height: 15px;
 }
@@ -1693,8 +1686,6 @@ button.ghost.active {
 /* -- panel head icons (replace the accent tick) */
 .conversation .panel-head h2::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 5.5A1.5 1.5 0 0 0 19.5 4h-15A1.5 1.5 0 0 0 3 5.5V15a1.5 1.5 0 0 0 1.5 1.5H8V20l4.5-3.5H19.5A1.5 1.5 0 0 0 21 15z'/%3E%3C/svg%3E"); }
 .plan-panel .panel-head h2::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 6h11M10 12h11M10 18h11M4 6l1.3 1.3L7.5 4.8M4 12l1.3 1.3L7.5 10.8M4 18l1.3 1.3L7.5 16.8'/%3E%3C/svg%3E"); }
-.execution-panel .panel-head h2::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6.5' cy='5.5' r='2.5'/%3E%3Ccircle cx='6.5' cy='18.5' r='2.5'/%3E%3Ccircle cx='17.5' cy='7.5' r='2.5'/%3E%3Cpath d='M6.5 8v8M17.5 10v1a5 5 0 0 1-5 5h-6'/%3E%3C/svg%3E"); }
-.log-panel .panel-head h2::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01'/%3E%3C/svg%3E"); }
 
 /* keyboard affordance in the composer */
 .kbd-hint { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; color: var(--faint); font-size: 11px; }

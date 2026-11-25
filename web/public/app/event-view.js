@@ -198,7 +198,7 @@ export function EventsPanel({ state, onOpenCallKey, onFilter, onType, onClear })
                 <${LogTypeOptions} state=${state} />
             </select>
             <span class="muted log-count" hidden=${views.length === 0}>${logCountText(views, state.logFilter, state.logType)}</span>
-            <button type="button" class="link" onClick=${onClear}>clear</button>
+            <button type="button" class="link log-clear" onClick=${onClear}>clear</button>
         </div>
         <ul class="log"><${LogRows} state=${state} onOpenCallKey=${onOpenCallKey} /></ul>
     </div>`;

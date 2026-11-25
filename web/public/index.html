@@ -113,37 +113,6 @@
     </div>
   </section>
 
-  <!-- row 2: execution and events, hidden; opened as modals from the header -->
-  <section class="row split" id="rowTwo" hidden>
-    <div class="panel scroller execution-panel">
-      <div class="panel-head">
-        <h2>Execution</h2>
-        <span class="muted" id="execSummary"></span>
-      </div>
-      <div class="execution-scroll">
-        <div id="executionArchive" class="execution-archive"></div>
-        <div id="tree" class="tree">
-          <p class="empty">No run yet. Send a task to see the agent tree.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel scroller log-panel">
-      <div class="panel-head">
-        <h2>Events</h2>
-        <div class="head-tools">
-          <input type="search" id="logFilter" class="filter" placeholder="filter by any part of a word">
-          <select id="logType" class="filter" title="show only one kind of event">
-            <option value="">all types</option>
-          </select>
-          <span class="muted" id="logCount" hidden></span>
-          <button type="button" id="clearLog" class="link">clear</button>
-        </div>
-      </div>
-      <ul id="log" class="log"></ul>
-    </div>
-  </section>
-
 </main>
 
 <footer class="project-bar" id="projectBar" aria-label="Project and task controls">

@@ -16,10 +16,10 @@
 import { state, touch } from "./store.js";
 import { bind, html, mount, mountInModal, stickInside, stickToBottom } from "./dom.js";
 import { currentRun, treeSummary } from "./execution-model.js";
-import { Archive, ExecutionPanel, Tree } from "./execution-view.js";
+import { ExecutionPanel } from "./execution-view.js";
 import { Plan, planSummary } from "./plan-view.js";
 import { Chat, waitingText } from "./chat.js";
-import { EventsPanel, logCountText, LogRows, LogTypeOptions, logViews } from "./event-view.js";
+import { EventsPanel } from "./event-view.js";
 import { approvals, el, openCallByKey, openCallDetail } from "./console-core.js";
 import { refreshDiscussionComposerStatus } from "./discussion-controller.js";
 
@@ -117,7 +117,7 @@ function toggleArchivedRun(id, open) {
 }
 
 
-export function setLogFilter(text) {
+function setLogFilter(text) {
 
     state.logFilterText = String(text ?? "");
     state.logFilter = state.logFilterText.trim().toLowerCase();
@@ -125,7 +125,7 @@ export function setLogFilter(text) {
 }
 
 
-export function setLogType(type) {
+function setLogType(type) {
 
     state.logType = String(type ?? "");
     touch("log");
@@ -133,7 +133,7 @@ export function setLogType(type) {
 
 
 /* clearing the panel clears its rows; the type list follows what is left */
-export function clearLogRows() {
+function clearLogRows() {
 
     state.logRows = [];
     touch("log");
@@ -141,22 +141,10 @@ export function clearLogRows() {
 
 
 /*
-| Opening a conversation replays the events it stored, so the Execution
-| and Events cards are rebuilt by the same code that draws them live.
-| Nothing is summarised for storage, which is why this works at all.
+| The page draws the conversation and the plan. Execution and Events have
+| no page copy: they are drawn only while their modal is open.
 */
-
-
 export function mountViews() {
-
-    mount(el("tree"), () => Tree({ run: currentRun(state), onOpenCall: openCallDetail }), ["tree"]);
-
-    mount(el("executionArchive"), () => Archive({
-        archive: state.archive,
-        openIds: state.openArchiveIds,
-        onToggle: toggleArchivedRun,
-        onOpenCall: openCallDetail
-    }), ["tree"]);
 
     mount(el("plan"), () => Plan({ plan: state.plan }), ["plan"]);
 
@@ -174,34 +162,9 @@ export function mountViews() {
         stickToBottom
     );
 
-    mount(el("log"), () => LogRows({ state, onOpenCallKey: openCallByKey }), ["log"], {}, stickToBottom);
-
-    mount(el("logType"), () => LogTypeOptions({ state }), ["log"]);
-
-    bind(["tree"], () => {
-        const summary = el("execSummary");
-        if (summary) summary.textContent = treeSummary(currentRun(state));
-    });
-
     bind(["plan"], () => {
         const summary = el("planSummary");
         if (summary) summary.textContent = planSummary(state.plan);
-    });
-
-    bind(["log"], () => {
-        /* the filter may have been typed in the Events modal */
-        const filter = el("logFilter");
-        if (filter && filter.value.trim().toLowerCase() !== state.logFilter) {
-            filter.value = state.logFilterText ?? state.logFilter;
-        }
-        const type = el("logType");
-        if (type && type.value !== state.logType) type.value = state.logType;
-
-        const count = el("logCount");
-        if (!count) return;
-        const views = logViews(state.logRows);
-        count.textContent = logCountText(views, state.logFilter, state.logType);
-        count.hidden = views.length === 0;
     });
 
     bind(["header"], () => {

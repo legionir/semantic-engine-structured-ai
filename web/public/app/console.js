@@ -23,7 +23,7 @@ import { approvals, el, failureText, notifyError } from "./console-core.js";
 import { openHistory } from "./history-controller.js";
 import { openMcp } from "./mcp-controller.js";
 import { submitDiscussion, toggleDiscussionMode } from "./discussion-controller.js";
-import { clearLogRows, mountViews, openEventsModal, openExecutionModal, openPlanModal, setLogFilter, setLogType } from "./panels-controller.js";
+import { mountViews, openEventsModal, openExecutionModal, openPlanModal } from "./panels-controller.js";
 import { changeApprovalMode, changeAutoContinue, loadSettings, openLlmSettings, openSettings } from "./settings-controller.js";
 import { connect } from "./stream-controller.js";
 import { stopProjectQueue } from "./queue-controller.js";
@@ -98,9 +98,6 @@ el("clearButton").addEventListener("click", async () => {
 
 el("autoContinue").addEventListener("change", event => changeAutoContinue(event.target.checked));
 el("approvalMode").addEventListener("change", event => changeApprovalMode(event.target.value));
-el("clearLog").addEventListener("click", clearLogRows);
-el("logFilter").addEventListener("input", event => setLogFilter(event.target.value));
-el("logType").addEventListener("change", event => setLogType(event.target.value));
 
 
 el("settingsButton").addEventListener("click", openSettings);

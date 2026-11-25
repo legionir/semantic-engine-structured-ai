@@ -353,8 +353,42 @@ async function bootConsole({ Modal, defaults }) {
 }
 
 
+/*
+| Execution and Events have no page copy: they are drawn only inside their
+| modal. Reading one opens its modal when it is not open and leaves it
+| open, so a test can watch it update; closePanels() ends that.
+*/
+function panels(document) {
+
+    const dialog = kind => {
+        const selector = `.modal.${kind}-modal`;
+        if (!document.querySelector(selector)) {
+            document.getElementById(`${kind}Button`).dispatch("click");
+        }
+        return document.querySelector(selector);
+    };
+
+    return {
+        tree: () => dialog("execution").querySelector(".tree"),
+        archive: () => dialog("execution").querySelector(".execution-archive"),
+        execSummary: () => dialog("execution").querySelector(".modal-subtitle"),
+        log: () => dialog("events").querySelector("ul.log"),
+        filter: () => dialog("events").querySelector(".log-filter"),
+        type: () => dialog("events").querySelector(".log-type"),
+        count: () => dialog("events").querySelector(".log-count"),
+        clear: () => dialog("events").querySelector(".log-clear"),
+        close() {
+            for (const open of document.querySelectorAll(".modal.execution-modal, .modal.events-modal")) {
+                open.querySelector(".modal-close").dispatch("click");
+            }
+        }
+    };
+}
+
+
 module.exports = {
     bootConsole,
+    panels,
     PUBLIC_DIR,
     pageBody,
     createWindow,

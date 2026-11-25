@@ -27,7 +27,11 @@ const results = [];
 
 async function test(name, fn) {
     try {
-        await fn();
+        try {
+            await fn();
+        } finally {
+            card.close();
+        }
         results.push({ name, ok: true });
         console.log(`  ok   ${name}`);
     } catch (error) {
@@ -47,6 +51,7 @@ harness.installGlobals(browser);
 const Modal = require(path.join(harness.PUBLIC_DIR, "modal.js"));
 
 const byId = id => document.getElementById(id);
+const card = harness.panels(document);
 const backdrops = () =>
     [...document.body.children].filter(child => child.classList.contains("modal-backdrop"));
 
@@ -238,10 +243,13 @@ async function behaviour() {
             events.push({ type: "tool:start", ...call, depends_on: [], arguments_preview: "{}" });
             events.push({ type: "tool:end", ...call, success: true, duration_ms: 3, result_preview: "{}" });
         }
+        /* both modals open: the costly case, every view draws the snapshot */
+        card.tree();
+        card.log();
         const started = performance.now();
         console_.snapshot({ status: "idle", turns: 3, messages: [], events, approvals: [] });
         const elapsed = performance.now() - started;
-        assert.ok(byId("tree").querySelectorAll("button.tool").length >= 249, "every call is drawn");
+        assert.ok(card.tree().querySelectorAll("button.tool").length >= 249, "every call is drawn");
         /* the old renderer redrew the tree per event; the budget is far above
            one render and far below 500 of them */
         if (process.env.UI_PERF) console.log(`       500-event snapshot: ${elapsed.toFixed(1)} ms`);
@@ -321,11 +329,11 @@ async function behaviour() {
 
     await test("clearing the events panel clears its rows, not just the screen", async () => {
         console_.send({ type: "agent:iteration", agent: "main_agent", iteration: 1 });
-        assert.ok(byId("log").children.length > 0);
-        byId("clearLog").dispatch("click");
-        assert.equal(byId("log").children.length, 0);
+        assert.ok(card.log().children.length > 0);
+        card.clear().dispatch("click");
+        assert.equal(card.log().children.length, 0);
         console_.send({ type: "agent:iteration", agent: "main_agent", iteration: 2 });
-        assert.equal(byId("log").children.length, 1, "old rows do not come back with the next event");
+        assert.equal(card.log().children.length, 1, "old rows do not come back with the next event");
     });
 
     await test("a failed task submit is reported and the composer is usable again", async () => {
