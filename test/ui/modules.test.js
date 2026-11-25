@@ -68,9 +68,17 @@ async function main() {
     "execution-model.js", "conversation-model.js", "discussion-model.js",
     "discussion-view.js", "composer-view.js"
   ];
+  /* console.js wires these; main.js does not import them itself */
+  const controllers = [
+    "console-core.js", "history-controller.js", "mcp-controller.js",
+    "discussion-controller.js", "panels-controller.js", "settings-controller.js",
+    "stream-controller.js", "queue-controller.js", "composer-controller.js",
+    "projects-controller.js", "project-routing.js", "project-manager.js"
+  ];
+  const controllerSource = () => ["console.js", ...controllers].map(source).join("\n");
 
   await test("the frontend domain module inventory is present", () => {
-    required.forEach(name => assert.equal(fs.existsSync(path.join(APP_DIR, name)), true, name));
+    [...required, ...controllers].forEach(name => assert.equal(fs.existsSync(path.join(APP_DIR, name)), true, name));
   });
 
   await test("index.html loads the auth gate after Modal before the ESM console", () => {
@@ -101,7 +109,7 @@ async function main() {
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "ui-syntax-"));
 
     try {
-      for (const name of required) {
+      for (const name of [...required, ...controllers]) {
 
         const target = path.join(scratch, name.replace(/\.js$/, ".mjs"));
 
@@ -132,9 +140,7 @@ async function main() {
     | no id read by a script may vanish from the page it runs on, and no id
     | may be declared twice, because then getElementById picks arbitrarily.
     */
-    for (const [script, page] of [
-      [path.join("app", "console.js"), "index.html"],
-    ]) {
+    for (const [script, page] of ["console.js", ...controllers].map(name => [path.join("app", name), "index.html"])) {
 
       const text = fs.readFileSync(path.join(REPO, "web", "public", script), "utf8");
       const html = fs.readFileSync(path.join(REPO, "web", "public", page), "utf8");
@@ -193,7 +199,7 @@ async function main() {
   });
 
   await test("the console talks to the server over relative URLs and encodes path segments", () => {
-    const console_ = source("console.js");
+    const console_ = controllerSource();
     assert.doesNotMatch(console_, /https?:\/\/(?:127\.0\.0\.1|localhost)/i);
     assert.doesNotMatch(console_, /fetch\(\s*[`"'](?:https?:)?\/\//);
     assert.match(console_, /`\/api\/projects\/\$\{encodeURIComponent\(/);

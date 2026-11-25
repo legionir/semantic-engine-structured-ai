@@ -65,15 +65,17 @@ async function staticChecks() {
         "execution-model.js", "conversation-model.js", "discussion-model.js"
     ];
 
-    await test("views and models never build markup from strings", () => {
-        for (const file of VIEWS) {
-            const source = fs.readFileSync(path.join(APP, file), "utf8");
+    await test("no app module builds markup from strings", () => {
+        for (const file of fs.readdirSync(APP).filter(name => name.endsWith(".js"))) {
+            const source = fs.readFileSync(path.join(APP, file), "utf8")
+                .replace(/\/\*[\s\S]*?\*\//g, "");
             assert.doesNotMatch(
                 source,
                 /\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML|dangerouslySetInnerHTML|document\.write/,
                 file
             );
         }
+        assert.ok(VIEWS.every(file => fs.existsSync(path.join(APP, file))), "the view and model modules exist");
     });
 
     await test("models and the store do not touch the DOM", () => {
@@ -83,12 +85,6 @@ async function staticChecks() {
         }
     });
 
-    await test("the console controller writes markup only to clear a container", () => {
-        const source = fs.readFileSync(path.join(APP, "console.js"), "utf8");
-        const writes = [...source.matchAll(/\.innerHTML\s*=\s*([^;]+);/g)].map(match => match[1].trim());
-        assert.deepEqual([...new Set(writes)].filter(value => value !== '""'), [], "only innerHTML = \"\" is allowed");
-    });
-
     await test("the browser modules import the vendored renderer by relative URL only", () => {
         for (const file of fs.readdirSync(APP).filter(name => name.endsWith(".js"))) {
             const source = fs.readFileSync(path.join(APP, file), "utf8");
@@ -96,6 +92,22 @@ async function staticChecks() {
                 assert.match(match[1], /^\.{1,2}\//, `${file} imports ${match[1]}`);
             }
         }
+    });
+
+    await test("the controller modules import each other without a cycle", () => {
+        const edges = new Map();
+        for (const file of fs.readdirSync(APP).filter(name => name.endsWith(".js"))) {
+            const source = fs.readFileSync(path.join(APP, file), "utf8");
+            edges.set(file, [...source.matchAll(/from\s+"\.\/([^"]+)"/g)].map(match => match[1]));
+        }
+        const done = new Set();
+        const visit = (file, trail) => {
+            assert.ok(!trail.includes(file), `import cycle: ${[...trail, file].join(" -> ")}`);
+            if (done.has(file)) return;
+            for (const next of edges.get(file) || []) visit(next, [...trail, file]);
+            done.add(file);
+        };
+        for (const file of edges.keys()) visit(file, []);
     });
 
     await test("the vendored files are the ones the manifest pins", () => {
@@ -108,8 +120,8 @@ async function staticChecks() {
         }
     });
 
-    await test("every app module stays under the 500-line limit except the legacy controller", () => {
-        for (const file of fs.readdirSync(APP).filter(name => name.endsWith(".js") && name !== "console.js")) {
+    await test("every app module stays under the 500-line limit", () => {
+        for (const file of fs.readdirSync(APP).filter(name => name.endsWith(".js"))) {
             const lines = fs.readFileSync(path.join(APP, file), "utf8").split("\n").length;
             assert.ok(lines <= 500, `${file} has ${lines} lines`);
         }

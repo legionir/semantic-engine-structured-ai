@@ -168,8 +168,9 @@ PORT=8080 npm start
 `web/public/vendor/` قرار دارند (نسخه و sha256 در `manifest.json`). state در
 `web/public/app/store.js` نگه داشته می‌شود و هر view فقط ناحیه‌هایی از store را که
 می‌خواند دوباره رسم می‌کند؛ reducerها (`runtime-state.js`، `*-model.js`) خالص‌اند
-و viewها (`*-view.js`، `chat.js`) هیچ‌گاه HTML رشته‌ای نمی‌سازند. `console.js`
-اتصال رویدادها و درخواست‌ها را انجام می‌دهد. تست‌های UI روی happy-dom با
+و viewها (`*-view.js`، `chat.js`) هیچ‌گاه HTML رشته‌ای نمی‌سازند. درخواست‌ها و
+جریان رویدادها در کنترلرهای جدا برای هر بخش هستند (`*-controller.js`،
+`project-*.js`) و `console.js` فقط کنترل‌های صفحه را به آن‌ها وصل می‌کند. تست‌های UI روی happy-dom با
 `index.html` واقعی اجرا می‌شوند: `npm run test:ui`.
 
 ---
