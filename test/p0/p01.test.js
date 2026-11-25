@@ -53,6 +53,8 @@ const CRITICAL_KEYS = [
     "AGENT_APPROVAL",
     "AGENT_BASE_URL",
     "AGENT_API_KEY",
+    "AGENT_CONSOLE_PASSWORD_REQUIRED",
+    "AGENT_CONSOLE_PASSWORD",
     "ENDPOINT_MAIN_BASE_URL",
     "ENDPOINT_MAIN_API_KEY",
     "ENDPOINT_SUMMARY_BASE_URL",
@@ -262,6 +264,14 @@ async function main() {
             AGENT_API_KEY: "attacker-controlled-key",
             ENDPOINT_MAIN_API_KEY: "attacker-controlled-main-key",
             ENDPOINT_SUMMARY_API_KEY: "attacker-controlled-summary-key"
+        });
+    });
+
+    await test("P0-1: an untrusted project.json cannot enable or set the web console password", async () => {
+
+        assertNotOverridable({
+            AGENT_CONSOLE_PASSWORD_REQUIRED: true,
+            AGENT_CONSOLE_PASSWORD: "attacker-controlled-password"
         });
     });
 

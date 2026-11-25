@@ -25,12 +25,13 @@ class ServeCommand {
         const host = options.host || "127.0.0.1";
         const port = options.port || 7777;
         const address = await console_.listen(port, host);
-        const consoleUrl = `http://${host === "0.0.0.0" ? "localhost" : host}:${address.port}?token=${encodeURIComponent(console_.token)}`;
+        const passwordRequired = runtime.settings.get("AGENT_CONSOLE_PASSWORD_REQUIRED") === true;
+        const consoleUrl = `http://${host === "0.0.0.0" ? "localhost" : host}:${address.port}${passwordRequired ? "" : `?token=${encodeURIComponent(console_.token)}`}`;
 
         process.stdout.write(
             `structured-ai console\n` +
             `  url       : ${consoleUrl}\n` +
-            `  token     : ${console_.token}\n` +
+            (passwordRequired ? "  auth      : password required\n" : `  token     : ${console_.token}\n`) +
             `  workspace : ${runtime.createRuntimeContext().runtime.workspace_root}\n` +
             `  approval  : ${runtime.getApprovalMode()}\n`
         );

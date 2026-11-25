@@ -71,11 +71,14 @@ async function main() {
     required.forEach(name => assert.equal(fs.existsSync(path.join(APP_DIR, name)), true, name));
   });
 
-  await test("index.html loads the native ESM bootstrap after Modal", () => {
+  await test("index.html loads the auth gate after Modal before the ESM console", () => {
     const html = fs.readFileSync(path.join(REPO, "web", "public", "index.html"), "utf8");
+    const gate = fs.readFileSync(path.join(REPO, "web", "public", "auth-gate.js"), "utf8");
     assert.match(html, /<script src="\/modal\.js"><\/script>/);
-    assert.match(html, /<script type="module" src="\/app\/main\.js"><\/script>/);
-    assert.ok(html.indexOf("/modal.js") < html.indexOf("/app/main.js"));
+    assert.match(html, /<script src="\/auth-gate\.js"><\/script>/);
+    assert.ok(html.indexOf("/modal.js") < html.indexOf("/auth-gate.js"));
+    assert.match(gate, /import\("\/app\/main\.js"\)/);
+    assert.match(html, /consoleLoginForm/);
   });
 
   await test("main.js imports the explicit domain graph and canonical renderer", () => {

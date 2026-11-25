@@ -17,6 +17,15 @@ module.exports = [
         "description": "Bearer token sent with every request."
     },
     {
+        "key": "AGENT_PROXY_URL",
+        "group": "endpoint",
+        "type": "string",
+        "default": "",
+        "secret": true,
+        "format": "proxy-url",
+        "description": "Optional outbound proxy for all LLM provider requests. Supports http://, socks5:// and socks5h://. Changes apply to the next request."
+    },
+    {
         "key": "AGENT_MODEL",
         "group": "endpoint",
         "type": "string",
@@ -38,6 +47,23 @@ module.exports = [
         "default": "",
         "secret": true,
         "description": "JSON map of extra console tokens to { allowedProjects, permissions } (Phase 9). The AGENT_CONSOLE_TOKEN itself remains a master token."
+    },
+    {
+        "key": "AGENT_CONSOLE_PASSWORD_REQUIRED",
+        "group": "endpoint",
+        "type": "boolean",
+        "default": false,
+        "fixed": true,
+        "description": "Require a password login before the web console UI is loaded. Configure AGENT_CONSOLE_PASSWORD and restart to change this."
+    },
+    {
+        "key": "AGENT_CONSOLE_PASSWORD",
+        "group": "endpoint",
+        "type": "string",
+        "default": "",
+        "secret": true,
+        "fixed": true,
+        "description": "Password used by the web console login when AGENT_CONSOLE_PASSWORD_REQUIRED=true. Set through the environment and restart to change it."
     },
     {
         "key": "AGENT_TEMPERATURE",

@@ -370,6 +370,7 @@ const providerKeys = [
     "AGENT_MODEL",
     "AGENT_API_KEY",
     "AGENT_BASE_URL",
+    "AGENT_PROXY_URL",
     "AGENT_PROVIDER_REGION",
     "AZURE_OPENAI_API_VERSION",
     "PROVIDER_ROLES",

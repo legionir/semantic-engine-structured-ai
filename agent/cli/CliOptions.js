@@ -184,6 +184,17 @@ function applyEnvironment(options) {
     if (options.apiKey) {
         environment.AGENT_API_KEY = options.apiKey;
     }
+    if (options.proxyUrl !== undefined) {
+        const schema = require(path.join(REPO_ROOT, "agent", "config", "SettingsSchema.js"));
+        try {
+            environment.AGENT_PROXY_URL = schema.coerce(
+                schema.definitionOf("AGENT_PROXY_URL"),
+                options.proxyUrl
+            );
+        } catch (error) {
+            fail(error.message);
+        }
+    }
 
     if (options.timeoutSeconds !== undefined) {
         environment.MAX_RUN_MS = String(

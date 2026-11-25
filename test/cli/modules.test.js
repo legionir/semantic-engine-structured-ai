@@ -55,7 +55,7 @@ async function main() {
       "--until-done", "--max-cycles", "4", "--discussion", "--personas", "a,b",
       "--max-rounds", "3", "-s", "7788", "--host", "0.0.0.0", "--json", "-q",
       "--model", "model-x", "--temperature", "0.4", "--base-url", "https://example.test",
-      "--api-key", "secret", "--timeout", "5", "--max-iterations", "7",
+      "--api-key", "secret", "--proxy-url", "socks5h://proxy.example:1080", "--timeout", "5", "--max-iterations", "7",
       "--max-agents", "2", "task", "words"
     ]);
     assert.equal(options.project, "prj-a");
@@ -65,6 +65,26 @@ async function main() {
     assert.deepEqual(options.positional, ["task", "words"]);
     assert.equal(options.timeoutSeconds, 5);
     assert.equal(options.maxAgents, 2);
+    assert.equal(options.proxyUrl, "socks5h://proxy.example:1080");
+  });
+
+  await test("CLI proxy URL becomes a validated runtime setting", () => {
+    const { createCliOptions } = require(path.join(REPO, "agent", "cli", "CliOptions"));
+    const { applyEnvironment } = createCliOptions({
+      fail(message) { throw new Error(message); },
+      repoRoot: REPO,
+      fs,
+      path
+    });
+    const previous = process.env.AGENT_PROXY_URL;
+    try {
+      const applied = applyEnvironment({ proxyUrl: "socks5://proxy.example:1080" });
+      assert.equal(applied.AGENT_PROXY_URL, "socks5://proxy.example:1080");
+      assert.throws(() => applyEnvironment({ proxyUrl: "ftp://proxy.example" }), /supports only/);
+    } finally {
+      if (previous === undefined) delete process.env.AGENT_PROXY_URL;
+      else process.env.AGENT_PROXY_URL = previous;
+    }
   });
 
   await test("ArgParser reports usage errors without process.exit when used directly", () => {

@@ -112,6 +112,7 @@ Options
   -t, --temperature <n>     Sampling temperature
       --base-url <url>      OpenAI-compatible base URL
       --api-key <key>       API key (prefer AGENT_API_KEY in the environment)
+      --proxy-url <url>     Proxy for provider requests (http:// or socks5://)
 
       --timeout <seconds>   Wall-clock budget for the whole run
       --max-iterations <n>  Iterations per agent
@@ -133,7 +134,7 @@ Exit codes
   0 completed        1 failed        2 usage error        130 interrupted
 
 Environment
-  AGENT_BASE_URL, AGENT_API_KEY, AGENT_MODEL, AGENT_APPROVAL,
+  AGENT_BASE_URL, AGENT_API_KEY, AGENT_PROXY_URL, AGENT_MODEL, AGENT_APPROVAL,
   WORKSPACE_ROOT, MAX_RUN_MS, MAX_CONTEXT_CHARS, MAX_TOTAL_AGENTS
 
 Running through npm

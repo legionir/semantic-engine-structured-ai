@@ -4938,9 +4938,15 @@ function settingRow(setting) {
         input = node("input");
 
         input.type =
-            setting.type === "number"
-                ? "number"
-                : "text";
+            setting.secret
+                ? "password"
+                : setting.type === "number"
+                    ? "number"
+                    : "text";
+
+        if (setting.secret && setting.value) {
+            input.placeholder = "Configured — enter a replacement";
+        }
 
         if (setting.min !== undefined) {
             input.min = setting.min;
@@ -4951,7 +4957,7 @@ function settingRow(setting) {
         }
 
         input.value =
-            setting.value === null
+            setting.secret || setting.value === null
                 ? ""
                 : setting.value;
     }
@@ -4975,7 +4981,7 @@ function settingRow(setting) {
 
         if (!response.ok) {
 
-            input.value = setting.value;
+            input.value = setting.secret ? "" : setting.value;
 
             row.classList.add("rejected");
 

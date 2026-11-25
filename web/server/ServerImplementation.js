@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -37,6 +38,7 @@ const MIME = {
 const {
     CONSOLE_COOKIE,
     newConsoleToken,
+    parseCookies,
     requestToken,
     sameOrigin,
     RateLimiter
@@ -69,6 +71,16 @@ function createServer(runtime, options = {}) {
 
     const consoleToken =
         String(options.token || configuredToken || newConsoleToken());
+    const consolePasswordRequired =
+        Boolean(runtime.settings && runtime.settings.get("AGENT_CONSOLE_PASSWORD_REQUIRED"));
+    const consolePassword =
+        String(runtime.settings && runtime.settings.get("AGENT_CONSOLE_PASSWORD") || "");
+    const passwordSessionToken =
+        consolePasswordRequired ? newConsoleToken() : null;
+
+    if (consolePasswordRequired && consolePassword.length === 0) {
+        throw new Error("AGENT_CONSOLE_PASSWORD_REQUIRED is enabled, but AGENT_CONSOLE_PASSWORD is empty.");
+    }
 
     const toolRuntime =
         require(
@@ -133,9 +145,23 @@ function createServer(runtime, options = {}) {
                 : 120,
             windowMs: 60_000
         });
+    const loginRateLimiter = new RateLimiter({ limit: 5, windowMs: 60_000 });
 
     function allowApiRequest(req) {
         return apiRateLimiter.allow(req);
+    }
+
+    function passwordSessionMatches(req) {
+        const supplied = parseCookies(req.headers.cookie).structured_ai_console_password;
+        if (typeof supplied !== "string" || supplied.length !== passwordSessionToken?.length) return false;
+        return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(passwordSessionToken));
+    }
+
+    function passwordMatches(candidate) {
+        if (typeof candidate !== "string") return false;
+        const supplied = Buffer.from(candidate);
+        const expected = Buffer.from(consolePassword);
+        return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
     }
 
     /*
@@ -1538,30 +1564,52 @@ function createServer(runtime, options = {}) {
                 return;
             }
 
+            const authStatusRoute = pathname === "/auth/status" && req.method === "GET";
+            const authLoginRoute = pathname === "/auth/login" && req.method === "POST";
+
             if (
-                isApiRequest &&
+                (isApiRequest || authLoginRoute) &&
                 !sameOrigin(req.headers.origin, req.headers.host)
             ) {
                 sendJson(res, 403, { error: "cross-origin console request refused" });
                 return;
             }
 
-            const suppliedToken = requestToken(req, url);
-            const claims = consoleAuth.resolve(suppliedToken, consoleToken);
+            const passwordSessionAuthenticated =
+                consolePasswordRequired && passwordSessionMatches(req);
+            let suppliedToken;
+            let claims;
+
+            if (consolePasswordRequired) {
+                const headerToken =
+                    typeof req.headers.authorization === "string"
+                        ? /^Bearer\s+(.+)$/i.exec(req.headers.authorization)?.[1]
+                        : req.headers["x-console-token"];
+                suppliedToken = headerToken || null;
+                claims = passwordSessionAuthenticated
+                    ? consoleAuth.masterClaims()
+                    : consoleAuth.resolve(suppliedToken, consoleToken);
+            } else {
+                suppliedToken = requestToken(req, url);
+                claims = consoleAuth.resolve(suppliedToken, consoleToken);
+            }
             const authenticated = Boolean(claims);
 
             /*
-            | Static assets remain public so the browser can load the UI.
-            | Every API, SSE and control-plane endpoint requires the token.
-            | A token in the launch URL is exchanged for an HttpOnly cookie
-            | so normal browser fetch/EventSource calls do not need custom
-            | headers.
+            | When password login is enabled, browser access uses a distinct,
+            | HttpOnly session cookie. Token query parameters and old console
+            | cookies cannot silently skip the password screen.
             */
-            if (authenticated && url.searchParams.has("token")) {
+            if (!consolePasswordRequired && authenticated && url.searchParams.has("token")) {
                 setConsoleCookie(res, CONSOLE_COOKIE, consoleToken);
             }
 
-            if (pathname.startsWith("/api/") && !authenticated) {
+            if (
+                pathname.startsWith("/api/") &&
+                !authenticated &&
+                pathname !== "/auth/status" &&
+                pathname !== "/auth/login"
+            ) {
                 sendJson(res, 401, { error: "console authentication required" });
                 return;
             }
@@ -1588,6 +1636,35 @@ function createServer(runtime, options = {}) {
                 refuse(consoleAuth.authorizeUnscoped(claims, permission));
 
             try {
+
+                if (authStatusRoute) {
+                    sendJson(res, 200, {
+                        passwordRequired: consolePasswordRequired,
+                        authenticated: consolePasswordRequired
+                            ? passwordSessionAuthenticated
+                            : true
+                    });
+                    return;
+                }
+
+                if (authLoginRoute) {
+                    if (!consolePasswordRequired) {
+                        sendJson(res, 404, { error: "password login is disabled" });
+                        return;
+                    }
+                    if (!loginRateLimiter.allow(req)) {
+                        sendJson(res, 429, { error: "too many login attempts; try again later" });
+                        return;
+                    }
+                    const body = await readBody(req, { maxBytes: 4096 });
+                    if (!passwordMatches(body.password)) {
+                        sendJson(res, 401, { error: "incorrect password" });
+                        return;
+                    }
+                    setConsoleCookie(res, "structured_ai_console_password", passwordSessionToken);
+                    sendJson(res, 200, { ok: true });
+                    return;
+                }
 
                 /* ---------------------------------------------- events */
 

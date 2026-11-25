@@ -121,7 +121,36 @@ function coerce(definition, raw) {
         return text;
     }
 
-    return String(raw);
+    const value = String(raw);
+
+    if (definition.format === "proxy-url") {
+
+        const text = value.trim();
+
+        if (text === "") {
+            return "";
+        }
+
+        let parsed;
+
+        try {
+            parsed = new URL(text);
+        } catch {
+            throw new Error(`${definition.key} must be a valid proxy URL.`);
+        }
+
+        if (!["http:", "socks5:", "socks5h:"].includes(parsed.protocol)) {
+            throw new Error(`${definition.key} supports only http://, socks5:// and socks5h:// URLs.`);
+        }
+
+        if (!parsed.hostname || !["", "/"].includes(parsed.pathname) || parsed.search || parsed.hash) {
+            throw new Error(`${definition.key} must contain only a proxy host, optional port and credentials.`);
+        }
+
+        return text;
+    }
+
+    return value;
 }
 
 

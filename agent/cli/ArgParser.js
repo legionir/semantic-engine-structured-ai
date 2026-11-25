@@ -128,6 +128,9 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
             case "--api-key":
                 options.apiKey = requireValue(argument, argv[++index]);
                 break;
+            case "--proxy-url":
+                options.proxyUrl = requireValue(argument, argv[++index]);
+                break;
             case "--timeout":
                 options.timeoutSeconds = requireNumber(argument, argv[++index]);
                 break;

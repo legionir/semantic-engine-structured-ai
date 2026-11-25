@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a0e17">
+<script>document.documentElement.classList.add("auth-pending");</script>
 <title>structured-ai console</title>
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/console-login.css">
 </head>
 <body>
 
@@ -175,6 +177,17 @@
 
 </main>
 
+<section id="consoleLogin" class="console-login" hidden>
+  <form id="consoleLoginForm" class="console-login-card">
+    <h1>Sign in</h1>
+    <p>Enter the web console password to continue.</p>
+    <label for="consolePassword">Password</label>
+    <input id="consolePassword" name="password" type="password" autocomplete="current-password" required autofocus>
+    <p id="consoleLoginError" class="console-login-error" role="alert" hidden></p>
+    <button id="consoleLoginButton" type="submit">Continue</button>
+  </form>
+</section>
+
 <section id="projectDashboard" class="project-dashboard" hidden>
   <div class="dashboard-head">
     <div class="head-tools">
@@ -188,6 +201,6 @@
 </section>
 
 <script src="/modal.js"></script>
-<script type="module" src="/app/main.js"></script>
+<script src="/auth-gate.js"></script>
 </body>
 </html>

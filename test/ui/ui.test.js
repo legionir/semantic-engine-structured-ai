@@ -1691,6 +1691,12 @@ async function main() {
         assert.match(dialog.textContent, /Settings/);
         assert.match(dialog.textContent, /MAX_ITERATIONS/);
         assert.match(dialog.textContent, /applied on next use/);
+        const proxyInput = dialog.querySelectorAll(".setting")
+            .flatMap(row => row.children)
+            .find(child => child.tagName === "INPUT" && child.type === "password");
+        assert.ok(proxyInput, "proxy credentials use a password input");
+        assert.equal(proxyInput.value, "", "masked credentials are never written back into the field");
+        assert.match(proxyInput.placeholder, /enter a replacement/);
 
         Modal.closeTop("test");
 
@@ -2681,6 +2687,15 @@ function loadConsole() {
             value: 50,
             source: "default",
             description: "Iterations before the run stops."
+        },
+        {
+            key: "AGENT_PROXY_URL",
+            group: "endpoint",
+            type: "string",
+            value: "so…05",
+            source: "environment",
+            secret: true,
+            description: "Optional outbound HTTP or SOCKS5 proxy."
         }
     ];
 

@@ -1,6 +1,0 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-function createMockWorker(){return{postMessage:vi.fn(),terminate:vi.fn(),addEventListener:vi.fn(),removeEventListener:vi.fn()};}
-async function setup(){const mocks=[];const orig=globalThis.Worker;globalThis.Worker=function(){var m=createMockWorker();mocks.push(m);return m;};Object.defineProperty(globalThis,'navigator',{value:{hardwareConcurrency:4},configurable:true,writable:true});const {WorkerPoolManager}=await import('../src/WorkerPoolManager');return{WorkerPoolManager,mocks,reset:function(){globalThis.Worker=orig;}};}
-
-describe('WorkerPoolManager',function(){var ctx;beforeEach(async function(){ctx=await setup();});afterEach(function(){ctx.reset();});it('should create pool with specified size',function(){var pool=new ctx.WorkerPoolManager('worker.js',3);expect(pool.size).toBe(3);});it('should clamp pool size to minimum 1',function(){var pool=new ctx.WorkerPoolManager('worker.js',0);expect(pool.size).toBeGreaterThanOrEqual(1);});it('should create workers up to pool size',function(){var pool=new ctx.WorkerPoolManager('worker.js',2);expect(pool.size).toBe(2);});it('should dispose all workers',function(){var pool=new ctx.WorkerPoolManager('worker.js',2);pool.dispose();expect(ctx.mocks[0].terminate).toHaveBeenCalled();expect(ctx.mocks[1].terminate).toHaveBeenCalled();});});

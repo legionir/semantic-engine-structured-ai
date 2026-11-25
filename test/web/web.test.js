@@ -431,7 +431,7 @@ async function main() {
             /text\/html/
         );
 
-        for (const asset of ["/app.css", "/app/main.js", "/modal.js"]) {
+        for (const asset of ["/app.css", "/console-login.css", "/app/main.js", "/modal.js", "/auth-gate.js"]) {
 
             const response =
                 await fetch(`${baseUrl}${asset}`);
@@ -1218,6 +1218,17 @@ async function main() {
         assert.equal(byKey.MAX_ITERATIONS.type, "number");
         assert.equal(byKey.WORKSPACE_ROOT.fixed, true);
         assert.equal(byKey.AGENT_API_KEY.secret, true);
+        assert.equal(byKey.AGENT_PROXY_URL.secret, true);
+
+        const proxyValue = "socks5h://proxy.example:1080";
+        const proxyChange = await request("POST", "/api/settings", {
+            key: "AGENT_PROXY_URL",
+            value: proxyValue
+        });
+        assert.equal(proxyChange.status, 200);
+        assert.equal(runtime.settings.get("AGENT_PROXY_URL"), proxyValue);
+        assert.notEqual(proxyChange.body.setting.value, proxyValue);
+        await request("POST", "/api/settings", { key: "AGENT_PROXY_URL", reset: true });
 
         const changed =
             await request("POST", "/api/settings", {
@@ -1263,6 +1274,13 @@ async function main() {
 
         assert.equal(fixed.status, 400);
         assert.match(fixed.body.error, /fixed/);
+
+        const invalidProxy = await request("POST", "/api/settings", {
+            key: "AGENT_PROXY_URL",
+            value: "ftp://proxy.example"
+        });
+        assert.equal(invalidProxy.status, 400);
+        assert.match(invalidProxy.body.error, /supports only/);
     });
 
     await test("a settings change is streamed to every console", async () => {
@@ -1990,6 +2008,69 @@ async function main() {
         stream.stop();
 
         await stub.close();
+    });
+
+    await test("password protection gates browser console access and issues an HttpOnly session", async () => {
+        const previousRequired = process.env.AGENT_CONSOLE_PASSWORD_REQUIRED;
+        const previousPassword = process.env.AGENT_CONSOLE_PASSWORD;
+        process.env.AGENT_CONSOLE_PASSWORD_REQUIRED = "true";
+        delete process.env.AGENT_CONSOLE_PASSWORD;
+        assert.throws(
+            () => createServer(runtime, { apiRateLimit: 1000 }),
+            /AGENT_CONSOLE_PASSWORD_REQUIRED is enabled.*AGENT_CONSOLE_PASSWORD is empty/
+        );
+        process.env.AGENT_CONSOLE_PASSWORD = "correct horse battery staple";
+
+        const protectedServer = createServer(runtime, { apiRateLimit: 1000 });
+        try {
+            const address = await protectedServer.listen(0, "127.0.0.1");
+            const protectedUrl = `http://127.0.0.1:${address.port}`;
+            const status = await fetch(`${protectedUrl}/auth/status`).then(response => response.json());
+            assert.deepEqual(status, { passwordRequired: true, authenticated: false });
+
+            const deniedApi = await fetch(`${protectedUrl}/api/state`);
+            assert.equal(deniedApi.status, 401);
+            assert.equal((await fetch(`${protectedUrl}/api/state?token=${encodeURIComponent(protectedServer.token)}`)).status, 401);
+            assert.equal((await fetch(`${protectedUrl}/api/state`, {
+                headers: { cookie: `structured_ai_console=${encodeURIComponent(protectedServer.token)}` }
+            })).status, 401, "a legacy token cookie cannot bypass the password screen");
+
+            const tokenUrl = await fetch(`${protectedUrl}/auth/status?token=${encodeURIComponent(protectedServer.token)}`);
+            assert.deepEqual(await tokenUrl.json(), { passwordRequired: true, authenticated: false });
+
+            const badLogin = await fetch(`${protectedUrl}/auth/login`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ password: "wrong" })
+            });
+            assert.equal(badLogin.status, 401);
+
+            const goodLogin = await fetch(`${protectedUrl}/auth/login`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ password: "correct horse battery staple" })
+            });
+            assert.equal(goodLogin.status, 200);
+            const setCookie = goodLogin.headers.get("set-cookie");
+            assert.match(setCookie, /structured_ai_console_password=/);
+            assert.match(setCookie, /HttpOnly/);
+            const cookie = setCookie.split(";")[0];
+
+            const authenticatedStatus = await fetch(`${protectedUrl}/auth/status`, {
+                headers: { cookie }
+            }).then(response => response.json());
+            assert.deepEqual(authenticatedStatus, { passwordRequired: true, authenticated: true });
+            assert.equal((await fetch(`${protectedUrl}/api/state`, { headers: { cookie } })).status, 200);
+            assert.equal((await fetch(`${protectedUrl}/api/state`, {
+                headers: { authorization: `Bearer ${protectedServer.token}` }
+            })).status, 200, "programmatic bearer-token authentication remains available");
+        } finally {
+            await protectedServer.close();
+            if (previousRequired === undefined) delete process.env.AGENT_CONSOLE_PASSWORD_REQUIRED;
+            else process.env.AGENT_CONSOLE_PASSWORD_REQUIRED = previousRequired;
+            if (previousPassword === undefined) delete process.env.AGENT_CONSOLE_PASSWORD;
+            else process.env.AGENT_CONSOLE_PASSWORD = previousPassword;
+        }
     });
 
     /* ---------------------------------------------------------------- */

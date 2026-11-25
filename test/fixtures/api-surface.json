@@ -22,7 +22,9 @@
     "/api/settings",
     "/api/state",
     "/api/stats",
-    "/api/tasks"
+    "/api/tasks",
+    "/auth/login",
+    "/auth/status"
   ],
   "evidenced": {
     "POST /api/tasks": "submit a task; used by web.test.js with a stubbed model",
@@ -43,6 +45,8 @@
     "GET  /api/projects/:projectId/discussions/:discussionId": "replays one project-scoped durable discussion transcript"
   },
   "method_paths": [
+    "GET /auth/status",
+    "POST /auth/login",
     "GET /api/events",
     "GET /api/state",
     "GET /api/mcp",

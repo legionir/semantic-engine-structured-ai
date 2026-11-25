@@ -89,7 +89,19 @@ repository-root/
 export AGENT_BASE_URL=http://localhost:11434/v1
 export AGENT_API_KEY=your-api-key
 export AGENT_MODEL=qwen2.5-coder:32b
+# Optional: HTTP proxy or SOCKS5 (supports socks5h for proxy-side DNS)
+export AGENT_PROXY_URL=socks5h://proxy.example:1080
 ```
+
+یا فقط برای یک اجرای CLI:
+
+```bash
+node bin/agent.js --proxy-url http://proxy.example:3128 -w /path/to/project "..."
+```
+
+از کنسول وب هم `AGENT_PROXY_URL` را در تنظیمات Endpoint تغییر دهید؛ مقدار جدید
+از درخواست بعدی استفاده می‌شود. نشانی پراکسی secret است و مقدار کامل آن در UI
+نمایش داده نمی‌شود.
 
 ### اجرای تست‌های ران‌تایم
 ```bash
@@ -166,45 +178,261 @@ node bin/agent.js -w /path/to/project --discussion --personas security,frontend 
 
 ## ۵. جدول کامل پیکربندی و متغیرهای محیطی
 
-تنظیمات runtime فقط از `agent/config/SettingsStore.js` و
-`agent/config/SettingsSchema.js` خوانده می‌شوند. مقدارهای قابل تغییر از طریق
-کنسول وب، فایل profile یا environment با همان precedence واحد resolve می‌شوند.
+تنظیمات runtime زیر در `agent/config/SettingsSchema.js` تعریف شده‌اند و همگی از environment با همان نام خوانده می‌شوند. precedence در حالت runtime این است: مقدار تغییر‌یافته در حافظه، سپس environment، سپس پیش‌فرض schema. موارد `fixed` فقط هنگام راه‌اندازی قابل تنظیم‌اند؛ مقدارهای `secret` در UI و log ماسک می‌شوند.
 
-| متغیر | مقدار پیش‌فرض/رفتار | شرح |
+**رمز ورود پنل وب:** برای فعال‌کردن درخواست رمز، هر دو متغیر زیر را پیش از راه‌اندازی تنظیم کنید؛ فلگ به‌تنهایی کافی نیست:
+
+```bash
+AGENT_CONSOLE_PASSWORD_REQUIRED=true
+AGENT_CONSOLE_PASSWORD='choose-a-long-password'
+```
+
+| متغیر محیطی | نوع | مقدار پیش‌فرض | توضیح |
+|---|---|---|---|
+| `AGENT_BASE_URL` | string | `"http://localhost:4414/p/smart_routing/v1"` | Base URL of the OpenAI compatible endpoint. |
+| `AGENT_API_KEY` | string · secret | `"your-api-key"` | Bearer token sent with every request. |
+| `AGENT_PROXY_URL` | string · secret | `""` | Optional outbound proxy for all LLM provider requests. Supports http://, socks5:// and socks5h://. Changes apply to the next request. |
+| `AGENT_MODEL` | string | `"auto-switch"` | Model requested when a profile does not name one. |
+| `AGENT_CONSOLE_TOKEN` | string · secret | `""` | Bearer token for the web console control plane. Empty generates a token at startup. |
+| `AGENT_CONSOLE_TOKENS` | string · secret | `""` | JSON map of extra console tokens to { allowedProjects, permissions } (Phase 9). The AGENT_CONSOLE_TOKEN itself remains a master token. |
+| `AGENT_CONSOLE_PASSWORD_REQUIRED` | boolean · fixed at startup | `false` | Require a password login before the web console UI is loaded. Configure AGENT_CONSOLE_PASSWORD and restart to change this. |
+| `AGENT_CONSOLE_PASSWORD` | string · secret, fixed at startup | `""` | Password used by the web console login when AGENT_CONSOLE_PASSWORD_REQUIRED=true. Set through the environment and restart to change it. |
+| `AGENT_TEMPERATURE` | number | `0.2` | Sampling temperature used when a profile does not set one. |
+| `RESPONSE_FORMAT_MODE` | enum | `"auto"` | Whether to send response_format. auto stops sending it to an endpoint that rejected it, always keeps sending it, never leaves it out from the start. |
+| `AGENT_SCHEMA` | enum · fixed at startup | `"default"` | Which response schema file to send. Read once at startup. |
+| `AGENT_PROVIDER` | enum | `"openai-compatible"` | Which LLM API the endpoint speaks (roadmap P1-1). openai-compatible keeps AGENT_BASE_URL as is; for any other provider AGENT_BASE_URL is used only when set, otherwise the vendor endpoint applies. |
+| `AGENT_PROVIDER_REGION` | string | `"us-east-1"` | AWS region of the bedrock provider (bedrock-runtime.<region>.amazonaws.com). |
+| `AZURE_OPENAI_API_VERSION` | string | `"2024-10-21"` | api-version sent to Azure OpenAI deployments. Not used with a /openai/v1 base URL. |
+| `BEDROCK_ACCESS_KEY_ID` | string · secret | `""` | IAM access key id for the bedrock provider (SigV4). Not needed with a Bedrock API key in AGENT_API_KEY. |
+| `BEDROCK_SECRET_ACCESS_KEY` | string · secret | `""` | IAM secret access key for the bedrock provider (SigV4). |
+| `BEDROCK_SESSION_TOKEN` | string · secret | `""` | Session token for temporary IAM credentials of the bedrock provider. |
+| `PROMPT_CACHING` | boolean | `true` | Mark the stable prompt prefix (system prompt, tool list) for caching where the provider needs it marked (Anthropic, Bedrock). OpenAI and Gemini cache automatically. |
+| `PROVIDER_ROLES` | string · secret | `""` | JSON map of role (planner, coder, observer, ...) to a provider spec {provider, model, baseUrl, apiKey, fallbacks} or "provider:model". Empty uses the primary endpoint for every role. |
+| `PROVIDER_FALLBACKS` | string · secret | `""` | JSON list of provider specs tried in order when the primary still fails after MAX_REQUEST_RETRIES. An entry for another provider must name its own model and key. |
+| `ENDPOINT_MAIN_BASE_URL` | string | `""` | Base URL for the root orchestrator. Empty inherits AGENT_BASE_URL. |
+| `ENDPOINT_MAIN_API_KEY` | string · secret | `""` | API key for the root orchestrator. Empty inherits AGENT_API_KEY. |
+| `ENDPOINT_MAIN_MODEL` | string | `""` | Model for the root orchestrator. Empty inherits the profile's model, then AGENT_MODEL. |
+| `ENDPOINT_MAIN_CONTEXT_TOKENS` | number | `0` | Configured token context window for the main endpoint model; 0 inherits CONTEXT_WINDOW_TOKENS. |
+| `ENDPOINT_MAIN_TEMPERATURE` | number | `-1` | Temperature for the root orchestrator. Minus one inherits the profile's value, then AGENT_TEMPERATURE. |
+| `ENDPOINT_L1_BASE_URL` | string | `""` | Base URL for sub-agents at depth 1. Empty inherits AGENT_BASE_URL. |
+| `ENDPOINT_L1_API_KEY` | string · secret | `""` | API key for sub-agents at depth 1. Empty inherits AGENT_API_KEY. |
+| `ENDPOINT_L1_MODEL` | string | `""` | Model for sub-agents at depth 1. Empty inherits the profile's model, then AGENT_MODEL. |
+| `ENDPOINT_L1_CONTEXT_TOKENS` | number | `0` | Configured token context window for the l1 endpoint model; 0 inherits CONTEXT_WINDOW_TOKENS. |
+| `ENDPOINT_L1_TEMPERATURE` | number | `-1` | Temperature for sub-agents at depth 1. Minus one inherits the profile's value, then AGENT_TEMPERATURE. |
+| `ENDPOINT_L2_BASE_URL` | string | `""` | Base URL for sub-agents at depth 2. Empty inherits AGENT_BASE_URL. |
+| `ENDPOINT_L2_API_KEY` | string · secret | `""` | API key for sub-agents at depth 2. Empty inherits AGENT_API_KEY. |
+| `ENDPOINT_L2_MODEL` | string | `""` | Model for sub-agents at depth 2. Empty inherits the profile's model, then AGENT_MODEL. |
+| `ENDPOINT_L2_CONTEXT_TOKENS` | number | `0` | Configured token context window for the l2 endpoint model; 0 inherits CONTEXT_WINDOW_TOKENS. |
+| `ENDPOINT_L2_TEMPERATURE` | number | `-1` | Temperature for sub-agents at depth 2. Minus one inherits the profile's value, then AGENT_TEMPERATURE. |
+| `ENDPOINT_L3_BASE_URL` | string | `""` | Base URL for sub-agents at depth 3 and deeper. Empty inherits AGENT_BASE_URL. |
+| `ENDPOINT_L3_API_KEY` | string · secret | `""` | API key for sub-agents at depth 3 and deeper. Empty inherits AGENT_API_KEY. |
+| `ENDPOINT_L3_MODEL` | string | `""` | Model for sub-agents at depth 3 and deeper. Empty inherits the profile's model, then AGENT_MODEL. |
+| `ENDPOINT_L3_CONTEXT_TOKENS` | number | `0` | Configured token context window for the l3 endpoint model; 0 inherits CONTEXT_WINDOW_TOKENS. |
+| `ENDPOINT_L3_TEMPERATURE` | number | `-1` | Temperature for sub-agents at depth 3 and deeper. Minus one inherits the profile's value, then AGENT_TEMPERATURE. |
+| `ENDPOINT_SUMMARY_BASE_URL` | string | `""` | Base URL for the context summariser. Empty inherits AGENT_BASE_URL. |
+| `ENDPOINT_SUMMARY_API_KEY` | string · secret | `""` | API key for the context summariser. Empty inherits AGENT_API_KEY. |
+| `ENDPOINT_SUMMARY_MODEL` | string | `""` | Model for the context summariser. Empty inherits the profile's model, then AGENT_MODEL. |
+| `ENDPOINT_SUMMARY_CONTEXT_TOKENS` | number | `0` | Configured token context window for the summary endpoint model; 0 inherits CONTEXT_WINDOW_TOKENS. |
+| `ENDPOINT_SUMMARY_TEMPERATURE` | number | `-1` | Temperature for the context summariser. Minus one inherits the profile's value, then AGENT_TEMPERATURE. |
+| `MAX_ITERATIONS` | number | `50` | Iterations one agent may spend. |
+| `MAX_RUN_MS` | number | `600000` | Wall clock budget for a whole run. |
+| `MAX_REQUEST_MS` | number | `120000` | Timeout for a single model request. |
+| `MAX_REQUEST_RETRIES` | number | `3` | Retries after a transient endpoint failure. |
+| `RETRY_BASE_MS` | number | `500` | Base delay for the retry backoff. |
+| `SKILLS_INLINE_FOR_SUBAGENTS` | boolean | `true` | Put a sub-agent's own skills in its prompt in full. Off, it receives the same index the root gets and reads them with skill_get, which is cheaper and one call away from being ignored. |
+| `MAX_AGENT_DEPTH` | number | `3` | Hard cap on delegation depth. |
+| `MAX_TOTAL_AGENTS` | number | `15` | Sub-agents a single run may spawn. |
+| `MAX_PARALLEL_AGENTS` | number | `4` | Sub-agents executed at the same time. |
+| `MAX_PARALLEL_TOOLS` | number | `8` | Tools executed at the same time. |
+| `RUN_WRAPUP_MS` | number | `60000` | Slice of the run budget reserved for finishing. When this much time is left the agent is told to stop exploring and answer with what it has. 0 disables it, and the run simply hits the deadline. |
+| `RUN_WRAPUP_FRACTION` | number | `0.15` | Ceiling on the wrap-up slice as a share of the run budget, so a short run is not asked to finish before it starts. |
+| `MAX_RESPONSE_TOKENS` | number | `0` | Ceiling sent as max_tokens on every agent request. 0 leaves it out, which lets the endpoint decide. Raise it when the agent writes large files and the answer is cut off. |
+| `MAX_CONTEXT_CHARS` | number | `300000` | Size budget for the whole conversation. |
+| `CONTEXT_WINDOW_TOKENS` | number | `0` | Configured context-window size of the active model in tokens. 0 disables token-based context compaction; the runtime uses its character budget instead. Token measurement uses the provider-independent estimator and keeps the safety margin below. |
+| `CONTEXT_WINDOW_SAFETY_FRACTION` | number | `0.8` | Fraction of CONTEXT_WINDOW_TOKENS available to the conversation, reserving the remainder for response and estimator variance. |
+| `KEEP_RECENT_EXCHANGES` | number | `3` | Most recent tool exchanges that are never compressed. |
+| `CONTEXT_LIGHT_FRACTION` | number | `0.4` | Share of the transcript, counted from the newest end, compressed only lightly. |
+| `CONTEXT_MEDIUM_FRACTION` | number | `0.6` | Share of the transcript compressed moderately. Everything older is compressed hard. |
+| `CONTEXT_LIGHT_CHARS` | number | `2000` | Characters kept from a lightly compressed result. |
+| `CONTEXT_MEDIUM_CHARS` | number | `500` | Characters kept from a moderately compressed result. |
+| `CONTEXT_COMPACT_AT` | number | `0.7` | Share of the context budget that triggers compaction at the start of an iteration. |
+| `AUTO_CONTINUE` | boolean | `false` | In the console, start the next cycle automatically while the plan still has open steps. |
+| `CONTEXT_SUMMARY` | boolean | `true` | Ask the model to summarise the oldest exchanges instead of reducing them to one line. |
+| `CONTEXT_SUMMARY_MAX_TOKENS` | number | `700` | Upper bound on the digest the summariser may write. |
+| `CONTEXT_SUMMARY_MS` | number | `30000` | Timeout for a summariser request, so a slow digest cannot eat the run budget. |
+| `CONTEXT_SUMMARY_CHARS` | number | `1500` | Size budget for a generated digest of old exchanges. |
+| `MEMORY_ENABLED` | boolean | `true` | Fold old exchanges into a structured working memory instead of only trimming them. |
+| `FILE_CHECKPOINT_MAX_FILE_BYTES` | number | `5242880` | Maximum existing file size that automatic file checkpoints may capture before a mutation. Larger writes are refused rather than made irreversible. |
+| `FILE_CHECKPOINT_MAX_TOTAL_BYTES` | number | `20971520` | Maximum aggregate original-file bytes in a single checkpoint. Mutations exceeding it are refused before any file is changed. |
+| `FILE_CHECKPOINT_MAX_FILES` | number | `64` | Maximum files captured in one atomic patch/checkpoint operation. |
+| `FILE_CHECKPOINT_RETENTION` | number | `100` | Maximum automatically retained workspace checkpoint records. |
+| `MEMORY_PROVENANCE_MAX_ITEMS` | number | `2000` | Maximum per-item memory provenance records retained in the project memory file. |
+| `MEMORY_PROVENANCE_MAX_SOURCE_REFS` | number | `100` | Maximum archive/tool-call source references recorded for each newly folded memory item. |
+| `MEMORY_CHUNK_CHARS` | number | `6000` | Largest slice of history handed to the summariser at once. Keep it inside the summariser's context window. |
+| `MEMORY_MAX_SUMMARY_CALLS` | number | `4` | Maximum model summariser calls in one memory fold. Extra chunks remain retrievable from the archive instead of causing an unbounded request loop. |
+| `MEMORY_SUMMARY_PARALLELISM` | number | `4` | Memory chunks summarised concurrently within the per-fold call cap. |
+| `MEMORY_MAX_ITEMS` | number | `12` | Entries kept per memory list before the oldest are dropped. |
+| `MEMORY_MAX_CHARS` | number | `4000` | Size at which memory is folded back into itself. |
+| `ARCHIVE_ENABLED` | boolean | `true` | Keep every folded exchange as a retrievable record on disk instead of only in working memory. |
+| `ARCHIVE_BODY_CHARS` | number | `4000` | Largest body stored for one archived event. |
+| `ARCHIVE_SUMMARY_CHARS` | number | `240` | Preview kept in the index, so a search can rank without opening a segment. |
+| `ARCHIVE_TITLE_CHARS` | number | `160` | Cap on the title and error text of an archived event. |
+| `ARCHIVE_MAX_TAGS` | number | `8` | Tags kept per record for keyword retrieval. |
+| `ARCHIVE_SEGMENT_RECORDS` | number | `500` | Records per segment file before a new one is started. |
+| `ARCHIVE_MAX_RECORDS` | number | `2000` | Index size at which old low value records are rolled up. |
+| `ARCHIVE_KEEP_IMPORTANCE` | number | `0.7` | Records at or above this importance are never rolled up. |
+| `ARCHIVE_ROLLUP_BATCH` | number | `100` | Extra records merged beyond the overflow, so a roll up buys room for a while. |
+| `ARCHIVE_ROLLUP_BODY_CHARS` | number | `20000` | Size of a rolled up body, which summarises many events and so needs more room than a single one. |
+| `ARCHIVE_KEEP_MERGED_BODIES` | boolean | `false` | Keep the bodies of records a roll up merged, so they can still be opened by id. Off, because reclaiming them is the point of rolling up. |
+| `ARCHIVE_ROLLUP_IDS` | number | `200` | Original record ids a roll up remembers when their bodies are kept. |
+| `ARCHIVE_ROLLUP_SAMPLES` | number | `5` | Titles quoted in the summary of a rolled up group. |
+| `ARCHIVE_COMPACT_AT` | number | `0.5` | Share of a segment that must still be live before it is left alone; below it, the file is rewritten. |
+| `ARCHIVE_SEARCH_LIMIT` | number | `8` | Records returned by one archive search when the caller does not say. |
+| `ARCHIVE_WEIGHT_FAILURE` | number | `0.95` | Importance of an event that failed. |
+| `ARCHIVE_WEIGHT_DECISION` | number | `0.9` | Importance of a plan change. |
+| `ARCHIVE_WEIGHT_MUTATION` | number | `0.8` | Importance of a write, a move, a delete or a commit. |
+| `ARCHIVE_WEIGHT_COMMAND` | number | `0.55` | Importance of a command that ran successfully. |
+| `ARCHIVE_WEIGHT_INSPECTION` | number | `0.25` | Importance of a read, a listing or a search. |
+| `ARCHIVE_WEIGHT_ROLLUP` | number | `0.35` | Importance of a merged group of old events. |
+| `ARCHIVE_SCORE_MATCH` | number | `1` | Weight of keyword overlap when ranking archive results. |
+| `ARCHIVE_SCORE_IMPORTANCE` | number | `0.5` | Weight of importance when ranking archive results. |
+| `ARCHIVE_SCORE_RECENCY` | number | `0.25` | Weight of recency when ranking archive results. |
+| `MAX_TOOL_RESULT_CHARS` | number | `20000` | Cap on a single string inside a tool result. |
+| `MAX_TOOL_RESULT_TOTAL_CHARS` | number | `40000` | Cap on a whole tool result; lists are shortened to fit. |
+| `MAX_EMPTY_FINAL_NUDGES` | number | `1` | Times a final answer with no work is handed back. |
+| `DELEGATION_NUDGE_AFTER` | number | `8` | Iterations the root may work alone, while the plan has open steps and the agent budget is untouched, before it is reminded that sub-agents exist. 0 disables the reminder. |
+| `MAX_DELEGATION_NUDGES` | number | `2` | How many times one run may be reminded. A reminder that is ignored twice is not worth a third request. |
+| `MAX_PLAN_CONTINUATIONS` | number | `8` | Times per run a final answer is refused while the plan has open steps. |
+| `MAX_AUTO_CYCLES` | number | `20` | Safety limit for automatic continuation in the console. |
+| `MAX_MALFORMED_RESPONSES` | number | `2` | Unreadable model answers handed back for another attempt before the run fails. |
+| `MAX_REPEATED_FAILURES` | number | `3` | Identical consecutive failures before the agent is stopped. |
+| `AGENT_APPROVAL` | enum | `"prompt"` | How a call that needs approval is answered. The safe default asks an operator. |
+| `ALLOW_PRIVATE_NETWORK` | boolean | `false` | Let net_fetch reach loopback and private addresses. |
+| `NET_ALLOWED_HOSTS` | string | `""` | Comma separated hosts exempt from the private network check. |
+| `MAX_HTTP_RESPONSE_CHARS` | number | `40000` | Characters kept from an HTTP response body. |
+| `MAX_HTTP_REDIRECTS` | number | `5` | Redirects followed by net_fetch. |
+| `MAX_PROCESS_BUFFER_CHARS` | number | `200000` | Output buffered per background process. |
+| `MAX_HASH_BYTES` | number | `52428800` | Largest file fs_info will hash. |
+| `WRITE_SHRINK_WARNING` | number | `0.4` | Share of a file an overwrite may remove before the result carries a warning. 1 disables the warning. |
+| `SKILL_RESOURCE_CHARS` | number | `8000` | Cap on one slice of a skill resource, so a house style cannot flood the conversation. |
+| `WRITE_EDIT_HINT_BYTES` | number | `4000` | Overwriting an existing file larger than this suggests fs_edit instead. 0 turns the suggestion off. |
+| `PROCESS_SANDBOX_MODE` | enum | `"deny"` | Process execution mode. deny is fail-closed; bwrap is Linux-only; docker and podman require a running container engine; test is only for the repository test harness. |
+| `PROCESS_SANDBOX_IMAGE` | string | `"node:22-bookworm"` | Container image for Docker/Podman process sandboxes. Repository project files cannot override it. |
+| `PROCESS_SANDBOX_NETWORK` | enum | `"none"` | Container network mode. none is isolated; bridge grants general egress and must be explicitly selected by the operator. |
+| `PROCESS_SANDBOX_CPUS` | number | `2` | Maximum CPU quota for one Docker/Podman sandbox. |
+| `PROCESS_SANDBOX_MEMORY_MB` | number | `2048` | Memory limit in MiB for one Docker/Podman sandbox. |
+| `PROCESS_SANDBOX_PIDS_LIMIT` | number | `256` | Maximum process count for one Docker/Podman sandbox. |
+| `PROCESS_SANDBOX_TMP_MB` | number | `512` | Size of the writable /tmp tmpfs inside a Docker/Podman sandbox, in MiB. |
+| `TERMINAL_TIMEOUT_MS` | number | `30000` | Default timeout for terminal_exec when the call does not set one. |
+| `GIT_TIMEOUT_MS` | number | `30000` | Timeout for a single git command. |
+| `HOOKS_ENABLED` | boolean | `false` | Run declarative before_task and after_task hooks. Off by default; projects opt in through .agent/project.json. |
+| `HOOK_TIMEOUT_MS` | number | `300000` | Independent wall-clock budget for each hook phase, including after_task when the main run deadline was spent. |
+| `HOOKS_ON_FAILURE` | enum | `"report"` | Default failure policy for a hook that does not declare on_failure. |
+| `PLAN_AUTOROUTE` | boolean | `false` | Automatically delegate the next open plan step to its assigned agent profile. Experimental and off by default. |
+| `REPO_DETECT_TIMEOUT_MS` | number | `5000` | Timeout for the repository detection that fills the runtime context. |
+| `MAX_SEARCH_SESSIONS` | number | `32` | Search sessions kept before the finished ones are pruned. |
+| `BINARY_PROBE_BYTES` | number | `8192` | Bytes inspected when deciding whether a file is binary. |
+| `IGNORED_DIRECTORIES` | string | `"node_modules,.git,dist,build,coverage,.cache,.next,.venv,__pycache__"` | Directory names skipped by tree walks and searches. |
+| `JOURNAL_ENABLED` | boolean | `true` | Append structured JSONL records for runs, agent thinking, and completed tool calls under .agent/journal. |
+| `EVENTSTORE_ENABLED` | boolean | `true` | Persist the full event stream once, keyed by run/turn/scope, under .agent/eventstore. The journal and sessions are derived from this single source of truth. |
+| `JOURNAL_MAX_FIELD_CHARS` | number | `12000` | Maximum serialized size of journal thinking, arguments, and result fields before they become a bounded preview. |
+| `MAX_RECENT_TOOL_CALLS` | number | `50` | Tool calls kept in the telemetry ring buffer. |
+| `MAX_CONSOLE_EVENTS` | number | `500` | Events buffered for a console that connects late. |
+| `THINKING_MAX_CHARS` | number | `4000` | How much of a model's reasoning text is reported to the console when the endpoint returns one. |
+| `CONSOLE_RESULT_CHARS` | number | `2000` | How much of a tool result is streamed to the console; the full result stays available on demand. |
+| `CONSOLE_CALL_HISTORY` | number | `200` | Tool calls whose full arguments and results the console keeps for inspection. |
+| `PROJECT_FILE_ENABLED` | boolean | `true` | Remember this project's settings in .agent/project.json and apply them the next time it is opened. |
+| `PROJECT_SAVE_SECRETS` | boolean | `false` | Write secrets such as API keys into the project file. Off, because a workspace is usually a repository. |
+| `SESSIONS_ENABLED` | boolean | `true` | Keep each conversation, with its events and tool calls, in .agent/sessions so it can be reopened. |
+| `SESSION_MAX_KEPT` | number | `50` | Conversations kept on disk before the oldest is removed. |
+| `SESSION_MAX_MESSAGES` | number | `400` | Chat entries kept per conversation. |
+| `SESSION_MAX_EVENTS` | number | `2000` | Runtime events kept per conversation, so a reopened session redraws the same cards. |
+| `SESSION_MAX_CALLS` | number | `300` | Tool calls kept per conversation with their full arguments and results. |
+| `SESSION_HISTORY_SIZE` | number | `200` | Lines of input history kept by the interactive session. |
+| `AGENT_VERBOSE` | boolean | `true` | Print progress while a run is in flight. |
+| `MCP_ENABLED` | boolean | `true` | Connect to the configured MCP servers. Off, no external server is started or contacted and only the built-in tools exist. |
+| `MCP_SERVERS` | string | `""` | MCP servers declared as JSON in the environment, in the same shape as .mcp.json. Applied after the files, so it wins. |
+| `MCP_EXPOSE_TOOLS` | enum | `"both"` | How an MCP server's tools reach the model. namespaced declares each one as mcp__<server>__<tool>, gateway offers only mcp_call, both does each. |
+| `MCP_AUTO_DISCOVER` | boolean | `false` | List configured server tools when a run starts. Disabled by default so workspace configuration cannot execute before explicit review. |
+| `MCP_TRUST_PROJECT_CONFIG` | boolean | `false` | Allow stdio MCP commands from project/workspace config. Keep false for untrusted repositories. |
+| `MCP_DISCOVERY_TTL_MS` | number | `300000` | How long a discovered tool catalogue is reused before the servers are asked again. |
+| `MCP_CALL_TIMEOUT_MS` | number | `60000` | Timeout for one tool call to an MCP server. |
+| `MCP_CONNECT_TIMEOUT_MS` | number | `20000` | Timeout for the handshake with an MCP server, and for reading its tool list. |
+| `MCP_MAX_TOOLS` | number | `200` | Ceiling on the MCP tools declared to the model, so a large server cannot flood the request. |
+| `MCP_EXCERPT_CHARS` | number | `300` | Maximum length of a description or error text in an MCP tool result. |
+| `MCP_MAX_MESSAGE_BYTES` | number | `16777216` | Largest single message accepted from an MCP server, so a server cannot exhaust memory with one frame. |
+| `MCP_ALLOW_RUNTIME_ADD` | boolean | `true` | Allow a server to be added or removed while the runtime is running, with mcp_add, mcp_remove or the console. |
+| `MCP_APPROVAL` | enum | `"inherit"` | Whether calling an MCP tool needs approval. inherit follows the policy rules and each server's trust setting, always asks every time, never asks at all. |
+| `MCP_GATEWAY_APPROVAL_TTL_MS` | number | `900000` | How long an approval answer for a global MCP server is reused before the next call asks again (P0-2). 0 asks every time. |
+| `WORKSPACE_ROOT` | string · fixed at startup | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Directory the agent may act in. Fixed at startup because every path check depends on it. اگر unset باشد، در runtime به `process.cwd()` برمی‌گردد. |
+| `STRUCTURED_AI_DATA_HOME` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai. اگر unset باشد، مسیر پیش‌فرض کاربر (معمولاً `~/.local/share/structured-ai`) استفاده می‌شود. |
+| `STRUCTURED_AI_TRUST_FILE` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | File that records which workspaces the operator trusted (roadmap P0-1). Empty means ~/.config/structured-ai/trusted-workspaces.json (~\AppData\Roaming\structured-ai on Windows). Never taken from a project file. اگر unset باشد، مسیر پیش‌فرض trust store سیستم‌عامل استفاده می‌شود. |
+| `RUN_HISTORY_LIMIT` | number | `100` | How many settled runs the RunManager keeps queryable after they finish. |
+| `APPROVAL_HISTORY_LIMIT` | number | `500` | How many settled approval decisions the ApprovalStore keeps in its bounded in-process history (POL-045). |
+| `MAX_CONCURRENT_PROJECT_RUNS` | number | `4` | How many distinct projects may have an active run at once (Phase 10). Extra projects wait on their own queue. |
+| `MAX_RUNS_PER_PROJECT` | number | `1` | Active runs allowed inside one project (Phase 10). Default 1 serializes a project's runs. |
+| `MAX_WORKERS_PER_USER` | number | `8` | Hard cap on total inflight runs for this process (Phase 10). |
+| `RUN_QUEUE_LIMIT` | number | `16` | Per-project waiting-run depth (Phase 10). Overflow is rejected with RUN_QUEUE_FULL rather than hanging. |
+| `PROJECT_MEMORY_LIMIT` | number | `0` | Bytes of recorded per-project memory after which new runs are refused (Phase 10). 0 disables the cap; the value is always exposed on /api/metrics. |
+| `PROJECT_CPU_LIMIT` | number | `0` | Observational CPU percent ceiling per project (Phase 10). 0 means unlimited; the live percent is reported on /api/metrics. |
+
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۱۸۶ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+
+| متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
-| `WORKSPACE_ROOT` | `process.cwd()` | ریشهٔ ثابت اجرای process و fallback پروژهٔ synthetic |
-| `STRUCTURED_AI_DATA_HOME` | `~/.local/share/structured-ai` | registry و data root مرکزی پروژه‌ها |
-| `AGENT_BASE_URL` | endpoint سازگار با OpenAI | مسیر `/chat/completions` مدل |
-| `AGENT_API_KEY` | خالی | کلید مدل؛ در log و پاسخ mask می‌شود |
-| `AGENT_MODEL` | `auto-switch` | مدل اصلی runtime |
-| `AGENT_APPROVAL` | `prompt` | `auto`، `prompt` یا `deny` برای approval policy |
-| `PROCESS_SANDBOX_MODE` | `deny` | `deny`، `bwrap` یا `test` (فقط harness) |
-| `MCP_ENABLED` | `true` | فعال بودن MCP manager |
-| `MCP_AUTO_DISCOVER` | `false` | کشف خودکار configهای workspace |
-| `MCP_TRUST_PROJECT_CONFIG` | `false` | trust لازم برای stdio پروژه |
-| `MCP_ALLOW_RUNTIME_ADD` | `true` | افزودن/حذف runtime MCP، مشروط به policy |
-| `MCP_APPROVAL` | `inherit` | approval برای فراخوانی MCP |
-| `EVENTSTORE_ENABLED` | `true` | ذخیرهٔ eventهای durable |
-| `JOURNAL_ENABLED` | `true` | ذخیرهٔ journal per-agent |
-| `MAX_RUN_MS` | `600000` | سقف wall-clock هر run |
-| `MAX_TOTAL_AGENTS` | `15` | سقف sub-agent هر run |
-| `MAX_PARALLEL_AGENTS` | `4` | سقف اجرای موازی sub-agentها |
-| `MAX_PARALLEL_TOOLS` | `8` | سقف اجرای موازی toolها |
-| `MAX_CONTEXT_CHARS` | `300000` | سقف conversation بر حسب کاراکتر |
-| `CONTEXT_WINDOW_TOKENS` | `0` | پنجرهٔ context مدل به token؛ صفر یعنی فقط سقف کاراکتری |
-| `CONTEXT_WINDOW_SAFETY_FRACTION` | `0.8` | حداکثر سهم پنجرهٔ token برای conversation؛ estimator تقریبی است |
-| `ENDPOINT_<ROLE>_CONTEXT_TOKENS` | `0` | پنجرهٔ token برای endpoint role (`MAIN`/`L1`/`L2`/`L3`/`SUMMARY`)؛ صفر از مقدار global ارث می‌برد |
+| `AGENT_TASK` | تنظیم‌نشده | متن تسک جایگزین؛ وقتی در CLI تسکی در آرگومان‌ها داده نشده باشد استفاده می‌شود. |
+| `AGENT_LOG_STREAM` | `stdout` | فقط مقدار `stderr` مسیر log را به stderr می‌فرستد. |
+| `AGENT_PRINT_FINAL` | فعال (`1`) | پاسخ نهایی چاپ می‌شود؛ مقدار `0` چاپ آن را خاموش می‌کند. |
+| `SHELL` | مقدار سیستم؛ fallback برابر `/bin/sh` | shell پیش‌فرض در سیستم‌های Unix برای فرایندها و نشست‌های PTY. |
+| `COMSPEC` | مقدار سیستم؛ fallback برابر `cmd.exe` | shell پیش‌فرض Windows برای فرایندها و نشست‌های PTY. |
+| `NO_COLOR` | تنظیم‌نشده | اگر مقداردهی شود، رنگ‌های ترمینال غیرفعال می‌شوند. |
+| `NODE_ENV` | در Docker برابر `production`؛ خارج Docker تنظیم‌نشده | در Dockerfile مقداردهی می‌شود؛ در محیط‌های دیگر کاربر/پلتفرم می‌تواند آن را تعیین کند. |
+| `PATH` | مقدار سیستم‌عامل | مسیر اجرایی میزبان است و در محیط محدودشدهٔ فرایند فرزند allow می‌شود؛ پروژه مقدار ثابت برای آن ندارد. |
+| `CI` | مقدار runner؛ `ci/run-tests.js` برای subprocessها fallback برابر `true` دارد | علامت اجرا در CI و برای subprocessهای تست. |
+| `GITHUB_OUTPUT` | فقط در GitHub Actions توسط runner تعیین می‌شود | مسیر فایل خروجی step؛ خارج GitHub Actions تعریف پروژه‌ای ندارد. |
+
+### متغیرهای CI و تست
+
+این موارد تنظیم runtime محصول نیستند و فقط smoke-test، تست‌ها یا ابزار stub را کنترل می‌کنند:
+
+| متغیر | مقدار پیش‌فرض/رفتار | توضیح |
+|---|---|---|
+| `SMOKE_<PROVIDER>_API_KEY` | تنظیم‌نشده | کلید provider برای smoke test؛ برای `OLLAMA` لازم نیست. Prefixهای پشتیبانی‌شده: `OPENAI`, `OPENAI_RESPONSES`, `ANTHROPIC`, `GEMINI`, `AZURE_OPENAI`, `BEDROCK`, `OLLAMA`, `OPENROUTER`. |
+| `SMOKE_<PROVIDER>_MODEL` | تنظیم‌نشده | مدل provider؛ برای فعال‌شدن smoke test آن provider لازم است. همان prefixهای بالا. |
+| `SMOKE_<PROVIDER>_BASE_URL` | تنظیم‌نشده | آدرس سفارشی اختیاری provider در smoke test. |
+| `SMOKE_<PROVIDER>_REGION` | تنظیم‌نشده | منطقهٔ اختیاری provider در smoke test (برای Bedrock). |
+| `SMOKE_MIN_PROVIDERS` | `4` | حداقل تعداد provider موفق برای smoke test. |
+| `SMOKE_REQUIRED` | unset (`0`) | اگر `1` باشد، نبود credential باعث fail شدن smoke test می‌شود؛ در غیر این صورت بدون credential تست skip می‌شود. |
+| `STUB_MODEL_PORT` | `8899` | پورت `tools/stub-model-server.js`. |
+| `WEB_TEST_TIMEOUT_MS` | `15000` | سقف انتظار برخی تست‌های وب. |
+| `UI_TRACE` | تنظیم‌نشده | فعال‌کردن trace/debug خروجی تست‌های UI. |
+| `DEBUG_ARCHIVE` | تنظیم‌نشده | خروجی debug در تست archive/e2e. |
+| `P0_MODE` | `dual` | حالت framing در fixture تست MCP: `dual` یا `ndjson-only`. |
+| `P0_ASK` | `0` | در fixture تست MCP، با `1` سرور درخواست client-side ارسال می‌کند. |
+| `RUN_SANDBOX_INTEGRATION` | unset (`0`) | با `1` تست integration مربوط به sandbox اجرا می‌شود. |
+
+مواردی مثل `${env:NAME}` در تنظیم MCP و `env` صریح ابزارها نام ثابت یا مقدار پیش‌فرضی در برنامه ندارند؛ مقدارشان از environment میزبان گرفته می‌شود و policy مربوط به secretها/فرایند فرزند بر آن اعمال می‌شود. نام‌های تستی `GITHUB_TOKEN`, `OPENAI_API_KEY`, `P05DATA_API_KEY`, `P05DATA_HOST`, `P05_EXPLICIT`, `P05_SERVICE_SECRET`, `P08_TOKEN`, `MCP_TEST_TOKEN`, `SECRET` و `MODEL_MAX_RETRIES` در تست‌ها/fixtureهای ایزوله استفاده می‌شوند؛ خارج از تست unset هستند و setting قابل پیکربندی runtime نیستند. مقادیر جعلی‌اند و برای آزمون redaction، انزوای فرایند و expansion متغیرهای MCP استفاده می‌شوند.
+
 
 فلگ‌های rollout موقت مراحل قبل (`PROJECT_CONTEXT_MODE`، `RUN_CONTEXT_MODE`،
 `PROMPT_BUILDER_MODE`، `RUNTIME_ENGINE_MODE` و
 `WEB_SERVER_MODE`) در Phase 30 از schema و runtime حذف شده‌اند؛ همهٔ مسیرها
 اکنون implementation canonical را اجرا می‌کنند و setting ناشناخته خطای واضح
-می‌دهد. برای فهرست کامل ۱۶۳ setting به `SettingsSchema.js` مراجعه کنید.
+می‌دهد. فهرست کامل تنظیمات runtime در جدول بالا آمده و منبع canonical آن `SettingsSchema.js` است.
 
 ## ۶. مستندات کامل اندپوینت‌های سرور وب کنسول (Web Server & REST / SSE API)
 
 سرور canonical با `node bin/agent.js --serve <port> -w <path>` اجرا می‌شود.
-تمام APIها token-protected هستند و method/path کامل در
+APIهای runtime token-protected هستند؛ مسیرهای `/auth/status` و `/auth/login`
+برای ورود به پنل استثنا هستند. برای فعال‌کردن رمز ورود، پیش از اجرا تنظیم کنید:
+
+```bash
+AGENT_CONSOLE_PASSWORD_REQUIRED=true AGENT_CONSOLE_PASSWORD='choose-a-long-password' node bin/agent.js --serve 7777
+```
+
+فلگ و رمز در طول عمر process ثابت‌اند؛ صفحهٔ وب پس از ورود یک cookie امنِ
+`HttpOnly` می‌گیرد. URL حاوی bearer token برای حالت رمزدار چاپ نمی‌شود.
+method/path کامل در
 [`test/fixtures/api-surface.json`](test/fixtures/api-surface.json) و
 `web/server/RouteInventory.js` ثبت شده‌اند.
 

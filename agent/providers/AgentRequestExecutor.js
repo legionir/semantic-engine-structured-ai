@@ -3,8 +3,11 @@
 /* Provider request transport and schema-degradation policy extracted from
    agent.js. Runtime-specific behavior is injected at construction. */
 
+const { httpTransport } = require("./HttpTransport");
+
 function createAgentRequestExecutor(deps) {
 
+    const transport = deps.transport || httpTransport;
     const degradedSchemas = new Set();
 
     function schemaKeyFor(profile, role) {
@@ -87,7 +90,8 @@ function createAgentRequestExecutor(deps) {
         let text;
 
         try {
-            response = await fetch(profile.endpoint, {
+            response = await transport.request({
+                url: profile.endpoint,
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -112,7 +116,8 @@ function createAgentRequestExecutor(deps) {
             requestSignal.release();
         }
 
-        finishWaiting(response.ok ? "answered" : `http ${response.status}`);
+        const responseOk = response.status >= 200 && response.status < 300;
+        finishWaiting(responseOk ? "answered" : `http ${response.status}`);
 
         let data;
         let parsed = true;
@@ -123,11 +128,11 @@ function createAgentRequestExecutor(deps) {
             data = text;
         }
 
-        if (!response.ok) {
+        if (!responseOk) {
             const failure = new Error(`API Error ${response.status}: ${(parsed ? JSON.stringify(data) : data).slice(0, 300)}`);
             failure.status = response.status;
             failure.retryable = deps.isRetryableStatus(response.status);
-            failure.retryAfter = response.headers.get("retry-after");
+            failure.retryAfter = response.header("retry-after");
             failure.schema_rejected = Boolean(request.response_format) && mentionsSchemaRejection(text);
             throw failure;
         }

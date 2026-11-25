@@ -42,6 +42,7 @@ settings below are locked by `WorkspaceTrust`.
   ```
 
 - `PROVIDER_FALLBACKS` (secret, JSON list): tried in order when the primary still fails.
+- `AGENT_PROXY_URL` (secret, optional): routes every provider request through `http://host:port`, `socks5://host:port` or `socks5h://host:port`. Credentials may be included in the URL and are masked in the web settings view. It is read for each request; changing it in the console takes effect on the next request without restarting the provider router. `--proxy-url <url>` sets it for a CLI process, or set `AGENT_PROXY_URL` in the environment.
 - `MAX_REQUEST_RETRIES`, `RETRY_BASE_MS`, `MAX_REQUEST_MS`: retry and timeout policy.
 
 An entry for a provider other than the primary one never inherits the primary
