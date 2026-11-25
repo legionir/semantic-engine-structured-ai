@@ -377,7 +377,15 @@ async function main() {
         /* ignore */
     }
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    await runtime.eventstore.flush();
+    await runtime.journal.flush();
+
+    /* best effort: Windows can still hold a handle a moment after the last write */
+    try {
+        fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error) {
+        console.log(`  (left ${WORKSPACE}: ${error.code || error.message})`);
+    }
 
     process.exit(failed.length === 0 ? 0 : 1);
 
