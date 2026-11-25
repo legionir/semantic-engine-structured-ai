@@ -15,6 +15,7 @@
     "/api/mcp",
     "/api/mcp/",
     "/api/metrics",
+    "/api/models",
     "/api/projects/",
     "/projects",
     "/api/sessions",
@@ -60,6 +61,7 @@
     "DELETE /api/sessions/:id",
     "GET /api/calls",
     "GET /api/calls/:key",
+    "GET /api/models",
     "POST /api/tasks",
     "GET /api/projects",
     "POST /api/projects",
@@ -93,6 +95,13 @@
     "GET /projects/:projectId"
   ],
   "response_contracts": {
+    "model_catalog": {
+      "status": 200,
+      "required": [
+        "models"
+      ],
+      "notes": "GET /api/models fetches model ids from the configured provider endpoint."
+    },
     "legacy_task": {
       "status": 202,
       "required": [

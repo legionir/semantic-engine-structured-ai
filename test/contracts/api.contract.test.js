@@ -73,6 +73,8 @@ async function main() {
             assert.ok(Array.isArray(contract.required), `${name} has no required keys`);
             assert.ok(contract.required.length > 0, `${name} has an empty required-key list`);
         }
+        assert.equal(contracts.model_catalog.status, 200);
+        assert.deepStrictEqual(contracts.model_catalog.required, ["models"]);
         assert.equal(contracts.legacy_task.status, 202);
         assert.deepStrictEqual(contracts.legacy_task.required, ["accepted"]);
         assert.ok(contracts.project_task.required.includes("project_id"));

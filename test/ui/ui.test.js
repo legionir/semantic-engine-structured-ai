@@ -1691,7 +1691,15 @@ async function main() {
         assert.match(dialog.textContent, /Settings/);
         assert.match(dialog.textContent, /MAX_ITERATIONS/);
         assert.match(dialog.textContent, /applied on next use/);
-        const proxyInput = dialog.querySelectorAll(".setting")
+        Modal.closeTop("test");
+
+        document.getElementById("llmSettingsButton").dispatch("click");
+        const llmDialog =
+            document.body.children.filter(
+                child => child.classList.contains("modal-backdrop")
+            )[0].children[0];
+        assert.match(llmDialog.textContent, /LLM settings/);
+        const proxyInput = llmDialog.querySelectorAll(".setting")
             .flatMap(row => row.children)
             .find(child => child.tagName === "INPUT" && child.type === "password");
         assert.ok(proxyInput, "proxy credentials use a password input");
@@ -1707,6 +1715,19 @@ async function main() {
             0
         );
     });
+
+    await test("the Plan action opens the card as its own modal", () => {
+
+        document.getElementById("planButton").dispatch("click");
+        const dialog =
+            document.body.children.filter(
+                child => child.classList.contains("modal-backdrop")
+            )[0].children[0];
+        assert.match(dialog.textContent, /Plan/);
+        Modal.closeTop("test");
+        assert.equal(document.getElementById("planPanel").hidden, true);
+    });
+
 
     await test("Settings borrows the policy controls and gives them back", () => {
 
@@ -1727,6 +1748,9 @@ async function main() {
             dialog.querySelectorAll(".policy-row").length === 1,
             "the borrowed row is in the modal"
         );
+        const settings = dialog.querySelectorAll(".settings")[0];
+        assert.ok(settings.children[0].classList.contains("filter"), "filter remains first");
+        assert.ok(settings.children[1].classList.contains("runtime-policy-settings"), "policy follows the filter");
         assert.ok(
             document.getElementById("approvalMode"),
             "a borrowed control is still reachable from the document"
@@ -2520,7 +2544,8 @@ function loadConsole() {
         "runTimer", "execSummary", "tree", "executionArchive", "chat", "sessionTitle",
         "plan", "planSummary", "log", "approvalsCount", "discussionOptions",
         "taskScope", "taskScopeList", "projectDashboard", "dashboardTitle",
-        "dashboardSubtitle", "dashboardTabs", "dashboardBody", "consoleMain"
+        "dashboardSubtitle", "dashboardTabs", "dashboardBody", "consoleMain",
+        "planPanel", "consoleHeader", "consoleMenu", "autoSwitchStatus"
     ]) {
         document.register(id, "div");
     }
@@ -2530,7 +2555,7 @@ function loadConsole() {
         "settingsButton", "mcpButton", "approvalsButton", "clearLog",
         "historyButton", "executionButton", "eventsButton",
         "discussionButton", "newProjectButton", "projectsButton",
-        "dashboardBack"
+        "dashboardBack", "llmSettingsButton", "planButton", "mobileMenuToggle"
     ]) {
         document.register(id, "button");
     }

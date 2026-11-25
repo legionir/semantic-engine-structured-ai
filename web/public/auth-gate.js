@@ -11,6 +11,7 @@
     function showLogin(message = "") {
         document.querySelector("header").hidden = true;
         document.getElementById("consoleMain").hidden = true;
+        document.getElementById("projectBar").hidden = true;
         document.getElementById("projectDashboard").hidden = true;
         login.hidden = false;
         error.textContent = message;

@@ -44,6 +44,8 @@ const state = {
     timer: null,
     approvalModal: null,
     settingsModal: null,
+    llmSettingsModal: null,
+    planModal: null,
     mcpModal: null,
     discussionModal: null,
     discussion: null,
@@ -4680,6 +4682,7 @@ function applySnapshot(snapshot) {
     if (autoContinue) {
         autoContinue.checked = Boolean(snapshot.auto_continue);
     }
+    el("autoSwitchStatus").textContent = `auto-switch · ${snapshot.auto_continue ? "on" : "off"}`;
 
     state.messages = normalizeConversationMessages(snapshot.messages);
 
@@ -4789,7 +4792,13 @@ function borrowPolicyControls(container) {
     policyBorrow.home = home;
     policyBorrow.chips = chips;
 
-    container.insertBefore(row, container.firstChild);
+    const policySection = container.querySelector(".runtime-policy-settings");
+
+    if (policySection) {
+        policySection.appendChild(row);
+    } else {
+        container.appendChild(row);
+    }
 }
 
 
@@ -4813,6 +4822,13 @@ function returnPolicyControls() {
 }
 
 
+function isLlmSetting(setting) {
+
+    return setting.group.startsWith("endpoint") ||
+        ["AGENT_PROVIDER", "AGENT_PROVIDER_REGION", "AGENT_MODEL", "AGENT_BASE_URL", "AGENT_API_KEY", "AGENT_PROXY_URL", "AZURE_OPENAI_API_VERSION", "BEDROCK_ACCESS_KEY_ID", "BEDROCK_SECRET_ACCESS_KEY", "BEDROCK_SESSION_TOKEN"].includes(setting.key);
+}
+
+
 function settingsBody(list) {
 
     const container = node("div", "settings");
@@ -4820,7 +4836,7 @@ function settingsBody(list) {
     const search = node("input", "filter");
 
     search.type = "search";
-    search.placeholder = "filter settings";
+    search.placeholder = "filter settings and policy";
 
     container.appendChild(search);
 
@@ -4841,6 +4857,12 @@ function settingsBody(list) {
                 GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b)
         );
 
+    const policySection = node("section", "runtime-policy-settings");
+    policySection.appendChild(node("h3", null, "runtime policy"));
+    container.appendChild(policySection);
+
+    search.placeholder = "filter settings and policy";
+
     for (const name of ordered) {
 
         const section = node("div", "group");
@@ -4859,6 +4881,13 @@ function settingsBody(list) {
 
         const term =
             search.value.trim().toLowerCase();
+
+        const policySection = container.querySelector(".runtime-policy-settings");
+        const policyRow = policySection && policySection.querySelector(".policy-row");
+        if (policyRow) {
+            policyRow.hidden = term !== "" && !policyRow.textContent.toLowerCase().includes(term);
+            policySection.hidden = policyRow.hidden;
+        }
 
         for (const section of container.querySelectorAll(".group")) {
 
@@ -4913,25 +4942,44 @@ function settingRow(setting) {
 
     let input;
 
-    if (setting.type === "boolean" || setting.type === "enum") {
+    if (setting.type === "boolean" || setting.type === "enum" || /(?:^|_)MODEL$/.test(setting.key)) {
 
         input = node("select");
 
+        const isModel = /(?:^|_)MODEL$/.test(setting.key);
         const values =
-            setting.type === "boolean"
-                ? ["true", "false"]
-                : setting.values;
+            isModel
+                ? [setting.value || ""]
+                : setting.type === "boolean"
+                    ? ["true", "false"]
+                    : setting.values;
 
         for (const option of values) {
-
-            const element = node("option", null, option);
-
+            const element = node("option", null, option || "Choose a model");
             element.value = option;
-
             input.appendChild(element);
         }
 
-        input.value = String(setting.value);
+        input.value = String(setting.value || "");
+
+        if (isModel) {
+            const role = setting.key.match(/^ENDPOINT_(MAIN|L1|L2|L3|SUMMARY)_MODEL$/)?.[1] || "MAIN";
+            fetch(`/api/models?role=${encodeURIComponent(role)}`)
+                .then(response => response.json())
+                .then(payload => {
+                    if (!Array.isArray(payload.models)) throw new Error(payload.error || "Model list unavailable");
+                    for (const modelName of payload.models) {
+                        if ([...input.children].some(option => option.value === modelName)) continue;
+                        const option = node("option", null, modelName);
+                        option.value = modelName;
+                        input.appendChild(option);
+                    }
+                    input.value = String(setting.value || "");
+                })
+                .catch(error => {
+                    input.title = error.message;
+                });
+        }
 
     } else {
 
@@ -5044,12 +5092,16 @@ async function loadSettings() {
 
     if (state.settingsModal && state.settingsModal.isOpen()) {
 
-        const body = settingsBody(state.settings);
+        const body = settingsBody(state.settings.filter(setting => !isLlmSetting(setting)));
 
         /* borrow before the swap: setBody() empties the content slot, and the
            chips resting in the old body would leave the document with it */
         borrowPolicyControls(body);
         state.settingsModal.setBody(body);
+    }
+
+    if (state.llmSettingsModal && state.llmSettingsModal.isOpen()) {
+        state.llmSettingsModal.setBody(settingsBody(state.settings.filter(isLlmSetting)));
     }
 }
 
@@ -5060,7 +5112,7 @@ function openSettings() {
         return;
     }
 
-    const body = settingsBody(state.settings);
+    const body = settingsBody(state.settings.filter(setting => !isLlmSetting(setting)));
 
     state.settingsModal =
         Modal.open({
@@ -5095,6 +5147,42 @@ function openSettings() {
     borrowPolicyControls(body);
 
     loadSettings();
+}
+
+
+function openLlmSettings() {
+
+    if (state.llmSettingsModal && state.llmSettingsModal.isOpen()) return;
+
+    const body = settingsBody(state.settings.filter(isLlmSetting));
+    state.llmSettingsModal = Modal.open({
+        title: "LLM settings",
+        subtitle: "Providers, model layers, and proxy",
+        size: "large",
+        body,
+        onClose: () => { state.llmSettingsModal = null; }
+    });
+    loadSettings();
+}
+
+
+function openPlanModal() {
+
+    if (state.planModal && state.planModal.isOpen()) return;
+    const panel = el("planPanel");
+    if (!panel) return;
+    panel.hidden = false;
+    state.planModal = Modal.open({
+        title: "Plan",
+        size: "large",
+        body: panel,
+        onClose: () => {
+            panel.hidden = true;
+            const home = el("consoleMain");
+            if (home && panel.parentNode !== home) home.appendChild(panel);
+            state.planModal = null;
+        }
+    });
 }
 
 
@@ -6256,6 +6344,8 @@ el("clearButton").addEventListener("click", async () => {
 
 el("autoContinue").addEventListener("change", event => {
 
+    el("autoSwitchStatus").textContent = `auto-switch · ${event.target.checked ? "on" : "off"}`;
+
     fetch("/api/settings", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -6309,7 +6399,21 @@ el("approvalMode").addEventListener("change", event => {
 
 
 el("settingsButton").addEventListener("click", openSettings);
+el("llmSettingsButton").addEventListener("click", openLlmSettings);
+el("planButton").addEventListener("click", openPlanModal);
 
+el("mobileMenuToggle").addEventListener("click", () => {
+    const header = el("consoleHeader");
+    const open = header.classList.toggle("menu-open");
+    el("mobileMenuToggle").setAttribute("aria-expanded", String(open));
+});
+
+el("consoleMenu").addEventListener("click", event => {
+    if (event.target.closest("button")) {
+        el("consoleHeader").classList.remove("menu-open");
+        el("mobileMenuToggle").setAttribute("aria-expanded", "false");
+    }
+});
 
 el("mcpButton").addEventListener("click", openMcp);
 

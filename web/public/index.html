@@ -11,65 +11,38 @@
 </head>
 <body>
 
-<header class="bar">
+<header class="bar" id="consoleHeader">
   <div class="brand">
     <span class="dot" id="statusDot" title="runtime status"></span>
     <strong>structured-ai</strong>
+    <button type="button" id="mobileMenuToggle" class="mobile-menu-toggle" aria-label="Open console menu" aria-expanded="false">☰</button>
+  </div>
+
+  <div class="status-strip" aria-label="Runtime status">
     <span class="status-pill" id="statusText">connecting</span>
     <a class="chip button status-chip" id="gatewayHealth" href="/api/health" title="Gateway health">health · —</a>
     <span class="chip status-chip" id="workspace" title="workspace"></span>
     <span class="chip status-chip" id="model" title="model"></span>
+    <span class="chip status-chip" id="autoSwitchStatus" title="automatic continuation">auto-switch · off</span>
     <span class="chip status-chip" id="turns" title="turns in this session">0 turns</span>
   </div>
 
-  <div class="meta">
-    <div class="chip-group">
-      <label class="chip select" id="projectSwitcherWrap" title="active project">
-        project
-        <select id="projectSwitcher">
-          <option value="">workspace default</option>
-        </select>
-      </label>
-      <button type="button" id="newProjectButton" class="chip button" title="register a project">
-        New Project
-      </button>
-      <button type="button" id="projectsButton" class="chip button" title="manage projects and open a dashboard">
-        Projects
-      </button>
-    </div>
-
-    <span class="bar-sep" aria-hidden="true"></span>
-
-    <div class="chip-group">
-      <button type="button" id="approvalsButton" class="chip alert" hidden>
-        approvals <span id="approvalsCount">0</span>
-      </button>
-    </div>
-
-    <span class="bar-sep" aria-hidden="true"></span>
-
+  <div class="meta" id="consoleMenu">
+    <button type="button" id="approvalsButton" class="chip alert" hidden>
+      approvals <span id="approvalsCount">0</span>
+    </button>
     <nav class="bar-nav" aria-label="Console views">
-      <button type="button" id="historyButton" class="chip button" title="open saved conversations">
-        History
-      </button>
-      <button type="button" id="executionButton" class="chip button" title="open the agent execution tree">
-        Execution
-      </button>
-      <button type="button" id="eventsButton" class="chip button" title="open the event log">
-        Events
-      </button>
-      <button type="button" id="mcpButton" class="chip button" title="connect and inspect MCP servers">
-        MCP
-      </button>
-      <button type="button" id="settingsButton" class="chip button" title="open settings">
-        Settings
-      </button>
+      <button type="button" id="historyButton" class="chip button" title="open saved conversations">History</button>
+      <button type="button" id="executionButton" class="chip button" title="open the agent execution tree">Execution</button>
+      <button type="button" id="eventsButton" class="chip button" title="open the event log">Events</button>
+      <button type="button" id="planButton" class="chip button" title="open the plan">Plan</button>
+      <button type="button" id="llmSettingsButton" class="chip button" title="LLM providers, layers, and proxy">LLM settings</button>
+      <button type="button" id="mcpButton" class="chip button" title="connect and inspect MCP servers">MCP</button>
+      <button type="button" id="settingsButton" class="chip button" title="open runtime settings">Settings</button>
     </nav>
   </div>
 
-  <!-- runtime policy controls live in Settings; this hidden home owns
-       their ids while the modal is closed — the settings renderer
-       borrows these labels on open and returns them on close -->
+  <!-- Controls are borrowed into the Runtime policy section below the settings filter. -->
   <div class="policy-home" id="policyHome">
     <label class="chip select" title="tool approval policy">
       approval
@@ -133,7 +106,7 @@
       </form>
     </div>
 
-    <div class="panel plan-panel">
+    <div class="panel plan-panel" id="planPanel" hidden>
       <div class="panel-head">
         <h2>Plan</h2>
         <span class="muted" id="planSummary"></span>
@@ -176,6 +149,19 @@
   </section>
 
 </main>
+
+<footer class="project-bar" id="projectBar" aria-label="Project controls">
+  <div class="project-actions">
+    <button type="button" id="projectsButton" class="chip button" title="manage projects" aria-label="Projects"><span>Projects</span></button>
+    <button type="button" id="newProjectButton" class="chip button" title="register a project" aria-label="New project"><span>New Project</span></button>
+  </div>
+  <label class="chip select" id="projectSwitcherWrap" title="active project">
+    <span class="project-label">project</span>
+    <select id="projectSwitcher">
+      <option value="">workspace default</option>
+    </select>
+  </label>
+</footer>
 
 <section id="consoleLogin" class="console-login" hidden>
   <form id="consoleLoginForm" class="console-login-card">

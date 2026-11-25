@@ -51,6 +51,7 @@ const {
 const { SseHub } = require("./SseHub");
 
 const consoleAuth = require("../../agent/config/ConsoleAuth");
+const { listModels } = require("../../agent/providers/ModelCatalog");
 const { ApprovalStore } = require("../../agent/policy");
 const ProcessOutputBus = require("../../agent/tools/process/ProcessOutputBus");
 const { DiscussionService } = require("../../agent/discussion/DiscussionService");
@@ -3033,6 +3034,22 @@ function createServer(runtime, options = {}) {
 
                     sendJson(res, 200, { mode: body.mode });
 
+                    return;
+                }
+
+                /* ------------------------------------------ model catalog */
+
+                if (
+                    pathname === "/api/models" &&
+                    req.method === "GET"
+                ) {
+                    if (requireAdmin()) return;
+                    try {
+                        const models = await listModels({ role: url.searchParams.get("role") || "MAIN" });
+                        sendJson(res, 200, { models });
+                    } catch (error) {
+                        sendJson(res, 502, { error: error.message });
+                    }
                     return;
                 }
 
