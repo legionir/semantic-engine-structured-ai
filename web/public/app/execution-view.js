@@ -141,16 +141,37 @@ export function Tree({ run, onOpenCall }) {
 }
 
 
-/* previous runs, closed by default; an accordion the user opened stays open */
-export function Archive({ archive, onOpenCall }) {
+/*
+| Previous runs, closed by default. Which ones the operator opened is kept
+| in the store (openIds), so the accordion is the same in the Execution
+| modal each time it opens.
+*/
+export function Archive({ archive, onOpenCall, openIds = null, onToggle = null }) {
 
-    return archive.map(entry => html`<details class="execution-run" key=${entry.id}>
+    return archive.map(entry => html`<details
+        class="execution-run"
+        key=${entry.id}
+        open=${openIds ? openIds.has(entry.id) : undefined}
+        onToggle=${onToggle ? event => onToggle(entry.id, event.currentTarget.open) : undefined}
+    >
         <summary>
             <span class="archived-title">${singleLine(entry.task, 100)}</span>
             <span class="archived-summary">${entry.summary}</span>
         </summary>
         <div class="archived-tree"><${TreeBody} run=${entry.run} onOpenCall=${onOpenCall} /></div>
     </details>`);
+}
+
+
+/* the Execution modal: the archive and the current tree, drawn afresh */
+export function ExecutionPanel({ run, archive, openIds, onToggle, onOpenCall }) {
+
+    return html`<div class="execution-scroll">
+        <div class="execution-archive">
+            <${Archive} archive=${archive} openIds=${openIds} onToggle=${onToggle} onOpenCall=${onOpenCall} />
+        </div>
+        <div class="tree"><${Tree} run=${run} onOpenCall=${onOpenCall} /></div>
+    </div>`;
 }
 
 

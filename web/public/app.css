@@ -888,8 +888,10 @@ button.link:hover { color: var(--accent); background: var(--accent-soft); border
   background: rgba(255, 255, 255, .015);
 }
 .log-controls > .filter { flex: 0 1 auto; }
-.log-controls > #logFilter { flex: 1 1 auto; min-width: 120px; }
-.log-controls > #logCount { margin-left: auto; }
+.log-controls > #logFilter,
+.log-controls > .log-filter { flex: 1 1 auto; min-width: 120px; }
+.log-controls > #logCount,
+.log-controls > .log-count { margin-left: auto; }
 
 /*
 | The type dropdown sits beside the text box in both homes: the hidden
@@ -897,13 +899,15 @@ button.link:hover { color: var(--accent); background: var(--accent-soft); border
 | the search input already has.
 */
 
-select#logType {
+select#logType,
+select.log-type {
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: 6px; color: var(--text);
   padding: 4px 6px; font: inherit; font-size: 12px;
   max-width: 170px;
 }
-#logCount { font-size: 11px; white-space: nowrap; }
+#logCount,
+.log-count { font-size: 11px; white-space: nowrap; }
 
 .log { list-style: none; margin: 0; padding: 8px 11px; overflow: auto; font-family: var(--mono); font-size: 12px; }
 .log li { display: flex; gap: 8px; padding: 2.5px 4px; border-radius: 5px; border-bottom: 1px solid rgba(255, 255, 255, .03); }

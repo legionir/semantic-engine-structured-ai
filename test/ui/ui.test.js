@@ -1343,68 +1343,62 @@ async function main() {
     });
 
 
-    await test("Settings borrows the policy controls and gives them back", () => {
+    await test("Settings draws the runtime policy controls from the header's state", async () => {
 
         const home = document.getElementById("policyHome");
+        const header = document.getElementById("approvalMode");
 
-        assert.equal(home.children.length, 2, "both chips start at home");
+        assert.equal(home.children.length, 2, "both chips are in the header");
 
         document.getElementById("settingsButton").dispatch("click");
 
-        const dialog =
-            [...document.body.children].filter(
-                child => child.classList.contains("modal-backdrop")
-            )[0].children[0];
+        const dialog = backdrops().at(-1).children[0];
 
-        /* moved into the modal, not copied: the home is empty while open */
-        assert.equal(home.children.length, 0, "the home is emptied on open");
-        assert.ok(
-            [...dialog.querySelectorAll(".policy-row")].length === 1,
-            "the borrowed row is in the modal"
-        );
-        const settings = [...dialog.querySelectorAll(".settings")][0];
+        /* nothing is moved: the header keeps its pair, the modal has its own */
+        assert.equal(home.children.length, 2, "the header pair stays where it is");
+        assert.equal(document.querySelectorAll("#approvalMode").length, 1, "ids stay unique");
+        assert.equal(dialog.querySelectorAll(".policy-row").length, 1, "the policy row is in the modal");
+
+        const settings = dialog.querySelector(".settings");
         assert.ok(settings.children[0].classList.contains("filter"), "filter remains first");
         assert.ok(settings.children[1].classList.contains("runtime-policy-settings"), "policy follows the filter");
+
+        const select = dialog.querySelector(".policy-row select");
+        const checkbox = dialog.querySelector(".policy-row input[type=checkbox]");
+        assert.equal(select.value, header.value, "the modal shows the mode in effect");
+        assert.equal(checkbox.checked, document.getElementById("autoContinue").checked);
+
+        /* a change in the modal is the same action as a change in the header */
+        const next = header.value === "deny" ? "prompt" : "deny";
+        select.value = next;
+        select.dispatch("change");
+        await new Promise(resolve => setTimeout(resolve, 0));
+
         assert.ok(
-            document.getElementById("approvalMode"),
-            "a borrowed control is still reachable from the document"
+            console_.posted.some(item => item.url === "/api/approval-mode" && item.body && item.body.mode === next),
+            "the change is sent"
         );
+        assert.equal(header.value, next, "and the header follows");
+
+        /* the filter hides the policy row when it does not match */
+        const filter = settings.children[0];
+        filter.value = "max_iter";
+        filter.dispatch("input");
+        assert.equal(settings.children[1].hidden, true);
+        filter.value = "approval";
+        filter.dispatch("input");
+        assert.equal(settings.children[1].hidden, false);
 
         Modal.closeTop("test");
 
-        assert.equal(home.children.length, 2, "close returns both chips");
-        assert.ok(
-            document.getElementById("autoContinue"),
-            "and the controls are on the page again, not detached"
-        );
-        assert.equal(
-            [...dialog.querySelectorAll(".policy-row")]
-                .flatMap(row => [...row.children])
-                .filter(child => child.tagName === "LABEL")
-                .length,
-            0,
-            "the closed body no longer holds the chips"
-        );
+        assert.equal(home.children.length, 2);
+        assert.ok(document.getElementById("autoContinue").isConnected, "the header controls never left");
 
-        /* reopening borrows again: a half-committed borrow used to leave the
-           controls stranded after the second open */
+        /* reopening draws the row again */
         document.getElementById("settingsButton").dispatch("click");
-
-        const again =
-            [...document.body.children].filter(
-                child => child.classList.contains("modal-backdrop")
-            )[0].children[0];
-
-        assert.equal(home.children.length, 0, "the second open borrows again");
-        assert.equal(
-            [...again.querySelectorAll(".policy-row")].length,
-            1,
-            "into its own row"
-        );
-
+        assert.equal(backdrops().at(-1).querySelectorAll(".policy-row").length, 1);
         Modal.closeTop("test");
-
-        assert.equal(home.children.length, 2, "and returns them again");
+        assert.equal(backdrops().length, 0);
     });
 
     await test("execution and events open as modals from the header", () => {
@@ -1442,132 +1436,80 @@ async function main() {
     });
 
     /*
-    | Modal.close() detaches the backdrop before onClose runs, so a node
-    | the modal borrowed reports isConnected === false at exactly the
-    | moment the handler decides whether to give it back. Guarding the
-    | hand-back on that flag stranded #log outside the document, and
-    | every event after that threw on list.appendChild.
+    | The Execution and Events modals used to borrow the page's own nodes,
+    | and every bug in giving them back left the console dead (a stranded
+    | #log made every later event throw). They now draw their own copy
+    | from the store, so the page cards never move and both copies agree.
     */
 
-    await test("cards borrowed by a modal are on the page again after it closes", () => {
-
-        /*
-        | Borrowing is only correct if it is reversible exactly: each
-        | card goes back to the parent it came from, in the order it was
-        | in. Asserting merely that it is somewhere in #rowTwo would
-        | accept a restore that flattened the panels, which is the shape
-        | the real bug left behind.
-        */
+    await test("the execution and events modals draw a live copy and leave the page cards in place", () => {
 
         const ids = [
             "log", "logFilter", "logType", "logCount", "clearLog",
             "tree", "executionArchive"
         ];
 
-        const homes = new Map();
-
-        for (const id of ids) {
-
-            const element =
-                document.getElementById(id);
-
+        const homes = new Map(ids.map(id => {
+            const element = document.getElementById(id);
             assert.ok(element, `${id} should start on the page`);
+            return [id, { element, parent: element.parentNode, index: [...element.parentNode.children].indexOf(element) }];
+        }));
 
-            homes.set(id, {
-                parent: element.parentNode,
-                index: [...element.parentNode.children].indexOf(element)
-            });
-        }
-
-        const rowTwo =
-            document.getElementById("rowTwo");
+        const unchanged = when => {
+            for (const [id, home] of homes) {
+                assert.equal(document.getElementById(id), home.element, `${id} is the same node ${when}`);
+                assert.equal(home.element.parentNode, home.parent, `${id} is in its home ${when}`);
+                assert.equal([...home.parent.children].indexOf(home.element), home.index, `${id} kept its position ${when}`);
+                assert.equal(document.querySelectorAll(`#${id}`).length, 1, `#${id} stays unique ${when}`);
+            }
+        };
 
         document.getElementById("eventsButton").dispatch("click");
 
-        /*
-        | While the modal is open the node is still in the document, just
-        | under the backdrop instead of its home.
-        */
+        const events = backdrops().at(-1);
+        const modalLog = events.querySelector("ul.log");
+        const pageLog = document.getElementById("log");
 
-        assert.ok(
-            document.getElementById("log"),
-            "log stays reachable while the modal holds it"
+        unchanged("while the Events modal is open");
+        assert.equal(modalLog.children.length, pageLog.children.length, "the modal shows the same rows");
+
+        console_.send({ type: "agent:iteration", agent: "main_agent", iteration: 41 });
+        assert.equal(modalLog.children.length, pageLog.children.length, "a new event reaches both");
+        assert.match(modalLog.lastElementChild.textContent, /41/);
+
+        /* the modal's filter is the panel's filter */
+        const modalFilter = events.querySelector(".log-filter");
+        modalFilter.value = "iteration";
+        modalFilter.dispatch("input");
+        assert.equal(document.getElementById("logFilter").value, "iteration", "the page box follows");
+        assert.deepEqual(
+            [...modalLog.children].map(item => item.hidden),
+            [...pageLog.children].map(item => item.hidden),
+            "both lists hide the same rows"
         );
-
-        assert.notEqual(
-            document.getElementById("log").parentNode,
-            homes.get("log").parent,
-            "log left its home while the modal is open"
-        );
-
-        /*
-        | The panel the card was taken from must survive the loan. The
-        | bug this guards against handed the modal the shared container
-        | instead of the cards, and closing it took the container away.
-        */
-
-        assert.ok(
-            homes.get("log").parent.isConnected,
-            "the events panel must stay on the page while its log is lent out"
-        );
+        modalFilter.value = "";
+        modalFilter.dispatch("input");
 
         Modal.closeTop("test");
+        unchanged("after the Events modal closed");
 
         document.getElementById("executionButton").dispatch("click");
-
-        assert.ok(
-            homes.get("tree").parent.isConnected,
-            "the execution scroller must stay on the page while its cards are lent out"
+        const execution = backdrops().at(-1);
+        unchanged("while the Execution modal is open");
+        assert.equal(
+            execution.querySelectorAll(".tree button.tool").length,
+            document.getElementById("tree").querySelectorAll("button.tool").length,
+            "the modal draws the same tree"
         );
-
         Modal.closeTop("test");
 
-        for (const id of ids) {
-
-            const element =
-                document.getElementById(id);
-
-            assert.ok(element, `${id} must return to the page`);
-
-            assert.equal(
-                element.parentNode,
-                homes.get(id).parent,
-                `${id} must be back in the parent it came from, not stranded`
-            );
-
-            assert.equal(
-                [...element.parentNode.children].indexOf(element),
-                homes.get(id).index,
-                `${id} must be back in the position it came from`
-            );
-        }
-
-        assert.ok(
-            rowTwo.isConnected,
-            "the hidden row itself must never be adopted by a modal"
-        );
-
-        /*
-        | Opening twice in a row is what turned the original bug from a
-        | cosmetic slip into a dead console, so the round trip is made
-        | again and checked the same way.
-        */
-
-        for (const button of ["eventsButton", "executionButton"]) {
-
+        for (const button of ["eventsButton", "executionButton", "eventsButton", "executionButton"]) {
             document.getElementById(button).dispatch("click");
-
             Modal.closeTop("test");
         }
 
-        for (const id of ids) {
-
-            assert.equal(
-                document.getElementById(id).parentNode,
-                homes.get(id).parent,
-                `${id} must survive a second open and close`
-            );
-        }
+        unchanged("after repeated round trips");
+        assert.equal(backdrops().length, 0);
     });
 
     await test("the event stream keeps drawing after a modal round trip", () => {

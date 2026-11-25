@@ -66,6 +66,7 @@ export function createState() {
         hookOrder: [],
         currentTask: null,
         archive: [],
+        openArchiveIds: new Set(),
 
         /* approvalState */
         approvals: new Map(),
@@ -83,6 +84,7 @@ export function createState() {
         logRows: [],
         logSeq: 0,
         logFilter: "",
+        logFilterText: "",
         logType: "",
 
         /* runtimeState */

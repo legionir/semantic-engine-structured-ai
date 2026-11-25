@@ -9,6 +9,8 @@
 | rejected mark all survive (the old body was rebuilt from scratch on every
 | reload and lost them).
 |
+| The runtime policy row is drawn here too (see PolicyRow).
+|
 | Text inputs are uncontrolled (defaultValue): a redraw never overwrites
 | what the operator is typing, and a Persian IME composition is never cut.
 | The row structure (.setting > div, control, span.src) is what app.css
@@ -185,16 +187,52 @@ function Row({ setting, status, catalog, term, onSave, onReset }) {
 }
 
 
+export const APPROVAL_MODES = ["auto", "prompt", "deny"];
+
+/* what the settings filter matches the runtime policy row against */
+const POLICY_TEXT = `runtime policy approval ${APPROVAL_MODES.join(" ")} until done auto continue`;
+
+
+/*
+| The runtime policy controls, drawn from the store. The header keeps its
+| own pair (ids approvalMode / autoContinue); both pairs show the same
+| state and change it through the same action, so nothing is moved
+| between the page and the modal.
+*/
+function PolicyRow({ policy, hidden }) {
+
+    return html`<div class="policy-row" hidden=${hidden}>
+        <span class="policy-title">runtime policy</span>
+        <label class="chip select" title="tool approval policy">
+            approval
+            <select
+                value=${policy.approvalMode ?? ""}
+                onChange=${event => policy.onApprovalMode(event.currentTarget.value)}
+            >
+                ${APPROVAL_MODES.map(mode => html`<option key=${mode} value=${mode}>${mode}</option>`)}
+            </select>
+        </label>
+        <label class="chip checkbox" title="keep starting cycles while the plan has open steps">
+            <input
+                type="checkbox"
+                checked=${Boolean(policy.autoContinue)}
+                onChange=${event => policy.onAutoContinue(event.currentTarget.checked)}
+            /> until done
+        </label>
+    </div>`;
+}
+
+
 /*
 | props: list, ui {filter}, status Map(key → {kind, message}), catalog
-| ({catalog} | {error} | null), policy (the runtime policy section is
-| drawn, and its .policy-row receives the borrowed header controls),
-| policyText (what the filter matches the policy row against).
+| ({catalog} | {error} | null), policy ({approvalMode, autoContinue,
+| onApprovalMode, onAutoContinue} draws the runtime policy row; null
+| leaves it out).
 */
-export function SettingsBody({ list, ui, status, catalog, policy, policyText = "", onFilter, onSave, onReset }) {
+export function SettingsBody({ list, ui, status, catalog, policy, onFilter, onSave, onReset }) {
 
     const term = ui.filter;
-    const policyHidden = term !== "" && !policyText.toLowerCase().includes(term);
+    const policyHidden = term !== "" && !POLICY_TEXT.includes(term);
 
     return html`
         <input
@@ -205,9 +243,7 @@ export function SettingsBody({ list, ui, status, catalog, policy, policyText = "
         />
         <section class="runtime-policy-settings" hidden=${!policy || policyHidden}>
             <h3>runtime policy</h3>
-            ${policy ? html`<div class="policy-row" hidden=${policyHidden}>
-                <span class="policy-title">runtime policy</span>
-            </div>` : null}
+            ${policy ? html`<${PolicyRow} policy=${policy} hidden=${policyHidden} />` : null}
         </section>
         ${groupSettings(list).map(([name, settings]) => html`<div
             class="group"

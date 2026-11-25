@@ -376,6 +376,23 @@ async function behaviour() {
         Modal.closeTop("test");
     });
 
+    await test("an archived run opened in the Execution modal is open the next time too", async () => {
+        console_.send({ type: "run:start", task: "first task" });
+        console_.send({ type: "agent:start", agent: "main_agent", depth: 0 });
+        console_.send({ type: "run:start", task: "second task" });
+        byId("executionButton").dispatch("click");
+        let accordion = backdrops().at(-1).querySelector("details.execution-run");
+        assert.ok(accordion, "the previous run is archived");
+        assert.equal(accordion.open, false, "closed by default");
+        accordion.open = true;
+        accordion.dispatchEvent(new window.Event("toggle"));
+        Modal.closeTop("test");
+        byId("executionButton").dispatch("click");
+        accordion = backdrops().at(-1).querySelector("details.execution-run");
+        assert.equal(accordion.open, true);
+        Modal.closeTop("test");
+    });
+
     await test("a discussion that cannot start says why", async () => {
         console_.reply("/api/discussion/personas", { personas: [{ id: "security", name: "Security Agent" }] });
         console_.send({ type: "run:status", status: "idle" });

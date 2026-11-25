@@ -17,21 +17,21 @@
 */
 
 import { state, touch, batch, REGIONS } from "./store.js";
-import { mount, bind, stickToBottom, mountInModal } from "./dom.js";
+import { mount, bind, stickToBottom, stickInside, mountInModal, html } from "./dom.js";
 import { reduce, applySnapshot as reduceSnapshot, setRunStatus } from "./runtime-state.js";
 import { resetRun, currentRun, treeSummary } from "./execution-model.js";
 import { normalizeConversationMessage, normalizeConversationMessages } from "./conversation-model.js";
-import { Tree, Archive, openCallDetail as showCallDetail } from "./execution-view.js";
+import { Tree, Archive, ExecutionPanel, openCallDetail as showCallDetail } from "./execution-view.js";
 import { Plan, planSummary } from "./plan-view.js";
 import { Chat, waitingText } from "./chat.js";
-import { LogRows, LogTypeOptions, logViews, logCountText } from "./event-view.js";
+import { LogRows, LogTypeOptions, EventsPanel, logViews, logCountText } from "./event-view.js";
 import { Discussion } from "./discussion-view.js";
 import { createApprovals } from "./approval-state.js";
 import { Attachments } from "./composer-view.js";
 import { DashboardTabs, DashboardBody, dashboardHeading, dashboardTab } from "./project-view.js";
 import { Sessions, historySubtitle } from "./history-view.js";
 import { McpBody, createMcpState, mcpSubtitle, connectBody } from "./mcp-view.js";
-import { SettingsBody, isLlmSetting, isModelSetting, modelCatalogConfigChanged } from "./settings-view.js";
+import { SettingsBody, APPROVAL_MODES, isLlmSetting, isModelSetting, modelCatalogConfigChanged } from "./settings-view.js";
 
 const el = id => document.getElementById(id);
 
@@ -717,61 +717,11 @@ function openDiscussion() {
 }
 
 /*
-| Execution and Events live in a hidden row and are shown as header modals.
-| Moving the actual node into the modal body (not a clone) keeps the live
-| renderers working: el("tree")/el("log") still find the node wherever it
-| is, and on close the node is returned to its hidden home.
+| Execution and Events live in a hidden row and open as header modals.
+| A modal draws its own copy of the view from the store (class names
+| only, so every id stays unique on the page); nothing is moved between
+| the page and the dialog, so closing one can never strand a node.
 */
-
-/*
-| Borrowing has to be reversible exactly, so where each node came from
-| is recorded before it moves, and the modal is only ever given nodes it
-| may own: a wrapper this function builds, never a container other nodes
-| also live in.
-|
-| An earlier version passed the shared .execution-scroll as the modal
-| body. Modal.close() detaches the backdrop before it calls onClose, so
-| the scroller left with it, the restore could no longer find it, and
-| the next open adopted #rowTwo itself. Closing that took the whole
-| section out of the document, and el("tree") and el("log") returned
-| null for the rest of the session.
-*/
-
-function borrow(nodes) {
-
-    const homes =
-        nodes
-            .filter(Boolean)
-            .map(element => ({
-                element,
-                parent: element.parentNode,
-                next: element.nextSibling
-            }));
-
-    return () => {
-
-        for (const home of homes) {
-
-            if (!home.parent) {
-                continue;
-            }
-
-            /*
-            | The anchor is only usable if it is still a child of the
-            | same parent; otherwise the node goes back on the end,
-            | which is where it was if it had no sibling to begin with.
-            */
-
-            const anchor =
-                home.next && home.next.parentNode === home.parent
-                    ? home.next
-                    : null;
-
-            home.parent.insertBefore(home.element, anchor);
-        }
-    };
-}
-
 
 function openExecutionModal() {
 
@@ -784,59 +734,33 @@ function openExecutionModal() {
        future Execution click. */
     state.executionModal = null;
 
-    const tree = el("tree");
-    const archive = el("executionArchive");
+    let disposers = [];
 
-    if (!tree && !archive) {
-        return null;
-    }
+    const handle = Modal.open({
+        title: "Execution",
+        subtitle: treeSummary(currentRun(state)) || null,
+        size: "large",
+        className: "execution-modal",
+        onClose: () => {
+            for (const dispose of disposers) dispose();
+            state.executionModal = null;
+        }
+    });
 
-    const restore =
-        borrow([archive, tree]);
-
-    /*
-    | A wrapper the modal owns, wearing the class the stylesheet already
-    | targets, so the cards are shown without the page's own scroller
-    | being taken away from it.
-    */
-
-    const body = node("div", "execution-scroll");
-
-    if (archive) {
-        body.appendChild(archive);
-    }
-
-    if (tree) {
-        body.appendChild(tree);
-    }
-
-    const handle =
-        Modal.open({
-            title: "Execution",
-
-            subtitle:
-                () => {
-
-                    const summary = el("execSummary");
-
-                    return summary ? summary.textContent || null : null;
-                },
-
-            size: "large",
-
-            body,
-
-            className: "execution-modal",
-
-            onClose: () => {
-
-                try {
-                    restore();
-                } finally {
-                    state.executionModal = null;
-                }
-            }
-        });
+    disposers = [
+        mountInModal(
+            handle,
+            () => ExecutionPanel({
+                run: currentRun(state),
+                archive: state.archive,
+                openIds: state.openArchiveIds,
+                onToggle: toggleArchivedRun,
+                onOpenCall: openCallDetail
+            }),
+            ["tree"]
+        ),
+        bind(["tree"], () => handle.setSubtitle(treeSummary(currentRun(state)) || ""))
+    ];
 
     state.executionModal = handle;
 
@@ -852,56 +776,68 @@ function openEventsModal() {
 
     state.eventsModal = null;
 
-    const log = el("log");
-    const filter = el("logFilter");
-    const type = el("logType");
-    const clear = el("clearLog");
-    const count = el("logCount");
+    let dispose = () => {};
 
-    if (!log) {
-        return null;
-    }
-
-    const restore =
-        borrow([filter, type, clear, count, log]);
-
-    const controls = node("div", "log-controls");
-
-    for (const control of [filter, type, count, clear]) {
-
-        if (control) {
-            controls.appendChild(control);
+    const handle = Modal.open({
+        title: "Events",
+        size: "large",
+        className: "events-modal",
+        onClose: () => {
+            dispose();
+            state.eventsModal = null;
         }
-    }
+    });
 
-    const body = node("div", "events-modal-body");
-
-    body.appendChild(controls);
-    body.appendChild(log);
-
-    const handle =
-        Modal.open({
-            title: "Events",
-
-            size: "large",
-
-            body,
-
-            className: "events-modal",
-
-            onClose: () => {
-
-                try {
-                    restore();
-                } finally {
-                    state.eventsModal = null;
-                }
-            }
-        });
+    dispose = mountInModal(
+        handle,
+        () => EventsPanel({
+            state,
+            onOpenCallKey: openCallByKey,
+            onFilter: setLogFilter,
+            onType: setLogType,
+            onClear: clearLogRows
+        }),
+        ["log"],
+        {},
+        "",
+        stickInside(".log")
+    );
 
     state.eventsModal = handle;
 
     return handle;
+}
+
+
+/* --------------------------------------------------------- shared actions */
+
+function toggleArchivedRun(id, open) {
+
+    if (open) state.openArchiveIds.add(id);
+    else state.openArchiveIds.delete(id);
+}
+
+
+function setLogFilter(text) {
+
+    state.logFilterText = String(text ?? "");
+    state.logFilter = state.logFilterText.trim().toLowerCase();
+    touch("log");
+}
+
+
+function setLogType(type) {
+
+    state.logType = String(type ?? "");
+    touch("log");
+}
+
+
+/* clearing the panel clears its rows; the type list follows what is left */
+function clearLogRows() {
+
+    state.logRows = [];
+    touch("log");
 }
 
 
@@ -1078,7 +1014,12 @@ function mountViews() {
 
     mount(el("tree"), () => Tree({ run: currentRun(state), onOpenCall: openCallDetail }), ["tree"]);
 
-    mount(el("executionArchive"), () => Archive({ archive: state.archive, onOpenCall: openCallDetail }), ["tree"]);
+    mount(el("executionArchive"), () => Archive({
+        archive: state.archive,
+        openIds: state.openArchiveIds,
+        onToggle: toggleArchivedRun,
+        onOpenCall: openCallDetail
+    }), ["tree"]);
 
     mount(el("plan"), () => Plan({ plan: state.plan }), ["plan"]);
 
@@ -1111,6 +1052,14 @@ function mountViews() {
     });
 
     bind(["log"], () => {
+        /* the filter may have been typed in the Events modal */
+        const filter = el("logFilter");
+        if (filter && filter.value.trim().toLowerCase() !== state.logFilter) {
+            filter.value = state.logFilterText ?? state.logFilter;
+        }
+        const type = el("logType");
+        if (type && type.value !== state.logType) type.value = state.logType;
+
         const count = el("logCount");
         if (!count) return;
         const views = logViews(state.logRows);
@@ -1131,8 +1080,8 @@ function mountViews() {
         set("sessionTitle", state.session ? state.session.title || "new conversation" : "");
         set("autoSwitchStatus", `auto-switch · ${state.autoContinue ? "on" : "off"}`);
 
-        /* the policy controls live here or inside the Settings modal; either
-           way a render must not break because one is momentarily absent */
+        /* the header pair of policy controls (Settings draws its own pair
+           from the same state) */
         const approvalMode = el("approvalMode");
         if (approvalMode && state.approvalMode !== null && state.approvalMode !== undefined) {
             approvalMode.value = state.approvalMode;
@@ -1216,68 +1165,6 @@ function bindRunControls() {
 }
 
 /* -------------------------------------------------------------- settings */
-
-/*
-| The runtime policy controls (approval mode, auto continue) live in the
-| Settings modal rather than the header, but their ids must stay on the
-| page for the change handlers to find them. While the modal is closed
-| they rest in a hidden home; opening Settings moves the two labels into
-| the body's .policy-row, and closing it returns them.
-|
-| Modal.close() detaches the backdrop before onClose runs, so an id
-| lookup at return time would find nothing — the borrowed nodes are
-| captured by reference here.
-*/
-
-const policyBorrow = { home: null, chips: [] };
-
-
-function borrowPolicyControls(container) {
-
-    const home = el("policyHome");
-    const row = container && container.querySelector(".policy-row");
-
-    if (!home || !row) {
-        return "";
-    }
-
-    const chips =
-        ["approvalMode", "autoContinue"]
-            .map(id => el(id)?.parentElement)
-            .filter(chip => chip && chip.tagName === "LABEL");
-
-    /* nothing moved, nothing to return */
-    if (chips.length === 0) {
-        return "";
-    }
-
-    for (const chip of chips) {
-        row.appendChild(chip);
-    }
-
-    policyBorrow.home = home;
-    policyBorrow.chips = chips;
-
-    return row.textContent;
-}
-
-
-function returnPolicyControls() {
-
-    const home = policyBorrow.home;
-
-    if (!home) {
-        return;
-    }
-
-    for (const chip of policyBorrow.chips) {
-        if (chip.parentNode !== home) home.appendChild(chip);
-    }
-
-    policyBorrow.home = null;
-    policyBorrow.chips = [];
-}
-
 
 /* one aggregate request per catalog; a failure is kept for 10 s so a
    redraw does not repeat the same upstream fan-out */
@@ -1425,7 +1312,7 @@ async function loadSettings() {
 /* the body of one settings modal, drawn from the store */
 function mountSettings(handle, kind) {
 
-    const ui = { filter: "", policyText: "" };
+    const ui = { filter: "" };
     const llm = kind === "llm";
 
     const dispose = mountInModal(
@@ -1435,13 +1322,17 @@ function mountSettings(handle, kind) {
             ui,
             status: state.settingsStatus,
             catalog: state.modelCatalogResult,
-            policy: !llm,
-            policyText: ui.policyText,
+            policy: llm ? null : {
+                approvalMode: state.approvalMode,
+                autoContinue: state.autoContinue,
+                onApprovalMode: changeApprovalMode,
+                onAutoContinue: changeAutoContinue
+            },
             onFilter: value => { ui.filter = value; touch("settings"); },
             onSave: saveSetting,
             onReset: resetSetting
         }),
-        ["settings"],
+        ["settings", "header"],
         {},
         "settings"
     );
@@ -1471,7 +1362,6 @@ function openSettings() {
             Modal.button("Close", "", () => handle.close("footer"))
         ),
         onClose: () => {
-            returnPolicyControls();
             view?.dispose();
             state.settingsModal = null;
         }
@@ -1479,10 +1369,6 @@ function openSettings() {
 
     state.settingsModal = handle;
     view = mountSettings(handle, "general");
-
-    /* the modal is on the page now, so the borrowed labels have a live home
-       and an onClose that will always put them back */
-    view.ui.policyText = borrowPolicyControls(handle.element);
 
     loadSettings();
 }
@@ -1524,24 +1410,28 @@ function isMobilePlanViewport() {
 function openPlanModal() {
 
     if (!isMobilePlanViewport() || (state.planModal && state.planModal.isOpen())) return;
-    const panel = el("planPanel");
-    if (!panel) return;
 
-    const home = panel.parentNode;
-    panel.classList.remove("panel");
-    panel.classList.add("plan-modal-content");
+    let dispose = () => {};
 
-    state.planModal = Modal.open({
+    const handle = Modal.open({
         title: "Plan",
+        subtitle: planSummary(state.plan) || null,
         size: "large",
-        body: panel,
         onClose: () => {
-            panel.classList.remove("plan-modal-content");
-            panel.classList.add("panel");
-            if (home && panel.parentNode !== home) home.appendChild(panel);
+            dispose();
             state.planModal = null;
         }
     });
+
+    dispose = mountInModal(
+        handle,
+        () => html`<div class="plan-view"><${Plan} plan=${state.plan} /></div>`,
+        ["plan"],
+        {},
+        "plan-modal-content"
+    );
+
+    state.planModal = handle;
 }
 
 
@@ -2841,10 +2731,12 @@ async function saveRuntimePolicy({ url, body, apply, revert, label }) {
 }
 
 
-el("autoContinue").addEventListener("change", event => {
+function changeAutoContinue(value) {
 
     const previous = Boolean(state.autoContinue);
-    const next = Boolean(event.target.checked);
+    const next = Boolean(value);
+
+    if (next === previous) return;
 
     saveRuntimePolicy({
         url: "/api/settings",
@@ -2853,13 +2745,15 @@ el("autoContinue").addEventListener("change", event => {
         revert: () => { state.autoContinue = previous; },
         label: "Auto-continue"
     });
-});
+}
 
 
-el("approvalMode").addEventListener("change", event => {
+function changeApprovalMode(value) {
 
     const previous = state.approvalMode;
-    const next = event.target.value;
+    const next = String(value ?? "");
+
+    if (next === previous || !APPROVAL_MODES.includes(next)) return;
 
     saveRuntimePolicy({
         url: "/api/approval-mode",
@@ -2868,29 +2762,14 @@ el("approvalMode").addEventListener("change", event => {
         revert: () => { state.approvalMode = previous; },
         label: "Approval mode"
     });
-});
+}
 
 
-/* clearing the panel clears its rows; the type list follows what is left */
-el("clearLog").addEventListener("click", () => {
-
-    state.logRows = [];
-    touch("log");
-});
-
-
-el("logFilter").addEventListener("input", event => {
-
-    state.logFilter = event.target.value.trim().toLowerCase();
-    touch("log");
-});
-
-
-el("logType").addEventListener("change", event => {
-
-    state.logType = event.target.value;
-    touch("log");
-});
+el("autoContinue").addEventListener("change", event => changeAutoContinue(event.target.checked));
+el("approvalMode").addEventListener("change", event => changeApprovalMode(event.target.value));
+el("clearLog").addEventListener("click", clearLogRows);
+el("logFilter").addEventListener("input", event => setLogFilter(event.target.value));
+el("logType").addEventListener("change", event => setLogType(event.target.value));
 
 
 el("settingsButton").addEventListener("click", openSettings);

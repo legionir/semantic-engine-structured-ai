@@ -169,6 +169,42 @@ export function LogTypeOptions({ state }) {
 }
 
 
+/*
+| The Events modal: its own controls and list, drawn from the same rows
+| and the same filter as the hidden panel, so the two always agree and
+| nothing has to be moved between them. The text box is uncontrolled
+| (defaultValue) so typing — including an IME composition — is never
+| interrupted by a redraw.
+*/
+export function EventsPanel({ state, onOpenCallKey, onFilter, onType, onClear }) {
+
+    const views = logViews(state.logRows);
+
+    return html`<div class="events-modal-body">
+        <div class="log-controls">
+            <input
+                type="search"
+                class="filter log-filter"
+                placeholder="filter by any part of a word"
+                defaultValue=${state.logFilterText ?? state.logFilter}
+                onInput=${event => onFilter(event.currentTarget.value)}
+            />
+            <select
+                class="filter log-type"
+                title="show only one kind of event"
+                value=${state.logType}
+                onChange=${event => onType(event.currentTarget.value)}
+            >
+                <${LogTypeOptions} state=${state} />
+            </select>
+            <span class="muted log-count" hidden=${views.length === 0}>${logCountText(views, state.logFilter, state.logType)}</span>
+            <button type="button" class="link" onClick=${onClear}>clear</button>
+        </div>
+        <ul class="log"><${LogRows} state=${state} onOpenCallKey=${onOpenCallKey} /></ul>
+    </div>`;
+}
+
+
 function describeEventText(event) {
 
     switch (event.type) {

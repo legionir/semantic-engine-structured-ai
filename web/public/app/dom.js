@@ -115,6 +115,22 @@ export const stickToBottom = {
 };
 
 
+/* stickToBottom for a scroller inside the mounted view */
+export function stickInside(selector) {
+
+    return {
+        before: container => {
+            const target = container.querySelector(selector);
+            return target ? stickToBottom.before(target) : true;
+        },
+        after: (container, atBottom) => {
+            const target = container.querySelector(selector);
+            if (target) stickToBottom.after(target, atBottom);
+        }
+    };
+}
+
+
 /*
 | A modal body is a detached element the Modal service places in the
 | dialog; `className` makes it the view's root (".detail", ".settings"…)
@@ -123,13 +139,13 @@ export const stickToBottom = {
 | keeps re-rendering in the background.
 */
 
-export function mountInModal(handle, View, regions = [], props = {}, className = "") {
+export function mountInModal(handle, View, regions = [], props = {}, className = "", hooks = {}) {
 
     const container = document.createElement("div");
 
     if (className) container.className = className;
 
-    const dispose = mount(container, View, regions, { ...props, handle });
+    const dispose = mount(container, View, regions, { ...props, handle }, hooks);
 
     handle.setBody(container);
 
