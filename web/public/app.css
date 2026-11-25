@@ -1841,3 +1841,13 @@ button.ghost.active {
 /* event log rows share the same metrics as turn-execution lines */
 .log li { padding: 3px 5px; line-height: 1.7; }
 .log .t { font-variant-numeric: tabular-nums; }
+
+/* a panel whose view failed to render (dom.js renderFailure) */
+.view-error {
+  margin: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted, inherit);
+  font-size: 12px;
+}

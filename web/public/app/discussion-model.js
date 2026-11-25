@@ -119,7 +119,10 @@ export function discussionTimeline(discussion) {
     const decisions = [...(discussion.observer_decisions || [])];
     const used = new Set();
 
-    for (const round of discussion.rounds || []) {
+    /* rounds read in number order whatever order they were stored in */
+    const rounds = [...(discussion.rounds || [])].sort((a, b) => a.round - b.round);
+
+    for (const round of rounds) {
 
         items.push({ type: "round", key: `r${round.round}`, round: round.round });
 

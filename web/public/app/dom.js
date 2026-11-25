@@ -31,16 +31,37 @@ export const byId = id => document.getElementById(id);
 
 /*
 | A view that throws must not take the event stream down with it: the
-| error is reported and every other region keeps rendering.
+| error is reported, the panel says it could not be drawn, and every other
+| region keeps rendering.
 */
 
-function guarded(fn) {
+function guarded(fn, fallback = null) {
 
     try {
         fn();
     } catch (error) {
         if (typeof console !== "undefined") console.error("[console] render failed:", error);
+        if (fallback) {
+            try {
+                fallback(error);
+            } catch {
+                /* the error above is already reported */
+            }
+        }
     }
+}
+
+
+/*
+| What a panel shows instead of itself when its view throws. The next
+| successful render (the next change to its regions) replaces it.
+*/
+function renderFailure(container) {
+
+    render(
+        h("p", { class: "view-error", role: "alert" }, "This panel could not be drawn. The details are in the browser console."),
+        container
+    );
 }
 
 
@@ -67,7 +88,7 @@ export function mount(container, View, regions = [], props = {}, hooks = {}) {
             const memo = hooks.before ? hooks.before(container) : undefined;
             render(h(View, props), container);
             if (hooks.after) hooks.after(container, memo);
-        }));
+        }, () => renderFailure(container)));
     });
 
     return () => {
