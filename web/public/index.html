@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0e17">
+<script>document.documentElement.classList.add("auth-pending");</script>
+<title>structured-ai console</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/console-login.css">
+</head>
+<body>
+
+<header class="bar" id="consoleHeader">
+  <div class="brand">
+    <span class="dot" id="statusDot" title="runtime status"></span>
+    <strong>structured-ai</strong>
+    <button type="button" id="mobileMenuToggle" class="mobile-menu-toggle" aria-label="Open console menu" aria-expanded="false">☰</button>
+  </div>
+
+  <div class="status-strip" aria-label="Runtime status">
+    <span class="status-pill" id="statusText">connecting</span>
+    <a class="chip button status-chip" id="gatewayHealth" href="/api/health" title="Gateway health">health · —</a>
+    <span class="chip status-chip" id="workspace" title="workspace"></span>
+    <span class="chip status-chip" id="model" title="model"></span>
+    <span class="chip status-chip" id="autoSwitchStatus" title="automatic continuation">auto-switch · off</span>
+    <span class="chip status-chip" id="turns" title="turns in this session">0 turns</span>
+  </div>
+
+  <div class="meta" id="consoleMenu">
+    <button type="button" id="approvalsButton" class="chip alert" hidden>
+      approvals <span id="approvalsCount">0</span>
+    </button>
+    <nav class="bar-nav" aria-label="Console views">
+      <button type="button" id="historyButton" class="chip button" title="open saved conversations">History</button>
+      <button type="button" id="executionButton" class="chip button" title="open the agent execution tree">Execution</button>
+      <button type="button" id="eventsButton" class="chip button" title="open the event log">Events</button>
+      <button type="button" id="planButton" class="chip button" title="open the plan">Plan</button>
+      <button type="button" id="llmSettingsButton" class="chip button" title="LLM providers, layers, and proxy">LLM settings</button>
+      <button type="button" id="mcpButton" class="chip button" title="connect and inspect MCP servers">MCP</button>
+      <button type="button" id="settingsButton" class="chip button" title="open runtime settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- Controls are borrowed into the Runtime policy section below the settings filter. -->
+  <div class="policy-home" id="policyHome">
+    <label class="chip select" title="tool approval policy">
+      approval
+      <select id="approvalMode">
+        <option value="auto">auto</option>
+        <option value="prompt">prompt</option>
+        <option value="deny">deny</option>
+      </select>
+    </label>
+    <label class="chip checkbox" title="keep starting cycles while the plan has open steps">
+      <input type="checkbox" id="autoContinue"> until done
+    </label>
+  </div>
+</header>
+
+<main id="consoleMain">
+
+  <!-- row 1: the conversation, full width -->
+  <section class="row conversation-grid">
+    <div class="panel conversation">
+      <div class="panel-head">
+        <h2>Conversation</h2>
+        <div class="head-tools">
+          <div class="attachment-list" id="attachmentList" aria-live="polite"></div>
+          <span class="muted" id="sessionTitle"></span>
+          <button type="button" id="attachFilesButton" class="chip button" title="Attach files to the next task" aria-label="Attach files"><span>Attach</span></button>
+          <input type="file" id="attachmentInput" multiple hidden>
+        </div>
+      </div>
+
+      <div id="chat" class="chat">
+        <p class="empty">No messages yet. Describe a task to start.</p>
+      </div>
+
+      <form id="taskForm" class="composer">
+        <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
+        <label class="effort-control" for="taskEffort">
+          <span>Effort</span>
+          <select id="taskEffort" aria-label="Reasoning effort for all agent layers">
+            <option value="inherit" selected>inherit</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="xhigh">extra high</option>
+          </select>
+          <span class="effort-hint">applies to all layers when changed</span>
+        </label>
+        <div id="discussionOptions" class="discussion-options-row" hidden></div>
+        <div class="actions">
+          <button type="submit" id="runButton">Run task</button>
+          <button type="button" id="cancelButton" class="ghost" disabled>Stop</button>
+          <button type="button" id="discussionButton" class="ghost" title="Multi-agent discussion: specialist personas deliberate in rounds and an observer writes the synthesis">
+            Discussion
+          </button>
+          <span class="muted grow-right" id="runTimer"></span>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel plan-panel" id="planPanel">
+      <div class="panel-head">
+        <h2>Plan</h2>
+        <span class="muted" id="planSummary"></span>
+      </div>
+      <div id="plan" class="plan-view">
+        <p class="empty">No plan yet.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- row 2: execution and events, hidden; opened as modals from the header -->
+  <section class="row split" id="rowTwo" hidden>
+    <div class="panel scroller execution-panel">
+      <div class="panel-head">
+        <h2>Execution</h2>
+        <span class="muted" id="execSummary"></span>
+      </div>
+      <div class="execution-scroll">
+        <div id="executionArchive" class="execution-archive"></div>
+        <div id="tree" class="tree">
+          <p class="empty">No run yet. Send a task to see the agent tree.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel scroller log-panel">
+      <div class="panel-head">
+        <h2>Events</h2>
+        <div class="head-tools">
+          <input type="search" id="logFilter" class="filter" placeholder="filter by any part of a word">
+          <select id="logType" class="filter" title="show only one kind of event">
+            <option value="">all types</option>
+          </select>
+          <span class="muted" id="logCount" hidden></span>
+          <button type="button" id="clearLog" class="link">clear</button>
+        </div>
+      </div>
+      <ul id="log" class="log"></ul>
+    </div>
+  </section>
+
+</main>
+
+<footer class="project-bar" id="projectBar" aria-label="Project and task controls">
+  <div class="project-actions">
+    <button type="button" id="clearButton" class="chip button" title="start a new conversation" aria-label="New conversation"><span>New conversation</span></button>
+    <button type="button" id="projectsButton" class="chip button" title="manage projects" aria-label="Projects"><span>Projects</span></button>
+    <button type="button" id="newProjectButton" class="chip button" title="register a project" aria-label="New project"><span>New Project</span></button>
+  </div>
+  <div class="project-active-label" id="activeProjectName" aria-live="polite">Default Workspace</div>
+</footer>
+
+<section id="consoleLogin" class="console-login" hidden>
+  <form id="consoleLoginForm" class="console-login-card">
+    <h1>Sign in</h1>
+    <p>Enter the web console password to continue.</p>
+    <label for="consolePassword">Password</label>
+    <input id="consolePassword" name="password" type="password" autocomplete="current-password" required autofocus>
+    <p id="consoleLoginError" class="console-login-error" role="alert" hidden></p>
+    <button id="consoleLoginButton" type="submit">Continue</button>
+  </form>
+</section>
+
+<section id="projectDashboard" class="project-dashboard" hidden>
+  <div class="dashboard-head">
+    <div class="head-tools">
+      <button type="button" id="dashboardBack" class="ghost">Back to console</button>
+    </div>
+    <h2 id="dashboardTitle">Project</h2>
+    <p id="dashboardSubtitle" class="muted"></p>
+  </div>
+  <nav id="dashboardTabs" class="dashboard-tabs" aria-label="Project dashboard"></nav>
+  <div id="dashboardBody" class="dashboard-body"></div>
+</section>
+
+<script src="/modal.js"></script>
+<script src="/auth-gate.js"></script>
+</body>
+</html>

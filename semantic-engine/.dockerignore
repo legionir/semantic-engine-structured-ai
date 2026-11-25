@@ -1,8 +1,0 @@
-node_modules
-dist
-test-fixture
-tmp-*
-*.log
-.git
-.gitignore
-src/**/*.test.ts

@@ -1,0 +1,55 @@
+{
+  "name": "structured-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hierarchical multi-agent runtime with a structured action contract over an OpenAI-compatible endpoint.",
+  "main": "agent/agent.js",
+  "scripts": {
+    "start": "node bin/agent.js",
+    "test": "node test/helpers/normalize.test.js && node test/contracts/actions.contract.test.js && node test/contracts/events.contract.test.js && node test/contracts/prompt.contract.test.js && node test/contracts/tool.contract.test.js && node test/contracts/api.contract.test.js && node test/contracts/persistence.contract.test.js && node test/contracts/discussion.contract.test.js && node test/contracts/rollout.contract.test.js && node test/policy/policy.test.js && node test/events/events.test.js && node test/projects/projects.test.js && node test/projects/project-api.test.js && node test/projects/workspace-trust.test.js && node test/runs/run-context.test.js && node test/runs/run-terminal.test.js && node test/runs/queued-cancel.test.js && node test/runs/concurrency.test.js && node test/runs/delegation-projects.test.js && node test/tools/project-tools.test.js && node test/tools/tool-runtime.test.js && node test/tools/process-reliability.test.js && node test/p1/p11.test.js && node test/providers/proxy.test.js && node test/providers/model-catalog.test.js && node test/p1/p12.test.js && node test/p1/p13.test.js && node test/p1/p14.test.js && node test/p1/p15.test.js && node test/p1/p16.test.js && node test/prompt/builder.test.js && node test/application/application.test.js && node test/actions/parser.test.js && node test/runtime/engine.test.js && node test/context/context.test.js && node test/tools/tools.test.js && node test/hooks/legacy.test.js && node test/hooks/hooks.test.js && node test/hooks/hooks-stop-lifecycle.test.js && node test/hooks/project-scope.test.js && node test/persistence/journal.test.js && node test/persistence/eventstore.test.js && node test/runtime/runtime.test.js && node test/projects/project-run.test.js && node test/projects/project-continue.test.js && node test/persistence/project-stores.test.js && node test/persistence/repositories.test.js && node test/persistence/atomic-saves.test.js && node test/mcp/mcp.test.js && node test/mcp/layer.test.js && node test/mcp/project-scope.test.js && node test/context/archive.test.js && node test/e2e/e2e.test.js && node test/e2e/cli.test.js && node test/cli/modules.test.js && node test/e2e/interactive.test.js && node test/ui/ui.test.js && node test/ui/modules.test.js && node test/discussion/discussion.test.js && node test/discussion/project-discussion.test.js && node test/web/web.test.js && node test/web/routes.test.js && node test/web/project-concurrency.test.js && node test/web/console-navigation.test.js && node test/mvp/mvp.test.js",
+    "test:contracts": "node test/helpers/normalize.test.js && node test/contracts/actions.contract.test.js && node test/contracts/events.contract.test.js && node test/contracts/prompt.contract.test.js && node test/contracts/tool.contract.test.js && node test/contracts/api.contract.test.js && node test/contracts/persistence.contract.test.js && node test/contracts/discussion.contract.test.js && node test/contracts/rollout.contract.test.js",
+    "test:policy": "node test/policy/policy.test.js",
+    "test:events": "node test/events/events.test.js",
+    "test:hooks": "node test/hooks/legacy.test.js && node test/hooks/hooks.test.js && node test/hooks/hooks-stop-lifecycle.test.js && node test/hooks/project-scope.test.js",
+    "test:projects": "node test/projects/projects.test.js && node test/projects/project-api.test.js && node test/projects/workspace-trust.test.js && node test/projects/project-run.test.js && node test/projects/project-continue.test.js",
+    "test:runs": "node test/runs/run-context.test.js && node test/runs/concurrency.test.js && node test/runs/delegation-projects.test.js && node test/projects/project-run.test.js && node test/runs/run-terminal.test.js && node test/runs/queued-cancel.test.js",
+    "test:p0": "node test/p0/p01.test.js && node test/p0/p02.test.js && node test/p0/p02ttl.test.js && node test/p0/p03.test.js && node test/p0/p04.test.js && node test/p0/p04matrix.test.js && node test/p0/p05.test.js && node test/p0/p05data.test.js && node test/p0/p06.test.js && node test/p0/p07.test.js && node test/p0/p0review.test.js",
+    "check": "node --check agent/agent.js",
+    "test:tools": "node test/tools/tools.test.js && node test/tools/project-tools.test.js && node test/tools/tool-runtime.test.js && node test/tools/process-reliability.test.js",
+    "test:runtime": "node test/runtime/runtime.test.js && node test/runtime/engine.test.js",
+    "test:mcp": "node test/mcp/mcp.test.js && node test/mcp/layer.test.js && node test/mcp/project-scope.test.js",
+    "test:journal": "node test/persistence/journal.test.js",
+    "test:e2e": "node test/e2e/e2e.test.js",
+    "test:cli": "node test/e2e/cli.test.js && node test/cli/modules.test.js",
+    "test:interactive": "node test/e2e/interactive.test.js",
+    "serve": "node bin/agent.js --serve",
+    "test:web": "node test/web/web.test.js && node test/web/routes.test.js && node test/web/project-concurrency.test.js && node test/web/console-navigation.test.js",
+    "test:discussion": "node test/discussion/discussion.test.js && node test/discussion/project-discussion.test.js",
+    "test:archive": "node test/context/archive.test.js",
+    "test:ui": "node test/ui/ui.test.js && node test/ui/modules.test.js",
+    "backfill:eventstore": "node bin/backfill-eventstore.js",
+    "test:persistence": "node test/persistence/journal.test.js && node test/persistence/eventstore.test.js && node test/persistence/project-stores.test.js && node test/persistence/repositories.test.js && node test/persistence/atomic-saves.test.js",
+    "test:mvp": "node test/mvp/mvp.test.js",
+    "test:application": "node test/application/application.test.js",
+    "test:actions": "node test/actions/parser.test.js",
+    "test:engine": "node test/runtime/engine.test.js",
+    "test:context": "node test/context/context.test.js && node test/context/archive.test.js",
+    "test:p1": "node test/p1/p11.test.js && node test/p1/p12.test.js && node test/p1/p13.test.js && node test/p1/p14.test.js && node test/p1/p15.test.js && node test/p1/p16.test.js",
+    "test:p1:benchmark": "node test/p1/p17.benchmark.js",
+    "test:coverage": "npx --yes c8@11.0.0 --check-coverage --reporter=text --reporter=json-summary node ci/run-tests.js && node ci/check-coverage.js",
+    "test:proxy": "node test/providers/proxy.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "bin": {
+    "agent": "bin/agent.js"
+  },
+  "dependencies": {
+    "http-proxy-agent": "^7.0.2",
+    "https-proxy-agent": "^7.0.6",
+    "node-pty": "^1.1.0",
+    "socks-proxy-agent": "^8.0.5"
+  }
+}

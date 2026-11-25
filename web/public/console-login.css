@@ -1,0 +1,49 @@
+.auth-pending body { visibility: hidden; }
+.console-login[hidden] { display: none; }
+.console-login {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #0a0e17;
+  color: #e8edf7;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.console-login-card {
+  box-sizing: border-box;
+  width: min(100%, 390px);
+  display: grid;
+  gap: 12px;
+  padding: 30px;
+  border: 1px solid #29344a;
+  border-radius: 16px;
+  background: #111827;
+  box-shadow: 0 24px 80px #0008;
+}
+.console-login-card h1 { margin: 0; font-size: 23px; }
+.console-login-card p { margin: 0 0 8px; color: #9eabc1; }
+.console-login-card label { font-size: 13px; color: #c9d3e5; }
+.console-login-card input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #35425b;
+  border-radius: 8px;
+  background: #0a0e17;
+  color: inherit;
+  font: inherit;
+}
+.console-login-card button {
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #5d7cfa;
+  color: white;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.console-login-card button:disabled { opacity: .6; cursor: wait; }
+.console-login-card .console-login-error { color: #ff8793; font-size: 13px; }

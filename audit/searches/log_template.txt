@@ -1,1 +1,0 @@
-<timestamp> | <command> | hits=<n> | note

@@ -1,0 +1,199 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "terminal_exec",
+      "description": "Run a shell command to completion and return its exit code, stdout, and stderr. A non-zero exit code is returned as data, not as a tool failure. Use process_start for a command that does not finish on its own.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Command line to execute."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory. Defaults to the workspace root."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Kill the command after this many milliseconds. Defaults to 30000."
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_start",
+      "description": "Start a background process or interactive PTY session that can be read from, written to, resized, and terminated. Use terminal_exec for commands that finish on their own.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Command line to execute."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory. Defaults to the workspace root."
+          },
+          "wait_ms": {
+            "type": "integer",
+            "description": "How long to collect initial output before returning. Defaults to 1000."
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "Start an interactive terminal session (PTY/ConPTY) instead of a piped process. The command is sent to the shell after startup."
+          },
+          "cols": {
+            "type": "integer",
+            "description": "Initial PTY width in columns; defaults to 80."
+          },
+          "rows": {
+            "type": "integer",
+            "description": "Initial PTY height in rows; defaults to 24."
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_read",
+      "description": "Read output produced by a background process since the previous read.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "wait_ms": {
+            "type": "integer",
+            "description": "Wait up to this long for new output to arrive."
+          },
+          "peek": {
+            "type": "boolean",
+            "description": "Return the full buffered output without advancing the read cursor."
+          }
+        },
+        "required": [
+          "process_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_write",
+      "description": "Send input to the standard input of a running background process.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "input": {
+            "type": "string",
+            "description": "Text to send."
+          },
+          "append_newline": {
+            "type": "boolean",
+            "description": "Append a newline to the input. Defaults to true."
+          }
+        },
+        "required": [
+          "process_id",
+          "input"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_resize",
+      "description": "Resize the terminal dimensions for an interactive PTY session.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "cols": {
+            "type": "integer",
+            "description": "Terminal width in columns, from 20 to 400."
+          },
+          "rows": {
+            "type": "integer",
+            "description": "Terminal height in rows, from 5 to 120."
+          }
+        },
+        "required": [
+          "process_id",
+          "cols",
+          "rows"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_terminate",
+      "description": "Stop a background process with SIGTERM, escalating to SIGKILL if it does not exit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "process_id": {
+            "type": "string",
+            "description": "Identifier returned by process_start."
+          },
+          "grace_ms": {
+            "type": "integer",
+            "description": "How long to wait before escalating to SIGKILL. Defaults to 2000."
+          }
+        },
+        "required": [
+          "process_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "process_list",
+      "description": "List background processes started by the runtime.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "include_finished": {
+            "type": "boolean",
+            "description": "Include processes that already exited. Defaults to false."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  }
+]

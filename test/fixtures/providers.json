@@ -1,0 +1,2424 @@
+{
+  "description": "Recorded provider answers for the P1-1 contract tests (test/p1/p11.test.js). Shapes follow each vendor's documented wire format; $TEXT is replaced by the answer text and $T1..$T3 by its three stream pieces. framing: sse (data lines), sse-event (event + data), sse-crlf (CRLF line ends), ndjson, eventstream (AWS binary frames, encoded by the test).",
+  "providers": {
+    "openai": {
+      "chat": {
+        "id": "chatcmpl-AB1",
+        "object": "chat.completion",
+        "created": 1763900000,
+        "model": "gpt-4.1-mini",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "$TEXT",
+              "refusal": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30,
+          "prompt_tokens_details": {
+            "cached_tokens": 8
+          }
+        }
+      },
+      "tool": {
+        "id": "chatcmpl-AB2",
+        "object": "chat.completion",
+        "created": 1763900001,
+        "model": "gpt-4.1-mini",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_abc",
+                  "type": "function",
+                  "function": {
+                    "name": "fs_read",
+                    "arguments": "{\"path\":\"x.txt\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30
+        }
+      },
+      "stream": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": ""
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T1"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T2"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T3"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [],
+              "usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 10,
+                "total_tokens": 30,
+                "prompt_tokens_details": {
+                  "cached_tokens": 8
+                }
+              }
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {
+                          "name": "fs_read",
+                          "arguments": ""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": "{\"path\""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": ":\"x.txt\"}"
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4.1-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "tool_calls"
+                }
+              ]
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "retry-after-ms": "250",
+            "x-ratelimit-remaining-requests": "0"
+          },
+          "body": {
+            "error": {
+              "message": "Rate limit reached for requests",
+              "type": "requests",
+              "param": null,
+              "code": null
+            }
+          }
+        },
+        "server": {
+          "status": 503,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "The server is overloaded or not ready yet.",
+              "type": "server_error",
+              "param": null,
+              "code": null
+            }
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "Invalid value for 'messages'.",
+              "type": "invalid_request_error",
+              "param": null,
+              "code": null
+            }
+          }
+        }
+      },
+      "spec": {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "apiKey": "test-key-openai"
+      },
+      "url": "https://api.openai.com/v1/chat/completions",
+      "stream_url": "https://api.openai.com/v1/chat/completions",
+      "auth": [
+        "authorization",
+        "Bearer test-key-openai"
+      ],
+      "stream_flag": "body"
+    },
+    "openai-compatible": {
+      "chat": {
+        "id": "chatcmpl-AB1",
+        "object": "chat.completion",
+        "created": 1763900000,
+        "model": "auto-switch",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "$TEXT",
+              "refusal": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30,
+          "prompt_tokens_details": {
+            "cached_tokens": 8
+          }
+        }
+      },
+      "tool": {
+        "id": "chatcmpl-AB2",
+        "object": "chat.completion",
+        "created": 1763900001,
+        "model": "auto-switch",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_abc",
+                  "type": "function",
+                  "function": {
+                    "name": "fs_read",
+                    "arguments": "{\"path\":\"x.txt\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30
+        }
+      },
+      "stream": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": ""
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T1"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T2"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T3"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [],
+              "usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 10,
+                "total_tokens": 30,
+                "prompt_tokens_details": {
+                  "cached_tokens": 8
+                }
+              }
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {
+                          "name": "fs_read",
+                          "arguments": ""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": "{\"path\""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": ":\"x.txt\"}"
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "auto-switch",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "tool_calls"
+                }
+              ]
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "retry-after-ms": "250",
+            "x-ratelimit-remaining-requests": "0"
+          },
+          "body": {
+            "error": {
+              "message": "Rate limit reached for requests",
+              "type": "requests",
+              "param": null,
+              "code": null
+            }
+          }
+        },
+        "server": {
+          "status": 503,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "The server is overloaded or not ready yet.",
+              "type": "server_error",
+              "param": null,
+              "code": null
+            }
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "Invalid value for 'messages'.",
+              "type": "invalid_request_error",
+              "param": null,
+              "code": null
+            }
+          }
+        }
+      },
+      "spec": {
+        "provider": "openai-compatible",
+        "model": "auto-switch",
+        "apiKey": "test-key-local",
+        "baseUrl": "http://127.0.0.1:4414/p/smart_routing/v1"
+      },
+      "url": "http://127.0.0.1:4414/p/smart_routing/v1/chat/completions",
+      "stream_url": "http://127.0.0.1:4414/p/smart_routing/v1/chat/completions",
+      "auth": [
+        "authorization",
+        "Bearer test-key-local"
+      ],
+      "stream_flag": "body"
+    },
+    "openrouter": {
+      "chat": {
+        "id": "chatcmpl-AB1",
+        "object": "chat.completion",
+        "created": 1763900000,
+        "model": "anthropic/claude-sonnet-4.5",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "$TEXT",
+              "refusal": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30,
+          "prompt_tokens_details": {
+            "cached_tokens": 8
+          }
+        }
+      },
+      "tool": {
+        "id": "chatcmpl-AB2",
+        "object": "chat.completion",
+        "created": 1763900001,
+        "model": "anthropic/claude-sonnet-4.5",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_abc",
+                  "type": "function",
+                  "function": {
+                    "name": "fs_read",
+                    "arguments": "{\"path\":\"x.txt\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30
+        }
+      },
+      "stream": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": ""
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T1"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T2"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T3"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [],
+              "usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 10,
+                "total_tokens": 30,
+                "prompt_tokens_details": {
+                  "cached_tokens": 8
+                }
+              }
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {
+                          "name": "fs_read",
+                          "arguments": ""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": "{\"path\""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": ":\"x.txt\"}"
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "anthropic/claude-sonnet-4.5",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "tool_calls"
+                }
+              ]
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "retry-after": "0"
+          },
+          "body": {
+            "error": {
+              "code": 429,
+              "message": "Rate limit exceeded: free-models-per-min."
+            }
+          }
+        },
+        "server": {
+          "status": 502,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": 502,
+              "message": "Provider returned error"
+            }
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": 400,
+              "message": "anthropic/claude-x is not a valid model ID"
+            }
+          }
+        }
+      },
+      "spec": {
+        "provider": "openrouter",
+        "model": "anthropic/claude-sonnet-4.5",
+        "apiKey": "test-key-openrouter"
+      },
+      "url": "https://openrouter.ai/api/v1/chat/completions",
+      "stream_url": "https://openrouter.ai/api/v1/chat/completions",
+      "auth": [
+        "authorization",
+        "Bearer test-key-openrouter"
+      ],
+      "stream_flag": "body"
+    },
+    "azure-openai": {
+      "chat": {
+        "id": "chatcmpl-AB1",
+        "object": "chat.completion",
+        "created": 1763900000,
+        "model": "gpt-4o",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "$TEXT",
+              "refusal": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30,
+          "prompt_tokens_details": {
+            "cached_tokens": 8
+          }
+        }
+      },
+      "tool": {
+        "id": "chatcmpl-AB2",
+        "object": "chat.completion",
+        "created": 1763900001,
+        "model": "gpt-4o",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_abc",
+                  "type": "function",
+                  "function": {
+                    "name": "fs_read",
+                    "arguments": "{\"path\":\"x.txt\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "total_tokens": 30
+        }
+      },
+      "stream": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": ""
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T1"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T2"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "content": "$T3"
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB3",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [],
+              "usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 10,
+                "total_tokens": 30,
+                "prompt_tokens_details": {
+                  "cached_tokens": 8
+                }
+              }
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "sse",
+        "events": [
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {
+                          "name": "fs_read",
+                          "arguments": ""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": "{\"path\""
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "function": {
+                          "arguments": ":\"x.txt\"}"
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": null
+                }
+              ]
+            }
+          },
+          {
+            "data": {
+              "id": "chatcmpl-AB4",
+              "object": "chat.completion.chunk",
+              "model": "gpt-4o",
+              "choices": [
+                {
+                  "index": 0,
+                  "delta": {},
+                  "finish_reason": "tool_calls"
+                }
+              ]
+            }
+          },
+          {
+            "data": "[DONE]"
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "retry-after": "0"
+          },
+          "body": {
+            "error": {
+              "code": "429",
+              "message": "Requests to the ChatCompletions_Create Operation under Azure OpenAI API have exceeded call rate limit."
+            }
+          }
+        },
+        "server": {
+          "status": 503,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "The server is overloaded or not ready yet.",
+              "type": "server_error",
+              "param": null,
+              "code": null
+            }
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "Invalid value for 'messages'.",
+              "type": "invalid_request_error",
+              "param": null,
+              "code": null
+            }
+          }
+        }
+      },
+      "spec": {
+        "provider": "azure-openai",
+        "model": "gpt-4o-deploy",
+        "apiKey": "test-key-azure",
+        "baseUrl": "https://example-resource.openai.azure.com",
+        "apiVersion": "2024-10-21"
+      },
+      "url": "https://example-resource.openai.azure.com/openai/deployments/gpt-4o-deploy/chat/completions?api-version=2024-10-21",
+      "stream_url": "https://example-resource.openai.azure.com/openai/deployments/gpt-4o-deploy/chat/completions?api-version=2024-10-21",
+      "auth": [
+        "api-key",
+        "test-key-azure"
+      ],
+      "stream_flag": "body"
+    },
+    "openai-responses": {
+      "chat": {
+        "id": "resp_01",
+        "object": "response",
+        "created_at": 1763900000,
+        "status": "completed",
+        "model": "gpt-4.1-2025-04-14",
+        "output": [
+          {
+            "type": "message",
+            "id": "msg_01",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "$TEXT",
+                "annotations": []
+              }
+            ]
+          }
+        ],
+        "usage": {
+          "input_tokens": 20,
+          "input_tokens_details": {
+            "cached_tokens": 8
+          },
+          "output_tokens": 10,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 30
+        }
+      },
+      "tool": {
+        "id": "resp_02",
+        "object": "response",
+        "status": "completed",
+        "model": "gpt-4.1-2025-04-14",
+        "output": [
+          {
+            "type": "function_call",
+            "id": "fc_01",
+            "call_id": "call_abc",
+            "name": "fs_read",
+            "arguments": "{\"path\":\"x.txt\"}",
+            "status": "completed"
+          }
+        ],
+        "usage": {
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "total_tokens": 30
+        }
+      },
+      "stream": {
+        "framing": "sse-event",
+        "events": [
+          {
+            "event": "response.created",
+            "data": {
+              "type": "response.created",
+              "sequence_number": 0,
+              "response": {
+                "id": "resp_01",
+                "status": "in_progress",
+                "output": []
+              }
+            }
+          },
+          {
+            "event": "response.output_item.added",
+            "data": {
+              "type": "response.output_item.added",
+              "sequence_number": 1,
+              "output_index": 0,
+              "item": {
+                "type": "message",
+                "id": "msg_01",
+                "role": "assistant",
+                "content": []
+              }
+            }
+          },
+          {
+            "event": "response.output_text.delta",
+            "data": {
+              "type": "response.output_text.delta",
+              "sequence_number": 2,
+              "item_id": "msg_01",
+              "output_index": 0,
+              "content_index": 0,
+              "delta": "$T1"
+            }
+          },
+          {
+            "event": "response.output_text.delta",
+            "data": {
+              "type": "response.output_text.delta",
+              "sequence_number": 3,
+              "item_id": "msg_01",
+              "output_index": 0,
+              "content_index": 0,
+              "delta": "$T2"
+            }
+          },
+          {
+            "event": "response.output_text.delta",
+            "data": {
+              "type": "response.output_text.delta",
+              "sequence_number": 4,
+              "item_id": "msg_01",
+              "output_index": 0,
+              "content_index": 0,
+              "delta": "$T3"
+            }
+          },
+          {
+            "event": "response.completed",
+            "data": {
+              "type": "response.completed",
+              "sequence_number": 5,
+              "response": {
+                "id": "resp_01",
+                "object": "response",
+                "created_at": 1763900000,
+                "status": "completed",
+                "model": "gpt-4.1-2025-04-14",
+                "output": [
+                  {
+                    "type": "message",
+                    "id": "msg_01",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [
+                      {
+                        "type": "output_text",
+                        "text": "$TEXT",
+                        "annotations": []
+                      }
+                    ]
+                  }
+                ],
+                "usage": {
+                  "input_tokens": 20,
+                  "input_tokens_details": {
+                    "cached_tokens": 8
+                  },
+                  "output_tokens": 10,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "total_tokens": 30
+                }
+              }
+            }
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "sse-event",
+        "events": [
+          {
+            "event": "response.output_item.added",
+            "data": {
+              "type": "response.output_item.added",
+              "sequence_number": 0,
+              "output_index": 0,
+              "item": {
+                "type": "function_call",
+                "id": "fc_01",
+                "call_id": "call_abc",
+                "name": "fs_read",
+                "arguments": ""
+              }
+            }
+          },
+          {
+            "event": "response.function_call_arguments.delta",
+            "data": {
+              "type": "response.function_call_arguments.delta",
+              "sequence_number": 1,
+              "item_id": "fc_01",
+              "output_index": 0,
+              "delta": "{\"path\""
+            }
+          },
+          {
+            "event": "response.function_call_arguments.delta",
+            "data": {
+              "type": "response.function_call_arguments.delta",
+              "sequence_number": 2,
+              "item_id": "fc_01",
+              "output_index": 0,
+              "delta": ":\"x.txt\"}"
+            }
+          },
+          {
+            "event": "response.completed",
+            "data": {
+              "type": "response.completed",
+              "sequence_number": 3,
+              "response": {
+                "id": "resp_02",
+                "object": "response",
+                "status": "completed",
+                "model": "gpt-4.1-2025-04-14",
+                "output": [
+                  {
+                    "type": "function_call",
+                    "id": "fc_01",
+                    "call_id": "call_abc",
+                    "name": "fs_read",
+                    "arguments": "{\"path\":\"x.txt\"}",
+                    "status": "completed"
+                  }
+                ],
+                "usage": {
+                  "input_tokens": 20,
+                  "output_tokens": 10,
+                  "total_tokens": 30
+                }
+              }
+            }
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "retry-after": "0"
+          },
+          "body": {
+            "error": {
+              "message": "Rate limit reached for gpt-4.1",
+              "type": "requests",
+              "param": null,
+              "code": null
+            }
+          }
+        },
+        "server": {
+          "status": 500,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "The server had an error while processing your request.",
+              "type": "server_error",
+              "param": null,
+              "code": null
+            }
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": {
+              "message": "Unknown parameter: 'input[0].foo'.",
+              "type": "invalid_request_error",
+              "param": null,
+              "code": null
+            }
+          }
+        }
+      },
+      "spec": {
+        "provider": "openai-responses",
+        "model": "gpt-4.1",
+        "apiKey": "test-key-openai"
+      },
+      "url": "https://api.openai.com/v1/responses",
+      "stream_url": "https://api.openai.com/v1/responses",
+      "auth": [
+        "authorization",
+        "Bearer test-key-openai"
+      ],
+      "stream_flag": "body"
+    },
+    "anthropic": {
+      "chat": {
+        "id": "msg_01A",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "type": "text",
+            "text": "$TEXT"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 12,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 8,
+          "output_tokens": 10
+        }
+      },
+      "tool": {
+        "id": "msg_01B",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "type": "text",
+            "text": "I'll read the file."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_01",
+            "name": "fs_read",
+            "input": {
+              "path": "x.txt"
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 20,
+          "output_tokens": 10
+        }
+      },
+      "stream": {
+        "framing": "sse-event",
+        "events": [
+          {
+            "event": "message_start",
+            "data": {
+              "type": "message_start",
+              "message": {
+                "id": "msg_01C",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-4-5-20250929",
+                "content": [],
+                "stop_reason": null,
+                "usage": {
+                  "input_tokens": 12,
+                  "cache_read_input_tokens": 8,
+                  "cache_creation_input_tokens": 0,
+                  "output_tokens": 1
+                }
+              }
+            }
+          },
+          {
+            "event": "content_block_start",
+            "data": {
+              "type": "content_block_start",
+              "index": 0,
+              "content_block": {
+                "type": "text",
+                "text": ""
+              }
+            }
+          },
+          {
+            "event": "ping",
+            "data": {
+              "type": "ping"
+            }
+          },
+          {
+            "event": "content_block_delta",
+            "data": {
+              "type": "content_block_delta",
+              "index": 0,
+              "delta": {
+                "type": "text_delta",
+                "text": "$T1"
+              }
+            }
+          },
+          {
+            "event": "content_block_delta",
+            "data": {
+              "type": "content_block_delta",
+              "index": 0,
+              "delta": {
+                "type": "text_delta",
+                "text": "$T2"
+              }
+            }
+          },
+          {
+            "event": "content_block_delta",
+            "data": {
+              "type": "content_block_delta",
+              "index": 0,
+              "delta": {
+                "type": "text_delta",
+                "text": "$T3"
+              }
+            }
+          },
+          {
+            "event": "content_block_stop",
+            "data": {
+              "type": "content_block_stop",
+              "index": 0
+            }
+          },
+          {
+            "event": "message_delta",
+            "data": {
+              "type": "message_delta",
+              "delta": {
+                "stop_reason": "end_turn",
+                "stop_sequence": null
+              },
+              "usage": {
+                "output_tokens": 10
+              }
+            }
+          },
+          {
+            "event": "message_stop",
+            "data": {
+              "type": "message_stop"
+            }
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "sse-event",
+        "events": [
+          {
+            "event": "message_start",
+            "data": {
+              "type": "message_start",
+              "message": {
+                "id": "msg_01D",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-4-5-20250929",
+                "content": [],
+                "usage": {
+                  "input_tokens": 20,
+                  "output_tokens": 1
+                }
+              }
+            }
+          },
+          {
+            "event": "content_block_start",
+            "data": {
+              "type": "content_block_start",
+              "index": 0,
+              "content_block": {
+                "type": "tool_use",
+                "id": "toolu_01",
+                "name": "fs_read",
+                "input": {}
+              }
+            }
+          },
+          {
+            "event": "content_block_delta",
+            "data": {
+              "type": "content_block_delta",
+              "index": 0,
+              "delta": {
+                "type": "input_json_delta",
+                "partial_json": ""
+              }
+            }
+          },
+          {
+            "event": "content_block_delta",
+            "data": {
+              "type": "content_block_delta",
+              "index": 0,
+              "delta": {
+                "type": "input_json_delta",
+                "partial_json": "{\"path\""
+              }
+            }
+          },
+          {
+            "event": "content_block_delta",
+            "data": {
+              "type": "content_block_delta",
+              "index": 0,
+              "delta": {
+                "type": "input_json_delta",
+                "partial_json": ":\"x.txt\"}"
+              }
+            }
+          },
+          {
+            "event": "content_block_stop",
+            "data": {
+              "type": "content_block_stop",
+              "index": 0
+            }
+          },
+          {
+            "event": "message_delta",
+            "data": {
+              "type": "message_delta",
+              "delta": {
+                "stop_reason": "tool_use"
+              },
+              "usage": {
+                "output_tokens": 10
+              }
+            }
+          },
+          {
+            "event": "message_stop",
+            "data": {
+              "type": "message_stop"
+            }
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "retry-after": "0",
+            "anthropic-ratelimit-requests-remaining": "0"
+          },
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "rate_limit_error",
+              "message": "Number of request tokens has exceeded your per-minute rate limit"
+            }
+          }
+        },
+        "server": {
+          "status": 529,
+          "headers": {},
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "invalid_request_error",
+              "message": "messages: text content blocks must be non-empty"
+            }
+          }
+        }
+      },
+      "spec": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5",
+        "apiKey": "test-key-anthropic"
+      },
+      "url": "https://api.anthropic.com/v1/messages",
+      "stream_url": "https://api.anthropic.com/v1/messages",
+      "auth": [
+        "x-api-key",
+        "test-key-anthropic"
+      ],
+      "stream_flag": "body"
+    },
+    "gemini": {
+      "chat": {
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "$TEXT"
+                }
+              ]
+            },
+            "finishReason": "STOP",
+            "index": 0
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 20,
+          "candidatesTokenCount": 10,
+          "totalTokenCount": 30,
+          "cachedContentTokenCount": 8
+        },
+        "modelVersion": "gemini-2.5-flash",
+        "responseId": "resp-g1"
+      },
+      "tool": {
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "name": "fs_read",
+                    "args": {
+                      "path": "x.txt"
+                    }
+                  }
+                }
+              ]
+            },
+            "finishReason": "STOP",
+            "index": 0
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 20,
+          "candidatesTokenCount": 10,
+          "totalTokenCount": 30
+        },
+        "modelVersion": "gemini-2.5-flash",
+        "responseId": "resp-g2"
+      },
+      "stream": {
+        "framing": "sse-crlf",
+        "events": [
+          {
+            "data": {
+              "candidates": [
+                {
+                  "content": {
+                    "role": "model",
+                    "parts": [
+                      {
+                        "text": "$T1"
+                      }
+                    ]
+                  },
+                  "index": 0
+                }
+              ],
+              "modelVersion": "gemini-2.5-flash",
+              "responseId": "resp-g3"
+            }
+          },
+          {
+            "data": {
+              "candidates": [
+                {
+                  "content": {
+                    "role": "model",
+                    "parts": [
+                      {
+                        "text": "$T2"
+                      }
+                    ]
+                  },
+                  "index": 0
+                }
+              ],
+              "modelVersion": "gemini-2.5-flash",
+              "responseId": "resp-g3"
+            }
+          },
+          {
+            "data": {
+              "candidates": [
+                {
+                  "content": {
+                    "role": "model",
+                    "parts": [
+                      {
+                        "text": "$T3"
+                      }
+                    ]
+                  },
+                  "index": 0,
+                  "finishReason": "STOP"
+                }
+              ],
+              "modelVersion": "gemini-2.5-flash",
+              "responseId": "resp-g3",
+              "usageMetadata": {
+                "promptTokenCount": 20,
+                "candidatesTokenCount": 10,
+                "totalTokenCount": 30,
+                "cachedContentTokenCount": 8
+              }
+            }
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "sse-crlf",
+        "events": [
+          {
+            "data": {
+              "candidates": [
+                {
+                  "content": {
+                    "role": "model",
+                    "parts": [
+                      {
+                        "functionCall": {
+                          "name": "fs_read",
+                          "args": {
+                            "path": "x.txt"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "finishReason": "STOP",
+                  "index": 0
+                }
+              ],
+              "usageMetadata": {
+                "promptTokenCount": 20,
+                "candidatesTokenCount": 10,
+                "totalTokenCount": 30
+              },
+              "modelVersion": "gemini-2.5-flash",
+              "responseId": "resp-g2"
+            }
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": 429,
+              "message": "Resource has been exhausted (e.g. check quota).",
+              "status": "RESOURCE_EXHAUSTED"
+            }
+          }
+        },
+        "server": {
+          "status": 503,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": 503,
+              "message": "The model is overloaded. Please try again later.",
+              "status": "UNAVAILABLE"
+            }
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": 400,
+              "message": "Invalid JSON payload received.",
+              "status": "INVALID_ARGUMENT"
+            }
+          }
+        }
+      },
+      "spec": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "apiKey": "test-key-gemini"
+      },
+      "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "stream_url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+      "auth": [
+        "x-goog-api-key",
+        "test-key-gemini"
+      ],
+      "stream_flag": "url"
+    },
+    "bedrock": {
+      "chat": {
+        "output": {
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "text": "$TEXT"
+              }
+            ]
+          }
+        },
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 20,
+          "outputTokens": 10,
+          "totalTokens": 30,
+          "cacheReadInputTokens": 8,
+          "cacheWriteInputTokens": 0
+        },
+        "metrics": {
+          "latencyMs": 412
+        }
+      },
+      "tool": {
+        "output": {
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "toolUse": {
+                  "toolUseId": "tooluse_01",
+                  "name": "fs_read",
+                  "input": {
+                    "path": "x.txt"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 20,
+          "outputTokens": 10,
+          "totalTokens": 30
+        },
+        "metrics": {
+          "latencyMs": 398
+        }
+      },
+      "stream": {
+        "framing": "eventstream",
+        "events": [
+          {
+            "event": "messageStart",
+            "data": {
+              "role": "assistant"
+            }
+          },
+          {
+            "event": "contentBlockDelta",
+            "data": {
+              "contentBlockIndex": 0,
+              "delta": {
+                "text": "$T1"
+              }
+            }
+          },
+          {
+            "event": "contentBlockDelta",
+            "data": {
+              "contentBlockIndex": 0,
+              "delta": {
+                "text": "$T2"
+              }
+            }
+          },
+          {
+            "event": "contentBlockDelta",
+            "data": {
+              "contentBlockIndex": 0,
+              "delta": {
+                "text": "$T3"
+              }
+            }
+          },
+          {
+            "event": "contentBlockStop",
+            "data": {
+              "contentBlockIndex": 0
+            }
+          },
+          {
+            "event": "messageStop",
+            "data": {
+              "stopReason": "end_turn"
+            }
+          },
+          {
+            "event": "metadata",
+            "data": {
+              "usage": {
+                "inputTokens": 20,
+                "outputTokens": 10,
+                "totalTokens": 30,
+                "cacheReadInputTokens": 8
+              },
+              "metrics": {
+                "latencyMs": 420
+              }
+            }
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "eventstream",
+        "events": [
+          {
+            "event": "messageStart",
+            "data": {
+              "role": "assistant"
+            }
+          },
+          {
+            "event": "contentBlockStart",
+            "data": {
+              "contentBlockIndex": 0,
+              "start": {
+                "toolUse": {
+                  "toolUseId": "tooluse_01",
+                  "name": "fs_read"
+                }
+              }
+            }
+          },
+          {
+            "event": "contentBlockDelta",
+            "data": {
+              "contentBlockIndex": 0,
+              "delta": {
+                "toolUse": {
+                  "input": "{\"path\""
+                }
+              }
+            }
+          },
+          {
+            "event": "contentBlockDelta",
+            "data": {
+              "contentBlockIndex": 0,
+              "delta": {
+                "toolUse": {
+                  "input": ":\"x.txt\"}"
+                }
+              }
+            }
+          },
+          {
+            "event": "contentBlockStop",
+            "data": {
+              "contentBlockIndex": 0
+            }
+          },
+          {
+            "event": "messageStop",
+            "data": {
+              "stopReason": "tool_use"
+            }
+          }
+        ]
+      },
+      "stream_exception": {
+        "framing": "eventstream",
+        "events": [
+          {
+            "exception": "throttlingException",
+            "data": {
+              "message": "Too many tokens, please wait before trying again."
+            }
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "x-amzn-errortype": "ThrottlingException:http://internal.amazon.com/coral/com.amazon.bedrock/"
+          },
+          "body": {
+            "message": "Too many requests, please wait before trying again."
+          }
+        },
+        "server": {
+          "status": 503,
+          "headers": {
+            "x-amzn-errortype": "ServiceUnavailableException:http://internal.amazon.com/coral/com.amazon.bedrock/"
+          },
+          "body": {
+            "message": "Bedrock is unable to process your request."
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {
+            "x-amzn-errortype": "ValidationException:http://internal.amazon.com/coral/com.amazon.bedrock/"
+          },
+          "body": {
+            "message": "The provided model identifier is invalid."
+          }
+        }
+      },
+      "spec": {
+        "provider": "bedrock",
+        "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "apiKey": "test-key-bedrock",
+        "region": "us-west-2"
+      },
+      "url": "https://bedrock-runtime.us-west-2.amazonaws.com/model/anthropic.claude-3-5-sonnet-20241022-v2%3A0/converse",
+      "stream_url": "https://bedrock-runtime.us-west-2.amazonaws.com/model/anthropic.claude-3-5-sonnet-20241022-v2%3A0/converse-stream",
+      "auth": [
+        "authorization",
+        "Bearer test-key-bedrock"
+      ],
+      "stream_flag": "url"
+    },
+    "ollama": {
+      "chat": {
+        "model": "llama3.1:8b",
+        "created_at": "2026-11-23T12:00:00.000Z",
+        "message": {
+          "role": "assistant",
+          "content": "$TEXT"
+        },
+        "done": true,
+        "done_reason": "stop",
+        "total_duration": 1000,
+        "prompt_eval_count": 20,
+        "eval_count": 10
+      },
+      "tool": {
+        "model": "llama3.1:8b",
+        "created_at": "2026-11-23T12:00:01.000Z",
+        "message": {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "function": {
+                "name": "fs_read",
+                "arguments": {
+                  "path": "x.txt"
+                }
+              }
+            }
+          ]
+        },
+        "done": true,
+        "done_reason": "stop",
+        "prompt_eval_count": 20,
+        "eval_count": 10
+      },
+      "stream": {
+        "framing": "ndjson",
+        "events": [
+          {
+            "data": {
+              "model": "llama3.1:8b",
+              "created_at": "2026-11-23T12:00:02.000Z",
+              "message": {
+                "role": "assistant",
+                "content": "$T1"
+              },
+              "done": false
+            }
+          },
+          {
+            "data": {
+              "model": "llama3.1:8b",
+              "created_at": "2026-11-23T12:00:02.000Z",
+              "message": {
+                "role": "assistant",
+                "content": "$T2"
+              },
+              "done": false
+            }
+          },
+          {
+            "data": {
+              "model": "llama3.1:8b",
+              "created_at": "2026-11-23T12:00:02.000Z",
+              "message": {
+                "role": "assistant",
+                "content": "$T3"
+              },
+              "done": false
+            }
+          },
+          {
+            "data": {
+              "model": "llama3.1:8b",
+              "created_at": "2026-11-23T12:00:02.000Z",
+              "message": {
+                "role": "assistant",
+                "content": ""
+              },
+              "done": true,
+              "done_reason": "stop",
+              "prompt_eval_count": 20,
+              "eval_count": 10
+            }
+          }
+        ]
+      },
+      "stream_tool": {
+        "framing": "ndjson",
+        "events": [
+          {
+            "data": {
+              "model": "llama3.1:8b",
+              "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "name": "fs_read",
+                      "arguments": {
+                        "path": "x.txt"
+                      }
+                    }
+                  }
+                ]
+              },
+              "done": false
+            }
+          },
+          {
+            "data": {
+              "model": "llama3.1:8b",
+              "created_at": "2026-11-23T12:00:02.000Z",
+              "message": {
+                "role": "assistant",
+                "content": ""
+              },
+              "done": true,
+              "done_reason": "stop",
+              "prompt_eval_count": 20,
+              "eval_count": 10
+            }
+          }
+        ]
+      },
+      "errors": {
+        "rate_limit": {
+          "status": 429,
+          "headers": {
+            "retry-after": "0"
+          },
+          "body": {
+            "error": "too many requests"
+          }
+        },
+        "server": {
+          "status": 503,
+          "headers": {},
+          "body": {
+            "error": "server busy, please try again.  maximum pending requests exceeded"
+          }
+        },
+        "bad_request": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": "model \"nope\" not found, try pulling it first"
+          }
+        }
+      },
+      "spec": {
+        "provider": "ollama",
+        "model": "llama3.1:8b",
+        "apiKey": "test-key-ollama"
+      },
+      "url": "http://localhost:11434/api/chat",
+      "stream_url": "http://localhost:11434/api/chat",
+      "auth": [
+        "authorization",
+        "Bearer test-key-ollama"
+      ],
+      "stream_flag": "body"
+    }
+  },
+  "count_tokens": {
+    "anthropic": {
+      "url": "https://api.anthropic.com/v1/messages/count_tokens",
+      "body": {
+        "input_tokens": 42
+      }
+    },
+    "gemini": {
+      "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:countTokens",
+      "body": {
+        "totalTokens": 42
+      }
+    }
+  }
+}

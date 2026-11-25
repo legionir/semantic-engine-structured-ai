@@ -1,1 +1,0 @@
-export { mobileAPI } from './main';

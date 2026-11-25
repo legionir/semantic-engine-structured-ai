@@ -1,0 +1,852 @@
+[
+  {
+    "name": "main_agent",
+    "description": "Root orchestrator. Understands the user objective and selects the simplest reliable execution strategy.",
+    "persona": "orchestrator",
+    "capabilities": [
+      "orchestration",
+      "tool_execution",
+      "delegation",
+      "synthesis"
+    ],
+    "output_contract": [
+      "Return the actual result produced by runtime execution.",
+      "Attribute findings to the tool result or sub-agent report they came from."
+    ],
+    "skills": [
+      "file_management",
+      "terminal_execution",
+      "git",
+      "codebase_analysis",
+      "testing_and_verification",
+      "search",
+      "web_research",
+      "planning",
+      "memory_and_recall"
+    ],
+    "tools": "*",
+    "model": null,
+    "temperature": null,
+    "delegation": {
+      "enabled": true,
+      "max_depth": 3,
+      "max_children": 4
+    }
+  },
+  {
+    "name": "code_analysis",
+    "description": "Analyze software project structure, architecture, dependencies, code organization, and implementation patterns.",
+    "persona": "code_architect",
+    "capabilities": [
+      "architecture_analysis",
+      "code_navigation",
+      "dependency_analysis",
+      "change_impact_analysis"
+    ],
+    "output_contract": [
+      "Report findings only from inspected files and executed commands.",
+      "Cover: project purpose, architecture, key modules, dependencies, important files.",
+      "List risks and concrete recommendations separately from observations."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "file_management",
+      "search",
+      "terminal_execution",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_tree",
+      "fs_read",
+      "fs_read_many",
+      "fs_stat",
+      "search_start",
+      "search_get",
+      "search_stop",
+      "terminal_exec",
+      "fs_info",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": true,
+      "max_depth": 1,
+      "max_children": 3
+    }
+  },
+  {
+    "name": "git_analysis",
+    "description": "Analyze Git repository state, branches, history, diffs, and recent development activity.",
+    "persona": "git_analyst",
+    "capabilities": [
+      "repository_analysis",
+      "history_analysis",
+      "diff_analysis",
+      "branch_analysis"
+    ],
+    "output_contract": [
+      "Report repository status, active branch, recent commits, and pending changes.",
+      "Separate factual Git output from interpretation.",
+      "Never modify repository state.",
+      "Branch and status information comes from git_status; never create or switch branches."
+    ],
+    "skills": [
+      "git",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "git_status",
+      "git_diff",
+      "git_log",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "testing",
+    "description": "Analyze and execute project tests, builds, validation, and verification procedures.",
+    "persona": "test_engineer",
+    "capabilities": [
+      "testing",
+      "build_verification",
+      "error_analysis",
+      "regression_detection"
+    ],
+    "output_contract": [
+      "Identify the appropriate validation command before running anything.",
+      "Report the exact command, its exit status, and the actual output.",
+      "Analyze failures explicitly and never report success without evidence."
+    ],
+    "skills": [
+      "testing_and_verification",
+      "terminal_execution",
+      "file_management",
+      "planning",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_read",
+      "fs_read_many",
+      "search_start",
+      "search_get",
+      "terminal_exec",
+      "process_start",
+      "process_read",
+      "process_terminate",
+      "process_list",
+      "git_diff",
+      "runtime_stats",
+      "fs_info",
+      "plan_get",
+      "plan_update",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read",
+      "process_resize"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": true,
+      "max_depth": 1,
+      "max_children": 2
+    }
+  },
+  {
+    "name": "security_analysis",
+    "description": "Analyze application and infrastructure security risks.",
+    "persona": "security_analyst",
+    "capabilities": [
+      "security_analysis",
+      "risk_analysis",
+      "command_execution_analysis",
+      "permission_analysis"
+    ],
+    "output_contract": [
+      "Report each finding with the file and the evidence that supports it.",
+      "Cover: command execution risks, path handling, secrets exposure, permission boundaries, input validation.",
+      "Clearly separate confirmed issues from potential risks."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "file_management",
+      "search",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_tree",
+      "fs_read",
+      "fs_read_many",
+      "fs_stat",
+      "fs_roots",
+      "search_start",
+      "search_get",
+      "fs_info",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "implementation",
+    "description": "Carry out a scoped change in the workspace: edit files, create files, and verify the result.",
+    "persona": "general_engineer",
+    "capabilities": [
+      "code_editing",
+      "refactoring",
+      "file_creation",
+      "local_verification"
+    ],
+    "output_contract": [
+      "List every file that was changed and why.",
+      "Quote the verification that was run and its actual outcome.",
+      "State plainly when a change could not be completed."
+    ],
+    "skills": [
+      "file_management",
+      "search",
+      "codebase_analysis",
+      "terminal_execution",
+      "testing_and_verification",
+      "planning",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "fs_list",
+      "fs_tree",
+      "fs_read",
+      "fs_read_many",
+      "fs_info",
+      "fs_stat",
+      "search_start",
+      "search_get",
+      "fs_write",
+      "fs_edit",
+      "apply_patch",
+      "fs_mkdir",
+      "fs_move",
+      "terminal_exec",
+      "git_status",
+      "git_diff",
+      "plan_get",
+      "plan_update",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "research",
+    "description": "Answer a question using remote documentation and the project's own files.",
+    "persona": "researcher",
+    "capabilities": [
+      "documentation_lookup",
+      "api_inspection",
+      "comparison"
+    ],
+    "output_contract": [
+      "Quote the URL or file behind every finding.",
+      "Separate what a source states from what is inferred.",
+      "Report when the sources disagree or are inconclusive."
+    ],
+    "skills": [
+      "web_research",
+      "search",
+      "file_management",
+      "memory_and_recall"
+    ],
+    "tools": [
+      "net_fetch",
+      "fs_read",
+      "fs_read_many",
+      "fs_list",
+      "search_start",
+      "search_get",
+      "memory_get",
+      "archive_search",
+      "archive_get",
+      "skill_get",
+      "skill_read"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.1,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_security",
+    "description": "Discussion persona: Security Agent. Evaluates the task through the lens of attack surface, data protection, authentication/authorization correctness, and secure defaults.",
+    "persona": "security",
+    "capabilities": [
+      "security_review",
+      "attack_surface_analysis",
+      "secure_design"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the security lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "search",
+      "file_management",
+      "web_research"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_read_many",
+      "fs_list",
+      "search_start",
+      "search_get",
+      "net_fetch",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_backend",
+    "description": "Discussion persona: Backend Agent. Evaluates API design, business logic placement, service boundaries, error handling, and backend maintainability.",
+    "persona": "backend",
+    "capabilities": [
+      "api_design",
+      "service_boundaries",
+      "error_handling"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the backend lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "file_management",
+      "terminal_execution",
+      "search"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_read_many",
+      "fs_list",
+      "fs_tree",
+      "fs_write",
+      "fs_edit",
+      "terminal_exec",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_database",
+    "description": "Discussion persona: Database Agent. Evaluates schema design, normalization vs. denormalization trade-offs, indexing, query performance, and data integrity.",
+    "persona": "database",
+    "capabilities": [
+      "schema_design",
+      "query_performance",
+      "data_integrity"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the database lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "search",
+      "file_management",
+      "terminal_execution"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_read_many",
+      "fs_list",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_frontend",
+    "description": "Discussion persona: Frontend Agent. Evaluates component structure, state management, rendering performance, and consistency with existing UI patterns.",
+    "persona": "frontend",
+    "capabilities": [
+      "component_design",
+      "state_management",
+      "rendering_performance"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the frontend lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "file_management",
+      "terminal_execution",
+      "search"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_read_many",
+      "fs_list",
+      "fs_tree",
+      "fs_write",
+      "fs_edit",
+      "terminal_exec",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_architect",
+    "description": "Discussion persona: System Architect Agent. Evaluates how the task fits the overall system design — module boundaries, dependency direction, and long-term structural impact.",
+    "persona": "architect",
+    "capabilities": [
+      "architecture_review",
+      "dependency_analysis",
+      "change_impact_analysis"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the system architect lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "file_management",
+      "search"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_list",
+      "fs_tree",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_performance",
+    "description": "Discussion persona: Performance Agent. Evaluates latency, throughput, resource usage, and scalability implications of the proposed implementation.",
+    "persona": "performance",
+    "capabilities": [
+      "latency_analysis",
+      "scalability_review",
+      "caching_strategy"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the performance lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "search",
+      "terminal_execution"
+    ],
+    "tools": [
+      "fs_read",
+      "terminal_exec",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_qa",
+    "description": "Discussion persona: QA / Testing Agent. Evaluates testability, edge cases, and what test coverage the implementation requires.",
+    "persona": "qa",
+    "capabilities": [
+      "test_strategy",
+      "edge_case_analysis",
+      "failure_modes"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the qa / testing lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "testing_and_verification",
+      "terminal_execution",
+      "file_management",
+      "search"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_list",
+      "fs_write",
+      "terminal_exec",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_devops",
+    "description": "Discussion persona: DevOps / Infrastructure Agent. Evaluates deployment impact, environment configuration, CI/CD implications, and operational risk.",
+    "persona": "devops",
+    "capabilities": [
+      "deployment_review",
+      "operational_risk",
+      "rollout_strategy"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the devops / infrastructure lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "terminal_execution",
+      "file_management",
+      "search"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_list",
+      "terminal_exec"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_cost",
+    "description": "Discussion persona: Cost / FinOps Agent. Evaluates the financial cost implications of infrastructure, third-party API usage, and scaling choices.",
+    "persona": "cost",
+    "capabilities": [
+      "cost_estimation",
+      "finops_review"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the cost / finops lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "web_research",
+      "file_management"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_list",
+      "net_fetch"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_accessibility",
+    "description": "Discussion persona: Accessibility Agent. Evaluates the implementation for accessibility compliance and usability for users with disabilities.",
+    "persona": "accessibility",
+    "capabilities": [
+      "wcag_review",
+      "usability_analysis"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the accessibility lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "web_research",
+      "file_management"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_list",
+      "net_fetch"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_data",
+    "description": "Discussion persona: Data/Analytics Engineer Agent. Evaluates how the task affects data pipelines, event tracking, and analytics/reporting needs.",
+    "persona": "data",
+    "capabilities": [
+      "event_tracking",
+      "pipeline_impact",
+      "reporting"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the data/analytics engineer lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "codebase_analysis",
+      "search"
+    ],
+    "tools": [
+      "fs_read",
+      "mcp_servers",
+      "mcp_tools",
+      "mcp_call"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_compliance",
+    "description": "Discussion persona: Compliance / Legal Agent. Evaluates data handling against relevant regulatory constraints (e.g. GDPR-style data handling principles, retention, consent).",
+    "persona": "compliance",
+    "capabilities": [
+      "data_handling_review",
+      "retention_policy"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the compliance / legal lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "web_research",
+      "file_management"
+    ],
+    "tools": [
+      "fs_read",
+      "net_fetch"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_mobile",
+    "description": "Discussion persona: Mobile Agent. Evaluates the implementation's impact on mobile clients — responsiveness, offline behavior, and platform constraints.",
+    "persona": "mobile",
+    "capabilities": [
+      "mobile_ui_review",
+      "offline_behavior"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the mobile lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "file_management",
+      "web_research"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_list"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_ml",
+    "description": "Discussion persona: ML/AI Integration Agent. Evaluates tasks involving model calls, prompt design, latency/cost of AI features, and failure handling for AI-dependent logic.",
+    "persona": "ml",
+    "capabilities": [
+      "ai_integration_review",
+      "model_failure_handling"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the ml/ai integration lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "terminal_execution",
+      "web_research",
+      "file_management"
+    ],
+    "tools": [
+      "fs_read",
+      "net_fetch",
+      "terminal_exec"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_legacy",
+    "description": "Discussion persona: Legacy/Migration Agent. Evaluates backward compatibility, migration risk, and rollout strategy when the task touches existing production systems.",
+    "persona": "legacy",
+    "capabilities": [
+      "backward_compatibility",
+      "migration_strategy"
+    ],
+    "output_contract": [
+      "Evaluate the task strictly through the legacy/migration lens stated in your persona.",
+      "State concrete risks, trade-offs and a recommended position; do not restate generic advice.",
+      "When reacting to other agents, explicitly agree, disagree with reasoning, or refine."
+    ],
+    "skills": [
+      "git",
+      "file_management",
+      "search",
+      "codebase_analysis"
+    ],
+    "tools": [
+      "fs_read",
+      "fs_list",
+      "fs_tree",
+      "git_log",
+      "git_diff",
+      "git_status"
+    ],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  },
+  {
+    "name": "discussion_observer",
+    "description": "Discussion observer. Reads every round, decides CONTINUE or FINISH, and is the only agent that reports back to the user.",
+    "persona": "observer",
+    "capabilities": [
+      "discussion_management",
+      "synthesis"
+    ],
+    "output_contract": [
+      "Manage the discussion; never inject a personal technical opinion.",
+      "Decide CONTINUE or FINISH and state why.",
+      "The final report is the only output the user sees: summary, agreed points, unresolved disagreements with both sides, ordered next steps."
+    ],
+    "skills": [],
+    "tools": [],
+    "model": "auto-switch",
+    "temperature": 0.2,
+    "delegation": {
+      "enabled": false,
+      "max_depth": 0,
+      "max_children": 0
+    }
+  }
+]

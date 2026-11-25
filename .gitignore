@@ -2,6 +2,13 @@
 # Runtime state of any demo/test workspace, never source
 **/.agent/
 
+# User-provided chat uploads are temporary runtime input, never source
+**/upload_tmp/
+
+# Node dependencies and generated coverage are restored/recomputed locally.
+**/node_modules/
+**/coverage/
+
 # Ruflo local secrets and runtime data
 .env
 .env.local
@@ -12,3 +19,13 @@
 
 # ruflo/claude-flow tool state
 **/.claude-flow/
+# Runtime state of a workspace, never source
+/.agent/
+
+# The event store is derived state, regenerable from sessions via
+# `npm run backfill:eventstore`; it is never committed.
+**/.agent/eventstore/
+
+# scratch: pristine HEAD copies and throwaway repros used by the audit
+# workflow (see FIX-PLAN-REVIEW-FINDINGS.md, section 10) - never commit
+/tmp-baseline/

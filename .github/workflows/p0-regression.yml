@@ -3,10 +3,20 @@ name: P0 regression
 on:
   pull_request:
     paths:
-      - "structured-ai/**"
+      - "agent/**"
+      - "bin/**"
+      - "ci/**"
+      - "test/**"
+      - "web/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - "README.md"
       - ".github/workflows/p0-regression.yml"
   push:
-    branches: [main, roadmap/integration]
+    branches: [main, roadmap/integration, roadmap/p1, roadmap/p2, roadmap/p3]
   workflow_dispatch:
 
 permissions:
@@ -17,19 +27,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Every roadmap regression suite is a file test/p<phase>/p<id>*.test.js;
+  # the matrix is discovered so an item PR never edits a shared list.
+  suites:
+    name: Discover roadmap suites
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.find.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        working-directory: .
+        shell: bash
+        run: |
+          list=$(node -e "const fs=require('fs');const out=[];for(const d of ['p0','p1','p2','p3']){const dir='test/'+d;if(!fs.existsSync(dir))continue;for(const f of fs.readdirSync(dir).sort()){const m=f.match(/^(p[0-9][0-9a-z]*)[.]test[.]js$/);if(m&&m[1].startsWith(d))out.push(m[1]);}}process.stdout.write(JSON.stringify(out))")
+          echo "suites: $list"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
   p0:
     name: P0 ${{ matrix.suite }} (${{ matrix.os }}, Node ${{ matrix.node }})
+    needs: [suites]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
+      # Keep the large Linux/Windows matrix within hosted-runner capacity.
+      max-parallel: 12
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         node: [20, 22, 24]
-        suite: [p01, p02, p02ttl, p03, p04, p04matrix, p05, p05data, p06, p07, p0review]
+        suite: ${{ fromJSON(needs.suites.outputs.list) }}
     defaults:
       run:
-        working-directory: structured-ai
+        working-directory: .
         shell: bash
     steps:
       - uses: actions/checkout@v4
@@ -37,11 +67,12 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Install
-        run: npm ci --ignore-scripts
+        run: npm ci
       - name: Run ${{ matrix.suite }}
         run: |
           set +e
-          node test/p0/${{ matrix.suite }}.test.js > out.txt 2>&1
+          suite="${{ matrix.suite }}"
+          node "test/${suite:0:2}/${suite}.test.js" > out.txt 2>&1
           code=$?
           cat out.txt
           echo "$code" > code.txt
@@ -52,22 +83,24 @@ jobs:
         with:
           name: p0-${{ matrix.suite }}-${{ matrix.os }}-${{ matrix.node }}
           path: |
-            structured-ai/out.txt
-            structured-ai/code.txt
+            out.txt
+            code.txt
           if-no-files-found: ignore
           retention-days: 7
 
   full:
-    name: Full suite (ubuntu-latest, Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    name: Full suite (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
-        node: [20, 22]
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22, 24]
     defaults:
       run:
-        working-directory: structured-ai
+        working-directory: .
         shell: bash
     steps:
       - uses: actions/checkout@v4
@@ -75,39 +108,44 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Install
-        run: npm ci --ignore-scripts
+        run: npm ci
       - name: Run each npm test file separately
         run: |
           set +e
-          node -e "process.stdout.write(require('./package.json').scripts.test.split('&&').map(s => s.trim().replace(/^node\s+/, '')).filter(Boolean).join('\n') + '\n')" > files.txt
-          pass=0; fail=0
-          : > out.txt
-          : > fails.txt
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            timeout 600 node "$f" < /dev/null > one.txt 2>&1
-            c=$?
-            if [ "$c" -eq 0 ]; then
-              pass=$((pass+1)); echo "ok   $f" >> out.txt
-            else
-              fail=$((fail+1)); echo "FAIL $f (exit $c)" >> out.txt
-              { echo "----- $f (exit $c) -----"; tail -n 80 one.txt; echo; } >> fails.txt
-            fi
-          done < files.txt
-          { echo; echo "$pass/$((pass+fail)) passed"; echo; cat fails.txt; } >> out.txt
-          cat out.txt
-          if [ "$fail" -eq 0 ]; then echo 0 > code.txt; else echo 1 > code.txt; fi
-          [ "$fail" -eq 0 ]
+          node ci/run-tests.js --out out.txt --junit junit.xml
+          code=$?
+          echo "$code" > code.txt
+          exit $code
+      - name: Enforce P1 policy, MCP, and tools line coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run test:coverage
       - name: Upload output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: full-node${{ matrix.node }}
+          name: full-${{ matrix.os }}-node${{ matrix.node }}
           path: |
-            structured-ai/out.txt
-            structured-ai/code.txt
+            out.txt
+            code.txt
+            junit.xml
           if-no-files-found: ignore
           retention-days: 7
+
+  p1-performance:
+    name: P1 event-loop benchmark (10 concurrent agents)
+    needs: [p0, full]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run test:p1:benchmark
 
   report:
     name: P0 report
@@ -133,13 +171,13 @@ jobs:
             const detail = {};
             const full = [];
             for (const d of dirs) {
-              const fm = d.match(/^full-node(\d+)$/);
+              const fm = d.match(/^full-(?:(.+)-)?node(\d+)$/);
               if (fm) {
                 const readF = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
-                full.push({ node: fm[1], out: readF('out.txt'), code: readF('code.txt').trim() });
+                full.push({ os: (fm[1] || 'ubuntu-latest').replace('-latest', ''), node: fm[2], out: readF('out.txt'), code: readF('code.txt').trim() });
                 continue;
               }
-              const m = d.match(/^p0-(p0\w+)-(.+)-(\d+)$/);
+              const m = d.match(/^p0-(p\d\w*)-(.+)-(\d+)$/);
               if (!m) continue;
               const [, suite, os, node] = m;
               const read = f => { try { return fs.readFileSync(path.join('results', d, f), 'utf8'); } catch { return ''; } };
@@ -163,14 +201,16 @@ jobs:
               }
             }
             if (full.length) {
-              body += '## structured-ai full suite (each npm test file run separately)\n\n| Node | Result | Summary |\n|---|---|---|\n';
+              full.sort((a, b) => (a.os + a.node).localeCompare(b.os + b.node));
+              body += '## structured-ai full suite (each npm test file run separately)\n\n| OS | Node | Result | Summary |\n|---|---|---|---|\n';
               for (const f of full) {
                 const s = (f.out.match(/^\s*\d+\/\d+ passed.*$/m) || [''])[0].trim();
-                body += `| ${f.node} | ${f.code === '0' ? '✅' : '❌'} | ${s || ('exit ' + (f.code || '?'))} |\n`;
+                body += `| ${f.os} | ${f.node} | ${f.code === '0' ? '✅' : '❌'} | ${s || ('exit ' + (f.code || '?'))} |\n`;
               }
               body += '\n';
               for (const f of full) {
-                body += `<details><summary><b>full suite</b> Node ${f.node} output</summary>\n\n\`\`\`\n${f.out.slice(0, 16000)}\n\`\`\`\n</details>\n\n`;
+                const size = f.code === '0' ? 1500 : 9000;
+                body += `<details><summary><b>full suite</b> ${f.os} / Node ${f.node} output</summary>\n\n\`\`\`\n${f.out.slice(0, size)}\n\`\`\`\n</details>\n\n`;
               }
             }
             body = body.slice(0, 64000);

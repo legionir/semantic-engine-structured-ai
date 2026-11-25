@@ -1,0 +1,44 @@
+name: P1 sandbox integration
+
+on:
+  pull_request:
+    paths:
+      - "agent/tools/process/**"
+      - "test/p1/**"
+      - "ci/sandbox-smoke.Dockerfile"
+      - ".github/workflows/p1-sandbox-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p1-sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-sandbox:
+    name: Real Docker isolation and toolchain smoke test (Linux)
+    # The actual container isolation assertions run on a Linux Docker daemon;
+    # Windows launch and process-tree contracts run in the P0 matrix.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install test dependencies
+        run: npm ci
+      - name: Build sandbox smoke image
+        run: docker build -f ci/sandbox-smoke.Dockerfile -t structured-ai-sandbox-smoke .
+      - name: Exercise real container isolation
+        env:
+          RUN_SANDBOX_INTEGRATION: "1"
+          PROCESS_SANDBOX_MODE: docker
+          PROCESS_SANDBOX_IMAGE: structured-ai-sandbox-smoke
+          PROCESS_SANDBOX_NETWORK: none
+        run: node test/p1/p12.integration.test.js

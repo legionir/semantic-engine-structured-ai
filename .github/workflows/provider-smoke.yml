@@ -1,0 +1,45 @@
+name: P1 real-provider smoke
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-smoke
+  cancel-in-progress: false
+
+jobs:
+  providers:
+    name: Real provider tool-call and stream scenario
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Require and run at least four configured providers
+        env:
+          SMOKE_REQUIRED: "1"
+          SMOKE_MIN_PROVIDERS: "4"
+          SMOKE_OPENAI_API_KEY: ${{ secrets.SMOKE_OPENAI_API_KEY }}
+          SMOKE_OPENAI_MODEL: ${{ secrets.SMOKE_OPENAI_MODEL }}
+          SMOKE_OPENAI_BASE_URL: ${{ secrets.SMOKE_OPENAI_BASE_URL }}
+          SMOKE_ANTHROPIC_API_KEY: ${{ secrets.SMOKE_ANTHROPIC_API_KEY }}
+          SMOKE_ANTHROPIC_MODEL: ${{ secrets.SMOKE_ANTHROPIC_MODEL }}
+          SMOKE_GEMINI_API_KEY: ${{ secrets.SMOKE_GEMINI_API_KEY }}
+          SMOKE_GEMINI_MODEL: ${{ secrets.SMOKE_GEMINI_MODEL }}
+          SMOKE_OPENROUTER_API_KEY: ${{ secrets.SMOKE_OPENROUTER_API_KEY }}
+          SMOKE_OPENROUTER_MODEL: ${{ secrets.SMOKE_OPENROUTER_MODEL }}
+          SMOKE_AZURE_OPENAI_API_KEY: ${{ secrets.SMOKE_AZURE_OPENAI_API_KEY }}
+          SMOKE_AZURE_OPENAI_MODEL: ${{ secrets.SMOKE_AZURE_OPENAI_MODEL }}
+          SMOKE_AZURE_OPENAI_BASE_URL: ${{ secrets.SMOKE_AZURE_OPENAI_BASE_URL }}
+        run: node ci/provider-smoke.js
