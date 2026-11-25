@@ -391,6 +391,58 @@ async function behaviour() {
         assert.equal(byId("runButton").disabled, false);
         byId("discussionButton").dispatch("click");
     });
+
+    /* last: it makes prj-a the current project */
+    await test("a slow dashboard response never overwrites the tab the operator moved to", async () => {
+        console_.reply("/api/projects", { projects: [{ id: "prj-a", name: "Alpha", rootPath: "/tmp/a" }] });
+        console_.reply("/api/projects/prj-a", { project: { id: "prj-a", name: "Alpha", rootPath: "/tmp/a" } });
+        console_.reply("/api/projects/prj-a/health", { status: "ok" });
+        console_.reply("/api/projects/prj-a/metrics", { metrics: { project_runs_total: 4 } });
+        console_.reply("/api/projects/prj-a/sessions", { sessions: [] });
+
+        /* the first /state is held until the second load has finished */
+        const realFetch = global.fetch;
+        let release = null;
+        let calls = 0;
+        global.fetch = (url, options) => {
+            if (url === "/api/projects/prj-a/state" && ++calls === 1) {
+                return new Promise(resolve => { release = () => resolve({
+                    ok: true, status: 200,
+                    json: async () => ({ events: [{ type: "run:start", task: "STALE" }], active_runs: [], pending_approvals: [] })
+                }); });
+            }
+            return realFetch(url, options);
+        };
+        console_.reply("/api/projects/prj-a/state", { events: [{ type: "run:start", task: "FRESH" }], active_runs: [], pending_approvals: [] });
+
+        location.pathname = "/projects/prj-a";
+        location.search = "?tab=events";
+        window.dispatchEvent(new window.Event("popstate"));
+        await settle();
+
+        assert.equal(byId("projectDashboard").hidden, false, "the dashboard is shown");
+        assert.equal(byId("consoleMain").hidden, true);
+        assert.match(byId("dashboardBody").textContent, /Loading/);
+
+        [...byId("dashboardTabs").querySelectorAll("button")].find(button => button.dataset.tab === "logs").dispatch("click");
+        await settle();
+        [...byId("dashboardTabs").querySelectorAll("button")].find(button => button.dataset.tab === "events").dispatch("click");
+        await settle();
+        assert.match(byId("dashboardBody").textContent, /FRESH/);
+
+        release();
+        await settle();
+        global.fetch = realFetch;
+
+        assert.match(byId("dashboardBody").textContent, /FRESH/, "the late response is dropped");
+        assert.doesNotMatch(byId("dashboardBody").textContent, /STALE/);
+        assert.equal(byId("dashboardTitle").textContent, "Alpha");
+        assert.ok(byId("dashboardTabs").querySelector('button[data-tab="events"]').classList.contains("active"));
+
+        byId("dashboardBack").dispatch("click");
+        assert.equal(byId("projectDashboard").hidden, true);
+        assert.equal(byId("consoleMain").hidden, false);
+    });
 }
 
 

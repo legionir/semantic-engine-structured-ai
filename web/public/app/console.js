@@ -18,17 +18,18 @@
 
 import { state, touch, batch, REGIONS } from "./store.js";
 import { mount, bind, stickToBottom, mountInModal } from "./dom.js";
-import { describeSession } from "./formatters.js";
 import { reduce, applySnapshot as reduceSnapshot, setRunStatus } from "./runtime-state.js";
 import { resetRun, currentRun, treeSummary } from "./execution-model.js";
 import { normalizeConversationMessage, normalizeConversationMessages } from "./conversation-model.js";
 import { Tree, Archive, openCallDetail as showCallDetail } from "./execution-view.js";
 import { Plan, planSummary } from "./plan-view.js";
 import { Chat, waitingText } from "./chat.js";
-import { LogRows, LogTypeOptions, logViews, logCountText, describeEvent } from "./event-view.js";
+import { LogRows, LogTypeOptions, logViews, logCountText } from "./event-view.js";
 import { Discussion } from "./discussion-view.js";
 import { createApprovals } from "./approval-state.js";
 import { Attachments } from "./composer-view.js";
+import { DashboardTabs, DashboardBody, dashboardHeading, dashboardTab } from "./project-view.js";
+import { Sessions, historySubtitle } from "./history-view.js";
 import { McpBody, createMcpState, mcpSubtitle, connectBody } from "./mcp-view.js";
 import { SettingsBody, isLlmSetting, isModelSetting, modelCatalogConfigChanged } from "./settings-view.js";
 
@@ -60,18 +61,6 @@ Object.assign(state, {
 
 const PROJECT_STORAGE_KEY = "structured-ai.currentProjectId";
 
-const DASHBOARD_TABS = [
-    ["overview", "Overview"],
-    ["runs", "Agent Runs"],
-    ["sessions", "Sessions"],
-    ["memory", "Memory"],
-    ["plan", "Plan"],
-    ["events", "Events"],
-    ["approvals", "Approvals"],
-    ["mcp", "MCP"],
-    ["logs", "Logs"],
-    ["settings", "Settings"]
-];
 
 
 function node(tag, className, text) {
@@ -108,112 +97,139 @@ async function openHistory() {
 
     state.historyOpening = true;
 
-    let response;
+    let payload = null;
 
     try {
-        response = await fetch("/api/sessions");
+        const response = await fetch("/api/sessions");
+        payload = response.ok ? await response.json() : null;
     } catch {
-        state.historyOpening = false;
-        return null;
-    }
-
-    if (!response.ok) {
-        state.historyOpening = false;
-        return null;
-    }
-
-    let payload;
-
-    try {
-        payload = await response.json();
-    } catch {
-        state.historyOpening = false;
-        return null;
+        payload = null;
     }
 
     if (!payload || !Array.isArray(payload.sessions)) {
         state.historyOpening = false;
+        notifyError("The saved conversations could not be loaded.");
         return null;
     }
 
     state.sessions = payload.sessions;
+    state.history = { sessions: payload.sessions, current: payload.current, pending: null, error: null };
 
-    const body = node("div", "sessions");
+    let dispose = () => {};
 
-    if (payload.sessions.length === 0) {
-
-        body.appendChild(
-            node("p", "empty", "No conversations have been saved yet.")
-        );
-    }
-
-    for (const session of payload.sessions) {
-
-        const row =
-            node(
-                "button",
-                `session${
-                    session.id === payload.current
-                        ? " current"
-                        : ""
-                }`
-            );
-
-        row.type = "button";
-
-        row.append(
-            node("span", "name", session.title || session.id),
-            node("span", "facts", describeSession(session))
-        );
-
-        row.addEventListener(
-            "click",
-            () => loadSession(session.id)
-        );
-
-        body.appendChild(row);
-    }
-
-    const handle =
-        Modal.open({
-            title: "Conversations",
-
-            subtitle:
-                `${payload.sessions.length} saved in this workspace`,
-
-            size: "medium",
-
-            body,
-
-            footer:
-                Modal.row(
-                    Modal.button(
-                        "New conversation",
-                        "ghost",
-                        async () => {
-
-                            await fetch("/api/sessions", { method: "POST" });
-
-                            handle.close("new");
-                        }
-                    ),
-                    Modal.button(
-                        "Close",
-                        "",
-                        () => handle.close("footer")
-                    )
-                ),
-
-            onClose: () => {
-
-                state.historyModal = null;
-            }
-        });
+    const handle = Modal.open({
+        title: "Conversations",
+        subtitle: historySubtitle(payload.sessions),
+        size: "medium",
+        footer: Modal.row(
+            Modal.button("New conversation", "ghost", () => startNewConversation(handle)),
+            Modal.button("Close", "", () => handle.close("footer"))
+        ),
+        onClose: () => {
+            dispose();
+            state.historyModal = null;
+        }
+    });
 
     state.historyModal = handle;
     state.historyOpening = false;
 
+    dispose = mountInModal(
+        handle,
+        () => Sessions({ history: state.history, onOpen: loadSession }),
+        ["history"]
+    );
+
     return handle;
+}
+
+
+function historyFailure(message) {
+
+    if (state.historyModal && state.historyModal.isOpen()) {
+        state.history.pending = null;
+        state.history.error = message;
+        touch("history");
+    } else {
+        notifyError(message);
+    }
+}
+
+
+async function startNewConversation(handle) {
+
+    if (state.history?.pending) return;
+
+    state.history.pending = "new";
+    state.history.error = null;
+    touch("history");
+
+    try {
+        const response = await fetch("/api/sessions", { method: "POST" });
+        if (!response.ok) {
+            historyFailure(await failureText(response, "A new conversation was not started"));
+            return;
+        }
+    } catch (error) {
+        historyFailure(`A new conversation was not started: ${error.message || "network error"}`);
+        return;
+    }
+
+    handle.close("new");
+}
+
+
+/*
+| Another console switched conversation: load it. Several switches in a
+| row resolve out of order, so only the newest request is applied.
+*/
+let sessionRequest = 0;
+
+async function refreshSession(id) {
+
+    const request = ++sessionRequest;
+
+    try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`);
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (request === sessionRequest && payload?.session) applySession(payload.session);
+    } catch {
+        /* the next session:switched or snapshot redraws it */
+    }
+}
+
+
+async function loadSession(id) {
+
+    const request = ++sessionRequest;
+
+    if (state.history) {
+        state.history.pending = id;
+        state.history.error = null;
+        touch("history");
+    }
+
+    let payload = null;
+
+    try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "POST" });
+        if (!response.ok) {
+            historyFailure(await failureText(response, "The conversation could not be opened"));
+            return;
+        }
+        payload = await response.json();
+    } catch (error) {
+        historyFailure(`The conversation could not be opened: ${error.message || "network error"}`);
+        return;
+    }
+
+    if (request !== sessionRequest || !payload?.session) {
+        return;
+    }
+
+    applySession(payload.session);
+    state.historyModal?.close("loaded");
 }
 
 
@@ -894,44 +910,6 @@ function openEventsModal() {
 | and Events cards are rebuilt by the same code that draws them live.
 | Nothing is summarised for storage, which is why this works at all.
 */
-
-async function refreshSession(id) {
-
-    const response =
-        await fetch(`/api/sessions/${encodeURIComponent(id)}`);
-
-    if (!response.ok) {
-        return;
-    }
-
-    const payload =
-        await response.json();
-
-    applySession(payload.session);
-}
-
-
-async function loadSession(id) {
-
-    const response =
-        await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
-            method: "POST"
-        });
-
-    if (!response.ok) {
-        return;
-    }
-
-    const payload =
-        await response.json();
-
-    applySession(payload.session);
-
-    if (state.historyModal) {
-        state.historyModal.close("loaded");
-    }
-}
-
 
 /* ------------------------------------------------------------ store glue */
 
@@ -2075,285 +2053,95 @@ async function loadGatewayHealth() {
 function closeProjectDashboard() {
 
     state.dashboard.open = false;
-
-    const dash = el("projectDashboard");
-    const main = el("consoleMain");
-
-    if (dash) {
-        dash.hidden = true;
-    }
-
-    if (main) {
-        main.hidden = false;
-    }
+    state.dashboard.request++;
+    touch("dashboard");
 }
 
 
-function renderDashboardTabs(active) {
+/*
+| Loads what the dashboard shows for one project and tab. Each load takes
+| a token; a response for a tab or project the operator already left is
+| dropped instead of overwriting the one on screen.
+*/
+async function loadDashboard() {
 
-    const nav = el("dashboardTabs");
+    const dashboard = state.dashboard;
+    const request = ++dashboard.request;
+    const projectId = dashboard.projectId;
+    const base = `/api/projects/${encodeURIComponent(projectId)}`;
 
-    if (!nav) {
+    dashboard.loading = true;
+    touch("dashboard");
+
+    const read = async url => {
+        try {
+            const response = await fetch(url);
+            return response.ok ? await response.json() : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const [project, projectState, metrics, health, sessions] = await Promise.all([
+        read(base),
+        read(`${base}/state`),
+        read(`${base}/metrics`),
+        read(`${base}/health`),
+        read(`${base}/sessions`)
+    ]);
+
+    if (request !== state.dashboard.request || projectId !== state.dashboard.projectId) {
         return;
     }
 
-    nav.innerHTML = "";
+    dashboard.loading = false;
+    dashboard.data = {
+        record: project?.project || projectById(projectId),
+        projectState,
+        metrics,
+        health,
+        sessions: Array.isArray(sessions?.sessions) ? sessions.sessions : []
+    };
 
-    for (const [id, label] of DASHBOARD_TABS) {
-
-        const button = node("button", id === active ? "active" : "", label);
-        button.type = "button";
-        button.dataset.tab = id;
-        button.addEventListener("click", () => openProjectDashboard(state.dashboard.projectId, id));
-        nav.appendChild(button);
-    }
+    touch("dashboard");
 }
 
 
-function dashboardCard(title, value) {
+async function saveDashboardSettings(changes) {
 
-    const card = node("div", "dashboard-card");
-    card.append(node("h3", null, title), node("div", null, String(value ?? "—")));
-    return card;
-}
+    const dashboard = state.dashboard;
+    const projectId = dashboard.projectId;
 
+    dashboard.saving = true;
+    dashboard.saveMessage = "";
+    touch("dashboard");
 
-async function renderDashboardBody(projectId, tab) {
-
-    const body = el("dashboardBody");
-
-    if (!body) {
-        return;
-    }
-
-    body.innerHTML = "";
-    body.appendChild(node("p", "empty", "Loading…"));
-
-    let record = projectById(projectId);
-    let projectState = null;
-    let metrics = null;
-    let health = null;
-    let sessions = [];
+    let failure = null;
 
     try {
-
-        const [projectRes, stateRes, metricsRes, healthRes, sessionsRes] =
-            await Promise.all([
-                fetch(`/api/projects/${encodeURIComponent(projectId)}`),
-                fetch(`/api/projects/${encodeURIComponent(projectId)}/state`),
-                fetch(`/api/projects/${encodeURIComponent(projectId)}/metrics`),
-                fetch(`/api/projects/${encodeURIComponent(projectId)}/health`),
-                fetch(`/api/projects/${encodeURIComponent(projectId)}/sessions`)
-            ]);
-
-        if (projectRes.ok) {
-            record = (await projectRes.json()).project || record;
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name: String(changes.name || "").trim(), enabled: Boolean(changes.enabled) })
+        });
+        if (!response.ok) {
+            failure = await failureText(response, "Not saved");
         }
-
-        if (stateRes.ok) {
-            projectState = await stateRes.json();
-        }
-
-        if (metricsRes.ok) {
-            metrics = await metricsRes.json();
-        }
-
-        if (healthRes.ok) {
-            health = await healthRes.json();
-        }
-
-        if (sessionsRes.ok) {
-            sessions = (await sessionsRes.json()).sessions || [];
-        }
-
-    } catch {
-        /* render what we have */
+    } catch (error) {
+        failure = `Not saved: ${error.message || "network error"}`;
     }
 
-    body.innerHTML = "";
-
-    const title = el("dashboardTitle");
-    const subtitle = el("dashboardSubtitle");
-
-    if (title) {
-        title.textContent = record?.name || projectId;
-    }
-
-    if (subtitle) {
-        subtitle.textContent = `${record?.rootPath || ""} · ${health?.status || "unknown"}`;
-    }
-
-    if (tab === "overview") {
-
-        const grid = node("div", "dashboard-grid");
-        grid.append(
-            dashboardCard("status", health?.status || projectState?.status),
-            dashboardCard("runs", metrics?.metrics?.project_runs_total ?? 0),
-            dashboardCard("active", metrics?.metrics?.project_active_runs ?? 0),
-            dashboardCard("root", record?.rootPath)
-        );
-        body.appendChild(grid);
+    if (projectId !== state.dashboard.projectId) {
         return;
     }
 
-    if (tab === "runs") {
+    dashboard.saving = false;
+    dashboard.saveMessage = failure || "Saved.";
+    touch("dashboard");
 
-        const runs = projectState?.active_runs || [];
-
-        if (runs.length === 0) {
-            body.appendChild(node("p", "empty", "No active runs for this project."));
-            return;
-        }
-
-        for (const run of runs) {
-            body.appendChild(
-                node("div", "labeled-run", `${run.status} · ${run.run_id} · ${run.task || ""}`)
-            );
-        }
-
-        return;
-    }
-
-    if (tab === "sessions") {
-
-        if (sessions.length === 0) {
-            body.appendChild(node("p", "empty", "No saved sessions for this project."));
-            return;
-        }
-
-        for (const session of sessions) {
-            body.appendChild(
-                node("div", "labeled-run", session.title || session.id)
-            );
-        }
-
-        return;
-    }
-
-    if (tab === "memory") {
-
-        body.appendChild(
-            node(
-                "p",
-                "empty",
-                "Memory is stored in this project's data root. Inspect it with memory_get during a scoped run."
-            )
-        );
-        body.appendChild(
-            dashboardCard("last activity", metrics?.metrics?.project_last_activity || "none")
-        );
-        return;
-    }
-
-    if (tab === "plan") {
-
-        if (state.plan && state.currentProjectId === projectId) {
-            const holder = node("div", "plan-view");
-            holder.id = "dashboardPlan";
-            body.appendChild(holder);
-            const previous = el("plan");
-            /* reuse live plan card text when this is the active project */
-            if (previous) {
-                holder.appendChild(node("div", null, previous.textContent));
-            }
-            return;
-        }
-
-        body.appendChild(
-            node("p", "empty", "Plan appears here while this project is the active console run.")
-        );
-        return;
-    }
-
-    if (tab === "events" || tab === "logs") {
-
-        const events = (projectState?.events || []).slice(-80);
-
-        if (events.length === 0) {
-            body.appendChild(node("p", "empty", "No events recorded for this project."));
-            return;
-        }
-
-        const list = node("ul", "log");
-
-        for (const event of events) {
-
-            if (tab === "logs" && !/error|failed|deadline/i.test(event.type || "")) {
-                continue;
-            }
-
-            list.appendChild(
-                node("li", null, `${event.type} · ${describeEvent(event)}`)
-            );
-        }
-
-        body.appendChild(list);
-        return;
-    }
-
-    if (tab === "approvals") {
-
-        const pending = projectState?.pending_approvals || [];
-
-        if (pending.length === 0) {
-            body.appendChild(node("p", "empty", "No pending approvals for this project."));
-            return;
-        }
-
-        for (const item of pending) {
-            body.appendChild(
-                node("div", "labeled-run", `${item.tool} · ${item.agent}`)
-            );
-        }
-
-        return;
-    }
-
-    if (tab === "mcp") {
-
-        body.appendChild(
-            dashboardCard("mcp calls", metrics?.metrics?.project_mcp_calls_total ?? 0)
-        );
-        return;
-    }
-
-    if (tab === "settings") {
-
-        const form = node("div", "mcp-add");
-        const name = node("input");
-        name.value = record?.name || "";
-        const enabled = node("input");
-        enabled.type = "checkbox";
-        enabled.checked = record?.enabled !== false;
-
-        form.append(
-            node("label", "mcp-field"),
-        );
-
-        const nameField = node("label", "mcp-field");
-        nameField.append(node("span", "label", "name"), name);
-        const enabledField = node("label", "mcp-field");
-        enabledField.append(node("span", "label", "enabled"), enabled);
-        form.append(nameField, enabledField);
-
-        form.appendChild(
-            Modal.button("Save", "", async () => {
-
-                await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
-                    method: "PATCH",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({
-                        name: name.value,
-                        enabled: enabled.checked
-                    })
-                });
-
-                await loadProjects();
-                renderDashboardBody(projectId, "settings");
-            })
-        );
-
-        body.appendChild(form);
+    if (!failure) {
+        await loadProjects();
+        await loadDashboard();
     }
 }
 
@@ -2364,25 +2152,56 @@ function openProjectDashboard(projectId, tab) {
         return;
     }
 
+    const sameProject = state.dashboard.projectId === projectId;
+
     state.taskScopeMode = "current";
     state.taskProjectIds = [];
-    state.dashboard = { open: true, projectId, tab: tab || "overview" };
+    Object.assign(state.dashboard, {
+        open: true,
+        projectId,
+        tab: dashboardTab(tab),
+        data: sameProject ? state.dashboard.data : null,
+        saveMessage: ""
+    });
+
     setCurrentProject(projectId, { skipNavigate: true, keepDashboard: true });
     navigateConsole(projectId, state.dashboard.tab, false);
 
-    const dash = el("projectDashboard");
-    const main = el("consoleMain");
+    loadDashboard();
+}
 
-    if (dash) {
-        dash.hidden = false;
-    }
 
-    if (main) {
-        main.hidden = true;
-    }
+function mountDashboard() {
 
-    renderDashboardTabs(state.dashboard.tab);
-    renderDashboardBody(projectId, state.dashboard.tab);
+    mount(el("dashboardTabs"), () => DashboardTabs({
+        dashboard: state.dashboard,
+        onTab: tab => openProjectDashboard(state.dashboard.projectId, tab)
+    }), ["dashboard"]);
+
+    mount(el("dashboardBody"), () => DashboardBody({
+        dashboard: state.dashboard,
+        plan: state.plan,
+        currentProjectId: state.currentProjectId,
+        onSave: saveDashboardSettings
+    }), ["dashboard", "plan"]);
+
+    bind(["dashboard"], () => {
+
+        const dashboard = state.dashboard;
+        const dash = el("projectDashboard");
+        const main = el("consoleMain");
+
+        if (dash) dash.hidden = !dashboard.open;
+        if (main) main.hidden = dashboard.open;
+
+        if (dashboard.open) {
+            const heading = dashboardHeading(dashboard, projectById(dashboard.projectId));
+            const title = el("dashboardTitle");
+            const subtitle = el("dashboardSubtitle");
+            if (title) title.textContent = heading.title;
+            if (subtitle) subtitle.textContent = heading.subtitle;
+        }
+    });
 }
 
 
@@ -3087,6 +2906,8 @@ el("task").addEventListener("keydown", event => {
 
 
 mountViews();
+
+mountDashboard();
 
 mount(el("attachmentList"), () => Attachments({ state, onRemove: removeAttachment }), ["attachments"]);
 

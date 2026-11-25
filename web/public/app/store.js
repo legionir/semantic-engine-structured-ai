@@ -104,6 +104,7 @@ export function createState() {
         /* historyState */
         session: null,
         sessions: [],
+        history: null,
 
         /* settingsState */
         settings: [],
@@ -124,7 +125,7 @@ export function createState() {
         currentProjectId: null,
         taskScopeMode: "current",
         taskProjectIds: [],
-        dashboard: { open: false, projectId: null, tab: "overview" },
+        dashboard: { open: false, projectId: null, tab: "overview", request: 0, loading: false, data: null, saving: false, saveMessage: "" },
         multiQueue: [],
         attachments: [],
         attachmentError: null,
