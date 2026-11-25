@@ -29,6 +29,7 @@ import { LogRows, LogTypeOptions, logViews, logCountText, describeEvent } from "
 import { Discussion } from "./discussion-view.js";
 import { createApprovals } from "./approval-state.js";
 import { Attachments } from "./composer-view.js";
+import { McpBody, createMcpState, mcpSubtitle, connectBody } from "./mcp-view.js";
 import { SettingsBody, isLlmSetting, isModelSetting, modelCatalogConfigChanged } from "./settings-view.js";
 
 const el = id => document.getElementById(id);
@@ -219,430 +220,202 @@ async function openHistory() {
 /* ------------------------------------------------------------------ mcp */
 
 /*
-| The servers this runtime can reach, and the tools they offer. A server
-| is either connected, refused, or switched off, and the panel says
-| which without making the operator read a log to find out.
+| Every MCP action reports its outcome: a refused toggle or removal is
+| shown on its row, a failed connect in the form, a failed save under the
+| editor. The list only changes when the server says it did.
 */
 
-function mcpStateLabel(server) {
+async function mcpRequest(url, options = {}) {
 
-    if (!server.enabled) {
-        return "off";
+    let response;
+
+    try {
+        response = await fetch(url, options);
+    } catch (error) {
+        return { ok: false, error: error.message || "network error" };
     }
 
-    return {
-        ready: "connected",
-        idle: "not contacted yet",
-        connecting: "connecting",
-        failed: "unreachable",
-        closed: "closed"
-    }[server.state] || server.state;
+    const payload = await response.json().catch(() => ({}));
+
+    return response.ok
+        ? { ok: true, payload }
+        : { ok: false, error: payload.error || `request failed (${response.status})` };
 }
 
 
-function mcpServerRow(server, refresh) {
+async function refreshMcp(force = false) {
 
-    const row = node("div", `mcp-server ${server.enabled ? server.state : "off"}`);
+    const result = await mcpRequest(`/api/mcp${force ? "?refresh=1" : ""}`);
 
-    const head = node("div", "mcp-head");
-
-    head.append(
-        node("span", "name", server.name),
-        node("span", "chip", server.transport),
-        node("span", `state ${server.enabled ? server.state : "off"}`, mcpStateLabel(server))
-    );
-
-    if (server.builtin) {
-        head.appendChild(node("span", "chip", "built-in"));
+    if (!result.ok || !result.payload || typeof result.payload !== "object") {
+        return false;
     }
 
-    row.appendChild(head);
-
-    const facts = [];
-
-    if (server.server && server.server.name) {
-        facts.push(`${server.server.name} ${server.server.version || ""}`.trim());
-    }
-
-    if (server.connection && server.connection.url) {
-        facts.push(server.connection.url);
-    }
-
-    if (server.connection && server.connection.command) {
-        facts.push(
-            [server.connection.command, ...(server.connection.args || [])].join(" ")
-        );
-    }
-
-    facts.push(`${server.tool_count} tool${server.tool_count === 1 ? "" : "s"}`);
-
-    if (server.stats && server.stats.calls) {
-        facts.push(`${server.stats.calls} call${server.stats.calls === 1 ? "" : "s"}`);
-    }
-
-    row.appendChild(node("div", "facts", facts.join(" · ")));
-
-    if (server.error) {
-        row.appendChild(node("div", "mcp-error", server.error));
-    }
-
-    const actions = node("div", "mcp-actions");
-
-    actions.append(
-        Modal.button(
-            server.enabled ? "Disable" : "Enable",
-            "ghost",
-            async () => {
-
-                await fetch(
-                    `/api/mcp/${encodeURIComponent(server.name)}/enabled`,
-                    {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ enabled: !server.enabled })
-                    }
-                );
-
-                refresh();
-            }
-        ),
-        Modal.button(
-            "Remove",
-            "ghost danger",
-            async () => {
-
-                await fetch(
-                    `/api/mcp/${encodeURIComponent(server.name)}`,
-                    { method: "DELETE" }
-                );
-
-                refresh();
-            }
-        )
-    );
-
-    row.appendChild(actions);
-
-    return row;
-}
-
-
-function mcpAddForm(refresh) {
-
-    const form = node("div", "mcp-add");
-
-    form.appendChild(node("h3", null, "Connect a server"));
-
-    const fields = {};
-
-    const field = (key, label, placeholder) => {
-
-        const wrapper = node("label", "mcp-field");
-
-        wrapper.appendChild(node("span", "label", label));
-
-        const input = node("input");
-
-        input.type = "text";
-        input.placeholder = placeholder || "";
-
-        wrapper.appendChild(input);
-
-        fields[key] = input;
-
-        form.appendChild(wrapper);
-
-        return input;
+    state.mcp.payload = {
+        ...result.payload,
+        servers: Array.isArray(result.payload.servers) ? result.payload.servers : []
     };
 
-    const transportWrapper = node("label", "mcp-field");
+    state.mcpModal?.setSubtitle(mcpSubtitle(state.mcp.payload));
+    touch("mcp");
 
-    transportWrapper.appendChild(node("span", "label", "transport"));
-
-    const transport = node("select");
-
-    for (const value of ["stdio", "http", "sse", "websocket"]) {
-
-        const option = node("option", null, value);
-
-        option.value = value;
-
-        transport.appendChild(option);
-    }
-
-    transportWrapper.appendChild(transport);
-
-    form.appendChild(transportWrapper);
-
-    field("name", "name", "github");
-    field("command", "command", "npx (stdio only)");
-    field("command_args", "arguments", "-y @modelcontextprotocol/server-github");
-    field("url", "url", "https://host/mcp (http, sse, websocket)");
-    field("token", "token", "bearer token, optional");
-
-    // env field for stdio transport
-    const envWrapper = node("label", "mcp-field");
-    envWrapper.appendChild(node("span", "label", "env (JSON or KEY=VALUE lines)"));
-    const envInput = node("textarea");
-    envInput.placeholder = '{"GITHUB_TOKEN":"${env:GITHUB_TOKEN}"} or\\nGITHUB_TOKEN=ghp_xxx\\nNODE_ENV=production';
-    envInput.rows = 3;
-    envInput.style.width = "100%";
-    envInput.style.resize = "vertical";
-    envInput.style.fontFamily = "monospace";
-    envWrapper.appendChild(envInput);
-    fields.env = envInput;
-    form.appendChild(envWrapper);
-
-    const message = node("p", "mcp-message");
-
-    form.appendChild(message);
-
-    /*
-    | A stdio server wants a command, a remote one wants a url, and
-    | showing both at once is how an operator fills in the wrong one.
-    */
-
-    const applyTransport = () => {
-
-        const local = transport.value === "stdio";
-
-        fields.command.parentElement.hidden = !local;
-        fields.command_args.parentElement.hidden = !local;
-        fields.env.parentElement.hidden = !local;
-        fields.url.parentElement.hidden = local;
-        fields.token.parentElement.hidden = local;
-    };
-
-    transport.addEventListener("change", applyTransport);
-
-    applyTransport();
-
-    function parseEnvInput(raw) {
-        const trimmed = raw.trim();
-        if (!trimmed) return undefined;
-        // Try JSON first
-        try {
-            const parsed = JSON.parse(trimmed);
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-                return parsed;
-            }
-        } catch {
-            // fall through to KEY=VALUE parser
-        }
-        // Parse KEY=VALUE lines
-        const env = {};
-        const lines = trimmed.split(/\n/);
-        for (const line of lines) {
-            const l = line.trim();
-            if (!l || l.startsWith("#")) continue;
-            const eq = l.indexOf("=");
-            if (eq === -1) continue;
-            const k = l.slice(0, eq).trim();
-            const v = l.slice(eq + 1).trim();
-            if (k) env[k] = v;
-        }
-        return Object.keys(env).length ? env : undefined;
-    }
-
-    form.appendChild(
-        Modal.row(
-            Modal.button("Connect", "", async () => {
-
-                message.textContent = "connecting…";
-
-                const body = {
-                    name: fields.name.value.trim(),
-                    transport: transport.value,
-                    command: fields.command.value.trim() || undefined,
-                    args:
-                        fields.command_args.value.trim()
-                            ? fields.command_args.value.trim().split(/\s+/)
-                            : undefined,
-                    command_args:
-                        fields.command_args.value.trim()
-                            ? fields.command_args.value.trim().split(/\s+/)
-                            : undefined,
-                    url: fields.url.value.trim() || undefined,
-                    token: fields.token.value.trim() || undefined,
-                    env: parseEnvInput(fields.env.value)
-                };
-
-                const response =
-                    await fetch("/api/mcp", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify(body)
-                    });
-
-                const payload =
-                    await response.json();
-
-                if (!response.ok) {
-
-                    message.textContent = payload.error;
-
-                    return;
-                }
-
-                message.textContent = "";
-
-                for (const input of Object.values(fields)) {
-                    input.value = "";
-                }
-
-                refresh();
-            })
-        )
-    );
-
-    return form;
+    return true;
 }
 
 
-function mcpServersBody(payload, refresh) {
+async function loadMcpConfig() {
 
-    const container = node("div", "mcp");
+    const mcp = state.mcp;
+    const result = await mcpRequest("/api/mcp/config");
 
-    if (!payload.enabled) {
+    mcp.configNotice = "";
 
-        container.appendChild(
-            node(
-                "p",
-                "empty",
-                "MCP is switched off. Turn MCP_ENABLED on in Settings to reach external servers."
-            )
-        );
-
-        return container;
+    if (result.ok) {
+        mcp.configText = result.payload.text || '{\n  "mcpServers": {}\n}\n';
+        mcp.configPath = result.payload.path || "";
+        mcp.configError = null;
+        mcp.configKey++;
+    } else {
+        mcp.configError = result.error;
     }
 
-    if (payload.servers.length === 0) {
-
-        container.appendChild(
-            node(
-                "p",
-                "empty",
-                "No MCP servers are configured. Add one below, or declare it in .mcp.json in the workspace."
-            )
-        );
-    }
-
-    for (const server of payload.servers) {
-
-        container.appendChild(mcpServerRow(server, refresh));
-    }
-
-    for (const problem of payload.problems || []) {
-
-        container.appendChild(node("div", "mcp-error", problem));
-    }
-
-    if (payload.tools && payload.tools.length > 0) {
-
-        const list = node("div", "mcp-tools");
-
-        list.appendChild(
-            node("h3", null, `${payload.tools.length} tool${payload.tools.length === 1 ? "" : "s"} available`)
-        );
-
-        for (const tool of payload.tools) {
-
-            const item = node("div", "mcp-tool");
-
-            item.append(
-                node("span", "name", tool.name),
-                node("span", "facts", tool.description || "")
-            );
-
-            list.appendChild(item);
-        }
-
-        container.appendChild(list);
-    }
-
-    container.appendChild(mcpAddForm(refresh));
-
-    return container;
+    touch("mcp");
 }
 
 
-function mcpBody(payload, refresh) {
+async function mcpServerAction(server, url, options) {
 
-    const container = node("div", "mcp-workspace");
-    const tabs = node("div", "mcp-tabs");
-    const serversTab = node("button", "mcp-tab", "Servers");
-    const jsonTab = node("button", "mcp-tab", "Raw JSON");
-    serversTab.type = jsonTab.type = "button";
-    tabs.append(serversTab, jsonTab);
+    const mcp = state.mcp;
 
-    const serversPane = node("div", "mcp-tab-panel");
-    serversPane.appendChild(mcpServersBody(payload, refresh));
+    mcp.pending.add(server.name);
+    mcp.rowErrors.delete(server.name);
+    touch("mcp");
 
-    const jsonPane = node("section", "mcp-tab-panel mcp-json-editor");
-    const pathLine = node("p", "muted mcp-config-path", state.mcpConfigPath
-        ? `Workspace config: ${state.mcpConfigPath}`
-        : "Workspace MCP config (.agent/mcp.json)");
-    const textarea = node("textarea", "mcp-raw-json");
-    textarea.value = state.mcpConfigText || '{\n  "mcpServers": {}\n}\n';
-    textarea.spellcheck = false;
-    textarea.setAttribute("aria-label", "Raw MCP server JSON");
-    const message = node("p", "mcp-config-message", state.mcpConfigError || state.mcpConfigNotice || "");
-    if (state.mcpConfigError) message.classList.add("bad");
+    const result = await mcpRequest(url, options);
 
-    const save = Modal.button("Save JSON", "", async () => {
+    mcp.pending.delete(server.name);
+
+    if (!result.ok) {
+        mcp.rowErrors.set(server.name, result.error);
+    }
+
+    touch("mcp");
+
+    if (result.ok) {
+        await refreshMcp(false);
+    }
+}
+
+
+const mcpActions = {
+
+    tab(tab) {
+        state.mcp.tab = tab;
+        touch("mcp");
+    },
+
+    transport(value) {
+        state.mcp.transport = value;
+        touch("mcp");
+    },
+
+    toggle(server) {
+        return mcpServerAction(server, `/api/mcp/${encodeURIComponent(server.name)}/enabled`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ enabled: !server.enabled })
+        });
+    },
+
+    remove(server) {
+        return mcpServerAction(server, `/api/mcp/${encodeURIComponent(server.name)}`, { method: "DELETE" });
+    },
+
+    async connect(form) {
+
+        const mcp = state.mcp;
+        const body = connectBody(form);
+
+        if (!body.name) {
+            mcp.formMessage = "a server needs a name";
+            touch("mcp");
+            return;
+        }
+
+        mcp.connecting = true;
+        mcp.formMessage = "connecting…";
+        touch("mcp");
+
+        const result = await mcpRequest("/api/mcp", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        mcp.connecting = false;
+
+        if (!result.ok) {
+            mcp.formMessage = result.error;
+            touch("mcp");
+            return;
+        }
+
+        /* a new form: the fields are empty again, the transport stays */
+        mcp.formMessage = "";
+        mcp.formKey++;
+        touch("mcp");
+
+        await refreshMcp(false);
+    },
+
+    async save(text) {
+
+        const mcp = state.mcp;
         let parsed;
+
         try {
-            parsed = JSON.parse(textarea.value);
+            parsed = JSON.parse(text);
         } catch (error) {
-            message.className = "mcp-config-message bad";
-            message.textContent = `Invalid JSON: ${error.message}`;
+            mcp.configError = `Invalid JSON: ${error.message}`;
+            touch("mcp");
             return;
         }
+
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-            message.className = "mcp-config-message bad";
-            message.textContent = "MCP config must be a JSON object.";
+            mcp.configError = "MCP config must be a JSON object.";
+            touch("mcp");
             return;
         }
 
-        save.disabled = true;
-        message.className = "mcp-config-message";
-        message.textContent = "Saving…";
-        try {
-            const response = await fetch("/api/mcp/config", {
-                method: "PUT",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ text: textarea.value })
-            });
-            const result = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(result.error || `Save failed (${response.status})`);
-            state.mcpConfigText = textarea.value;
-            state.mcpConfigPath = result.path || state.mcpConfigPath;
-            state.mcpConfigError = null;
-            state.mcpConfigNotice = "Saved. MCP servers are reloading.";
-            await refresh(false);
-        } catch (error) {
-            message.className = "mcp-config-message bad";
-            message.textContent = error.message;
-        } finally {
-            save.disabled = false;
+        mcp.saving = true;
+        mcp.configError = null;
+        mcp.configNotice = "Saving…";
+        touch("mcp");
+
+        const result = await mcpRequest("/api/mcp/config", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ text })
+        });
+
+        mcp.saving = false;
+
+        if (!result.ok) {
+            mcp.configError = result.error;
+            mcp.configNotice = "";
+            touch("mcp");
+            return;
         }
-    });
-    jsonPane.append(pathLine, textarea, save, message);
 
-    const selectTab = tab => {
-        state.mcpTab = tab;
-        serversPane.hidden = tab !== "servers";
-        jsonPane.hidden = tab !== "json";
-        serversTab.classList.toggle("active", tab === "servers");
-        jsonTab.classList.toggle("active", tab === "json");
-    };
-    serversTab.addEventListener("click", () => selectTab("servers"));
-    jsonTab.addEventListener("click", () => selectTab("json"));
+        /* the buffer already holds this text; it is not remounted */
+        mcp.configText = text;
+        mcp.configPath = result.payload.path || mcp.configPath;
+        mcp.configNotice = "Saved. MCP servers are reloading.";
+        touch("mcp");
 
-    container.append(tabs, serversPane, jsonPane);
-    selectTab(state.mcpTab || "servers");
-    return container;
-}
+        await refreshMcp(false);
+    }
+};
 
 
 async function openMcp() {
@@ -657,81 +430,39 @@ async function openMcp() {
 
     state.mcpOpening = true;
 
-    const load = async (refresh) => {
+    /* each opening starts from what the server says now */
+    state.mcp = { ...createMcpState(), tab: state.mcp?.tab || "servers" };
 
-        const response =
-            await fetch(`/api/mcp${refresh ? "?refresh=1" : ""}`);
+    const loaded = await refreshMcp(false);
 
-        return response.json();
-    };
-
-    let payload;
-
-    try {
-        payload = await load(false);
-    } catch {
+    if (!loaded) {
         state.mcpOpening = false;
+        notifyError("The MCP servers could not be loaded.");
         return null;
     }
 
-    state.mcpConfigError = null;
-    state.mcpConfigNotice = "";
-    try {
-        const response = await fetch("/api/mcp/config");
-        const config = await response.json();
-        if (!response.ok) throw new Error(config.error || `Config load failed (${response.status})`);
-        state.mcpConfigText = config.text || '{\n  "mcpServers": {}\n}\n';
-        state.mcpConfigPath = config.path || "";
-    } catch (error) {
-        state.mcpConfigError = error.message;
-    }
+    await loadMcpConfig();
 
-    const refresh = async (force) => {
+    let dispose = () => {};
 
-        let next;
-
-        try {
-            next = await load(force);
-        } catch {
-            return null;
+    const handle = Modal.open({
+        title: "MCP servers",
+        subtitle: mcpSubtitle(state.mcp.payload),
+        size: "medium",
+        footer: Modal.row(
+            Modal.button("Reconnect all", "ghost", () => refreshMcp(true)),
+            Modal.button("Close", "", () => handle.close("footer"))
+        ),
+        onClose: () => {
+            dispose();
+            state.mcpModal = null;
         }
-
-        if (state.mcpModal && state.mcpModal.isOpen()) {
-
-            state.mcpModal.setSubtitle(
-                `${next.tool_count} tool(s) from ${next.servers.filter(server => server.state === "ready").length} connected server(s)`
-            );
-            state.mcpModal.setBody(mcpBody(next, () => refresh(false)));
-        }
-    };
-
-    const handle =
-        Modal.open({
-            title: "MCP servers",
-
-            subtitle:
-                `${payload.tool_count} tool(s) from ${
-                    payload.servers.filter(server => server.state === "ready").length
-                } connected server(s)`,
-
-            size: "medium",
-
-            body: mcpBody(payload, () => refresh(false)),
-
-            footer:
-                Modal.row(
-                    Modal.button("Reconnect all", "ghost", () => refresh(true)),
-                    Modal.button("Close", "", () => handle.close("footer"))
-                ),
-
-            onClose: () => {
-
-                state.mcpModal = null;
-            }
-        });
+    });
 
     state.mcpModal = handle;
     state.mcpOpening = false;
+
+    dispose = mountInModal(handle, () => McpBody({ mcp: state.mcp, actions: mcpActions }), ["mcp"]);
 
     return handle;
 }

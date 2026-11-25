@@ -111,6 +111,9 @@ export function createState() {
         modelCatalog: null,
         modelCatalogResult: null,
 
+        /* mcpState: filled by mcp-view's createMcpState when the modal opens */
+        mcp: null,
+
         /* discussion */
         discussion: null,
         discussionMode: false,

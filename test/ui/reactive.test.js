@@ -334,6 +334,48 @@ async function behaviour() {
         assert.equal(byId("policyHome").children.length, 2, "the policy controls go home");
     });
 
+    await test("an MCP refresh keeps a half-filled form, and every action reports its outcome", async () => {
+        const server = enabled => ({
+            name: "github", transport: "stdio", enabled, state: enabled ? "ready" : "idle",
+            tool_count: 1, connection: { command: "npx" }
+        });
+        console_.reply("/api/mcp", { enabled: true, servers: [server(true)], tools: [], problems: [], tool_count: 1 });
+        console_.reply("/api/mcp/config", { text: "{}", path: "/w/.agent/mcp.json" });
+        byId("mcpButton").dispatch("click");
+        await settle();
+        const dialog = backdrops().at(-1);
+        const name = dialog.querySelector('.mcp-add input[name="name"]');
+        name.value = "half typed";
+
+        console_.reply("/api/mcp/github/enabled", { __status: 409, body: { error: "server is busy" } });
+        [...dialog.querySelectorAll(".mcp-actions button")].find(button => button.textContent.trim() === "Disable").dispatch("click");
+        await settle();
+        assert.match(dialog.querySelector(".mcp-server").textContent, /server is busy/, "a refused toggle says why");
+        assert.match(dialog.querySelector(".mcp-server .state").textContent, /connected/, "and the list is unchanged");
+
+        console_.reply("/api/mcp/github/enabled", { enabled: false });
+        console_.reply("/api/mcp", { enabled: true, servers: [server(false)], tools: [], problems: [], tool_count: 0 });
+        [...dialog.querySelectorAll(".mcp-actions button")].find(button => button.textContent.trim() === "Disable").dispatch("click");
+        await settle();
+        assert.match(dialog.querySelector(".mcp-server .state").textContent, /off/, "an accepted toggle redraws the row");
+        assert.doesNotMatch(dialog.querySelector(".mcp-server").textContent, /server is busy/);
+        assert.equal(dialog.querySelector('.mcp-add input[name="name"]'), name, "the form is not rebuilt");
+        assert.equal(name.value, "half typed");
+
+        console_.reply("/api/mcp", { __status: 400, body: { error: "name already taken" } });
+        dialog.querySelector(".mcp-add").dispatch("submit");
+        await settle();
+        assert.match(dialog.querySelector(".mcp-message").textContent, /name already taken/);
+        assert.equal(name.value, "half typed", "a failed connect keeps what was entered");
+
+        console_.reply("/api/mcp", { enabled: true, servers: [server(false)], tools: [], problems: [], tool_count: 0 });
+        dialog.querySelector(".mcp-add").dispatch("submit");
+        await settle();
+        assert.equal(dialog.querySelector('.mcp-add input[name="name"]').value, "", "a connected server clears the form");
+        assert.ok(console_.posted.some(item => item.url === "/api/mcp" && item.method === "POST" && item.body.name === "half typed"));
+        Modal.closeTop("test");
+    });
+
     await test("a discussion that cannot start says why", async () => {
         console_.reply("/api/discussion/personas", { personas: [{ id: "security", name: "Security Agent" }] });
         console_.send({ type: "run:status", status: "idle" });
