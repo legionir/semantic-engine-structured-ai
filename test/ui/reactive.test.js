@@ -63,6 +63,10 @@ async function staticChecks() {
     console.log("\nsafe markdown");
 
     await require("./scenarios/markdown")({ test });
+
+    console.log("\nlogin gate");
+
+    await require("./scenarios/auth-gate")({ test });
 }
 
 
