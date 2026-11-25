@@ -82,6 +82,10 @@ async function main() {
 
     await require("./scenarios/projects")({ test, Modal, backdrops, card, console_ });
 
+    console.log("\nprojects manager and attachments");
+
+    await require("./scenarios/project-manager")({ test, backdrops, console_ });
+
     const failed =
         results.filter(item => !item.ok);
 
