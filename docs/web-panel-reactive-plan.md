@@ -5,7 +5,7 @@
 > - ماژول‌ها به‌جای پوشه‌های `lib/`، `ui/` و `views/` در همان `web/public/app/` قرار گرفتند. فایل‌های موجود بازنویسی شدند، هم برای اینکه فهرست ماژول‌های `modules.test.js` حفظ شود و هم طبق قاعدهٔ «ویرایش فایل موجود» در CLAUDE.md.
 > - `console.js` حذف نشد. این فایل اکنون یک کنترلر ESM است که رویدادها و درخواست‌ها را به store و viewها وصل می‌کند. `rollout.contract` وجودش را لازم می‌داند.
 > - به‌جای تست تفاضلی با legacy، ۴۵ سناریوی `ui.test.js` روی DOM واقعی و تست‌های رفتاری و ایستای `reactive.test.js` معیار قرار گرفتند. fixture نسخهٔ legacy حذف شد.
-> - stubهای `api.js`، `event-stream.js`، `task-runner.js`، `modal-manager.js` و `project-state.js` هنوز از طریق `StructuredAIApp` در دسترس‌اند و حذف نشدند.
+> - stubهای قدیمی `api.js`، `event-stream.js`، `task-runner.js`، `modal-manager.js` و `project-state.js` حذف شدند. `rollout.contract` جلوی برگشتنشان را می‌گیرد.
 > - Projects manager و فرم New Project هنوز به‌صورت imperative ساخته می‌شوند، ولی خطاهای آن‌ها گزارش می‌شود.
 > - کارایی: replay یک snapshot با ۵۰۰ رویداد روی happy-dom حدود ۲۴۰ms طول می‌کشد، در برابر حدود ۶۰۰۰ms در نسخهٔ legacy. خود reduce حدود ۲ms است و بقیه هزینهٔ DOM شبیه‌سازی‌شده است. سقف تست ۱۵۰۰ms گذاشته شد تا CI ناپایدار نشود.
 

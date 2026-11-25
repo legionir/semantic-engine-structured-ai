@@ -60,11 +60,11 @@ function idsDeclaredTextually(text) {
 
 async function main() {
   const required = [
-    "main.js", "store.js", "api.js", "event-stream.js", "task-runner.js",
+    "main.js", "store.js", "console.js",
     "chat.js", "execution-view.js", "event-view.js", "settings-view.js",
-    "mcp-view.js", "history-view.js", "plan-view.js", "modal-manager.js",
+    "mcp-view.js", "history-view.js", "plan-view.js",
     "markdown.js", "direction.js", "dom.js", "formatters.js",
-    "project-state.js", "project-view.js", "runtime-state.js", "approval-state.js",
+    "project-view.js", "runtime-state.js", "approval-state.js",
     "execution-model.js", "conversation-model.js", "discussion-model.js",
     "discussion-view.js", "composer-view.js"
   ];
@@ -85,7 +85,7 @@ async function main() {
 
   await test("main.js imports the explicit domain graph and canonical renderer", () => {
     const main = source("main.js");
-    required.filter(name => name !== "main.js")
+    required.filter(name => name !== "main.js" && name !== "console.js")
       .forEach(name => assert.match(main, new RegExp(`(?:\\./|\\.\\./).*${name.replace(".", "\\.")}`), name));
     assert.match(main, /import "\.\/console\.js"/);
     assert.match(main, /globalThis\.StructuredAIApp/);
@@ -183,20 +183,22 @@ async function main() {
       .forEach(value => assert.match(reducer, new RegExp(value.replace(":", "\\:")), value));
   });
 
-  await test("api.js uses relative URLs and encodes project routes", () => {
-    const api = source("api.js");
-    assert.doesNotMatch(api, /https?:\/\/(?:127\.0\.0\.1|localhost)/i);
-    assert.match(api, /encodeURIComponent\(projectId\)/);
-    assert.match(api, /\/api\/projects\//);
-    assert.match(api, /export async function request/);
+  await test("the legacy stubs are gone and nothing imports them", () => {
+    const stubs = ["api.js", "event-stream.js", "task-runner.js", "modal-manager.js", "project-state.js"];
+    stubs.forEach(name => assert.equal(fs.existsSync(path.join(APP_DIR, name)), false, `${name} remains`));
+    for (const file of fs.readdirSync(APP_DIR).filter(name => name.endsWith(".js"))) {
+      const text = source(file);
+      stubs.forEach(name => assert.doesNotMatch(text, new RegExp(`["'/]${name.replace(".", "\\.")}["']`), `${file} imports ${name}`));
+    }
   });
 
-  await test("event-stream.js keeps project filtering in the URL", () => {
-    const stream = source("event-stream.js");
-    assert.match(stream, /\/api\/events\?projectId=/);
-    assert.match(stream, /encodeURIComponent\(projectId\)/);
-    assert.match(stream, /source\.onmessage/);
-    assert.doesNotMatch(stream, /fetch\("(?:https?:)?\/\//);
+  await test("the console talks to the server over relative URLs and encodes path segments", () => {
+    const console_ = source("console.js");
+    assert.doesNotMatch(console_, /https?:\/\/(?:127\.0\.0\.1|localhost)/i);
+    assert.doesNotMatch(console_, /fetch\(\s*[`"'](?:https?:)?\/\//);
+    assert.match(console_, /`\/api\/projects\/\$\{encodeURIComponent\(/);
+    assert.match(console_, /`\/api\/events\?projectId=\$\{encodeURIComponent\(/);
+    assert.match(console_, /new EventSource\(/);
   });
 
   await test("security-sensitive frontend helpers keep safe markdown and direction boundaries", () => {
@@ -206,7 +208,6 @@ async function main() {
     assert.doesNotMatch(markdown, /innerHTML|dangerouslySetInnerHTML|insertAdjacentHTML/);
     assert.match(source("direction.js"), /RTL_TEXT/);
     assert.match(source("dom.js"), /textContent/);
-    assert.doesNotMatch(source("api.js"), /innerHTML/);
   });
 
   const failed = results.filter(item => !item.ok);

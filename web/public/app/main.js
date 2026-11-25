@@ -8,8 +8,6 @@
  */
 
 import * as store from "./store.js";
-import * as api from "./api.js";
-import * as eventStream from "./event-stream.js";
 import * as runtimeState from "./runtime-state.js";
 import * as executionModel from "./execution-model.js";
 import * as conversationModel from "./conversation-model.js";
@@ -24,10 +22,7 @@ import * as composer from "./composer-view.js";
 import * as settings from "./settings-view.js";
 import * as mcp from "./mcp-view.js";
 import * as history from "./history-view.js";
-import * as project from "./project-state.js";
 import * as projectView from "./project-view.js";
-import * as taskRunner from "./task-runner.js";
-import * as modal from "./modal-manager.js";
 import * as dom from "./dom.js";
 import * as formatters from "./formatters.js";
 import * as direction from "./direction.js";
@@ -39,8 +34,6 @@ import "./console.js";
 
 export const modules = Object.freeze({
   store,
-  api,
-  eventStream,
   runtimeState,
   executionModel,
   conversationModel,
@@ -55,10 +48,7 @@ export const modules = Object.freeze({
   settings,
   mcp,
   history,
-  project,
   projectView,
-  taskRunner,
-  modal,
   dom,
   formatters,
   direction,
