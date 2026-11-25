@@ -61,6 +61,8 @@ const state = {
     openExecutionKeys: new Set(),
     projects: [],
     currentProjectId: null,
+    taskScopeMode: "current",
+    taskProjectIds: [],
     activeProjectId: null,
     stopPending: false,
     dashboard: { open: false, projectId: null, tab: "overview" },
@@ -5378,11 +5380,6 @@ function navigateConsole(projectId, tab, replace) {
             history[method]({ projectId, tab }, "", path);
         }
 
-        const location = browserLocation();
-        const url = new URL(path, "http://localhost");
-        location.pathname = url.pathname;
-        location.search = url.search;
-
     } catch {
         /* tests */
     }
@@ -5395,88 +5392,31 @@ function projectById(id) {
 }
 
 
-function fillProjectSelect(select, selectedId) {
+function renderProjectSwitcher() {
 
-    if (!select) {
+    const label = el("activeProjectName");
+    if (!label) return;
+
+    if (state.taskScopeMode === "multiple" && state.taskProjectIds.length > 1) {
+        label.textContent = `Multiple projects · ${state.taskProjectIds.length}`;
         return;
     }
 
-    select.innerHTML = "";
-
-    const empty = node("option", null, "workspace default");
-    empty.value = "";
-    select.appendChild(empty);
-
-    for (const project of state.projects) {
-
-        const option = node("option", null, project.name || project.id);
-        option.value = project.id;
-        select.appendChild(option);
-    }
-
-    select.value = selectedId || "";
-}
-
-
-function renderProjectSwitcher() {
-
-    fillProjectSelect(el("projectSwitcher"), state.currentProjectId);
-    fillProjectSelect(el("taskScopeProject"), el("taskScopeProject")?.value);
-
-    const list = el("taskScopeList");
-
-    if (list) {
-
-        list.innerHTML = "";
-
-        for (const project of state.projects) {
-
-            const label = node("label");
-            const box = node("input", "scope-box");
-            box.type = "checkbox";
-            box.value = project.id;
-            label.append(box, node("span", null, project.name || project.id));
-            list.appendChild(label);
-        }
-    }
-
-
+    const project = projectById(state.currentProjectId);
+    label.textContent = project ? (project.name || project.id) : "Default Workspace";
 }
 
 
 function selectedTaskScope() {
 
-    const radios =
-        typeof document !== "undefined" &&
-        typeof document.getElementsByName === "function"
-            ? document.getElementsByName("taskScope")
-            : [];
-
-    for (const radio of radios) {
-
-        if (radio.checked) {
-            return radio.value;
-        }
-    }
-
-    return "current";
+    return state.taskScopeMode || "current";
 }
 
 
 function selectedTaskProjectIds() {
 
-    const scope = selectedTaskScope();
-
-    if (scope === "specific") {
-
-        const value = el("taskScopeProject")?.value;
-        return value ? [value] : [];
-    }
-
-    if (scope === "multiple") {
-
-        const boxes = el("taskScopeList")?.querySelectorAll(".scope-box") || [];
-        return [...boxes].filter(box => box.checked).map(box => box.value);
+    if (selectedTaskScope() === "multiple") {
+        return [...state.taskProjectIds];
     }
 
     return state.currentProjectId ? [state.currentProjectId] : [];
@@ -5660,12 +5600,6 @@ function setCurrentProject(projectId, options = {}) {
     state.currentProjectId = next;
     writeStoredProjectId(next);
     renderProjectSwitcher();
-
-    const switcher = el("projectSwitcher");
-
-    if (switcher) {
-        switcher.value = next || "";
-    }
 
     if (!options.skipNavigate) {
         navigateConsole(next, options.dashboard ? (options.tab || "overview") : null, options.replace);
@@ -6035,6 +5969,8 @@ function openProjectDashboard(projectId, tab) {
         return;
     }
 
+    state.taskScopeMode = "current";
+    state.taskProjectIds = [];
     state.dashboard = { open: true, projectId, tab: tab || "overview" };
     setCurrentProject(projectId, { skipNavigate: true, keepDashboard: true });
     navigateConsole(projectId, state.dashboard.tab, false);
@@ -6095,6 +6031,8 @@ function openNewProjectModal() {
                 }
 
                 await loadProjects();
+                state.taskScopeMode = "current";
+                state.taskProjectIds = [];
                 setCurrentProject(payload.project.id);
                 handle.close("created");
             }),
@@ -6109,6 +6047,25 @@ async function openProjectsManager() {
     await loadProjects();
 
     const body = node("div", "sessions");
+    const workspaceRow = node("label", "project-choice-row");
+    const workspaceChoice = node("input");
+    workspaceChoice.type = "radio";
+    workspaceChoice.name = "projectSelectionMode";
+    workspaceChoice.value = "workspace";
+    workspaceChoice.checked = state.taskScopeMode !== "multiple" && !state.currentProjectId;
+    workspaceRow.append(
+        workspaceChoice,
+        node("span", "name", "Default Workspace"),
+        node("span", "muted", "Use the default workspace")
+    );
+    body.appendChild(workspaceRow);
+
+    const selectedIds = new Set(
+        state.taskScopeMode === "multiple"
+            ? state.taskProjectIds
+            : state.currentProjectId ? [state.currentProjectId] : []
+    );
+    const projectBoxes = [];
 
     if (state.projects.length === 0) {
         body.appendChild(node("p", "empty", "No registered projects yet."));
@@ -6117,45 +6074,71 @@ async function openProjectsManager() {
     for (const project of state.projects) {
 
         const row = node("div", "project-row");
+        const checkbox = node("input", "project-picker-checkbox");
+        checkbox.type = "checkbox";
+        checkbox.value = project.id;
+        checkbox.checked = selectedIds.has(project.id);
+        checkbox.setAttribute("aria-label", `Select ${project.name || project.id}`);
+        checkbox.addEventListener("change", () => {
+            if (checkbox.checked) workspaceChoice.checked = false;
+            updateConfirmState();
+        });
+        projectBoxes.push(checkbox);
+
+        row.appendChild(checkbox);
         row.appendChild(node("span", "name", project.name || project.id));
         row.appendChild(node("span", "muted", project.rootPath || ""));
-
         row.appendChild(
             Modal.button("Open", "ghost", () => {
-
                 handle.close("open");
                 openProjectDashboard(project.id, "overview");
             })
         );
-
-        row.appendChild(
-            Modal.button("Use", "ghost", () => {
-
-                handle.close("use");
-                setCurrentProject(project.id);
-            })
-        );
-
         row.appendChild(
             Modal.button("Delete", "ghost danger", async () => {
-
                 await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
                     method: "DELETE"
                 });
-
                 await loadProjects();
-
-                if (state.currentProjectId === project.id) {
-                    setCurrentProject(null);
-                }
-
+                if (state.currentProjectId === project.id) setCurrentProject(null);
                 handle.close("deleted");
                 openProjectsManager();
             })
         );
-
         body.appendChild(row);
     }
+
+    const confirmButton = Modal.button("Confirm", "", () => {
+        const ids = projectBoxes.filter(box => box.checked).map(box => box.value);
+        if (workspaceChoice.checked || ids.length === 0) {
+            state.taskScopeMode = "current";
+            state.taskProjectIds = [];
+            setCurrentProject(null);
+        } else if (ids.length === 1) {
+            state.taskScopeMode = "current";
+            state.taskProjectIds = [];
+            setCurrentProject(ids[0]);
+        } else {
+            state.taskScopeMode = "multiple";
+            state.taskProjectIds = ids;
+            setCurrentProject(ids[0]);
+        }
+        renderProjectSwitcher();
+        handle.close("confirmed");
+    });
+
+    function updateConfirmState() {
+        confirmButton.disabled = !workspaceChoice.checked && !projectBoxes.some(box => box.checked);
+    }
+
+    workspaceChoice.addEventListener("change", () => {
+        if (workspaceChoice.checked) projectBoxes.forEach(box => { box.checked = false; });
+        updateConfirmState();
+    });
+    projectBoxes.forEach(box => {
+        if (box.checked) workspaceChoice.checked = false;
+    });
+    updateConfirmState();
 
     const handle = Modal.open({
         title: "Projects",
@@ -6164,26 +6147,17 @@ async function openProjectsManager() {
         body,
         footer: Modal.row(
             Modal.button("New Project", "ghost", () => {
-
                 handle.close("new");
                 openNewProjectModal();
             }),
-            Modal.button("Close", "", () => handle.close("footer"))
+            confirmButton,
+            Modal.button("Close", "ghost", () => handle.close("footer"))
         )
     });
 }
 
 
 function bindProjectControls() {
-
-    const switcher = el("projectSwitcher");
-
-    if (switcher) {
-
-        switcher.addEventListener("change", event => {
-            setCurrentProject(event.target.value || null);
-        });
-    }
 
     el("newProjectButton")?.addEventListener("click", openNewProjectModal);
     el("projectsButton")?.addEventListener("click", openProjectsManager);
@@ -6205,38 +6179,6 @@ function bindProjectControls() {
         closeProjectDashboard();
         navigateConsole(state.currentProjectId, null, false);
     });
-
-    const scope = el("taskScope");
-    const scopeMode = el("taskScopeMode");
-
-    const syncScopeControls = mode => {
-        const selectedMode = mode || selectedTaskScope();
-        const radios =
-            typeof document.getElementsByName === "function"
-                ? document.getElementsByName("taskScope")
-                : [];
-
-        for (const radio of radios) {
-            radio.checked = radio.value === selectedMode;
-        }
-
-        if (scopeMode) scopeMode.value = selectedMode;
-        const specific = el("taskScopeProject");
-        const list = el("taskScopeList");
-        if (specific) specific.hidden = selectedMode !== "specific";
-        if (list) list.hidden = selectedMode !== "multiple";
-    };
-
-    if (scopeMode) {
-        scopeMode.addEventListener("change", event => {
-            syncScopeControls(event.target.value);
-        });
-    }
-
-    if (scope) {
-        scope.addEventListener("change", () => syncScopeControls());
-        syncScopeControls();
-    }
 
     try {
 
@@ -6264,6 +6206,11 @@ function applyProjectRoute(fromPop) {
     const stored = readStoredProjectId();
     const projectId = route.projectId || stored || null;
 
+    if (projectId) {
+        state.taskScopeMode = "current";
+        state.taskProjectIds = [];
+    }
+
     if (route.dashboard && projectId) {
 
         setCurrentProject(projectId, {
@@ -6284,7 +6231,7 @@ function applyProjectRoute(fromPop) {
 
 async function initProjects() {
 
-    if (!el("projectSwitcher") && !el("projectDashboard")) {
+    if (!el("activeProjectName") && !el("projectDashboard")) {
         return;
     }
 

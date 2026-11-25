@@ -949,7 +949,7 @@ async function main() {
 
             const html = await home.text();
 
-            assert.match(html, /projectSwitcher/);
+            assert.match(html, /activeProjectName/);
 
             /* 2–3. A and B are registered and selectable */
             const listed = await request(baseUrl, "GET", "/api/projects", { token });
@@ -1015,7 +1015,7 @@ async function main() {
 
             assert.equal(dashA.status, 200);
             assert.equal(dashB.status, 200);
-            assert.match(await dashA.text(), /projectSwitcher/);
+            assert.match(await dashA.text(), /activeProjectName/);
 
             const healthA = await request(
                 baseUrl, "GET", "/api/projects/prj-a/health", { token }

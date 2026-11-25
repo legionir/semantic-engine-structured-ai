@@ -508,6 +508,12 @@ function backdrops() {
 }
 
 
+function descendants(root) {
+
+    return [root, ...root.children.flatMap(descendants)];
+}
+
+
 async function main() {
 
     console.log("modal service");
@@ -2369,7 +2375,7 @@ async function main() {
         assert.equal(run.textContent, "Run task");
     });
 
-    await test("the project switcher lists projects and remembers the selection", async () => {
+    await test("Projects modal selects multiple projects and updates the active label", async () => {
 
         console_.reply("/api/projects", {
             projects: [
@@ -2379,24 +2385,46 @@ async function main() {
         });
 
         document.getElementById("projectsButton").dispatch("click");
-
         await tick();
 
-        if (Modal.openCount > 0) {
-            Modal.closeTop("test");
-        }
-
-        const switcher = document.getElementById("projectSwitcher");
-        switcher.value = "prj-a";
-        switcher.dispatch("change");
-
+        let items = descendants(backdrops().at(-1));
+        let boxes = items.filter(item => item.classList.contains("project-picker-checkbox"));
+        let confirm = items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
+        assert.equal(boxes.length, 2);
+        assert.equal(confirm.disabled, false, "Default Workspace is selected by default");
+        boxes.forEach(box => { box.checked = true; box.dispatch("change"); });
+        confirm.dispatch("click");
         await tick();
 
         assert.equal(console_.storage["structured-ai.currentProjectId"], "prj-a");
         assert.match(console_.sourceUrl(), /projectId=prj-a/);
+        assert.match(document.getElementById("activeProjectName").textContent, /Multiple projects/);
+
+        document.getElementById("projectsButton").dispatch("click");
+        await tick();
+        items = descendants(backdrops().at(-1));
+        const workspaceChoice = items.find(item => item.type === "radio" && item.name === "projectSelectionMode");
+        confirm = items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm");
+        assert.ok(workspaceChoice, "Default Workspace is an explicit choice");
+        workspaceChoice.checked = true;
+        workspaceChoice.dispatch("change");
+        confirm.dispatch("click");
+        await tick();
+        assert.equal(document.getElementById("activeProjectName").textContent, "Default Workspace");
     });
 
     await test("a scoped task posts to the project route", async () => {
+
+        document.getElementById("projectsButton").dispatch("click");
+        await tick();
+        let items = descendants(backdrops().at(-1));
+        const boxes = items.filter(item => item.classList.contains("project-picker-checkbox"));
+        boxes.forEach((box, index) => {
+            box.checked = index === 0;
+            box.dispatch("change");
+        });
+        items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm").dispatch("click");
+        await tick();
 
         document.getElementById("task").value = "run tests";
         document.getElementById("taskForm").dispatch("submit");
@@ -2413,25 +2441,12 @@ async function main() {
         );
     });
 
-    await test("footer scope select keeps specific and multiple project choices in sync", () => {
+    await test("the project bar has no right-side inputs and shows the active project", () => {
 
-        const mode = document.getElementById("taskScopeMode");
-        const project = document.getElementById("taskScopeProject");
-        const list = document.getElementById("taskScopeList");
-
-        mode.value = "specific";
-        mode.dispatch("change");
-        assert.equal(project.hidden, false);
-        assert.equal(list.hidden, true);
-        assert.equal(
-            [...document.getElementsByName("taskScope")].find(radio => radio.checked).value,
-            "specific"
-        );
-
-        mode.value = "multiple";
-        mode.dispatch("change");
-        assert.equal(project.hidden, true);
-        assert.equal(list.hidden, false);
+        assert.equal(document.getElementById("projectSwitcher"), null);
+        assert.equal(document.getElementById("taskScopeMode"), null);
+        assert.equal(document.getElementById("taskScopeList"), null);
+        assert.match(document.getElementById("activeProjectName").textContent, /Alpha/);
     });
 
 
@@ -2474,7 +2489,6 @@ async function main() {
         await tick();
 
         global.history.pushState({}, "", "/projects/prj-a?tab=overview");
-        document.getElementById("projectSwitcher").value = "prj-a";
 
         /* open dashboard via the Projects modal Open button recreation */
         const dash = document.getElementById("projectDashboard");
@@ -2513,18 +2527,14 @@ async function main() {
         console_.send({ type: "run:status", status: "idle" });
         await tick();
 
-        for (const radio of document.getElementsByName("taskScope")) {
-            radio.checked = radio.value === "multiple";
-        }
-
-        const boxes =
-            document.getElementById("taskScopeList").querySelectorAll("scope-box");
-
+        document.getElementById("projectsButton").dispatch("click");
+        await tick();
+        const items = descendants(backdrops().at(-1));
+        const boxes = items.filter(item => item.classList.contains("project-picker-checkbox"));
         assert.ok(boxes.length >= 2, "both registered projects should be listed");
-
-        for (const box of boxes) {
-            box.checked = true;
-        }
+        boxes.forEach(box => { box.checked = true; box.dispatch("change"); });
+        items.find(item => item.tagName === "BUTTON" && item.textContent === "Confirm").dispatch("click");
+        await tick();
 
         const before =
             console_.posted.filter(item =>
@@ -2584,7 +2594,7 @@ function loadConsole() {
         "statusDot", "statusText", "workspace", "model", "turns",
         "runTimer", "execSummary", "tree", "executionArchive", "chat", "sessionTitle",
         "plan", "planSummary", "log", "approvalsCount", "discussionOptions",
-        "taskScope", "taskScopeList", "projectDashboard", "dashboardTitle",
+        "projectDashboard", "dashboardTitle",
         "dashboardSubtitle", "dashboardTabs", "dashboardBody", "consoleMain",
         "planPanel", "consoleHeader", "consoleMenu", "autoSwitchStatus", "attachmentList"
     ]) {
@@ -2634,26 +2644,11 @@ function loadConsole() {
     continueChip.appendChild(document.register("autoContinue", "input"));
     policyHome.appendChild(continueChip);
 
-    document.register("projectSwitcher", "select");
-    document.register("taskScopeMode", "select");
-    document.register("taskScopeProject", "select");
+    document.register("activeProjectName", "div");
     document.register("gatewayHealth", "a");
     document.register("taskForm", "form");
 
     document.getElementById("projectDashboard").hidden = true;
-
-    for (const value of ["current", "specific", "multiple"]) {
-
-        const radio = document.createElement("input");
-
-        radio.type = "radio";
-        radio.name = "taskScope";
-        radio.setAttribute("name", "taskScope");
-        radio.value = value;
-        radio.checked = value === "current";
-
-        document.getElementById("taskScope").appendChild(radio);
-    }
 
     const store = {};
 

@@ -150,34 +150,16 @@ input:focus-visible, textarea:focus-visible, summary:focus-visible,
   background: rgba(10, 14, 23, .7);
 }
 .project-actions { display: flex; align-items: center; gap: 8px; }
-.project-selectors { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.project-bar .chip.select { display: flex; align-items: center; gap: 6px; }
-.project-bar select { max-width: 300px; }
-.footer-scope { position: relative; display: flex; align-items: center; gap: 7px; }
-.footer-scope > select,
-.project-bar #projectSwitcher {
+.project-active-label {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 6px 9px;
-  background: var(--panel-2);
-  color: var(--text);
-}
-.footer-divider { width: 1px; height: 26px; flex: 0 0 1px; background: rgba(148, 163, 204, .24); }
-.scope-radios { display: none !important; }
-.task-scope-list {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 0;
-  z-index: 36;
-  max-height: 42vh;
-  overflow: auto;
-  min-width: 230px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  box-shadow: 0 14px 32px rgba(3, 7, 18, .45);
+  max-width: min(48vw, 440px);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .chip {
@@ -372,30 +354,7 @@ main {
   }
   .project-bar .chip.button::before { width: 17px; height: 17px; margin: 0; flex: 0 0 17px; }
   .project-bar .chip.button span { display: none; }
-  .project-selectors { gap: 5px; min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
-  .footer-scope { gap: 4px; }
-  .footer-scope > select { max-width: 27vw; padding: 6px 5px; font-size: 10px; }
-  .footer-scope #taskScopeProject { max-width: 24vw; }
-  .footer-divider { height: 24px; margin: 0 1px; }
-  .project-bar #projectSwitcher { max-width: 27vw; padding: 6px 4px; font-size: 10px; }
-  .project-bar .chip.select {
-    max-width: 60vw;
-    justify-content: flex-end;
-    gap: 0;
-    border: 0;
-    padding: 3px 0 3px 8px;
-    background: transparent;
-    color: var(--text);
-    font-size: 10px;
-  }
-  .project-label { display: none; }
-  .project-bar select {
-    max-width: 60vw;
-    color: var(--text);
-    font-size: 11px;
-    text-align: right;
-  }
-  .project-bar select option { text-align: right; }
+  .project-active-label { flex: 1 1 auto; max-width: 58vw; font-size: 11px; }
 
   .modal-backdrop { align-items: flex-end; padding: 0; }
   .modal {
@@ -1430,54 +1389,6 @@ button.ghost.active {
 
 /* ------------------------------------------------------- multi-project UI */
 
-.task-scope {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  align-items: center;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.task-scope label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  padding: 3px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--panel-2);
-  transition: border-color .18s var(--ease), color .18s var(--ease);
-}
-.task-scope label:hover { border-color: var(--accent); color: var(--text); }
-
-.task-scope input[type="radio"] { accent-color: var(--accent); }
-
-.task-scope select {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  padding: 2px 6px;
-}
-
-.task-scope-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-}
-
-.task-scope-list label {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 3px 8px;
-}
-.task-scope-list input[type="checkbox"] { accent-color: var(--accent); }
-
 .chip.health-ok { color: var(--ok); border-color: rgba(62, 207, 154, .55); background: rgba(62, 207, 154, .09); }
 .chip.health-degraded { color: var(--warn); border-color: rgba(240, 184, 76, .55); background: rgba(240, 184, 76, .09); }
 .chip.health-down { color: var(--bad); border-color: rgba(255, 107, 125, .55); background: rgba(255, 107, 125, .09); }
@@ -1571,8 +1482,22 @@ button.ghost.active {
   border-bottom: 1px solid rgba(255, 255, 255, .04);
 }
 .project-row:hover { background: rgba(255, 255, 255, .025); }
-
+.project-row input[type="checkbox"],
+.project-choice-row input[type="radio"] { accent-color: var(--accent); flex: 0 0 auto; }
 .project-row .name { flex: 1; font-weight: 600; }
+.project-choice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.project-choice-row .name { flex: 1; font-weight: 650; }
+.project-choice-row .muted { font-size: 12px; }
+.modal-foot button:disabled { opacity: .45; cursor: not-allowed; }
 
 .labeled-run {
   border-left: 3px solid var(--accent);
@@ -1759,11 +1684,6 @@ button.ghost.active {
     width: 100%;
   }
 }
-
-.project-bar .footer-scope { margin-top: 0; flex-wrap: nowrap; }
-.project-bar .footer-scope > select { max-width: 28vw; padding: 6px 5px; font-size: 10px; }
-.project-bar .footer-scope #taskScopeProject { max-width: 24vw; }
-.project-bar .task-scope-list { width: max-content; max-width: min(80vw, 360px); }
 
 /* ------------------------------------------------- chat standardisation v2
    One rhythm for every row the renderers produce: same size, same line

@@ -142,29 +142,7 @@
     <button type="button" id="projectsButton" class="chip button" title="manage projects" aria-label="Projects"><span>Projects</span></button>
     <button type="button" id="newProjectButton" class="chip button" title="register a project" aria-label="New project"><span>New Project</span></button>
   </div>
-  <div class="project-selectors">
-    <div id="taskScope" class="task-scope footer-scope">
-      <select id="taskScopeMode" aria-label="Task project scope" title="Task scope">
-        <option value="current">Current project</option>
-        <option value="specific">Specific project</option>
-        <option value="multiple">Multiple projects</option>
-      </select>
-      <div class="scope-radios" hidden>
-        <label><input type="radio" name="taskScope" value="current" checked>Current project</label>
-        <label><input type="radio" name="taskScope" value="specific">Specific project</label>
-        <label><input type="radio" name="taskScope" value="multiple">Multiple projects</label>
-      </div>
-      <select id="taskScopeProject" aria-label="Specific project" title="Specific project" hidden></select>
-      <div id="taskScopeList" class="task-scope-list" hidden></div>
-    </div>
-    <span class="footer-divider" aria-hidden="true"></span>
-    <label class="chip select" id="projectSwitcherWrap" title="active project">
-      <span class="project-label">project</span>
-      <select id="projectSwitcher">
-        <option value="">workspace default</option>
-      </select>
-    </label>
-  </div>
+  <div class="project-active-label" id="activeProjectName" aria-live="polite">Default Workspace</div>
 </footer>
 
 <section id="consoleLogin" class="console-login" hidden>
