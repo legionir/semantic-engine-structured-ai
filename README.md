@@ -58,6 +58,7 @@ repository-root/
 │   ├── interactive/            # REPL input/output و approval prompt
 │   ├── mcp/                    # manager، connection، config، protocol و transports
 │   ├── persistence/            # atomic JSON، JSONL، repositories و data roots
+│   │   └── archive/            # store، classifier، roll-up و search زیر ArchiveRepository
 │   ├── policy/                 # policy matching، approval و errors
 │   ├── projects/               # registry، context، migration و workspace profile
 │   ├── prompt/                 # main/sub-agent/runtime/request builders
@@ -72,6 +73,7 @@ repository-root/
 │   │   └── console/            # state و helperهای سرور کنسول (factory)
 │   └── public/                 # app/ native browser modules
 ├── test/                       # domain-based unit, contract و e2e suites
+│   └── */*-cases/              # گروه‌های تست بزرگ؛ runner آن‌ها را به ترتیب با ctx اجرا می‌کند
 ```
 
 در rollout نهایی Phase 30 هیچ facade انتخاب‌کننده‌ای برای حالت legacy وجود
