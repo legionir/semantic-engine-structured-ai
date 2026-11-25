@@ -29,6 +29,7 @@ import { LogRows, LogTypeOptions, logViews, logCountText, describeEvent } from "
 import { Discussion } from "./discussion-view.js";
 import { createApprovals } from "./approval-state.js";
 import { Attachments } from "./composer-view.js";
+import { SettingsBody, isLlmSetting, isModelSetting, modelCatalogConfigChanged } from "./settings-view.js";
 
 const el = id => document.getElementById(id);
 
@@ -1507,25 +1508,16 @@ function bindRunControls() {
 
 /* -------------------------------------------------------------- settings */
 
-const GROUP_ORDER = [
-    "endpoint",
-    "endpoint.main", "endpoint.l1", "endpoint.l2", "endpoint.l3", "endpoint.summary",
-    "memory", "archive", "journal", "context", "budget", "delegation", "planning", "hooks",
-    "persistence", "policy", "tools", "mcp", "output", "workspace"
-];
-
-
 /*
 | The runtime policy controls (approval mode, auto continue) live in the
 | Settings modal rather than the header, but their ids must stay on the
 | page for the change handlers to find them. While the modal is closed
-| they rest in a hidden home; opening Settings borrows the labels the
-| same way the execution and events cards are borrowed, and closing it
-| returns them.
+| they rest in a hidden home; opening Settings moves the two labels into
+| the body's .policy-row, and closing it returns them.
 |
 | Modal.close() detaches the backdrop before onClose runs, so an id
 | lookup at return time would find nothing — the borrowed nodes are
-| captured by reference here, exactly like the card homes do.
+| captured by reference here.
 */
 
 const policyBorrow = { home: null, chips: [] };
@@ -1534,35 +1526,21 @@ const policyBorrow = { home: null, chips: [] };
 function borrowPolicyControls(container) {
 
     const home = el("policyHome");
+    const row = container && container.querySelector(".policy-row");
 
-    if (!home || !container) {
-        return;
+    if (!home || !row) {
+        return "";
     }
 
-    const chips = [];
+    const chips =
+        ["approvalMode", "autoContinue"]
+            .map(id => el(id)?.parentElement)
+            .filter(chip => chip && chip.tagName === "LABEL");
 
-    for (const id of ["approvalMode", "autoContinue"]) {
-
-        const control = el(id);
-        const chip = control && control.parentElement;
-
-        if (chip && chip.tagName === "LABEL") {
-            chips.push(chip);
-        }
-    }
-
-    /*
-    | Nothing moved, nothing to return: the borrow state stays as it was
-    | rather than recording a home with no chips, which would make the next
-    | open believe a borrow is already in flight.
-    */
+    /* nothing moved, nothing to return */
     if (chips.length === 0) {
-        return;
+        return "";
     }
-
-    const row = node("div", "policy-row");
-
-    row.appendChild(node("span", "policy-title", "runtime policy"));
 
     for (const chip of chips) {
         row.appendChild(chip);
@@ -1571,13 +1549,7 @@ function borrowPolicyControls(container) {
     policyBorrow.home = home;
     policyBorrow.chips = chips;
 
-    const policySection = container.querySelector(".runtime-policy-settings");
-
-    if (policySection) {
-        policySection.appendChild(row);
-    } else {
-        container.appendChild(row);
-    }
+    return row.textContent;
 }
 
 
@@ -1590,10 +1562,7 @@ function returnPolicyControls() {
     }
 
     for (const chip of policyBorrow.chips) {
-
-        if (chip.parentNode !== home) {
-            home.appendChild(chip);
-        }
+        if (chip.parentNode !== home) home.appendChild(chip);
     }
 
     policyBorrow.home = null;
@@ -1601,24 +1570,8 @@ function returnPolicyControls() {
 }
 
 
-function isLlmSetting(setting) {
-
-    return setting.group.startsWith("endpoint") ||
-        ["AGENT_PROVIDER", "AGENT_PROVIDER_REGION", "AGENT_MODEL", "AGENT_BASE_URL", "AGENT_API_KEY", "AGENT_PROXY_URL", "AZURE_OPENAI_API_VERSION", "BEDROCK_ACCESS_KEY_ID", "BEDROCK_SECRET_ACCESS_KEY", "BEDROCK_SESSION_TOKEN"].includes(setting.key);
-}
-
-
-function modelCatalogConfigChanged(key) {
-
-    return [
-        "AGENT_PROVIDER", "AGENT_PROVIDER_REGION", "AGENT_BASE_URL", "AGENT_API_KEY",
-        "AZURE_OPENAI_API_VERSION", "BEDROCK_ACCESS_KEY_ID", "BEDROCK_SECRET_ACCESS_KEY",
-        "BEDROCK_SESSION_TOKEN"
-    ].includes(key) ||
-        /^ENDPOINT_(MAIN|L1|L2|L3|SUMMARY)_(BASE_URL|API_KEY)$/.test(key);
-}
-
-
+/* one aggregate request per catalog; a failure is kept for 10 s so a
+   redraw does not repeat the same upstream fan-out */
 function loadModelCatalog() {
 
     if (state.modelCatalog && state.modelCatalog.expiresAt > Date.now()) {
@@ -1626,6 +1579,7 @@ function loadModelCatalog() {
     }
 
     const entry = { expiresAt: Infinity, promise: null };
+
     entry.promise = fetch("/api/models")
         .then(async response => {
             const payload = await response.json().catch(() => ({}));
@@ -1635,307 +1589,159 @@ function loadModelCatalog() {
             if (!Array.isArray(payload.models) || !payload.byRole) {
                 throw new Error(payload.error || "Model endpoint returned an invalid catalog.");
             }
-            entry.expiresAt = Infinity;
             return payload;
         })
+        .then(catalog => {
+            if (state.modelCatalog === entry) {
+                state.modelCatalogResult = { catalog };
+                touch("settings");
+            }
+            return catalog;
+        })
         .catch(error => {
-            /* A failed catalog stays memoized briefly too, so a settings body
-               rebuild does not repeat the same upstream fan-out. */
             entry.expiresAt = Date.now() + 10_000;
+            if (state.modelCatalog === entry) {
+                state.modelCatalogResult = { error: error.message };
+                touch("settings");
+            }
             throw error;
         });
 
+    entry.promise.catch(() => {});
     state.modelCatalog = entry;
+
     return entry.promise;
 }
 
 
-function settingsBody(list) {
+function forgetModelCatalog() {
 
-    const container = node("div", "settings");
-
-    const search = node("input", "filter");
-
-    search.type = "search";
-    search.placeholder = "filter settings and policy";
-
-    container.appendChild(search);
-
-    const groups = new Map();
-
-    for (const setting of list) {
-
-        if (!groups.has(setting.group)) {
-            groups.set(setting.group, []);
-        }
-
-        groups.get(setting.group).push(setting);
-    }
-
-    const ordered =
-        [...groups.keys()].sort(
-            (a, b) =>
-                GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b)
-        );
-
-    const policySection = node("section", "runtime-policy-settings");
-    policySection.appendChild(node("h3", null, "runtime policy"));
-    container.appendChild(policySection);
-
-    search.placeholder = "filter settings and policy";
-
-    for (const name of ordered) {
-
-        const section = node("div", "group");
-
-        section.appendChild(node("h3", null, name));
-
-        for (const setting of groups.get(name)) {
-
-            section.appendChild(settingRow(setting));
-        }
-
-        container.appendChild(section);
-    }
-
-    search.addEventListener("input", () => {
-
-        const term =
-            search.value.trim().toLowerCase();
-
-        const policySection = container.querySelector(".runtime-policy-settings");
-        const policyRow = policySection && policySection.querySelector(".policy-row");
-        if (policyRow) {
-            policyRow.hidden = term !== "" && !policyRow.textContent.toLowerCase().includes(term);
-            policySection.hidden = policyRow.hidden;
-        }
-
-        for (const section of container.querySelectorAll(".group")) {
-
-            let visible = 0;
-
-            for (const row of section.querySelectorAll(".setting")) {
-
-                const match =
-                    term === "" ||
-                    row.dataset.key.toLowerCase().includes(term) ||
-                    (row.dataset.hint || "").includes(term);
-
-                row.hidden = !match;
-
-                visible += match ? 1 : 0;
-            }
-
-            section.hidden = visible === 0;
-        }
-    });
-
-    /*
-    | The caller decides when to borrow: settingsBody() is a pure builder, so
-    | a failed Modal.open() cannot strand the policy controls in a body that
-    | never reached the page.
-    */
-    return container;
+    state.modelCatalog = null;
+    state.modelCatalogResult = null;
 }
 
 
-function settingRow(setting) {
+function markSetting(key, kind, message = null) {
 
-    const row = node("div", "setting");
-
-    row.dataset.key = setting.key;
-    row.dataset.hint = (setting.description || "").toLowerCase();
-
-    const label = node("div");
-
-    const hint = node(
-        "div",
-        "hint",
-        `${setting.description}${
-            setting.fixed
-                ? " (fixed at startup)"
-                : ""
-        }`
-    );
-
-    label.append(node("div", "label", setting.key), hint);
-
-    let input;
-
-    if (setting.type === "boolean" || setting.type === "enum" || /(?:^|_)MODEL$/.test(setting.key)) {
-
-        input = node("select");
-
-        const isModel = /(?:^|_)MODEL$/.test(setting.key);
-        const values =
-            isModel
-                ? [setting.value || ""]
-                : setting.type === "boolean"
-                    ? ["true", "false"]
-                    : setting.values;
-
-        for (const option of values) {
-            const element = node("option", null, option || "Choose a model");
-            element.value = option;
-            input.appendChild(element);
-        }
-
-        input.value = String(setting.value || "");
-
-        if (isModel) {
-            const role = setting.key.match(/^ENDPOINT_(MAIN|L1|L2|L3|SUMMARY)_MODEL$/)?.[1] || "MAIN";
-            loadModelCatalog()
-                .then(catalog => {
-                    const models = catalog.byRole[role] || catalog.models;
-                    for (const modelName of models) {
-                        if ([...input.children].some(option => option.value === modelName)) continue;
-                        const option = node("option", null, modelName);
-                        option.value = modelName;
-                        input.appendChild(option);
-                    }
-                    input.value = String(setting.value || "");
-                    if (catalog.errors && catalog.errors[role]) {
-                        hint.textContent = `Using the main model list: ${catalog.errors[role]}`;
-                        row.classList.add("model-list-unavailable");
-                    }
-                })
-                .catch(error => {
-                    input.title = error.message;
-                    hint.textContent = `Could not load models: ${error.message}`;
-                    row.classList.add("model-list-unavailable");
-                });
-        }
-
+    if (kind) {
+        state.settingsStatus.set(key, { kind, message });
     } else {
-
-        input = node("input");
-
-        input.type =
-            setting.secret
-                ? "password"
-                : setting.type === "number"
-                    ? "number"
-                    : "text";
-
-        if (setting.secret && setting.value) {
-            input.placeholder = "Configured — enter a replacement";
-        }
-
-        if (setting.min !== undefined) {
-            input.min = setting.min;
-        }
-
-        if (setting.max !== undefined) {
-            input.max = setting.max;
-        }
-
-        input.value =
-            setting.secret || setting.value === null
-                ? ""
-                : setting.value;
+        state.settingsStatus.delete(key);
     }
 
-    input.disabled = setting.fixed;
+    touch("settings");
+}
 
-    input.addEventListener("change", async () => {
 
-        const response =
-            await fetch("/api/settings", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    key: setting.key,
-                    value: input.value
-                })
-            });
+async function saveSetting(setting, control) {
 
-        const payload =
-            await response.json();
+    const value = control.value;
+    let failure = null;
 
+    try {
+        const response = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ key: setting.key, value })
+        });
         if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            failure = payload.error || `request failed (${response.status})`;
+        }
+    } catch (error) {
+        failure = `not saved: ${error.message || "network error"}`;
+    }
 
-            input.value = setting.secret ? "" : setting.value;
+    if (failure) {
+        /* the field shows the value that is actually in effect again */
+        control.value = setting.secret ? "" : String(setting.value ?? "");
+        markSetting(setting.key, "rejected", failure);
+        return;
+    }
 
-            row.classList.add("rejected");
+    if (setting.secret) control.value = "";
+    if (modelCatalogConfigChanged(setting.key)) forgetModelCatalog();
 
-            row.querySelector(".hint").textContent = payload.error;
+    markSetting(setting.key, "saved");
+    setTimeout(() => {
+        if (state.settingsStatus.get(setting.key)?.kind === "saved") markSetting(setting.key, null);
+    }, 800);
 
+    loadSettings();
+}
+
+
+async function resetSetting(setting) {
+
+    try {
+        const response = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ key: setting.key, reset: true })
+        });
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            markSetting(setting.key, "rejected", payload.error || `request failed (${response.status})`);
             return;
         }
-
-        row.classList.add("saved");
-
-        if (modelCatalogConfigChanged(setting.key)) {
-            state.modelCatalog = null;
-        }
-
-        setTimeout(
-            () => row.classList.remove("saved"),
-            800
-        );
-
-        loadSettings();
-    });
-
-    const source = node("span", `src ${setting.source}`, setting.source);
-
-    source.title =
-        setting.source === "override"
-            ? "changed here, click to restore"
-            : setting.source;
-
-    if (setting.source === "override" && !setting.fixed) {
-
-        source.style.cursor = "pointer";
-
-        source.onclick = async () => {
-
-            await fetch("/api/settings", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    key: setting.key,
-                    reset: true
-                })
-            });
-
-            if (modelCatalogConfigChanged(setting.key)) {
-                state.modelCatalog = null;
-            }
-
-            loadSettings();
-        };
+    } catch (error) {
+        markSetting(setting.key, "rejected", `not restored: ${error.message || "network error"}`);
+        return;
     }
 
-    row.append(label, input, source);
+    if (modelCatalogConfigChanged(setting.key)) forgetModelCatalog();
 
-    return row;
+    markSetting(setting.key, null);
+    loadSettings();
 }
 
 
 async function loadSettings() {
 
-    const response =
-        await fetch("/api/settings");
-
-    const payload =
-        await response.json();
-
-    state.settings = payload.settings;
-
-    if (state.settingsModal && state.settingsModal.isOpen()) {
-
-        const body = settingsBody(state.settings.filter(setting => !isLlmSetting(setting)));
-
-        /* borrow before the swap: setBody() empties the content slot, and the
-           chips resting in the old body would leave the document with it */
-        borrowPolicyControls(body);
-        state.settingsModal.setBody(body);
+    try {
+        const response = await fetch("/api/settings");
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!Array.isArray(payload.settings)) return;
+        state.settings = payload.settings;
+    } catch {
+        /* the modal keeps the list it has; Reload tries again */
+        return;
     }
 
-    if (state.llmSettingsModal && state.llmSettingsModal.isOpen()) {
-        state.llmSettingsModal.setBody(settingsBody(state.settings.filter(isLlmSetting)));
+    touch("settings");
+}
+
+
+/* the body of one settings modal, drawn from the store */
+function mountSettings(handle, kind) {
+
+    const ui = { filter: "", policyText: "" };
+    const llm = kind === "llm";
+
+    const dispose = mountInModal(
+        handle,
+        () => SettingsBody({
+            list: state.settings.filter(setting => isLlmSetting(setting) === llm),
+            ui,
+            status: state.settingsStatus,
+            catalog: state.modelCatalogResult,
+            policy: !llm,
+            policyText: ui.policyText,
+            onFilter: value => { ui.filter = value; touch("settings"); },
+            onSave: saveSetting,
+            onReset: resetSetting
+        }),
+        ["settings"],
+        {},
+        "settings"
+    );
+
+    if (state.settings.some(setting => isLlmSetting(setting) === llm && isModelSetting(setting))) {
+        loadModelCatalog().catch(() => {});
     }
+
+    return { dispose, ui };
 }
 
 
@@ -1945,39 +1751,29 @@ function openSettings() {
         return;
     }
 
-    const body = settingsBody(state.settings.filter(setting => !isLlmSetting(setting)));
+    let view = null;
 
-    state.settingsModal =
-        Modal.open({
-            title: "Settings",
-            subtitle: "applied on next use, no restart",
-            size: "large",
-            body,
+    const handle = Modal.open({
+        title: "Settings",
+        subtitle: "applied on next use, no restart",
+        size: "large",
+        footer: Modal.row(
+            Modal.button("Reload", "ghost", () => loadSettings()),
+            Modal.button("Close", "", () => handle.close("footer"))
+        ),
+        onClose: () => {
+            returnPolicyControls();
+            view?.dispose();
+            state.settingsModal = null;
+        }
+    });
 
-            footer:
-                Modal.row(
-                    Modal.button(
-                        "Reload",
-                        "ghost",
-                        () => loadSettings()
-                    ),
-                    Modal.button(
-                        "Close",
-                        "",
-                        () => state.settingsModal.close("footer")
-                    )
-                ),
-
-            onClose: () => {
-
-                returnPolicyControls();
-                state.settingsModal = null;
-            }
-        });
+    state.settingsModal = handle;
+    view = mountSettings(handle, "general");
 
     /* the modal is on the page now, so the borrowed labels have a live home
        and an onClose that will always put them back */
-    borrowPolicyControls(body);
+    view.ui.policyText = borrowPolicyControls(handle.element);
 
     loadSettings();
 }
@@ -1987,14 +1783,21 @@ function openLlmSettings() {
 
     if (state.llmSettingsModal && state.llmSettingsModal.isOpen()) return;
 
-    const body = settingsBody(state.settings.filter(isLlmSetting));
-    state.llmSettingsModal = Modal.open({
+    let view = null;
+
+    const handle = Modal.open({
         title: "LLM settings",
         subtitle: "Providers, model layers, and proxy",
         size: "large",
-        body,
-        onClose: () => { state.llmSettingsModal = null; }
+        onClose: () => {
+            view?.dispose();
+            state.llmSettingsModal = null;
+        }
     });
+
+    state.llmSettingsModal = handle;
+    view = mountSettings(handle, "llm");
+
     loadSettings();
 }
 

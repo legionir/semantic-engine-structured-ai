@@ -292,6 +292,48 @@ async function behaviour() {
         assert.equal(backdrops().length, 0);
     });
 
+    await test("a settings reload keeps the filter, a value being typed and a rejection", async () => {
+        const settings = [
+            { key: "MAX_ITERATIONS", group: "budget", type: "number", value: 50, source: "default", description: "Iterations before the run stops." },
+            { key: "MAX_DEPTH", group: "delegation", type: "number", value: 3, source: "default", description: "Delegation depth." }
+        ];
+        console_.reply("/api/settings", { settings });
+        byId("settingsButton").dispatch("click");
+        await settle();
+        const dialog = backdrops().at(-1);
+        const filter = dialog.querySelector("input.filter");
+        filter.value = "iteration";
+        filter.dispatch("input");
+        const depthRow = dialog.querySelector('.setting[data-key="MAX_DEPTH"]');
+        assert.equal(depthRow.hidden, true, "the filter hides what does not match");
+
+        const iterations = dialog.querySelector('.setting[data-key="MAX_ITERATIONS"] input');
+        iterations.value = "70";
+
+        console_.reply("/api/settings", { settings: settings.map(item => ({ ...item, description: `${item.description} (reloaded)` })) });
+        console_.send({ type: "settings:changed" });
+        await settle();
+
+        assert.equal(dialog.querySelector("input.filter"), filter, "the filter field is the same element");
+        assert.equal(filter.value, "iteration");
+        assert.equal(dialog.querySelector('.setting[data-key="MAX_DEPTH"]').hidden, true, "and still applies");
+        assert.equal(iterations.isConnected, true);
+        assert.equal(iterations.value, "70", "the value being typed is kept");
+        assert.match(dialog.textContent, /reloaded/, "while the list itself is fresh");
+
+        console_.reply("/api/settings", { __status: 400, body: { error: "must be at most 60" } });
+        iterations.dispatch("change");
+        await settle();
+        const row = dialog.querySelector('.setting[data-key="MAX_ITERATIONS"]');
+        assert.ok(row.classList.contains("rejected"));
+        assert.match(row.textContent, /must be at most 60/);
+        assert.equal(iterations.value, "50", "the value in effect is shown again");
+
+        console_.reply("/api/settings", { settings });
+        Modal.closeTop("test");
+        assert.equal(byId("policyHome").children.length, 2, "the policy controls go home");
+    });
+
     await test("a discussion that cannot start says why", async () => {
         console_.reply("/api/discussion/personas", { personas: [{ id: "security", name: "Security Agent" }] });
         console_.send({ type: "run:status", status: "idle" });

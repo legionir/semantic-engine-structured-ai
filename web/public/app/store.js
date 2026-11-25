@@ -107,7 +107,9 @@ export function createState() {
 
         /* settingsState */
         settings: [],
+        settingsStatus: new Map(),
         modelCatalog: null,
+        modelCatalogResult: null,
 
         /* discussion */
         discussion: null,
