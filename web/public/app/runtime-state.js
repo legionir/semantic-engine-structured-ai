@@ -320,7 +320,7 @@ export function reduce(state, event) {
             state.waiting = null;
             regions.add("run").add("chat");
             /* a multi-project composer run is a sequence of labelled tasks */
-            if (event.status !== "running") effects.push({ type: "drainQueue" });
+            if (event.status !== "running") effects.push({ type: "runSettled", projectId: event.project_id || null });
             break;
 
         case "request:start":

@@ -1211,8 +1211,8 @@ function runEffects(effects) {
 
     for (const effect of effects) {
 
-        if (effect.type === "drainQueue") {
-            drainProjectTaskQueue();
+        if (effect.type === "runSettled") {
+            projectRunSettled(effect.projectId);
         } else if (effect.type === "loadSettings") {
             loadSettings();
         } else if (effect.type === "refreshSession") {
@@ -1253,10 +1253,6 @@ function applySnapshot(snapshot) {
         touch(...REGIONS);
     });
 
-    /* a queued multi-project run continues if the runtime is idle again */
-    if (state.status !== "running" && state.multiQueue.length > 0) {
-        drainProjectTaskQueue();
-    }
 }
 
 
@@ -2301,43 +2297,78 @@ function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = n
 
 
 /*
-| The labelled runs of a multi-project task go one after another. The
-| next one starts when the current one finishes: a run of the project on
-| screen reports that on the event stream (run:status), but the stream is
-| scoped to that project, so a run of any other project is followed by
-| polling its run slot instead. Without that, the queue waited forever for
-| a status it could never receive.
+| The labelled runs of a multi-project task go one after another: the
+| next starts when the current one settles. The queue tracks its own
+| in-flight item rather than the run status on screen, because a snapshot
+| of the project on screen says nothing about a run of another project.
+|
+| The event stream reports the settle when it can see that project (the
+| global stream sees all of them, a project stream only its own). For a
+| run outside the stream, the project's state is polled until it has no
+| active run left. Before this, the queue waited for a status it could
+| never receive and the remaining projects never ran.
 */
+let queueCurrent = null;
 let queueToken = 0;
 
 const QUEUE_POLL_MS = 1500;
 
 
-function watchProjectRun(item, token) {
+function streamSees(projectId) {
+
+    return !state.currentProjectId || state.currentProjectId === projectId;
+}
+
+
+function finishQueueItem(token) {
+
+    if (!queueCurrent || queueCurrent.token !== token) {
+        return;
+    }
+
+    queueCurrent = null;
+    drainProjectTaskQueue();
+}
+
+
+function stopProjectQueue() {
+
+    state.multiQueue = [];
+    queueCurrent = null;
+    queueToken++;
+}
+
+
+/* a run:status that is not "running" arrived on the stream */
+function projectRunSettled(projectId) {
+
+    if (!queueCurrent) {
+        drainProjectTaskQueue();
+        return;
+    }
+
+    if (streamSees(queueCurrent.projectId) && (!projectId || projectId === queueCurrent.projectId)) {
+        finishQueueItem(queueCurrent.token);
+    }
+}
+
+
+function watchProjectRun(item) {
 
     const poll = async () => {
 
-        if (token !== queueToken || state.status !== "running") {
+        if (!queueCurrent || queueCurrent.token !== item.token) {
             return;
         }
 
         try {
 
-            const response = await fetch(`/api/projects/${encodeURIComponent(item.projectId)}/run`);
-            const slot = response.ok ? await response.json() : null;
+            const response = await fetch(`/api/projects/${encodeURIComponent(item.projectId)}/state`);
+            const snapshot = response.ok ? await response.json() : null;
+            const active = Array.isArray(snapshot?.active_runs) ? snapshot.active_runs : null;
 
-            if (token !== queueToken || state.status !== "running") {
-                return;
-            }
-
-            if (
-                slot &&
-                slot.task === item.task &&
-                typeof slot.status === "string" &&
-                !["running", "queued"].includes(slot.status)
-            ) {
-                setStatus(slot.status);
-                drainProjectTaskQueue();
+            if (active && !active.some(run => ["running", "queued"].includes(run.status))) {
+                finishQueueItem(item.token);
                 return;
             }
 
@@ -2354,15 +2385,15 @@ function watchProjectRun(item, token) {
 
 async function drainProjectTaskQueue() {
 
-    if (state.status === "running" || state.multiQueue.length === 0) {
+    if (queueCurrent || state.multiQueue.length === 0) {
         return;
     }
 
-    const next = state.multiQueue.shift();
-    const token = ++queueToken;
+    const next = { ...state.multiQueue.shift(), token: ++queueToken };
 
-    state.activeProjectId = next.projectId;
+    queueCurrent = next;
     setStatus("running");
+    state.activeProjectId = next.projectId;
     labelChatForProject(next.projectId);
 
     let failure = null;
@@ -2390,15 +2421,19 @@ async function drainProjectTaskQueue() {
         failure = `Could not start ${next.projectId}: ${error.message || "network error"}`;
     }
 
-    if (failure) {
-        setStatus("idle");
-        notifyError(failure);
-        drainProjectTaskQueue();
+    if (queueCurrent?.token !== next.token) {
         return;
     }
 
-    if (next.projectId !== state.currentProjectId) {
-        watchProjectRun(next, token);
+    if (failure) {
+        setStatus("idle");
+        notifyError(failure);
+        finishQueueItem(next.token);
+        return;
+    }
+
+    if (!streamSees(next.projectId)) {
+        watchProjectRun(next);
     }
 }
 
@@ -3367,8 +3402,7 @@ el("taskForm").addEventListener("submit", async submitEvent => {
 
 el("cancelButton").addEventListener("click", async () => {
 
-    state.multiQueue = [];
-    queueToken++;
+    stopProjectQueue();
     state.stopPending = true;
     touch("run");
 

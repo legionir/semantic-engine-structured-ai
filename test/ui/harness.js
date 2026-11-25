@@ -305,7 +305,52 @@ function createEventSource() {
 }
 
 
+/*
+| Boots the console the way the browser does: modal.js is a global, then
+| auth-gate's import of app/main.js. ESM modules are cached per process,
+| so each test file boots the console once and shares it.
+*/
+
+async function bootConsole({ Modal, defaults }) {
+
+    const { pathToFileURL } = require("url");
+
+    /* index.html ships the dashboard hidden; the console relies on it */
+    document.getElementById("projectDashboard").hidden = true;
+
+    const { store, storage } = createStorage();
+
+    global.localStorage = storage;
+
+    window.innerWidth = 1280;
+
+    const { fetch, posted, replies } = createFetch(defaults);
+
+    global.fetch = fetch;
+    global.Modal = Modal;
+
+    const { EventSource, box } = createEventSource();
+
+    global.EventSource = EventSource;
+
+    await import(pathToFileURL(path.join(PUBLIC_DIR, "app", "main.js")).href);
+
+    const deliver = event => box.stream.onmessage({ data: JSON.stringify(event) });
+
+    return {
+        posted,
+        storage: store,
+        streams: box.opened,
+        sourceUrl: () => box.url,
+        reply: (url, payload) => replies.set(url, payload),
+        send: deliver,
+        snapshot: value => deliver({ type: "snapshot", snapshot: value })
+    };
+}
+
+
 module.exports = {
+    bootConsole,
     PUBLIC_DIR,
     pageBody,
     createWindow,

@@ -9,7 +9,6 @@
 
 const assert = require("assert");
 const path = require("path");
-const { pathToFileURL } = require("url");
 const harness = require("./harness");
 
 const results = [];
@@ -2196,15 +2195,6 @@ async function main() {
 
 async function loadConsole() {
 
-    /* index.html ships the dashboard hidden; the console relies on it */
-    document.getElementById("projectDashboard").hidden = true;
-
-    const { store, storage } = harness.createStorage();
-
-    global.localStorage = storage;
-
-    window.innerWidth = 1280;
-
     const settings = [
         {
             key: "MAX_ITERATIONS",
@@ -2241,8 +2231,9 @@ async function loadConsole() {
         }
     ];
 
-    const { fetch, posted, replies } =
-        harness.createFetch(url =>
+    return harness.bootConsole({
+        Modal,
+        defaults: url =>
             url === "/api/settings"
                 ? { settings }
                 : url === "/api/state"
@@ -2250,51 +2241,7 @@ async function loadConsole() {
                     : url === "/api/sessions"
                         ? { current: "s-1", sessions: [] }
                         : { call: { name: "fs_read", arguments: {}, result: {} } }
-        );
-
-    global.fetch = fetch;
-
-    /* the browser loads modal.js first, so the harness does the same */
-    global.Modal = Modal;
-
-    const { EventSource, box } = harness.createEventSource();
-
-    global.EventSource = EventSource;
-
-    await import(
-        pathToFileURL(path.join(harness.PUBLIC_DIR, "app", "main.js")).href
-    );
-
-    return {
-        posted,
-
-        storage: store,
-
-        sourceUrl() {
-            return box.url;
-        },
-
-        reply(url, payload) {
-            replies.set(url, payload);
-        },
-
-        send(event) {
-
-            box.stream.onmessage({
-                data: JSON.stringify(event)
-            });
-        },
-
-        snapshot(value) {
-
-            box.stream.onmessage({
-                data: JSON.stringify({
-                    type: "snapshot",
-                    snapshot: value
-                })
-            });
-        }
-    };
+    });
 }
 
 

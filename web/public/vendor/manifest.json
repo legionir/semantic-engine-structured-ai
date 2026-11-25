@@ -1,5 +1,5 @@
 {
-  "description": "Browser ESM dependencies vendored verbatim from the npm registry (source map comment stripped). Regenerate with: node tools/vendor-ui.js",
+  "description": "Browser ESM dependencies vendored verbatim from the npm registry; only the trailing sourceMappingURL comment is removed. To update: download the tarball named in `source`, copy the listed dist file here, strip the sourceMappingURL line, and update `version` and `sha256` (test/ui/reactive.test.js checks the digests).",
   "files": {
     "preact.module.js": {
       "package": "preact",
