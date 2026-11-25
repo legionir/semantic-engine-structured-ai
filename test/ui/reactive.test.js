@@ -364,6 +364,34 @@ async function behaviour() {
         console_.reply("/api/clear", { cleared: true });
     });
 
+    await test("auto-continue goes back when the server refuses the change", async () => {
+        const box = byId("autoContinue");
+        const before = box.checked;
+        console_.reply("POST /api/settings", { __status: 400, body: { error: "fixed at startup" } });
+        box.checked = !before;
+        box.dispatch("change");
+        await settle();
+        assert.equal(box.checked, before);
+        assert.match(errorBubbles().at(-1).textContent, /Auto-continue was not changed: fixed at startup/);
+        console_.reply("POST /api/settings", { ok: true });
+    });
+
+    await test("a new conversation that cannot be started says so in the history modal", async () => {
+        console_.reply("GET /api/sessions", { current: "s-1", sessions: [{ id: "s-1", title: "first", turns: 2 }] });
+        console_.reply("POST /api/sessions", { __status: 503, body: { error: "store unavailable" } });
+        byId("historyButton").dispatch("click");
+        await settle();
+        const dialog = backdrops().at(-1);
+        [...dialog.querySelectorAll("button")].find(button => button.textContent === "New conversation").dispatch("click");
+        await settle();
+        assert.equal(backdrops().length, 1, "the modal stays open");
+        assert.match(dialog.textContent, /store unavailable/);
+        console_.reply("POST /api/sessions", { id: "s-2" });
+        [...dialog.querySelectorAll("button")].find(button => button.textContent === "New conversation").dispatch("click");
+        await settle();
+        assert.equal(backdrops().length, 0, "a started conversation closes it");
+    });
+
     await test("a closed approval modal reopens only for a new request", async () => {
         console_.send({ type: "approval:request", id: "a1", agent: "main_agent", tool: "shell", reason: "r", arguments: {} });
         assert.equal(backdrops().length, 1);
@@ -418,7 +446,7 @@ async function behaviour() {
         assert.equal(iterations.value, "70", "the value being typed is kept");
         assert.match(dialog.textContent, /reloaded/, "while the list itself is fresh");
 
-        console_.reply("/api/settings", { __status: 400, body: { error: "must be at most 60" } });
+        console_.reply("POST /api/settings", { __status: 400, body: { error: "must be at most 60" } });
         iterations.dispatch("change");
         await settle();
         const row = dialog.querySelector('.setting[data-key="MAX_ITERATIONS"]');
@@ -426,6 +454,7 @@ async function behaviour() {
         assert.match(row.textContent, /must be at most 60/);
         assert.equal(iterations.value, "50", "the value in effect is shown again");
 
+        console_.reply("POST /api/settings", { ok: true });
         console_.reply("/api/settings", { settings });
         Modal.closeTop("test");
         assert.equal(byId("policyHome").children.length, 2, "the policy controls go home");
@@ -556,6 +585,49 @@ async function behaviour() {
         byId("dashboardBack").dispatch("click");
         assert.equal(byId("projectDashboard").hidden, true);
         assert.equal(byId("consoleMain").hidden, false);
+    });
+
+    await test("a multi-project run outside the visible stream still finishes and frees the composer", async () => {
+        console_.reply("/api/projects", { projects: [
+            { id: "prj-a", name: "Alpha", rootPath: "/tmp/a" },
+            { id: "prj-b", name: "Beta", rootPath: "/tmp/b" }
+        ] });
+        console_.send({ type: "run:status", status: "idle" });
+
+        byId("projectsButton").dispatch("click");
+        await settle();
+        const manager = backdrops().at(-1);
+        for (const box of manager.querySelectorAll(".project-picker-checkbox")) {
+            box.checked = true;
+            box.dispatch("change");
+        }
+        [...manager.querySelectorAll("button")].find(button => button.textContent === "Confirm").dispatch("click");
+        await settle();
+
+        const tasks = () => console_.posted.filter(item => /\/api\/projects\/[^/]+\/tasks$/.test(item.url));
+        const before = tasks().length;
+        console_.reply("/api/projects/prj-b/state", { active_runs: [{ run_id: "r", status: "running" }] });
+
+        byId("task").value = "audit both";
+        byId("taskForm").dispatch("submit");
+        await settle();
+        assert.equal(tasks().length, before + 1);
+        assert.equal(tasks().at(-1).url, "/api/projects/prj-a/tasks", "the visible project runs first");
+
+        /* the visible stream reports the first run's end */
+        console_.send({ type: "run:status", status: "done", project_id: "prj-a" });
+        await settle();
+        assert.equal(tasks().at(-1).url, "/api/projects/prj-b/tasks", "the next project starts");
+        assert.equal(byId("runButton").disabled, true, "the composer waits for it");
+
+        /* prj-b is not on this stream: its end is learned by polling */
+        await new Promise(resolve => setTimeout(resolve, 1700));
+        assert.equal(byId("runButton").disabled, true, "still running while prj-b has an active run");
+        console_.reply("/api/projects/prj-b/state", { active_runs: [] });
+        await new Promise(resolve => setTimeout(resolve, 1700));
+        await settle();
+        assert.equal(byId("runButton").disabled, false, "the composer is free once prj-b is done");
+        assert.equal(tasks().length, before + 2, "and nothing else was posted");
     });
 }
 

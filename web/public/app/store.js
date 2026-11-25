@@ -88,6 +88,9 @@ export function createState() {
         logType: "",
 
         /* runtimeState */
+        /* how often a queued run on a project outside the visible stream
+           is checked for its end (ms) */
+        queuePollMs: 1500,
         status: "idle",
         startedAt: null,
         stopPending: false,

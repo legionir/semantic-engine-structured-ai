@@ -163,6 +163,15 @@ PORT=8080 npm start
 `--serve <port>` صریح بر `PORT` اولویت دارد؛ در حالت خودکار پیش‌فرض bind روی
 `0.0.0.0` است تا سرویس از بیرون container قابل دسترسی باشد.
 
+**ساختار پنل وب (بدون build):** پنل با ماژول‌های ES بومی مرورگر اجرا می‌شود و
+هیچ مرحلهٔ build ندارد. Preact 10، htm و `@preact/signals-core` به‌صورت فایل در
+`web/public/vendor/` قرار دارند (نسخه و sha256 در `manifest.json`). state در
+`web/public/app/store.js` نگه داشته می‌شود و هر view فقط ناحیه‌هایی از store را که
+می‌خواند دوباره رسم می‌کند؛ reducerها (`runtime-state.js`، `*-model.js`) خالص‌اند
+و viewها (`*-view.js`، `chat.js`) هیچ‌گاه HTML رشته‌ای نمی‌سازند. `console.js`
+اتصال رویدادها و درخواست‌ها را انجام می‌دهد. تست‌های UI روی happy-dom با
+`index.html` واقعی اجرا می‌شوند: `npm run test:ui`.
+
 ---
 
 ### حالت ۴: بحث چندجانبه با پرسوناهای متخصص (Multi-Agent Discussion)

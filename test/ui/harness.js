@@ -246,10 +246,14 @@ function createFetch(defaults) {
 
         posted.push({ url, method: options.method || "GET", body });
 
+        /* "POST /api/x" answers one method; "/api/x" answers any */
+        const method = (options.method || "GET").toUpperCase();
         const reply =
-            replies.has(url)
-                ? replies.get(url)
-                : defaults(url);
+            replies.has(`${method} ${url}`)
+                ? replies.get(`${method} ${url}`)
+                : replies.has(url)
+                    ? replies.get(url)
+                    : defaults(url);
 
         if (reply && reply.__status) {
 

@@ -1713,9 +1713,6 @@ function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = n
 let queueCurrent = null;
 let queueToken = 0;
 
-const QUEUE_POLL_MS = 1500;
-
-
 function streamSees(projectId) {
 
     return !state.currentProjectId || state.currentProjectId === projectId;
@@ -1770,6 +1767,9 @@ function watchProjectRun(item) {
             const active = Array.isArray(snapshot?.active_runs) ? snapshot.active_runs : null;
 
             if (active && !active.some(run => ["running", "queued"].includes(run.status))) {
+                /* no stream will report this run's end; the composer is free
+                   again unless the next queued run takes it */
+                if (state.activeProjectId === item.projectId) setStatus("idle");
                 finishQueueItem(item.token);
                 return;
             }
@@ -1778,10 +1778,10 @@ function watchProjectRun(item) {
             /* a transient failure: the next poll tries again */
         }
 
-        setTimeout(poll, QUEUE_POLL_MS);
+        setTimeout(poll, state.queuePollMs);
     };
 
-    setTimeout(poll, QUEUE_POLL_MS);
+    setTimeout(poll, state.queuePollMs);
 }
 
 
