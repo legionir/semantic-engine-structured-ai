@@ -145,10 +145,18 @@ async function main() {
             ).matchAll(/currentRun\(\)\.([a-z_]+)(?:\[[^\]]*\])?\s*=/g)].map(m => m[1])
         );
 
+        /* the runtime's composition root and its ./host modules */
+        const runtimeSource = [
+            path.join(REPO, "agent", "agent.js"),
+            ...fs.readdirSync(path.join(REPO, "agent", "host"))
+                .filter(name => name.endsWith(".js"))
+                .sort()
+                .map(name => path.join(REPO, "agent", "host", name))
+        ].map(file => fs.readFileSync(file, "utf8")).join("\n");
+
         const reset = new Set(
-            [...fs.readFileSync(
-                path.join(REPO, "agent", "agent.js"), "utf8"
-            ).matchAll(/currentRun\(\)\.([a-z_]+)(?:\[[^\]]*\])?\s*=/g)].map(m => m[1])
+            [...runtimeSource
+                .matchAll(/currentRun\(\)\.([a-z_]+)(?:\[[^\]]*\])?\s*=/g)].map(m => m[1])
         );
 
         /* AgentRun assigns project/id after startRun on purpose; anything
@@ -166,8 +174,8 @@ async function main() {
         /* and the legacy global RUN declares the verdict up front, so a
            fresh process starts with an explicit null rather than undefined */
         const runLiteral = fs
-            .readFileSync(path.join(REPO, "agent", "agent.js"), "utf8")
-            .match(/const RUN = \{[\s\S]*?\n\};/)[0];
+            .readFileSync(path.join(REPO, "agent", "host", "run-lifecycle.js"), "utf8")
+            .match(/const RUN = \{[\s\S]*?\n {4}\};/)[0];
 
         assert.ok(
             runLiteral.includes("hooks_stopped: null"),

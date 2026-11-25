@@ -1189,7 +1189,8 @@ async function main() {
             "agent/config/system_prompt.txt",
             "agent/schema/response_format.json",
             "agent/policy/PolicyEngine.js",
-            "agent/agent.js"
+            "agent/agent.js",
+            "agent/host/run-lifecycle.js"
         ]) {
 
             const decision =

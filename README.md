@@ -54,6 +54,7 @@ repository-root/
 │   ├── discussion/             # discussion engine، service و transcripts
 │   ├── events/                 # event bus، validation، projection، redaction
 │   ├── hooks/                  # hook loading، conditions، rendering، runner
+│   ├── host/                   # factoryهای composition root که agent.js به ترتیب صدا می‌زند
 │   ├── interactive/            # REPL input/output و approval prompt
 │   ├── mcp/                    # manager، connection، config، protocol و transports
 │   ├── persistence/            # atomic JSON، JSONL، repositories و data roots
@@ -67,6 +68,8 @@ repository-root/
 ├── web/
 │   ├── server.js               # canonical WebServer entrypoint
 │   ├── server/                 # router، middleware، controllers، services
+│   │   ├── routes/             # گروه‌های مسیر API که handler به ترتیب صدا می‌زند
+│   │   └── console/            # state و helperهای سرور کنسول (factory)
 │   └── public/                 # app/ native browser modules
 ├── test/                       # domain-based unit, contract و e2e suites
 ```
