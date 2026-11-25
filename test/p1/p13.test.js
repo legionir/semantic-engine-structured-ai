@@ -38,7 +38,7 @@ async function main() {
     try {
         await test("an interactive terminal streams input, handles Ctrl-C, and stays alive", async () => {
 
-            const program = "process.stdin.setEncoding('utf8'); process.stdin.on('data', value => console.log('PTY_INPUT:' + value.trim())); process.on('SIGINT', () => console.log('PTY_INTERRUPT')); setInterval(() => {}, 1000)";
+            const program = "process.stdin.setEncoding('utf8'); process.stdin.on('data', value => console.log('PTY_INPUT:' + value.trim())); process.on('SIGINT', () => console.log('PTY_INTERRUPT')); console.log('PTY_READY'); setInterval(() => {}, 1000)";
 
             started = await run("process_start", {
                 command: `${quote(process.execPath)} -e "${program}"`,
@@ -56,6 +56,21 @@ async function main() {
                 cols: 120,
                 rows: 40
             });
+
+            /* Node 24 can take longer to initialize the child than the
+               process_start grace period. Wait for an explicit child-ready
+               marker so PTY line echo cannot be mistaken for delivered input. */
+            let startupOutput = started.stdout || "";
+            const startupDeadline = Date.now() + 5000;
+            while (!startupOutput.includes("PTY_READY") && Date.now() < startupDeadline) {
+                const readiness = await run("process_read", {
+                    process_id: started.process_id,
+                    wait_ms: Math.min(250, Math.max(1, startupDeadline - Date.now()))
+                });
+                startupOutput += readiness.stdout || "";
+                assert.equal(readiness.status, "running");
+            }
+            assert.match(startupOutput, /PTY_READY/);
 
             const outputStartedAt = Date.now();
             let removeLiveListener;
