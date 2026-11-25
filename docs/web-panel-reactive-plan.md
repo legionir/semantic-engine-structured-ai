@@ -9,6 +9,7 @@
 > - `console.js` به ۱۲ ماژول جدا برای هر بخش (`console-core.js`، `*-controller.js`، `project-*.js`) شکسته شد و فقط اتصال کنترل‌های صفحه در آن ماند. هیچ ماژولی بیش از ۵۰۰ خط ندارد و یک تست جلوی import حلقوی را می‌گیرد.
 > - ردیف پنهان `#rowTwo` حذف شد. Execution و Events دیگر نسخهٔ صفحه ندارند و فقط وقتی مودالشان باز است رسم می‌شوند.
 > - تست‌های UI به گروه‌های جدا در `test/ui/scenarios/` تقسیم شدند (همان ترتیب و همان خروجی)، و `app.css` به یک فایل پایه و پنج فایل در `web/public/styles/` که به همان ترتیب لینک می‌شوند.
+> - سرور: `web/server/ServerImplementation.js` (۳۵۳۶ خط) شکسته شد. مسیرهای API در هفت گروه مرتب در `web/server/routes/` قرار گرفتند و handler آن‌ها را به همان ترتیب صدا می‌زند. state و helperهای closure در factoryهای `web/server/console/` هستند و سرو فایل‌های ایستا، همراه با `MIME`، در `console/static-files.js`. کد منتقل‌شده token به token با نسخهٔ قبل یکی است.
 > - Projects manager و فرم New Project هنوز به‌صورت imperative ساخته می‌شوند، ولی خطاهای آن‌ها گزارش می‌شود.
 > - کارایی: replay یک snapshot با ۵۰۰ رویداد روی happy-dom حدود ۲۴۰ms طول می‌کشد، در برابر حدود ۶۰۰۰ms در نسخهٔ legacy. خود reduce حدود ۲ms است و بقیه هزینهٔ DOM شبیه‌سازی‌شده است. سقف تست ۱۵۰۰ms گذاشته شد تا CI ناپایدار نشود.
 
@@ -120,7 +121,7 @@ auth-gate.js ─► import /app/main.js ─► import ./console.js (side effects
 | B14 | صف چندپروژه‌ای (5633، 5648) | SSE فقط به `ids[0]` وصل است. سرور (`EventProjector.visibleOnProjectStream`) و کلاینت (`eventVisibleForCurrentProject`) رویدادهای پروژه‌های دیگر را حذف می‌کنند، پس `run:status`ِ پروژهٔ دوم به بعد احتمالاً هرگز نمی‌رسد و status/صف گیر می‌کند. **نیاز به تأیید در محیط واقعی دارد** |
 | B15 | `approvalMode` و `autoContinue` | fire-and-forget هستند. اگر سرور رد کند، UI مقدار اشتباه را تا اتصال مجدد نشان می‌دهد |
 | B16 | `clearButton` و «New conversation» در History | مدیریت خطا ندارند. «0 turns» بدون شرط نوشته می‌شود |
-| B17 | سرور: `MIME` در `ServerImplementation.js` | پسوند `.mjs` در نگاشت MIME نیست و به‌صورت `application/octet-stream` سرو می‌شود، که مرورگر برای module script رد می‌کند. فایل‌های vendor باید با پسوند `.js` ذخیره شوند |
+| B17 | سرور: `MIME` در `ServerImplementation.js` (اکنون `web/server/console/static-files.js`) | پسوند `.mjs` در نگاشت MIME نیست و به‌صورت `application/octet-stream` سرو می‌شود، که مرورگر برای module script رد می‌کند. فایل‌های vendor باید با پسوند `.js` ذخیره شوند |
 | B18 | `store.js` و `main.js` | state موازی و استفاده‌نشده با reducer واگرا |
 
 ---
