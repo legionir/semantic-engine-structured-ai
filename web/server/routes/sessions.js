@@ -203,11 +203,11 @@ module.exports = async function SessionsRoutes(shared, request) {
             return true;
         }
 
-        sendJson(
-            res,
-            sessions.deleteSession(id) ? 200 : 404,
-            { deleted: id }
-        );
+        if (sessions.deleteSession(id)) {
+            sendJson(res, 200, { deleted: id });
+        } else {
+            sendJson(res, 404, { error: "unknown session" });
+        }
 
         return true;
     }
