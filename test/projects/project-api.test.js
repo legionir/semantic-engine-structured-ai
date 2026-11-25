@@ -498,6 +498,22 @@ async function main() {
     });
 
 
+    await test("POST /api/projects can create a missing root when explicitly requested", async () => {
+
+        const rootPath = path.join(WORKSPACE, "new-project", "nested");
+        const created = await request(
+            baseUrl,
+            "POST",
+            "/api/projects",
+            { token: master, body: { name: "Created workspace", rootPath, createIfMissing: true } }
+        );
+
+        assert.equal(created.status, 201);
+        assert.equal(fs.statSync(rootPath).isDirectory(), true);
+        assert.equal(created.body.project.rootPath, fs.realpathSync(rootPath));
+    });
+
+
     await test("scoped tokens cannot register a new project", async () => {
 
         const refused = await request(

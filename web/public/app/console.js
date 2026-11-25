@@ -60,6 +60,8 @@ const state = {
     openExecutionKeys: new Set(),
     projects: [],
     currentProjectId: null,
+    activeProjectId: null,
+    stopPending: false,
     dashboard: { open: false, projectId: null, tab: "overview" },
     eventSource: null,
     multiQueue: [],
@@ -4041,7 +4043,12 @@ function setStatus(status) {
     el("statusText").textContent = status;
 
     el("runButton").disabled = status === "running";
-    el("cancelButton").disabled = status !== "running";
+    if (status !== "running") {
+        state.stopPending = false;
+        state.activeProjectId = null;
+    }
+    el("cancelButton").disabled = status !== "running" || state.stopPending;
+    el("cancelButton").textContent = state.stopPending ? "Stopping…" : "Stop";
 
     if (status === "running") {
 
@@ -5452,6 +5459,7 @@ async function drainProjectTaskQueue() {
 
     const next = state.multiQueue.shift();
 
+    state.activeProjectId = next.projectId;
     setStatus("running");
     labelChatForProject(next.projectId);
 
@@ -5920,7 +5928,7 @@ function openNewProjectModal() {
     const nameField = node("label", "mcp-field");
     nameField.append(node("span", "label", "name"), name);
     const rootField = node("label", "mcp-field");
-    rootField.append(node("span", "label", "rootPath"), root);
+    rootField.append(node("span", "label", "root path (created if missing)"), root);
     form.append(nameField, rootField, message);
 
     const handle = Modal.open({
@@ -5935,7 +5943,8 @@ function openNewProjectModal() {
                     headers: { "content-type": "application/json" },
                     body: JSON.stringify({
                         name: name.value.trim() || undefined,
-                        rootPath: root.value.trim()
+                        rootPath: root.value.trim(),
+                        createIfMissing: true
                     })
                 });
 
@@ -6046,23 +6055,35 @@ function bindProjectControls() {
     });
 
     const scope = el("taskScope");
+    const scopeMode = el("taskScopeMode");
+
+    const syncScopeControls = mode => {
+        const selectedMode = mode || selectedTaskScope();
+        const radios =
+            typeof document.getElementsByName === "function"
+                ? document.getElementsByName("taskScope")
+                : [];
+
+        for (const radio of radios) {
+            radio.checked = radio.value === selectedMode;
+        }
+
+        if (scopeMode) scopeMode.value = selectedMode;
+        const specific = el("taskScopeProject");
+        const list = el("taskScopeList");
+        if (specific) specific.hidden = selectedMode !== "specific";
+        if (list) list.hidden = selectedMode !== "multiple";
+    };
+
+    if (scopeMode) {
+        scopeMode.addEventListener("change", event => {
+            syncScopeControls(event.target.value);
+        });
+    }
 
     if (scope) {
-
-        scope.addEventListener("change", () => {
-
-            const mode = selectedTaskScope();
-            const specific = el("taskScopeProject");
-            const list = el("taskScopeList");
-
-            if (specific) {
-                specific.hidden = mode !== "specific";
-            }
-
-            if (list) {
-                list.hidden = mode !== "multiple";
-            }
-        });
+        scope.addEventListener("change", () => syncScopeControls());
+        syncScopeControls();
     }
 
     try {
@@ -6283,9 +6304,10 @@ el("taskForm").addEventListener("submit", async submitEvent => {
         return;
     }
 
+    const projectId = targets[0] || null;
+    state.activeProjectId = projectId;
     setStatus("running");
 
-    const projectId = targets[0] || null;
     const url =
         projectId
             ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
@@ -6318,19 +6340,26 @@ el("taskForm").addEventListener("submit", async submitEvent => {
 });
 
 
-el("cancelButton").addEventListener("click", () => {
+el("cancelButton").addEventListener("click", async () => {
 
     state.multiQueue = [];
+    state.stopPending = true;
+    el("cancelButton").disabled = true;
+    el("cancelButton").textContent = "Stopping…";
 
-    if (state.currentProjectId) {
+    const projectId = state.activeProjectId;
+    const url = projectId
+        ? `/api/projects/${encodeURIComponent(projectId)}/cancel`
+        : "/api/cancel";
 
-        fetch(
-            `/api/projects/${encodeURIComponent(state.currentProjectId)}/cancel`,
-            { method: "POST" }
-        );
+    try {
+        const response = await fetch(url, { method: "POST" });
+        if (!response.ok) throw new Error(`Stop request failed (${response.status}).`);
+    } catch {
+        state.stopPending = false;
+        el("cancelButton").disabled = state.status !== "running";
+        el("cancelButton").textContent = "Stop";
     }
-
-    fetch("/api/cancel", { method: "POST" });
 });
 
 

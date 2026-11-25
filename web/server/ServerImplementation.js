@@ -2323,14 +2323,16 @@ function createServer(runtime, options = {}) {
 
                         try {
 
-                            const existing =
-                                registry.findByRoot(body.rootPath);
+                            const existing = fs.existsSync(body.rootPath)
+                                ? registry.findByRoot(body.rootPath)
+                                : null;
 
                             const record =
                                 registry.register({
                                     id: body.id,
                                     name: body.name,
                                     rootPath: body.rootPath,
+                                    createIfMissing: body.createIfMissing === true,
                                     enabled: body.enabled,
                                     autoStart: body.autoStart,
                                     permissions: body.permissions
@@ -2948,7 +2950,24 @@ function createServer(runtime, options = {}) {
 
                     state.stopRequested = true;
 
-                    runtime.cancelRun("web console");
+                    const runManager = runtime.runManager;
+                    const activeRuns = runManager && typeof runManager.activeRuns === "function"
+                        ? runManager.activeRuns()
+                        : [];
+                    const queuedRuns = runManager && typeof runManager.queuedRuns === "function"
+                        ? runManager.queuedRuns()
+                        : [];
+                    let cancelledTrackedRun = false;
+
+                    for (const run of [...activeRuns, ...queuedRuns]) {
+                        if ((run.projectId || null) === (state.projectId || null)) {
+                            cancelledTrackedRun = runtime.cancelRunById(run.runId, "web console") || cancelledTrackedRun;
+                        }
+                    }
+
+                    if (!cancelledTrackedRun) {
+                        runtime.cancelRun("web console");
+                    }
 
                     for (const id of approvalStore.pendingKeys()) {
                         resolveApproval(id, false);

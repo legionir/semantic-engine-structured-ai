@@ -139,6 +139,23 @@ class ProjectRegistry {
     */
     register(config = {}) {
 
+        if (config.createIfMissing === true) {
+
+            if (typeof config.rootPath !== "string" || config.rootPath.trim() === "") {
+                throw new Error("Project rootPath is required and must be a non-empty string.");
+            }
+
+            const requestedRoot = path.resolve(config.rootPath);
+
+            if (!fs.existsSync(requestedRoot)) {
+                try {
+                    fs.mkdirSync(requestedRoot, { recursive: true });
+                } catch (error) {
+                    throw new Error(`Could not create project root: ${config.rootPath} (${error.code || error.message})`);
+                }
+            }
+        }
+
         const canonicalRoot = canonicalizeRoot(config.rootPath);
 
         const data = this._load();

@@ -76,31 +76,14 @@
 
       <form id="taskForm" class="composer">
         <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
-        <div id="taskScope" class="task-scope">
-          <label>
-            <input type="radio" name="taskScope" value="current" checked>
-            Current project
-          </label>
-          <label>
-            <input type="radio" name="taskScope" value="specific">
-            Specific project
-          </label>
-          <select id="taskScopeProject" hidden></select>
-          <label>
-            <input type="radio" name="taskScope" value="multiple">
-            Multiple projects
-          </label>
-          <span class="kbd-hint" title="run the task from the keyboard"><kbd>Ctrl</kbd><kbd>Enter</kbd></span>
-          <div id="taskScopeList" class="task-scope-list" hidden></div>
-        </div>
+
         <div id="discussionOptions" class="discussion-options-row" hidden></div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
-          <button type="button" id="cancelButton" class="ghost" disabled>Cancel</button>
+          <button type="button" id="cancelButton" class="ghost" disabled>Stop</button>
           <button type="button" id="discussionButton" class="ghost" title="Multi-agent discussion: specialist personas deliberate in rounds and an observer writes the synthesis">
             Discussion
           </button>
-          <button type="button" id="clearButton" class="ghost">New conversation</button>
           <span class="muted grow-right" id="runTimer"></span>
         </div>
       </form>
@@ -150,17 +133,35 @@
 
 </main>
 
-<footer class="project-bar" id="projectBar" aria-label="Project controls">
+<footer class="project-bar" id="projectBar" aria-label="Project and task controls">
   <div class="project-actions">
+    <button type="button" id="clearButton" class="chip button" title="start a new conversation" aria-label="New conversation"><span>New conversation</span></button>
     <button type="button" id="projectsButton" class="chip button" title="manage projects" aria-label="Projects"><span>Projects</span></button>
     <button type="button" id="newProjectButton" class="chip button" title="register a project" aria-label="New project"><span>New Project</span></button>
   </div>
-  <label class="chip select" id="projectSwitcherWrap" title="active project">
-    <span class="project-label">project</span>
-    <select id="projectSwitcher">
-      <option value="">workspace default</option>
-    </select>
-  </label>
+  <div class="project-selectors">
+    <div id="taskScope" class="task-scope footer-scope">
+      <select id="taskScopeMode" aria-label="Task project scope" title="Task scope">
+        <option value="current">Current project</option>
+        <option value="specific">Specific project</option>
+        <option value="multiple">Multiple projects</option>
+      </select>
+      <div class="scope-radios" hidden>
+        <label><input type="radio" name="taskScope" value="current" checked>Current project</label>
+        <label><input type="radio" name="taskScope" value="specific">Specific project</label>
+        <label><input type="radio" name="taskScope" value="multiple">Multiple projects</label>
+      </div>
+      <select id="taskScopeProject" aria-label="Specific project" title="Specific project" hidden></select>
+      <div id="taskScopeList" class="task-scope-list" hidden></div>
+    </div>
+    <span class="footer-divider" aria-hidden="true"></span>
+    <label class="chip select" id="projectSwitcherWrap" title="active project">
+      <span class="project-label">project</span>
+      <select id="projectSwitcher">
+        <option value="">workspace default</option>
+      </select>
+    </label>
+  </div>
 </footer>
 
 <section id="consoleLogin" class="console-login" hidden>

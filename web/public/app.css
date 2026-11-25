@@ -150,8 +150,35 @@ input:focus-visible, textarea:focus-visible, summary:focus-visible,
   background: rgba(10, 14, 23, .7);
 }
 .project-actions { display: flex; align-items: center; gap: 8px; }
+.project-selectors { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .project-bar .chip.select { display: flex; align-items: center; gap: 6px; }
 .project-bar select { max-width: 300px; }
+.footer-scope { position: relative; display: flex; align-items: center; gap: 7px; }
+.footer-scope > select,
+.project-bar #projectSwitcher {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 9px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+.footer-divider { width: 1px; height: 26px; flex: 0 0 1px; background: rgba(148, 163, 204, .24); }
+.scope-radios { display: none !important; }
+.task-scope-list {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 36;
+  max-height: 42vh;
+  overflow: auto;
+  min-width: 230px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 14px 32px rgba(3, 7, 18, .45);
+}
 
 .chip {
   background: var(--panel);
@@ -271,9 +298,8 @@ main {
     padding: 10px;
     border: 1px solid var(--line);
     border-radius: 14px;
-    background: rgba(17, 23, 38, .98);
-    box-shadow: var(--shadow-2);
-    backdrop-filter: blur(18px);
+    background: #111726;
+    box-shadow: 0 14px 28px rgba(3, 7, 18, .48);
   }
   .bar.menu-open .meta { display: flex; }
   .bar-nav {
@@ -307,9 +333,10 @@ main {
   .conversation .chat { min-height: 0; }
   .composer { padding: 9px 10px calc(10px + env(safe-area-inset-bottom)); }
   .composer textarea { min-height: 72px; max-height: 22vh; resize: vertical; }
-  .actions { gap: 6px; }
-  .actions button { padding: 8px 10px; font-size: 12px; }
-  .kbd-hint { display: none; }
+  .actions { gap: 6px; flex-wrap: nowrap; }
+  .actions button { flex: 1 1 0; justify-content: center; padding: 8px 7px; font-size: 12px; white-space: nowrap; }
+  #runTimer { display: none; }
+  #cancelButton:not(:disabled) { color: var(--bad); border: 1px solid rgba(255, 107, 125, .42); background: rgba(255, 107, 125, .1); }
 
   .project-bar {
     position: sticky;
@@ -325,17 +352,27 @@ main {
     background: rgba(10, 14, 23, .96);
     backdrop-filter: blur(16px);
   }
-  .project-actions { display: flex; align-items: center; gap: 6px; }
+  .project-bar { flex: 0 0 auto; overflow: visible; }
+  .project-actions { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto; }
   .project-bar .chip.button {
-    width: 36px;
-    height: 34px;
-    min-width: 36px;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
     padding: 0;
+    line-height: 1;
     font-size: 0;
   }
-  .project-bar .chip.button::before { width: 17px; height: 17px; margin: 0; }
+  .project-bar .chip.button::before { width: 17px; height: 17px; margin: 0; flex: 0 0 17px; }
   .project-bar .chip.button span { display: none; }
+  .project-selectors { gap: 5px; min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
+  .footer-scope { gap: 4px; }
+  .footer-scope > select { max-width: 27vw; padding: 6px 5px; font-size: 10px; }
+  .footer-scope #taskScopeProject { max-width: 24vw; }
+  .footer-divider { height: 24px; margin: 0 1px; }
+  .project-bar #projectSwitcher { max-width: 27vw; padding: 6px 4px; font-size: 10px; }
   .project-bar .chip.select {
     max-width: 60vw;
     justify-content: flex-end;
@@ -376,8 +413,8 @@ main {
 
 .conversation,
 .plan-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.conversation > .chat,
-.conversation > .composer { flex-shrink: 0; }
+.conversation > .chat { flex: 1 1 0; flex-shrink: 1; min-height: 0; }
+.conversation > .composer { flex: 0 0 auto; flex-shrink: 0; }
 
 .composer {
   border-top: 1px solid var(--line);
@@ -385,8 +422,8 @@ main {
   background: var(--bg-veil);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
+  position: relative;
+  width: 100%;
 }
 
 .grow-right { margin-left: auto; }
@@ -578,7 +615,7 @@ button.link:hover { color: var(--accent); background: var(--accent-soft); border
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-bottom: 300px;
+  padding-bottom: 16px;
 }
 
 .bubble {
@@ -1582,6 +1619,7 @@ button.ghost.active {
 #runButton::before, #cancelButton::before, #discussionButton::before, #clearButton::before,
 #historyButton::before, #executionButton::before, #eventsButton::before, #mcpButton::before,
 #settingsButton::before, #projectsButton::before, #newProjectButton::before,
+#planButton::before, #llmSettingsButton::before,
 #gatewayHealth::before, #approvalsButton::before,
 .conversation .panel-head h2::before, .plan-panel .panel-head h2::before,
 .execution-panel .panel-head h2::before, .log-panel .panel-head h2::before {
@@ -1614,7 +1652,9 @@ button.ghost.active {
 #executionButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6.5' cy='5.5' r='2.5'/%3E%3Ccircle cx='6.5' cy='18.5' r='2.5'/%3E%3Ccircle cx='17.5' cy='7.5' r='2.5'/%3E%3Cpath d='M6.5 8v8M17.5 10v1a5 5 0 0 1-5 5h-6'/%3E%3C/svg%3E"); }
 #eventsButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12h5l3-8 4 16 3-8h5'/%3E%3C/svg%3E"); }
 #mcpButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5'/%3E%3C/svg%3E"); }
-#settingsButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1'/%3E%3C/svg%3E"); }
+#settingsButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1-2.1'/%3E%3C/svg%3E"); }
+#planButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 6h11M10 12h11M10 18h11M4 6l1.3 1.3L7.5 4.8M4 12l1.3 1.3L7.5 10.8M4 18l1.3 1.3L7.5 16.8'/%3E%3C/svg%3E"); }
+#llmSettingsButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.6 2.77-.08-.02a1.7 1.7 0 0 0-1.78.5l-.05.07h-3.2l-.05-.07a1.7 1.7 0 0 0-1.78-.5l-.08.02-1.6-2.77.06-.06A1.7 1.7 0 0 0 10 15.1v-.1a1.7 1.7 0 0 0-1.16-1.62l-.08-.03v-3.2l.08-.03A1.7 1.7 0 0 0 10 8.5v-.1a1.7 1.7 0 0 0-.34-1.88L9.6 6.46l1.6-2.77.08.02a1.7 1.7 0 0 0 1.78-.5l.05-.07h3.2l.05.07a1.7 1.7 0 0 0 1.78.5l.08-.02 1.6 2.77-.06.06A1.7 1.7 0 0 0 19.4 8.4v.1a1.7 1.7 0 0 0 1.16 1.62l.08.03v3.2l-.08.03A1.7 1.7 0 0 0 19.4 15z'/%3E%3C/svg%3E"); }
 #projectsButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E"); }
 #newProjectButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3Cpath d='M12 11v6M9 14h6'/%3E%3C/svg%3E"); }
 #gatewayHealth::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20.5S4.5 15.8 2.6 11A5.4 5.4 0 0 1 12 6.6 5.4 5.4 0 0 1 21.4 11c-1.9 4.8-9.4 9.5-9.4 9.5z'/%3E%3Cpath d='M2.6 12.5h5l1.5-2.5 2.5 5 1.5-2.5h8'/%3E%3C/svg%3E"); }
@@ -1689,6 +1729,20 @@ button.ghost.active {
   .bar-sep { display: none; }
   .meta { gap: 10px; }
 }
+
+@media (max-width: 640px) {
+  .bar .meta .bar-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+}
+
+.project-bar .footer-scope { margin-top: 0; flex-wrap: nowrap; }
+.project-bar .footer-scope > select { max-width: 28vw; padding: 6px 5px; font-size: 10px; }
+.project-bar .footer-scope #taskScopeProject { max-width: 24vw; }
+.project-bar .task-scope-list { width: max-content; max-width: min(80vw, 360px); }
 
 /* ------------------------------------------------- chat standardisation v2
    One rhythm for every row the renderers produce: same size, same line

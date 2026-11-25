@@ -2394,6 +2394,28 @@ async function main() {
         );
     });
 
+    await test("footer scope select keeps specific and multiple project choices in sync", () => {
+
+        const mode = document.getElementById("taskScopeMode");
+        const project = document.getElementById("taskScopeProject");
+        const list = document.getElementById("taskScopeList");
+
+        mode.value = "specific";
+        mode.dispatch("change");
+        assert.equal(project.hidden, false);
+        assert.equal(list.hidden, true);
+        assert.equal(
+            [...document.getElementsByName("taskScope")].find(radio => radio.checked).value,
+            "specific"
+        );
+
+        mode.value = "multiple";
+        mode.dispatch("change");
+        assert.equal(project.hidden, true);
+        assert.equal(list.hidden, false);
+    });
+
+
     await test("the dashboard deep-link opens the named tab", async () => {
 
         console_.reply("/api/projects/prj-a", {
@@ -2593,6 +2615,7 @@ function loadConsole() {
     policyHome.appendChild(continueChip);
 
     document.register("projectSwitcher", "select");
+    document.register("taskScopeMode", "select");
     document.register("taskScopeProject", "select");
     document.register("gatewayHealth", "a");
     document.register("taskForm", "form");

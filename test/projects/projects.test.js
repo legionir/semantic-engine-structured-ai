@@ -350,6 +350,20 @@ async function main() {
 
     });
 
+    await test("explicit createIfMissing recursively creates a project root", async () => {
+
+        const registry = freshRegistry();
+        const rootPath = path.join(WORKSPACE, "created", "nested");
+        const record = registry.register({
+            name: "New workspace",
+            rootPath,
+            createIfMissing: true
+        });
+
+        assert.equal(fs.statSync(rootPath).isDirectory(), true);
+        assert.equal(record.rootPath, fs.realpathSync(rootPath));
+    });
+
     /* ----------------------- context & default project ----------------------- */
 
     await test("registered project context points at the central dataRoot", async () => {
