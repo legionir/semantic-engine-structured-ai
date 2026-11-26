@@ -607,7 +607,7 @@ async function main() {
     await delay(200);
 
     try {
-        fs.rmSync(WORKSPACE, { recursive: true, force: true });
+        fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     } catch {
         /* Windows may still hold the file briefly */
     }

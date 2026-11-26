@@ -58,6 +58,12 @@ async function main() {
             "agent/tools/discussion.js",
             "web/server/LegacyWebServer.js",
             "web/public/app.js",
+            "web/public/app/api.js",
+            "web/public/app/event-stream.js",
+            "web/public/app/task-runner.js",
+            "web/public/app/modal-manager.js",
+            "web/public/app/project-state.js",
+            "test/fixtures/legacy-console",
         ];
         for (const relative of removed) {
             assert.equal(fs.existsSync(path.join(ROOT, relative)), false, `${relative} remains`);

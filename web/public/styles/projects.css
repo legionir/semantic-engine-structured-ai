@@ -1,0 +1,181 @@
+/* Project bar, projects manager, dashboard.
+   Part of the console stylesheet: index.html links app.css and then the
+   files in styles/ in a fixed order, and later rules rely on that order. */
+
+/* ------------------------------------------------------- multi-project UI */
+
+.task-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.task-scope label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  transition: border-color .18s var(--ease), color .18s var(--ease);
+}
+.task-scope label:hover { border-color: var(--accent); color: var(--text); }
+
+.task-scope input[type="radio"] { accent-color: var(--accent); }
+
+.task-scope select {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 2px 6px;
+}
+
+.task-scope-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.task-scope-list label {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+.task-scope-list input[type="checkbox"] { accent-color: var(--accent); }
+
+.chip.health-ok { color: var(--ok); border-color: rgba(62, 207, 154, .55); background: rgba(62, 207, 154, .09); }
+.chip.health-degraded { color: var(--warn); border-color: rgba(240, 184, 76, .55); background: rgba(240, 184, 76, .09); }
+.chip.health-down { color: var(--bad); border-color: rgba(255, 107, 125, .55); background: rgba(255, 107, 125, .09); }
+
+.project-dashboard {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin: 16px 18px 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .02), transparent 46%), var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+
+.project-dashboard[hidden] { display: none; }
+
+
+.dashboard-head { padding: 14px 18px; }
+.dashboard-head h2 { font-weight: 700; letter-spacing: -.01em; }
+
+.dashboard-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, .015);
+}
+
+.dashboard-tabs button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 550;
+  box-shadow: none;
+}
+.dashboard-tabs button:hover { color: var(--text); border-color: var(--accent); transform: none; filter: none; box-shadow: none; }
+
+.dashboard-tabs button.active {
+  color: var(--accent-ink);
+  border-color: transparent;
+  background: var(--grad-accent);
+}
+
+.dashboard-body {
+  padding: 16px 18px;
+  overflow: auto;
+  flex: 1;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 11px;
+}
+
+.dashboard-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  background: var(--panel-2);
+  transition: border-color .18s var(--ease), transform .18s var(--ease), box-shadow .18s var(--ease);
+}
+.dashboard-card:hover {
+  border-color: rgba(109, 155, 255, .45);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -14px rgba(3, 7, 18, .9);
+}
+
+.dashboard-card h3 {
+  margin: 0 0 5px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.project-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 6px;
+  border-radius: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, .04);
+}
+.project-row:hover { background: rgba(255, 255, 255, .025); }
+.project-row input[type="checkbox"],
+.project-choice-row input[type="radio"] { accent-color: var(--accent); flex: 0 0 auto; }
+.project-row .name { flex: 1; font-weight: 600; }
+.project-choice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.project-choice-row .name { flex: 1; font-weight: 650; }
+.project-choice-row .muted { font-size: 12px; }
+.modal-foot button:disabled { opacity: .45; cursor: not-allowed; }
+
+.labeled-run {
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 5px 9px;
+  margin: 6px 0;
+  font-size: 12px;
+  background: var(--accent-soft);
+}
+
+/* motion is a garnish, not a requirement */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

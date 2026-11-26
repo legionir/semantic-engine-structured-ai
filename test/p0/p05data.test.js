@@ -191,7 +191,7 @@ async function main() {
 
     const passed = results.filter(Boolean).length;
     console.log(`\n${passed}/${results.length} passed`);
-    try { fs.rmSync(WORKSPACE, { recursive: true, force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* ignore */ }
     if (passed !== results.length) process.exitCode = 1;
 }
 

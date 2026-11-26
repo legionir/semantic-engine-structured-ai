@@ -14,6 +14,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const { removeTempDirs } = require("../helpers/cleanup");
 const os = require("os");
 const path = require("path");
 
@@ -510,7 +511,7 @@ async function main() {
 
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    await removeTempDirs(runtime, WORKSPACE);
 
     process.exit(failed.length === 0 ? 0 : 1);
 

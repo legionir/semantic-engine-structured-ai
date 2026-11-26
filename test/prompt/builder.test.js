@@ -549,7 +549,7 @@ async function main() {
 
         assert.equal(subProject.project.id, recordB.id);
 
-        fs.rmSync(recordB.rootPath, { recursive: true, force: true });
+        fs.rmSync(recordB.rootPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     });
 
@@ -663,7 +663,7 @@ async function main() {
         assert.equal(first.parallel_tool_calls, true);
         assert.equal(first.response_format.type, "json_schema");
 
-        fs.rmSync(projectBRoot, { recursive: true, force: true });
+        fs.rmSync(projectBRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     });
 
@@ -671,8 +671,8 @@ async function main() {
     await runtime.eventstore.flush();
     await runtime.journal.flush();
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     console.log(`\n${results.filter(item => item.ok).length}/${results.length} passed`);
 

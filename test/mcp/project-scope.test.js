@@ -179,7 +179,7 @@ async function main() {
 
     await managerRegistry.shutdown();
 
-    fs.rmSync(BASE, { recursive: true, force: true });
+    fs.rmSync(BASE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     process.exit(failed.length === 0 ? 0 : 1);
 }

@@ -259,6 +259,24 @@ function load(workspaceRoot) {
 
 
 /*
+| The workspace file can hold env values and headers, often credentials,
+| so it is kept private. A mode passed to writeFileSync only applies when
+| the file is created; chmod covers one that already existed.
+*/
+
+function writePrivateFile(file, text) {
+
+    fs.writeFileSync(file, text, { encoding: "utf8", mode: 0o600 });
+
+    try {
+        fs.chmodSync(file, 0o600);
+    } catch {
+        /* platforms without POSIX modes keep the default */
+    }
+}
+
+
+/*
 | Writing a server back to disk keeps it for the next run. The workspace
 | file is used rather than the project one, because a server added at
 | runtime is a local decision until someone commits it.
@@ -310,10 +328,9 @@ function persist(workspaceRoot, config) {
 
         fs.mkdirSync(path.dirname(file), { recursive: true });
 
-        fs.writeFileSync(
+        writePrivateFile(
             file,
-            `${JSON.stringify({ mcpServers: container }, null, 2)}\n`,
-            "utf8"
+            `${JSON.stringify({ mcpServers: container }, null, 2)}\n`
         );
 
         return file;
@@ -321,10 +338,9 @@ function persist(workspaceRoot, config) {
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
 
-    fs.writeFileSync(
+    writePrivateFile(
         file,
-        `${JSON.stringify(document, null, 2)}\n`,
-        "utf8"
+        `${JSON.stringify(document, null, 2)}\n`
     );
 
     return file;
@@ -355,10 +371,9 @@ function forget(workspaceRoot, name) {
 
     delete container[name];
 
-    fs.writeFileSync(
+    writePrivateFile(
         file,
-        `${JSON.stringify(document, null, 2)}\n`,
-        "utf8"
+        `${JSON.stringify(document, null, 2)}\n`
     );
 
     return true;
@@ -375,5 +390,6 @@ module.exports = {
     environmentDocument,
     load,
     persist,
-    forget
+    forget,
+    writePrivateFile
 };

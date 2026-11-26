@@ -54,9 +54,11 @@ repository-root/
 │   ├── discussion/             # discussion engine، service و transcripts
 │   ├── events/                 # event bus، validation، projection، redaction
 │   ├── hooks/                  # hook loading، conditions، rendering، runner
+│   ├── host/                   # factoryهای composition root که agent.js به ترتیب صدا می‌زند
 │   ├── interactive/            # REPL input/output و approval prompt
 │   ├── mcp/                    # manager، connection، config، protocol و transports
 │   ├── persistence/            # atomic JSON، JSONL، repositories و data roots
+│   │   └── archive/            # store، classifier، roll-up و search زیر ArchiveRepository
 │   ├── policy/                 # policy matching، approval و errors
 │   ├── projects/               # registry، context، migration و workspace profile
 │   ├── prompt/                 # main/sub-agent/runtime/request builders
@@ -67,8 +69,11 @@ repository-root/
 ├── web/
 │   ├── server.js               # canonical WebServer entrypoint
 │   ├── server/                 # router، middleware، controllers، services
+│   │   ├── routes/             # گروه‌های مسیر API که handler به ترتیب صدا می‌زند
+│   │   └── console/            # state و helperهای سرور کنسول (factory)
 │   └── public/                 # app/ native browser modules
 ├── test/                       # domain-based unit, contract و e2e suites
+│   └── */*-cases/              # گروه‌های تست بزرگ؛ runner آن‌ها را به ترتیب با ctx اجرا می‌کند
 ```
 
 در rollout نهایی Phase 30 هیچ facade انتخاب‌کننده‌ای برای حالت legacy وجود
@@ -162,6 +167,18 @@ PORT=8080 npm start
 
 `--serve <port>` صریح بر `PORT` اولویت دارد؛ در حالت خودکار پیش‌فرض bind روی
 `0.0.0.0` است تا سرویس از بیرون container قابل دسترسی باشد.
+
+**ساختار پنل وب (بدون build):** پنل با ماژول‌های ES بومی مرورگر اجرا می‌شود و
+هیچ مرحلهٔ build ندارد. Preact 10، htm و `@preact/signals-core` به‌صورت فایل در
+`web/public/vendor/` قرار دارند (نسخه و sha256 در `manifest.json`). state در
+`web/public/app/store.js` نگه داشته می‌شود و هر view فقط ناحیه‌هایی از store را که
+می‌خواند دوباره رسم می‌کند؛ reducerها (`runtime-state.js`، `*-model.js`) خالص‌اند
+و viewها (`*-view.js`، `chat.js`) هیچ‌گاه HTML رشته‌ای نمی‌سازند. درخواست‌ها و
+جریان رویدادها در کنترلرهای جدا برای هر بخش هستند (`*-controller.js`،
+`project-*.js`) و `console.js` فقط کنترل‌های صفحه را به آن‌ها وصل می‌کند. صفحه با یک
+Content-Security-Policy سخت‌گیر سرو می‌شود: اسکریپت، استایل و اتصال فقط از همان origin مجازند و
+اسکریپت inline خود صفحه با sha256 مجاز می‌شود که سرور هنگام سرو کردن حساب می‌کند. تست‌های UI روی happy-dom با
+`index.html` واقعی اجرا می‌شوند: `npm run test:ui`.
 
 ---
 

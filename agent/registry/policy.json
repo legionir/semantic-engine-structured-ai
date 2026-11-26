@@ -98,7 +98,7 @@
       "when": {
         "argument_matches": {
           "path": [
-            "agent/(registry|config|schema|policy|context)/",
+            "agent/(registry|config|schema|policy|context|host)/",
             "agent/agent\\.js$"
           ]
         }
@@ -305,7 +305,7 @@
       "when": {
         "argument_matches": {
           "paths": [
-            "agent/(registry|config|schema|policy|context)/",
+            "agent/(registry|config|schema|policy|context|host)/",
             "agent/agent\\.js$"
           ]
         }

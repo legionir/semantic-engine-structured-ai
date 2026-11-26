@@ -7,6 +7,11 @@
 <script>document.documentElement.classList.add("auth-pending");</script>
 <title>structured-ai console</title>
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/styles/panels.css">
+<link rel="stylesheet" href="/styles/execution.css">
+<link rel="stylesheet" href="/styles/dialogs.css">
+<link rel="stylesheet" href="/styles/projects.css">
+<link rel="stylesheet" href="/styles/composition.css">
 <link rel="stylesheet" href="/console-login.css">
 </head>
 <body>
@@ -42,7 +47,7 @@
     </nav>
   </div>
 
-  <!-- Controls are borrowed into the Runtime policy section below the settings filter. -->
+  <!-- The header pair of runtime policy controls; the Settings modal draws its own pair from the same state. -->
   <div class="policy-home" id="policyHome">
     <label class="chip select" title="tool approval policy">
       approval
@@ -110,37 +115,6 @@
       <div id="plan" class="plan-view">
         <p class="empty">No plan yet.</p>
       </div>
-    </div>
-  </section>
-
-  <!-- row 2: execution and events, hidden; opened as modals from the header -->
-  <section class="row split" id="rowTwo" hidden>
-    <div class="panel scroller execution-panel">
-      <div class="panel-head">
-        <h2>Execution</h2>
-        <span class="muted" id="execSummary"></span>
-      </div>
-      <div class="execution-scroll">
-        <div id="executionArchive" class="execution-archive"></div>
-        <div id="tree" class="tree">
-          <p class="empty">No run yet. Send a task to see the agent tree.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel scroller log-panel">
-      <div class="panel-head">
-        <h2>Events</h2>
-        <div class="head-tools">
-          <input type="search" id="logFilter" class="filter" placeholder="filter by any part of a word">
-          <select id="logType" class="filter" title="show only one kind of event">
-            <option value="">all types</option>
-          </select>
-          <span class="muted" id="logCount" hidden></span>
-          <button type="button" id="clearLog" class="link">clear</button>
-        </div>
-      </div>
-      <ul id="log" class="log"></ul>
     </div>
   </section>
 

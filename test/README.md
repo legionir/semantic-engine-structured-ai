@@ -38,6 +38,14 @@ assertions:
 - `archive.test.js` → `context/archive.test.js`
 - `project-run.test.js` → `projects/project-run.test.js`
 - `e2e.test.js`, `cli.test.js`, `interactive.test.js` → `e2e/`
+
+Suites that outgrew 1000 lines keep their runner (setup, helpers, summary)
+and move `main()`'s tests verbatim, in order, into `<suite>-cases/NN-*.js`
+modules that receive what they use through a `ctx` object; the runner still
+prints the same lines and exits the same way. This applies to `runtime`,
+`e2e`, `tools`, `mcp` (whose fixture servers live in `mcp-*-server.js`),
+`web`, `p1/p11`, `mvp`, `runs/delegation-projects` and
+`persistence/project-stores`. Run the runner, not a case file.
 - `ui.test.js` → `ui/ui.test.js`
 - `discussion.test.js` → `discussion/discussion.test.js`
 - `web.test.js` → `web/web.test.js`

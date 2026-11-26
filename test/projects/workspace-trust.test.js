@@ -252,7 +252,7 @@ async function main() {
 
     await new Promise(resolve => setTimeout(resolve, 400));
 
-    fs.rmSync(BASE, { recursive: true, force: true });
+    fs.rmSync(BASE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     const failed = results.filter(item => !item.ok);
     console.log(`\n${results.length - failed.length}/${results.length} passed`);

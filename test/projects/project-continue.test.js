@@ -13,6 +13,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const { removeTempDirs } = require("../helpers/cleanup");
 const os = require("os");
 const http = require("http");
 const path = require("path");
@@ -256,10 +257,7 @@ async function main() {
 
     await stub.close();
 
-    for (const dir of [WORKSPACE, PROJECT_ROOT, DATA_HOME]) {
-
-        fs.rmSync(dir, { recursive: true, force: true });
-    }
+    await removeTempDirs(runtime, WORKSPACE, PROJECT_ROOT, DATA_HOME);
 
     process.exit(ok ? 0 : 1);
 }

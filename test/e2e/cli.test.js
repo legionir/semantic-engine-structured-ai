@@ -308,7 +308,7 @@ async function main() {
         } finally {
             child.kill("SIGTERM");
             await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 3000))]);
-            fs.rmSync(workspace, { recursive: true, force: true });
+            fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         }
     });
 
@@ -439,7 +439,7 @@ async function main() {
         /* the human readable answer lands on stdout */
         assert.match(run.stdout, /acknowledged/);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("a task can be piped on stdin", async () => {
@@ -472,7 +472,7 @@ async function main() {
 
         assert.equal(run.code, 0);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("a task can be read from a file", async () => {
@@ -511,7 +511,7 @@ async function main() {
 
         assert.equal(run.code, 0);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("--json puts only the action on stdout", async () => {
@@ -547,7 +547,7 @@ async function main() {
             false
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("--workspace confines the agent", async () => {
@@ -613,7 +613,7 @@ async function main() {
             true
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("a flag belongs to the run, a setting belongs to the project", async () => {
@@ -662,7 +662,7 @@ async function main() {
 
         await stub.close();
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("--dry-run refuses calls that need approval", async () => {
@@ -724,7 +724,7 @@ async function main() {
             false
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("a final action carrying an error exits non-zero", async () => {
@@ -753,7 +753,7 @@ async function main() {
 
         assert.equal(run.code, 1);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("an unreachable endpoint fails with a clear message", async () => {
@@ -778,7 +778,7 @@ async function main() {
         assert.equal(run.code, 1);
         assert.match(run.stderr, /run failed/);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("--json reports a failure as a structured action", async () => {
@@ -808,7 +808,7 @@ async function main() {
         assert.equal(parsed.action, "final");
         assert.ok(parsed.error.message.length > 0);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("a run without --workspace does not write runtime state into the repo root", async () => {
@@ -819,7 +819,7 @@ async function main() {
         const repoAgent =
             path.join(REPO_ROOT, ".agent");
 
-        fs.rmSync(repoAgent, { recursive: true, force: true });
+        fs.rmSync(repoAgent, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
         try {
 
@@ -841,7 +841,7 @@ async function main() {
 
         } finally {
 
-            fs.rmSync(repoAgent, { recursive: true, force: true });
+            fs.rmSync(repoAgent, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         }
     });
 

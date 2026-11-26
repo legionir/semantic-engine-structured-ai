@@ -190,7 +190,7 @@ async function main() {
 
     console.log(`\n${results.length - failed}/${results.length} passed`);
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     process.exit(failed === 0 ? 0 : 1);
 }

@@ -125,7 +125,7 @@ async function main() {
     } catch {
         /* no background tool is part of this contract */
     }
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     process.exit(failed.length === 0 ? 0 : 1);
 }
 

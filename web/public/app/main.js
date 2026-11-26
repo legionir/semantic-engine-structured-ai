@@ -1,65 +1,58 @@
 /*
- * Browser ESM entry point — EXECUTION_PLAN Phase 24.
+ * Browser ESM entry point.
  *
- * The canonical renderer is loaded through an explicit dependency graph;
- * domain modules remain separately testable and the browser has no build step.
+ * auth-gate.js imports this file once the console is unlocked. It loads the
+ * console controller, which mounts the views on the store, and exposes the
+ * store and the module graph for diagnostics and extensions. There is no
+ * build step: every import below is a relative URL the server serves as-is.
  */
 
-import { createStore } from "./store.js";
-import { EventStream } from "./event-stream.js";
-import { TaskRunner } from "./task-runner.js";
-import * as api from "./api.js";
+import * as store from "./store.js";
+import * as runtimeState from "./runtime-state.js";
+import * as executionModel from "./execution-model.js";
+import * as conversationModel from "./conversation-model.js";
+import * as discussionModel from "./discussion-model.js";
+import * as approvalState from "./approval-state.js";
 import * as chat from "./chat.js";
 import * as execution from "./execution-view.js";
 import * as events from "./event-view.js";
+import * as plan from "./plan-view.js";
+import * as discussion from "./discussion-view.js";
+import * as composer from "./composer-view.js";
 import * as settings from "./settings-view.js";
 import * as mcp from "./mcp-view.js";
 import * as history from "./history-view.js";
-import * as plan from "./plan-view.js";
-import * as modal from "./modal-manager.js";
-import * as project from "./project-state.js";
 import * as projectView from "./project-view.js";
-import * as runtimeState from "./runtime-state.js";
-import * as approvalState from "./approval-state.js";
 import * as dom from "./dom.js";
 import * as formatters from "./formatters.js";
 import * as direction from "./direction.js";
 import * as markdown from "./markdown.js";
 
-/* The renderer owns browser wiring; this bootstrap owns the dependency
-   graph and exposes the modules for diagnostics and extensions. */
+/* The controller owns the browser wiring and mounts every view. */
 import "./console.js";
 
 
-export const store = createStore();
-export const eventStream = new EventStream({
-  onSnapshot: snapshot => store.snapshot(snapshot),
-  onEvent: event => store.dispatch(event),
-  onError: () => {}
-});
-export const taskRunner = new TaskRunner({ store });
-
 export const modules = Object.freeze({
-  api,
+  store,
+  runtimeState,
+  executionModel,
+  conversationModel,
+  discussionModel,
+  approvalState,
   chat,
   execution,
   events,
+  plan,
+  discussion,
+  composer,
   settings,
   mcp,
   history,
-  plan,
-  modal,
-  project,
   projectView,
-  runtimeState,
-  approvalState,
   dom,
   formatters,
   direction,
-  markdown,
-  store,
-  eventStream,
-  taskRunner
+  markdown
 });
 
 if (typeof globalThis !== "undefined") {

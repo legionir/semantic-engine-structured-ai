@@ -4,11 +4,11 @@ const path = require("path");
 const vm = require("vm");
 
 const source = fs.readFileSync(
-    path.join(__dirname, "../../web/public/app/console.js"),
+    path.join(__dirname, "../../web/public/app/project-routing.js"),
     "utf8"
 );
 const start = source.indexOf("function navigateConsole(");
-const end = source.indexOf("function projectById(", start);
+const end = source.indexOf("export function projectById(", start);
 assert(start >= 0 && end > start, "navigateConsole should be present");
 
 const calls = [];

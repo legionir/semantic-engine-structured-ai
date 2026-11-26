@@ -98,7 +98,7 @@ async function main() {
         try {
             fs.rmSync(sshSentinel, { force: true });
             fs.rmSync(outside, { force: true });
-            fs.rmSync(workspace, { recursive: true, force: true });
+            fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
             tools.shutdown();
         } catch {}
     }
@@ -112,7 +112,7 @@ main().catch(error => {
     console.error(error);
     try {
         tools.shutdown();
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         fs.rmSync(sshSentinel, { force: true });
         fs.rmSync(outside, { force: true });
     } catch {}

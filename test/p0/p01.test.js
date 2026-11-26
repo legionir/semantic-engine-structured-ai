@@ -355,16 +355,16 @@ async function main() {
 
         } finally {
 
-            fs.rmSync(workspace, { recursive: true, force: true });
-            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+            fs.rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         }
     });
 
     /* let the debounced project-file writer (200 ms, unref'd) settle */
     await new Promise(resolve => setTimeout(resolve, 400));
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     const failed = results.filter(item => !item.ok);
 
