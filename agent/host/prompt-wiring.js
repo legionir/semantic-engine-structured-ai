@@ -80,7 +80,11 @@ module.exports = function createPromptWiring(host) {
             TOOL_RESOLVER =
                 promptKit.createToolResolver({
                     TOOL_REGISTRY_OF: () => TOOL_REGISTRY_OF(),
-                    mcpToolDeclarations: () => mcpToolDeclarations()
+                    mcpToolDeclarations: options => mcpToolDeclarations(options),
+                    allMcpToolDeclarations: options =>
+                        typeof host.allMcpToolDeclarations === "function"
+                            ? host.allMcpToolDeclarations(options)
+                            : mcpToolDeclarations(options)
                 });
 
         }

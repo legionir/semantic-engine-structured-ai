@@ -43,7 +43,8 @@ const MUTATING_TOOLS = [
     "git_checkout",
     "git_branch",
     "git_push",
-    "git_worktree"
+    "git_worktree",
+    "mcp_build"
 ];
 
 

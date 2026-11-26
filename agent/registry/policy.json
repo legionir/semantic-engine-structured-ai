@@ -293,6 +293,8 @@
       "id": "mcp_tool_calls",
       "tools": [
         "mcp_call",
+        "mcp_resources",
+        "mcp_prompts",
         "mcp__*"
       ],
       "action": "allow",

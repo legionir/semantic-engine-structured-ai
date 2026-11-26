@@ -1,18 +1,56 @@
 /* Runtime-facing MCP tool discovery, kept independent of the agent loop. */
 
+const budgeter = require("./McpToolBudget");
+
+
 function createMcpRuntime({ settings, tools, logLine }) {
 
-    function mcpToolDeclarations() {
+    /* every tool the agent may reach, before any budget (explicit grants) */
+    function allMcpToolDeclarations(options = {}) {
+
         if (settings.get("MCP_EXPOSE_TOOLS") === "gateway") {
             return [];
         }
 
         try {
-            return tools.mcpToolDeclarations().slice(0, settings.get("MCP_MAX_TOOLS"));
+            return tools.mcpToolDeclarations(options).slice(0, settings.get("MCP_MAX_TOOLS"));
         } catch {
             return [];
         }
     }
+
+
+    /*
+    | P4-06: what one request declares and what it only lists. gateway mode
+    | declares nothing and lists everything, like lazy loading.
+    */
+    function mcpToolSelection(options = {}) {
+
+        if (settings.get("MCP_EXPOSE_TOOLS") === "gateway") {
+
+            let all = [];
+
+            try {
+                all = tools.mcpToolDeclarations(options).slice(0, settings.get("MCP_MAX_TOOLS"));
+            } catch {
+                all = [];
+            }
+
+            return budgeter.select(all, { mode: "lazy", budget: settings.get("MCP_TOOL_DEFINITIONS_BUDGET") });
+        }
+
+        return budgeter.select(allMcpToolDeclarations(options), {
+            mode: settings.get("MCP_TOOL_LOADING") || "auto",
+            budget: settings.get("MCP_TOOL_DEFINITIONS_BUDGET") || 24000
+        });
+    }
+
+
+    function mcpToolDeclarations(options = {}) {
+
+        return mcpToolSelection(options).declared;
+    }
+
 
     async function discoverMcpTools() {
         if (settings.get("MCP_ENABLED") === false ||
@@ -37,7 +75,7 @@ function createMcpRuntime({ settings, tools, logLine }) {
         }
     }
 
-    return { mcpToolDeclarations, discoverMcpTools };
+    return { mcpToolDeclarations, allMcpToolDeclarations, mcpToolSelection, discoverMcpTools };
 }
 
 

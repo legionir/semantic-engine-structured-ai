@@ -397,6 +397,14 @@ class McpClient {
             return;
         }
 
+        /* P4-10: a long tool reports how far it got */
+        if (message.method === "notifications/progress") {
+
+            require("./McpInteractions").progress(this.name, message.params || {});
+
+            return;
+        }
+
         if (message.method === "notifications/message") {
 
             const data = message.params || {};
@@ -420,6 +428,24 @@ class McpClient {
 
         if (message.method === "roots/list") {
             return { roots: this.roots() };
+        }
+
+        /*
+        | P4-10: a question for the user, shown in the console, and a
+        | completion from this runtime's model, within its budget.
+        */
+        if (message.method === "elicitation/create") {
+
+            this.record("server asked the user a question (elicitation)");
+
+            return require("./McpInteractions").elicit(this.name, message.params || {});
+        }
+
+        if (message.method === "sampling/createMessage") {
+
+            this.record("server asked for a completion (sampling)");
+
+            return require("./McpInteractions").sample(this.name, this.config, message.params || {});
         }
 
         this.record(
@@ -501,11 +527,20 @@ class McpClient {
 
                     /*
                     | Only what is implemented is advertised: roots/list
-                    | is answered (handleRequest); sampling is not.
+                    | and elicitation are answered (handleRequest);
+                    | sampling only when this server may use it.
                     */
 
                     capabilities: {
-                        roots: { listChanged: false }
+                        roots: { listChanged: false },
+
+                        /* P4-10: questions go to the console */
+                        elicitation: {},
+
+                        /* P4-10: only for a server allowed to sample */
+                        ...(require("./McpInteractions").samplingAllowed(this.config)
+                            ? { sampling: {} }
+                            : {})
                     },
 
                     clientInfo:
@@ -655,11 +690,15 @@ class McpClient {
 
         try {
 
+            /* P4-10: progress notifications name this call */
+            this.progressCounter = (this.progressCounter || 0) + 1;
+
             const result =
                 await this.transport.request(
                     protocol.request("tools/call", {
                         name: toolName,
-                        arguments: args || {}
+                        arguments: args || {},
+                        _meta: { progressToken: `${this.name}:${toolName}:${this.progressCounter}` }
                     }),
                     { timeoutMs: options.timeoutMs || this.timeout("call") }
                 );
@@ -719,6 +758,33 @@ class McpClient {
             );
 
         return (result && result.resources) || [];
+    }
+
+
+    /* P4-10: parameterised resources (uri templates), offered the same way */
+    async listResourceTemplates() {
+
+        await this.ensureReady();
+
+        if (!this.capabilities.resources) {
+            return [];
+        }
+
+        try {
+
+            const result =
+                await this.transport.request(
+                    protocol.request("resources/templates/list", {}),
+                    { timeoutMs: this.timeout("list") }
+                );
+
+            return (result && result.resourceTemplates) || [];
+
+        } catch {
+
+            /* optional even for a server that offers resources */
+            return [];
+        }
     }
 
 
@@ -837,7 +903,32 @@ class McpClient {
                 this.transport.describe(),
 
             stats:
-                { ...this.stats }
+                { ...this.stats },
+
+            /* P4-07: the per-tool switches, limits and approval rules */
+            tools:
+                this.tools.map(tool => ({
+                    name: tool.name,
+                    description: String(tool.description || "").slice(0, 300),
+                    read_only: Boolean(tool.annotations && tool.annotations.readOnlyHint === true),
+                    destructive: Boolean(tool.annotations && tool.annotations.destructiveHint === true),
+                    enabled: require("./McpCatalogue").matchesFilter(tool.name, this.config.include, this.config.exclude)
+                })),
+
+            agents:
+                this.config.agents || null,
+
+            approval:
+                this.config.approval || { read: "inherit", write: "inherit" },
+
+            sampling:
+                this.config.sampling === true,
+
+            /* P4-08: whether a sign-in is needed, never the token */
+            oauth:
+                this.config.oauth
+                    ? require("./McpOAuth").status(this.name)
+                    : null
         };
     }
 
@@ -857,6 +948,8 @@ class McpClient {
         this.readyPromise = null;
 
         this.toolsLoadedAt = null;
+
+        require("./McpInteractions").cancelFor(this.name);
 
         await this.transport.close();
     }

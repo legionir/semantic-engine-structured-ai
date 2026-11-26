@@ -222,7 +222,8 @@ async function executeDelegations(
     const parentAllowedTools =
         new Set(
             h.resolveTools(
-                parentAgent?.tools
+                parentAgent?.tools,
+                parentAgent?.name
             ).map(
                 tool =>
                     tool.function.name

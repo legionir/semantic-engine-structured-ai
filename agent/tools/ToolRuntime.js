@@ -124,7 +124,7 @@ function callableToolNames() {
 }
 
 
-function mcpToolDeclarations() {
+function mcpToolDeclarations(options = {}) {
 
     let projectId = null;
 
@@ -139,7 +139,7 @@ function mcpToolDeclarations() {
         /* outside a run the catalogue is unfiltered (legacy) */
     }
 
-    return mcp._manager.toolDeclarations(projectId);
+    return mcp._manager.toolDeclarations(projectId, options);
 }
 
 

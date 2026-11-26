@@ -129,7 +129,8 @@
     "default_policy": "allow",
     "tools": [
       "mcp_servers",
-      "mcp_tools"
+      "mcp_tools",
+      "mcp_search_tools"
     ]
   },
   "mcp.call": {
@@ -138,7 +139,9 @@
     "sensitive": true,
     "default_policy": "mixed: allowed by default, require_approval for a restricted server",
     "tools": [
-      "mcp_call"
+      "mcp_call",
+      "mcp_resources",
+      "mcp_prompts"
     ]
   },
   "mcp.manage": {
@@ -149,7 +152,8 @@
     "default_policy": "require_approval",
     "tools": [
       "mcp_add",
-      "mcp_remove"
+      "mcp_remove",
+      "mcp_build"
     ]
   },
   "discussion": {

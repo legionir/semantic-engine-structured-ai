@@ -272,7 +272,7 @@ function destructiveHintEntry(manager, toolName, args) {
 }
 
 
-function mcpEscalation(toolName, { settingsStore = settings, args, mcpManager } = {}) {
+function mcpEscalation(toolName, { settingsStore = settings, args, agent, mcpManager } = {}) {
 
     const isGatewayCall =
         toolName === "mcp_call";
@@ -287,6 +287,26 @@ function mcpEscalation(toolName, { settingsStore = settings, args, mcpManager } 
     const mode =
         settingsStore.get("MCP_APPROVAL");
 
+    let manager = mcpManager;
+
+    if (!manager) {
+        try {
+            ({ manager } = require("../mcp/McpManager"));
+        } catch {
+            manager = null;
+        }
+    }
+
+    /* P4-07: the server's own rules — agent scope and switched-off tools
+       deny before anything else; its read/write approval comes next */
+    const own = manager
+        ? require("./McpToolRules").mcpToolRule(manager, toolName, { args, agent, globalMode: mode })
+        : null;
+
+    if (own && own.decision === DECISIONS.DENY) {
+        return own;
+    }
+
     if (mode === "always") {
 
         return {
@@ -296,14 +316,8 @@ function mcpEscalation(toolName, { settingsStore = settings, args, mcpManager } 
         };
     }
 
-    let manager = mcpManager;
-
-    if (!manager) {
-        try {
-            ({ manager } = require("../mcp/McpManager"));
-        } catch {
-            manager = null;
-        }
+    if (own) {
+        return own;
     }
 
     const annotated = manager
@@ -373,7 +387,8 @@ class PolicyEngine {
                     (toolName, context = {}) =>
                         mcpEscalation(toolName, {
                             settingsStore: this.settings,
-                            args: context.args
+                            args: context.args,
+                            agent: context.agent
                         })
             });
 

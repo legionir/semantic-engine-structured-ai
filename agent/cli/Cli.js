@@ -154,6 +154,10 @@ Headless / CI
       review [target]       Review a change set: diff (default), staged,
                             commit <ref>, branch <ref> [--base <b>], pr <n>
                             [--post]; exits 1 when a finding is high or worse
+      mcp-serve [url]       Serve this runtime to an MCP client over stdio,
+                            bridged to a running console (default
+                            http://127.0.0.1:7777, or --port); the console
+                            or project token comes from AGENT_CONSOLE_TOKEN
 
 Exit codes
   0 completed        1 failed        2 usage error
@@ -250,6 +254,31 @@ async function main() {
 
     if (options.version) {
         await commands.execute("help", "version");
+        process.exit(EXIT.SUCCESS);
+    }
+
+    /*
+    | P4-11: `agent mcp-serve [url]` — an MCP client starts this command; its
+    | stdin/stdout carry JSON-RPC to the console's /mcp. No runtime boots
+    | here, and nothing but protocol messages is written to stdout.
+    */
+    if (options.positional[0] === "mcp-serve") {
+
+        const url = options.positional[1] || `http://127.0.0.1:${options.port || 7777}`;
+        const token = process.env.AGENT_CONSOLE_TOKEN || "";
+
+        if (!token) {
+            fail("mcp-serve needs the console's token, or a project token, in AGENT_CONSOLE_TOKEN");
+        }
+
+        try {
+            new URL(url);
+        } catch {
+            fail(`mcp-serve: "${url}" is not a URL`);
+        }
+
+        await require(path.join(REPO_ROOT, "agent", "mcp", "McpServerHost")).runStdioBridge({ url, token });
+
         process.exit(EXIT.SUCCESS);
     }
 

@@ -51,6 +51,8 @@ const { wellEncodedPath, serveStatic } = require("./console/static-files");
 
 const ROUTE_GROUPS = [
     require("./routes/auth-and-state"),
+    require("./routes/mcp-serve"),
+    require("./routes/mcp-completion"),
     require("./routes/mcp-platform"),
     require("./routes/mcp"),
     require("./routes/sessions"),
@@ -71,6 +73,9 @@ const TERMINAL_IO = /^\/api\/terminal\/[a-f0-9]{16}\/(input|resize)$/;
 
 
 function createServer(runtime, options = {}) {
+
+    /* P4-10: a server's questions (elicitation) now have someone to answer them */
+    require("../../agent/mcp/McpInteractions").setInteractive(true);
 
     /*
     | The console is a control plane, not a public static site. A token is
@@ -331,9 +336,19 @@ function createServer(runtime, options = {}) {
                 setConsoleCookie(res, CONSOLE_COOKIE, consoleToken);
             }
 
+            /*
+            | P4-08: an OAuth provider redirects the browser back here; the
+            | one-time state of a sign-in the operator started is the
+            | credential, because the console cookie may not travel on a
+            | cross-site redirect.
+            */
+            const oauthCallback =
+                pathname === "/api/mcp/oauth/callback" && req.method === "GET";
+
             if (
                 pathname.startsWith("/api/") &&
                 !authenticated &&
+                !oauthCallback &&
                 pathname !== "/auth/status" &&
                 pathname !== "/auth/login"
             ) {

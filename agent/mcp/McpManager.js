@@ -92,6 +92,21 @@ function currentProjectId() {
 }
 
 
+/* two definitions that reach the same process / endpoint the same way */
+const CONTROL_ONLY = ["source", "origin", "include", "exclude", "agents", "approval", "scope", "projects", "description", "catalog", "trust"];
+
+function sameConnection(left, right) {
+
+    const strip = config => {
+        const copy = { ...config };
+        for (const field of CONTROL_ONLY) delete copy[field];
+        return JSON.stringify(copy);
+    };
+
+    return strip(left) === strip(right);
+}
+
+
 /* two definitions of one server that differ only in where they were read */
 function sameServer(left, right) {
 
@@ -186,7 +201,12 @@ class McpManager {
 
         const seen = new Set();
 
-        for (const definition of loaded.servers) {
+        const overrides = require("./McpOverrides");
+
+        for (const declared of loaded.servers) {
+
+            /* P4-07: the operator's per-tool switches and limits */
+            const definition = overrides.apply(declared);
 
             seen.add(definition.name);
 
@@ -217,6 +237,16 @@ class McpManager {
             ) {
                 existing.config.source = definition.source;
                 existing.config.origin = definition.origin;
+                existing.ephemeral = false;
+                continue;
+            }
+
+            /*
+            | Only the switches changed (a tool turned off, an approval
+            | rule, an agent limit): the connection is kept and told.
+            */
+            if (existing && sameConnection(existing.config, definition)) {
+                Object.assign(existing.config, definition);
                 existing.ephemeral = false;
                 continue;
             }
@@ -403,22 +433,27 @@ class McpManager {
     | building a prompt must not wait on a network round trip.
     */
 
-    catalogueEntries(projectId) {
+    catalogueEntries(projectId, options = {}) {
 
         const entries = [...this.catalogue.values()];
 
-        if (!projectId) {
+        /* P4-07: a server limited to some agents is invisible to the others */
+        const agent = options.agent ? String(options.agent).replace(/#\d+$/, "") : null;
+
+        if (!projectId && !agent) {
             return entries;
         }
 
         return entries.filter(entry => {
 
             const client = this.clients.get(entry.server);
+            const config = client ? client.config : { scope: "global" };
 
-            return trust.serverVisibleTo(
-                client ? client.config : { scope: "global" },
-                projectId
-            );
+            if (agent && Array.isArray(config.agents) && config.agents.length > 0 && !config.agents.includes(agent)) {
+                return false;
+            }
+
+            return !projectId || trust.serverVisibleTo(config, projectId);
         });
     }
 
@@ -441,9 +476,9 @@ class McpManager {
     }
 
 
-    toolDeclarations(projectId) {
+    toolDeclarations(projectId, options = {}) {
 
-        return this.catalogueEntries(projectId).map(
+        return this.catalogueEntries(projectId, options).map(
             entry => this.toolDeclaration(entry)
         );
     }
@@ -465,7 +500,12 @@ class McpManager {
     }
 
 
-    async call(serverName, tool, args, options = {}) {
+    /*
+    | The checks every use of a server makes, a tool call or a resource or
+    | prompt read alike: it exists, is switched on, is trusted to start,
+    | and is in scope for the active project (and, P4-07, the agent).
+    */
+    usableClient(serverName, options = {}) {
 
         if (!this.enabled()) {
 
@@ -524,6 +564,31 @@ class McpManager {
                 `MCP server "${serverName}" is not in scope for project ${projectId}.`
             );
         }
+
+        const agent =
+            options.agent ? String(options.agent).replace(/#\d+$/, "") : null;
+
+        if (
+            agent &&
+            agent !== "web_console" &&
+            Array.isArray(client.config.agents) &&
+            client.config.agents.length > 0 &&
+            !client.config.agents.includes(agent)
+        ) {
+
+            throw new Error(
+                `MCP server "${serverName}" is limited to ${client.config.agents.join(", ")}.`
+            );
+        }
+
+        return client;
+    }
+
+
+    async call(serverName, tool, args, options = {}) {
+
+        const client =
+            this.usableClient(serverName, options);
 
         if (
             !catalogue.matchesFilter(

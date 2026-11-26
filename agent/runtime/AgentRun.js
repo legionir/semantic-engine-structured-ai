@@ -225,7 +225,8 @@ async function runAgentCore(options = {}) {
 
     const mainAgentTools =
         h.resolveTools(
-            mainAgentDefinition.tools
+            mainAgentDefinition.tools,
+            mainAgentDefinition.name || "main_agent"
         );
 
     const allowedTools =

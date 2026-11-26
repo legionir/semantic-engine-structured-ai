@@ -17,6 +17,8 @@
 
 import { html } from "./dom.js";
 import { Catalog, Secrets } from "./mcp-catalog-view.js";
+import { createMcpExtrasState } from "./mcp-extras.js";
+import { ImportPanel, RegistryPanel, ServerControls } from "./mcp-extras-view.js";
 
 
 const DEFAULT_CONFIG = '{\n  "mcpServers": {}\n}\n';
@@ -60,7 +62,11 @@ export function createMcpState() {
         secretsError: null,
         secretKey: 0,
         secretMessage: "",
-        secretBusy: false
+        secretBusy: false,
+        /* group 6: tool switches, import, registry, resources and prompts */
+        extras: createMcpExtrasState(),
+        /* P4-10: the latest progress of each server's running call */
+        progress: new Map()
     };
 }
 
@@ -215,6 +221,7 @@ function ServerRow({ server, mcp, actions }) {
             </button>
             <button type="button" class="ghost danger" disabled=${busy} onClick=${() => actions.remove(server)}>Remove</button>
         </div>
+        ${server.enabled ? html`<${ServerControls} server=${server} mcp=${mcp} actions=${actions} />` : null}
     </div>`;
 }
 
@@ -332,6 +339,8 @@ export function McpBody({ mcp, actions, project = null }) {
         <div class="mcp-tabs">
             ${tab("servers", "Servers")}
             ${tab("catalog", "Catalogue")}
+            ${tab("registry", "Registry")}
+            ${tab("import", "Import")}
             ${tab("secrets", "Secrets")}
             ${tab("json", "Raw JSON")}
         </div>
@@ -340,6 +349,12 @@ export function McpBody({ mcp, actions, project = null }) {
         </div>
         <div class="mcp-tab-panel" hidden=${mcp.tab !== "catalog"}>
             ${mcp.tab === "catalog" ? html`<${Catalog} mcp=${mcp} actions=${actions} project=${project} />` : null}
+        </div>
+        <div class="mcp-tab-panel" hidden=${mcp.tab !== "registry"}>
+            ${mcp.tab === "registry" ? html`<${RegistryPanel} mcp=${mcp} actions=${actions} />` : null}
+        </div>
+        <div class="mcp-tab-panel" hidden=${mcp.tab !== "import"}>
+            ${mcp.tab === "import" ? html`<${ImportPanel} mcp=${mcp} actions=${actions} />` : null}
         </div>
         <div class="mcp-tab-panel" hidden=${mcp.tab !== "secrets"}>
             ${mcp.tab === "secrets" ? html`<${Secrets} mcp=${mcp} actions=${actions} />` : null}

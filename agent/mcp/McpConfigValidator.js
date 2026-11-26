@@ -277,6 +277,80 @@ function normalizeStringList(value) {
 }
 
 
+const APPROVAL_VALUES = new Set(["inherit", "always", "never"]);
+
+function normalizeApproval(value) {
+
+    if (value === undefined || value === null) {
+        return { read: "inherit", write: "inherit" };
+    }
+
+    if (typeof value === "string") {
+        if (!APPROVAL_VALUES.has(value)) {
+            throw new Error(`approval must be inherit, always or never, or {read, write}: ${value}`);
+        }
+        return { read: value, write: value };
+    }
+
+    if (typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("approval must be inherit, always or never, or {read, write}");
+    }
+
+    const pick = key => {
+        const item = value[key] === undefined ? "inherit" : value[key];
+        if (!APPROVAL_VALUES.has(item)) {
+            throw new Error(`approval.${key} must be inherit, always or never: ${item}`);
+        }
+        return item;
+    };
+
+    return { read: pick("read"), write: pick("write") };
+}
+
+
+function loosenOnlyIf(approval, allowed) {
+
+    if (allowed) return approval;
+
+    return {
+        read: approval.read === "never" ? "inherit" : approval.read,
+        write: approval.write === "never" ? "inherit" : approval.write
+    };
+}
+
+
+function normalizeOAuth(value) {
+
+    if (value === undefined || value === null || value === false) {
+        return null;
+    }
+
+    if (value === true) {
+        return {};
+    }
+
+    if (typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("oauth must be true or an object {client_id?, client_secret?, scopes?}");
+    }
+
+    const out = {};
+
+    for (const key of ["client_id", "client_secret", "authorization_server"]) {
+        if (value[key] !== undefined) {
+            if (typeof value[key] !== "string" || value[key] === "") throw new Error(`oauth.${key} must be a non-empty string`);
+            out[key] = value[key];
+        }
+    }
+
+    if (value.scopes !== undefined) {
+        const scopes = Array.isArray(value.scopes) ? value.scopes : String(value.scopes).split(/[\s,]+/);
+        out.scopes = scopes.map(String).filter(Boolean);
+    }
+
+    return out;
+}
+
+
 function normalize(name, rawDefinition, context) {
 
     if (
@@ -392,6 +466,27 @@ function normalize(name, rawDefinition, context) {
         projects:
             normalizeStringList(definition.projects),
 
+        /*
+        | P4-07: the agents that may see and call this server's tools (empty:
+        | every agent), and an approval rule per kind of tool — read for a
+        | tool annotated readOnlyHint, write for every other one — each
+        | inherit (the policy rules and trust), always or never.
+        */
+        agents:
+            normalizeStringList(definition.agents),
+
+        /* like trust, a repository file may ask for more approval, never less */
+        approval:
+            loosenOnlyIf(normalizeApproval(definition.approval), mayDeclareTrusted(context)),
+
+        /* P4-08: OAuth 2.1 sign-in for a remote server (true, or settings) */
+        oauth:
+            normalizeOAuth(definition.oauth),
+
+        /* P4-10: the server may ask the model for completions (sampling) */
+        sampling:
+            definition.sampling === true,
+
         timeouts: {
             connect:
                 Number(definition.connectTimeoutMs) ||
@@ -495,6 +590,8 @@ module.exports = {
     workspaceTrusted,
     expandsEnvironment,
     normalizeStringList,
+    normalizeApproval,
+    normalizeOAuth,
     normalize,
     normalizeOne
 };

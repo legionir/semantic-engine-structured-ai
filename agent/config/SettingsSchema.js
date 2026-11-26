@@ -30,7 +30,8 @@ const DEFINITIONS = [
     ...require("./settings-definitions/03"),
     ...require("./settings-definitions/04"),
     ...require("./settings-definitions/05"),
-    ...require("./settings-definitions/06")
+    ...require("./settings-definitions/06"),
+    ...require("./settings-definitions/07")
 ];
 
 

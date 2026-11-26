@@ -119,6 +119,43 @@
 .mcp-head .state.reconnecting { color: var(--warn); }
 .mcp-last-error { font-size: 11px; margin-top: 4px; overflow-wrap: anywhere; }
 
+/* group 6 (P4-05 … P4-12): tool switches, sign-in, resources, import, registry, questions */
+.mcp-controls { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.mcp-progress { display: flex; gap: 8px; align-items: center; font-size: 11px; }
+.mcp-progress progress { flex: 1 1 120px; height: 8px; }
+.mcp-oauth { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chip.ok { color: var(--ok); }
+.chip.warn { color: var(--warn); }
+.mcp-tools-panel { border-top: 1px solid var(--line-soft); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.mcp-approval-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.mcp-approval { flex: 1 1 180px; }
+.mcp-tool-switches { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }
+.mcp-tool-switches li { display: flex; flex-direction: column; gap: 1px; }
+.mcp-tool-switches li.off { opacity: .55; }
+.mcp-tool-switches label { display: flex; gap: 6px; align-items: center; }
+.mcp-tool-switches .name { font-family: var(--mono); font-size: 11px; }
+.mcp-tool-switches .chip { font-size: 10px; border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; }
+.mcp-tool-switches .chip.write { color: var(--warn); }
+.mcp-tool-switches .facts { font-size: 11px; color: var(--muted); padding-left: 22px; overflow-wrap: anywhere; }
+.mcp-browser ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.mcp-browser li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 12px; }
+.mcp-browser .facts { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.linkish { background: none; border: 0; box-shadow: none; padding: 0; color: var(--accent); font-family: var(--mono); cursor: pointer; }
+.mcp-resource-text { max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: 11px; background: var(--panel-2); padding: 8px; border-radius: 6px; }
+.mcp-import-text { min-height: 140px; }
+.mcp-import-preview ul { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.mcp-import-preview li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+.mcp-import-preview .name { font-family: var(--mono); }
+.mcp-import-preview .import-conflict .chip { color: var(--warn); }
+.mcp-import-preview .import-invalid .chip { color: var(--bad); }
+.mcp-import-preview .import-new .chip { color: var(--ok); }
+.mcp-trust-warning { border: 1px solid var(--warn); border-left-width: 3px; border-radius: 8px; padding: 8px 10px; font-size: 12px; background: rgba(255, 196, 0, .06); }
+.mcp-registry form input[type="search"] { flex: 1 1 200px; }
+.mcp-registry-add { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 6px; margin-top: 6px; }
+.mcp-ack { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.mcp-elicitation, .mcp-prompt-form { display: flex; flex-direction: column; gap: 8px; }
+.mcp-elicitation > p:first-child { margin: 0; white-space: pre-wrap; }
+
 /* P4-02: catalogue cards */
 .mcp-catalog-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .mcp-catalog-tools input[type="search"] { flex: 1 1 200px; }

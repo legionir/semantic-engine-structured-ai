@@ -39,6 +39,7 @@ const ALWAYS_BLOCKED = new Set([
     "git_push",
     "mcp_add",
     "mcp_remove",
+    "mcp_build",
     "discussion_start"
 ]);
 

@@ -350,11 +350,40 @@ module.exports = function createRuntimeContextKit(host) {
             const status =
                 toolRuntime.mcp._manager.status();
 
+            /*
+            | P4-06: the tools left out of the request's declarations, by
+            | name and one line, so the model knows to load one with
+            | mcp_search_tools and run it with mcp_call.
+            */
+            let selection = null;
+
+            try {
+                selection =
+                    typeof host.mcpToolSelection === "function"
+                        ? host.mcpToolSelection()
+                        : null;
+            } catch {
+                selection = null;
+            }
+
+            const deferred =
+                selection && selection.deferred.length > 0
+                    ? {
+                        tool_loading: selection.mode,
+                        deferred_tools: selection.deferred,
+                        deferred_hint:
+                            "These MCP tools are not declared to save context: call mcp_search_tools " +
+                            "(query or names) to read a definition, then run it with mcp_call {tool, arguments}."
+                    }
+                    : {};
+
             return {
                 enabled: true,
 
                 tools:
                     status.tool_count,
+
+                ...deferred,
 
                 servers:
                     status.servers

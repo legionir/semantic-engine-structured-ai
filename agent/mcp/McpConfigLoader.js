@@ -332,7 +332,14 @@ function persist(workspaceRoot, config, options = {}) {
         projects: config.scope === "project" && config.projects ? config.projects : undefined,
         trust: config.trust === "default" ? undefined : config.trust,
         include: config.include || undefined,
-        exclude: config.exclude || undefined
+        exclude: config.exclude || undefined,
+        agents: config.agents && config.agents.length ? config.agents : undefined,
+        approval:
+            config.approval && (config.approval.read !== "inherit" || config.approval.write !== "inherit")
+                ? config.approval
+                : undefined,
+        oauth: config.oauth || undefined,
+        sampling: config.sampling === true ? true : undefined
     };
 
     if (config.transport === "stdio") {

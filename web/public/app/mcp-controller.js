@@ -13,6 +13,8 @@ import { mountInModal } from "./dom.js";
 import { connectBody, createMcpState, McpBody, mcpSubtitle } from "./mcp-view.js";
 import { notifyError } from "./console-core.js";
 import { createCatalogActions } from "./mcp-catalog-controller.js";
+import { createExtrasActions } from "./mcp-extras.js";
+import { handleMcpEvent } from "./mcp-commands.js";
 
 
 async function mcpRequest(url, options = {}) {
@@ -125,6 +127,18 @@ const { loadCatalog, loadSecrets, currentProject, ...catalogActions } =
     createCatalogActions({ mcpRequest, refreshMcp });
 
 
+const extrasActions = createExtrasActions({ state, touch, refreshMcp });
+
+
+/* the stream's mcp:* events (stream-controller): progress, questions, sign-ins */
+export function onMcpEvent(event) {
+
+    if (!state.mcp) state.mcp = createMcpState();
+
+    return handleMcpEvent(event, { state, touch, refreshMcp });
+}
+
+
 const mcpActions = {
 
     tab(tab) {
@@ -139,6 +153,8 @@ const mcpActions = {
     },
 
     ...catalogActions,
+
+    ...extrasActions,
 
     async configTarget(target) {
         state.mcp.configTarget = target === "user" ? "user" : "workspace";
@@ -263,7 +279,7 @@ export async function openMcp() {
     state.mcpOpening = true;
 
     /* each opening starts from what the server says now */
-    state.mcp = { ...createMcpState(), tab: state.mcp?.tab || "servers" };
+    state.mcp = { ...createMcpState(), tab: state.mcp?.tab || "servers", progress: state.mcp?.progress || new Map() };
 
     const loaded = await refreshMcp(false);
 

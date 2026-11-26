@@ -242,8 +242,8 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         const backdrop = [...document.body.children].find(child => child.classList.contains("modal-backdrop"));
         const dialog = backdrop.children[0];
         const tabs = [...dialog.querySelectorAll(".mcp-tab")];
-        assert.deepEqual(tabs.map(tab => tab.textContent.trim()), ["Servers", "Catalogue", "Secrets", "Raw JSON"]);
-        tabs[3].dispatch("click");
+        assert.deepEqual(tabs.map(tab => tab.textContent.trim()), ["Servers", "Catalogue", "Registry", "Import", "Secrets", "Raw JSON"]);
+        tabs[5].dispatch("click");
 
         const textarea = [...dialog.querySelectorAll(".mcp-raw-json")][0];
         assert.ok(textarea.value.includes("mcpServers"));
@@ -258,6 +258,99 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
             item.body &&
             item.body.text.includes('"local"')
         ));
+        Modal.closeTop("test");
+    });
+
+
+    await test("MCP panel: per-tool switches, read/write approval, sign-in, import and the registry warning (group 6)", async () => {
+
+        const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+        const server = {
+            name: "gh",
+            transport: "http",
+            state: "ready",
+            enabled: true,
+            tool_count: 2,
+            capabilities: ["tools", "prompts"],
+            connection: { url: "https://gh.example/mcp" },
+            stats: {},
+            reconnect: {},
+            approval: { read: "inherit", write: "inherit" },
+            oauth: { signed_in: false },
+            tools: [
+                { name: "list_issues", description: "List issues", read_only: true, enabled: true },
+                { name: "create_issue", description: "Create an issue", read_only: false, enabled: true }
+            ]
+        };
+
+        console_.reply("/api/mcp", { enabled: true, servers: [server], tools: [], problems: [], tool_count: 2 });
+        console_.reply("/api/mcp/config", { text: '{\n  "mcpServers": {}\n}\n', path: "/workspace/.agent/mcp.json" });
+        console_.reply("/api/mcp/gh/controls", { ok: true, overrides: { disabled_tools: ["create_issue"] } });
+        console_.reply("/api/mcp/import/preview", {
+            client: "Claude Desktop",
+            entries: [
+                { name: "files", status: "new", definition: { command: "npx" } },
+                { name: "gh", status: "conflict", definition: { command: "npx" } }
+            ]
+        });
+
+        document.getElementById("mcpButton").dispatch("click");
+        await tick();
+        await tick();
+
+        const dialog = backdrops().at(-1).children[0];
+        const row = dialog.querySelector(".mcp-server");
+
+        assert.ok(row.textContent.includes("sign-in needed"), "an OAuth server without a token says so");
+
+        const expand = [...row.querySelectorAll("button")].find(button => button.textContent.includes("Tools & approval"));
+        expand.dispatch("click");
+        await tick();
+
+        const switches = [...dialog.querySelectorAll(".mcp-tool-switches input")];
+        assert.equal(switches.length, 2);
+        assert.ok(dialog.querySelector(".mcp-tool-switches").textContent.includes("write"));
+
+        switches[1].checked = false;
+        switches[1].dispatch("change");
+        await tick();
+
+        assert.ok(console_.posted.some(item =>
+            item.url === "/api/mcp/gh/controls" && item.method === "PATCH" &&
+            item.body && item.body.tool === "create_issue" && item.body.enabled === false
+        ), "the switch is sent");
+
+        const writeApproval = [...dialog.querySelectorAll(".mcp-approval select")][1];
+        writeApproval.value = "always";
+        writeApproval.dispatch("change");
+        await tick();
+
+        assert.ok(console_.posted.some(item =>
+            item.url === "/api/mcp/gh/controls" && item.body && item.body.approval &&
+            item.body.approval.write === "always" && item.body.approval.read === "inherit"
+        ), "write approval is set on its own");
+
+        const tabs = [...dialog.querySelectorAll(".mcp-tab")];
+
+        tabs.find(tab => tab.textContent.trim() === "Registry").dispatch("click");
+        await tick();
+        const warning = dialog.querySelector(".mcp-trust-warning");
+        assert.ok(warning && /not reviewed/.test(warning.textContent), "the trust warning comes first");
+
+        tabs.find(tab => tab.textContent.trim() === "Import").dispatch("click");
+        await tick();
+        const text = dialog.querySelector(".mcp-import-text");
+        text.value = '{"mcpServers": {"files": {"command": "npx"}}}';
+        text.dispatch("input");
+        [...dialog.querySelectorAll(".mcp-import button")].find(button => button.textContent.trim() === "Preview").dispatch("click");
+        await tick();
+        await tick();
+
+        assert.ok(console_.posted.some(item => item.url === "/api/mcp/import/preview" && item.body && item.body.text.includes("files")));
+        const preview = dialog.querySelector(".mcp-import-preview");
+        assert.ok(preview.textContent.includes("1 new") && preview.textContent.includes("1 conflicting"), preview.textContent);
+        assert.equal(preview.querySelectorAll("select").length, 1, "only the conflict asks what to do");
+
         Modal.closeTop("test");
     });
 

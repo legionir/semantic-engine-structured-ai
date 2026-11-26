@@ -493,6 +493,19 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `MCP_RECONNECT_BASE_MS` | number | `1000` | Wait before the first reconnect attempt; each further attempt doubles it (±20% jitter), up to `MCP_RECONNECT_MAX_MS`. |
 | `MCP_RECONNECT_MAX_MS` | number | `60000` | Longest wait between two reconnect attempts. |
 | `MCP_RECONNECT_MAX_ATTEMPTS` | number | `10` | Reconnect attempts before a server is marked unreachable; the next tool call or Reconnect in the console tries again. |
+| `MCP_TOOL_LOADING` | enum | `auto` | How MCP tool definitions reach the model (roadmap P4-06). eager declares tools until MCP_TOOL_DEFINITIONS_BUDGET is spent; lazy declares none and lists each by name and one line, loaded on demand with mcp_search_tools and called with mcp_call; auto is eager while everything fits the budget and lazy once it does not. |
+| `MCP_TOOL_DEFINITIONS_BUDGET` | number | `24000` | Ceiling, in characters of JSON, on the MCP tool definitions declared in one model request (roadmap P4-06). The rest are listed by name and loaded with mcp_search_tools. |
+| `MCP_OAUTH_REDIRECT_BASE` | string | `""` | The console's public address (https://host:port) an OAuth provider redirects back to after an MCP sign-in, ending in /api/mcp/oauth/callback (roadmap P4-08). Empty: the address the panel was opened at. |
+| `MCP_SAMPLING_ENABLED` | boolean | `false` | Whether an MCP server whose definition says sampling: true may ask this runtime's model for a completion (sampling/createMessage, roadmap P4-10). Off: the capability is not advertised and every request is refused. |
+| `MCP_SAMPLING_MAX_TOKENS` | number | `1024` | Largest completion one sampling request may produce; a server asking for more gets this many (roadmap P4-10). |
+| `MCP_SAMPLING_BUDGET_TOKENS` | number | `20000` | Tokens (prompt plus completion) each MCP server may spend on sampling while this process runs; a request beyond it is refused (roadmap P4-10). 0 refuses every request. |
+| `MCP_ELICITATION_TIMEOUT_MS` | number | `300000` | How long a server's question to the user (elicitation/create) waits in the panel before it is answered with cancel (roadmap P4-10). |
+| `MCP_SERVE_ENABLED` | boolean | `true` | Whether this console answers MCP clients at /mcp (and agent mcp-serve over stdio), offering list_projects, run_task and task_status to a caller holding a console or project token (roadmap P4-11). |
+| `MCP_REGISTRY_URL` | string | `https://registry.modelcontextprotocol.io` | The MCP registry the console searches for servers that are not in the bundled catalogue (roadmap P4-12). Empty: registry search is off. |
+| `MCP_OAUTH_REFRESH_MARGIN_MS` | number | `60000` | How long before an MCP server's OAuth access token expires it is refreshed (roadmap P4-08); a refused call also refreshes it once. |
+| `MCP_OAUTH_FLOW_TTL_MS` | number | `600000` | How long an MCP OAuth sign-in started from the console may take before its one-time state expires (roadmap P4-08). |
+| `MCP_OPENAPI_MAX_OPERATIONS` | number | `64` | Most operations of an OpenAPI document mcp_build turns into tools of one generated MCP server (roadmap P4-09); the rest are left out. |
+| `MCP_DEFERRED_LINE_CHARS` | number | `120` | Length of the one-line description each deferred MCP tool gets in the model's index when tool definitions are loaded lazily (roadmap P4-06). |
 | `PLAYWRIGHT_BROWSERS_PATH` | string | `""` | Where the headless Chromium for browser MCP servers is installed and looked for. Empty: Playwright's default cache (`~/.cache/ms-playwright` on Linux). |
 | `WORKSPACE_ROOT` | string · fixed at startup | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Directory the agent may act in. Fixed at startup because every path check depends on it. اگر unset باشد، در runtime به `process.cwd()` برمی‌گردد. |
 | `STRUCTURED_AI_DATA_HOME` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai. اگر unset باشد، مسیر پیش‌فرض کاربر (معمولاً `~/.local/share/structured-ai`) استفاده می‌شود. |
@@ -553,7 +566,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
 | `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۴۱ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۵۴ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -633,6 +646,20 @@ method/path کامل در
 | `POST` | `/api/mcp/catalog/:name/deactivate` | غیرفعال‌سازی و برگرداندن config، با `forget_secrets` اختیاری (ادمین) |
 | `GET` | `/api/mcp/prerequisites` | بررسی npx/uvx/python/chromium با راهنمای نصب (ادمین) |
 | `GET/POST` | `/api/mcp/prerequisites/:id/install` | نصب یک‌کلیکی Chromium و پیگیری پیشرفت آن (ادمین) |
+| `POST` | `/api/mcp/import/preview` | پیش‌نمایش ادغام config یک کلاینت دیگر (Claude Desktop، Cursor، VS Code، Zed): وضعیت هر سرور `new`/`identical`/`conflict`/`invalid` (ادمین) |
+| `POST` | `/api/mcp/import` | ادغام با `{text, target: user\|workspace, resolutions: {name: skip\|replace\|rename:<new>}}`؛ تا تعارضی بی‌تصمیم بماند `409` و هیچ چیز نوشته نمی‌شود (ادمین) |
+| `PATCH` | `/api/mcp/:name/controls` | کنترل هر ابزار `{tool, enabled}`، `approval: {read, write}` (`inherit`/`always`/`never`)، `agents`، `projects`؛ در `<data home>/mcp-overrides.json` (ادمین) |
+| `POST` | `/api/mcp/:name/oauth/start` | شروع ورود OAuth 2.1 (PKCE S256، ثبت پویای client)؛ آدرس صفحهٔ ورود را برمی‌گرداند (ادمین) |
+| `GET` | `/api/mcp/oauth/callback` | بازگشت از provider؛ بدون token کنسول، با `state` یک‌بارمصرف محافظت می‌شود |
+| `POST` | `/api/mcp/:name/oauth/signout` | خروج و پاک کردن tokenها، با `forget_client` اختیاری (ادمین) |
+| `GET` | `/api/mcp/elicitations` | سؤال‌هایی که سرورهای MCP منتظر پاسخشان هستند |
+| `POST` | `/api/mcp/elicitations/:id` | پاسخ `{action: accept\|decline\|cancel, content}`؛ محتوا با schema سرور بررسی می‌شود |
+| `GET` | `/api/mcp/:name/resources[?uri=]` | فهرست resourceها و templateها، یا خواندن یکی |
+| `GET` | `/api/mcp/prompts` | promptهای همهٔ سرورهای آماده (دستورهای `/` در کادر پیام) |
+| `GET`/`POST` | `/api/mcp/:name/prompts[/:prompt]` | فهرست promptهای یک سرور، یا رندر یکی با `{arguments}` |
+| `GET` | `/api/mcp/registry?q=&cursor=` | جست‌وجو در MCP registry رسمی (`MCP_REGISTRY_URL`) همراه با هشدار اعتماد (ادمین) |
+| `POST` | `/api/mcp/registry/add` | افزودن از registry با `{name, inputs, acknowledge_untrusted: true}`؛ بدون تأیید `428`؛ سرور `restricted` اضافه می‌شود و secretها به secret store می‌روند (ادمین) |
+| `POST` | `/mcp` | خود structured-ai به‌عنوان سرور MCP (Streamable HTTP)؛ فقط `Authorization: Bearer` با token کنسول یا پروژه؛ ابزارهای `list_projects`، `run_task`، `task_status` |
 | `GET` | `/api/secrets` | فهرست نام secretها و محل استفاده؛ مقدار هرگز برنمی‌گردد (ادمین) |
 | `PUT/DELETE` | `/api/secrets/:name` | ذخیره یا حذف یک secret (ادمین) |
 | `GET` | `/api/interrupted` | گفتگوهایی که ری‌استارت سرور وسط اجرا قطع کرد (P1-06)، با فیلتر token |
@@ -896,6 +923,17 @@ MCP_SERVERS                       متغیر محیطی، بالاترین او�
 * مقدار secretها هرگز از API برنمی‌گردد و در لاگ، journal و پاسخ‌های API ماسک می‌شود. هیچ ابزار agent آن را نمی‌خواند و ابزارهای فایل به `secrets.enc`/`secrets.key` دسترسی ندارند.
 * پیش از هر اتصال، npx/uvx/python و Chromium بررسی می‌شوند و نبودشان با راهنمای نصب گزارش می‌شود (کد 412). Chromium را می‌توان با یک کلیک (`playwright-mcp install-browser chromium`) نصب کرد و پیشرفتش را دید.
 * اگر سرور به‌طور غیرمنتظره قطع شود، با backoff نمایی دوباره وصل می‌شود (`MCP_RECONNECT_*`)؛ وضعیت و آخرین خطا کنار هر سرور و در لاگ سراسری (`source=mcp`) دیده می‌شود.
+
+#### تکمیل MCP (گروه ۶ نقشهٔ راه)
+
+* **Import:** config کلاینت‌های دیگر را paste کنید؛ پیش‌نمایش نشان می‌دهد کدام سرور تازه، یکسان، متعارض یا نامعتبر است. برای هر تعارض skip، replace یا نام تازه انتخاب می‌شود. JSONC (کامنت و ویرگول آخر) و `${input:…}` پذیرفته و گزارش می‌شوند.
+* **بارگذاری تنبل ابزارها:** `MCP_TOOL_LOADING` (`auto`/`eager`/`lazy`) و `MCP_TOOL_DEFINITIONS_BUDGET`. ابزارهایی که در سقف جا نشوند با نام و یک خط در context می‌آیند و agent با `mcp_search_tools` تعریف کاملشان را می‌گیرد و با `mcp_call` صدا می‌زند.
+* **کنترل هر ابزار:** کلید روشن/خاموش هر ابزار، تأیید جدا برای ابزارهای فقط‌خواندنی (`readOnlyHint`) و نویسنده، و محدود کردن سرور به چند agent (`agents`) یا پروژه. ابزار خاموش از فهرست مدل حذف و فراخوانی مستقیمش رد می‌شود.
+* **OAuth 2.1:** برای سرورهای راه دور با `oauth: true` (یا `{client_id, client_secret, scopes, authorization_server}`): کشف از `WWW-Authenticate`/`.well-known`، ثبت پویای client، PKCE، ذخیرهٔ token در secret store، refresh خودکار پیش از انقضا و پس از 401. دکمهٔ **Sign in** کنار سرور.
+* **ساخت سرور توسط agent:** `mcp_build` یک سرور Node یا Python بدون وابستگی در `.agent/mcp-servers/<name>/` می‌سازد (یا از یک سند OpenAPI)، ثبت و بی‌ری‌استارت بارگذاری می‌کند؛ پس از ویرایش `tools.js` با `action: reload` دوباره بالا می‌آید.
+* **پروتکل کامل:** resourceها و promptها هم ابزار agent‌اند (`mcp_resources`، `mcp_prompts`) و هم در پنل؛ promptها با تایپ `/` در کادر پیام دستورند. سؤال سرور (elicitation) در پنجره‌ای در کنسول پرسیده می‌شود (بدون کنسول فوراً cancel)، پیشرفت فراخوانی‌ها کنار سرور دیده می‌شود، و sampling فقط با `MCP_SAMPLING_ENABLED` و `sampling: true` سرور و در بودجهٔ `MCP_SAMPLING_BUDGET_TOKENS` مجاز است.
+* **structured-ai به‌عنوان سرور MCP:** `POST /mcp` روی کنسول، یا برای کلاینت‌های stdio: `AGENT_CONSOLE_TOKEN=<token> agent mcp-serve http://host:7777`. token پروژه فقط پروژهٔ خودش را می‌بیند. خاموش کردن: `MCP_SERVE_ENABLED=false`.
+* **Registry:** زبانهٔ **Registry** در MCP registry رسمی جست‌وجو می‌کند؛ هشدار «بررسی‌نشده» پیش از نتایج می‌آید، افزودن تأیید صریح می‌خواهد و سرور با trust `restricted` (هر فراخوانی تأیید) اضافه می‌شود.
 
 ---
 

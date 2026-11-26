@@ -15,6 +15,7 @@ import { loadSettings } from "./settings-controller.js";
 import { projectRunSettled } from "./queue-controller.js";
 import { refreshSystemWarnings } from "./system-view.js";
 import { refreshInterrupted } from "./interrupted-controller.js";
+import { onMcpEvent } from "./mcp-controller.js";
 
 
 /*
@@ -146,12 +147,20 @@ export function connect() {
         if (payload.type === "snapshot") {
             applySnapshot(payload.snapshot);
             applySummary(state.conversations);
+            /* a question a server asked before this page loaded */
+            onMcpEvent({ type: "mcp:elicitation" });
             return;
         }
 
         if (payload.type === "conversations") {
             if (Array.isArray(payload.conversations)) applySummary(payload.conversations);
             return;
+        }
+
+        /* P4-10: a server's question, progress or sign-in (the event may
+           be metadata only; the MCP module asks for the details) */
+        if (typeof payload.type === "string" && payload.type.startsWith("mcp:")) {
+            onMcpEvent(payload);
         }
 
         apply(payload);

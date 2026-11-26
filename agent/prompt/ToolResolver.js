@@ -15,13 +15,21 @@
 
 function createToolResolver({
     TOOL_REGISTRY_OF,
-    mcpToolDeclarations
+    mcpToolDeclarations,
+    allMcpToolDeclarations = mcpToolDeclarations
 }) {
 
-    function mcpRegistry() {
+    /*
+    | Explicitly named MCP tools resolve against the whole catalogue (the
+    | profile asked for them by name); "*" gets the budgeted declarations
+    | (roadmap P4-06). Either way, a server limited to some agents is
+    | left out for every other agent (P4-07).
+    */
+
+    function mcpRegistry(agentName) {
 
         return new Map(
-            mcpToolDeclarations().map(
+            allMcpToolDeclarations(agentName ? { agent: agentName } : {}).map(
                 tool => [tool.function.name, tool]
             )
         );
@@ -29,7 +37,7 @@ function createToolResolver({
     }
 
 
-    function resolve(toolNames) {
+    function resolve(toolNames, agentName) {
 
         /*
         | "*" grants every registered tool. Used by the root orchestrator
@@ -40,7 +48,7 @@ function createToolResolver({
 
             return [
                 ...TOOL_REGISTRY_OF().values(),
-                ...mcpToolDeclarations()
+                ...mcpToolDeclarations(agentName ? { agent: agentName } : {})
             ];
 
         }
@@ -50,7 +58,7 @@ function createToolResolver({
         }
 
         const fromMcp =
-            mcpRegistry();
+            mcpRegistry(agentName);
 
         return toolNames
             .map(

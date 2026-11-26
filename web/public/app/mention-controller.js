@@ -9,6 +9,11 @@
 | message when it is sent, so the agent starts with the file in front of
 | it.
 |
+| Typing / at the start of an empty message lists the prompts of the
+| connected MCP servers as commands (/server:prompt, roadmap P4-10);
+| choosing one asks for its arguments and puts the rendered text in the
+| composer.
+|
 | A picture pasted into the composer (a screenshot from the clipboard) is
 | attached like a chosen file; the runtime shows attached pictures to the
 | model.
@@ -17,6 +22,7 @@
 import { state } from "./store.js";
 import { el } from "./console-core.js";
 import { renderAttachments } from "./composer-controller.js";
+import { loadPromptCommands, runPromptCommand } from "./mcp-commands.js";
 
 
 const ui = { items: [], active: 0, start: -1, request: 0, timer: null };
@@ -29,6 +35,41 @@ function mentionAtCaret(textarea) {
     const match = /(^|[\s(["'])@([^\s@"'()]*)$/.exec(before);
 
     return match ? { start: caret - match[2].length, query: match[2] } : null;
+}
+
+
+/* "/rev" typed at the very start of the composer, nothing else before it */
+export function slashAtCaret(textarea) {
+
+    const caret = textarea.selectionStart;
+    const match = /^\/([\w.:-]*)$/.exec(textarea.value.slice(0, caret));
+
+    return match ? { start: 0, query: match[1] } : null;
+}
+
+
+export function matchPromptCommands(prompts, query) {
+
+    const wanted = String(query || "").toLowerCase();
+
+    return (prompts || [])
+        .map(prompt => ({ ...prompt, path: `/${prompt.server}:${prompt.name}`, type: "prompt" }))
+        .filter(item => !wanted || item.path.slice(1).toLowerCase().includes(wanted))
+        .slice(0, 20);
+}
+
+
+async function lookupCommands(query, start) {
+
+    const ticket = ++ui.request;
+    const prompts = await loadPromptCommands();
+
+    if (ticket !== ui.request) return;
+
+    ui.items = matchPromptCommands(prompts, query);
+    ui.active = 0;
+    ui.start = start;
+    draw();
 }
 
 
@@ -67,7 +108,7 @@ function draw() {
         option.setAttribute("role", "option");
         option.setAttribute("aria-selected", String(index === ui.active));
         option.className = `mention-option${index === ui.active ? " active" : ""}`;
-        option.textContent = item.path;
+        option.textContent = item.type === "prompt" && item.description ? `${item.path} — ${item.description}` : item.path;
         option.dataset.type = item.type;
         option.addEventListener("mousedown", event => {
             event.preventDefault();
@@ -115,6 +156,16 @@ function choose() {
     }
 
     const caret = textarea.selectionStart;
+
+    /* an MCP prompt replaces the typed command with its rendered text */
+    if (item.type === "prompt") {
+        textarea.value = textarea.value.slice(caret);
+        textarea.setSelectionRange(0, 0);
+        close();
+        void runPromptCommand(item);
+        return;
+    }
+
     const suffix = item.type === "directory" ? "" : " ";
     textarea.value = `${textarea.value.slice(0, ui.start)}${item.path}${suffix}${textarea.value.slice(caret)}`;
     const position = ui.start + item.path.length + suffix.length;
@@ -130,8 +181,14 @@ function onInput() {
 
     const textarea = el("task");
     const found = textarea ? mentionAtCaret(textarea) : null;
+    const command = textarea && !found ? slashAtCaret(textarea) : null;
 
     clearTimeout(ui.timer);
+
+    if (command) {
+        ui.timer = setTimeout(() => lookupCommands(command.query, command.start), 80);
+        return;
+    }
 
     if (!found) {
         ui.request++;
@@ -196,4 +253,4 @@ export function initMentions() {
 }
 
 
-export const mentionActions = { mentionAtCaret, close, choose, lookup, onPaste };
+export const mentionActions = { mentionAtCaret, slashAtCaret, matchPromptCommands, close, choose, lookup, onPaste };

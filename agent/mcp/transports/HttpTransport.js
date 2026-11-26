@@ -80,9 +80,31 @@ class HttpTransport {
 
         this.notificationHandler = () => {};
 
+        this.requestHandler = null;
+
         this.diagnosticHandler = () => {};
 
         this.closeHandler = () => {};
+
+        /*
+        | P4-08: a server declared with oauth signs in once from the
+        | console; its access token is attached here and refreshed when
+        | it expires or a 401 says it no longer works.
+        */
+        this.auth =
+            config.oauth
+                ? require("../McpOAuth").providerFor(config)
+                : null;
+    }
+
+
+    /*
+    | P4-10: a server may send its own requests (elicitation, sampling)
+    | inside a streamed answer; the result goes back in a new POST.
+    */
+    onRequest(handler) {
+
+        this.requestHandler = handler || null;
     }
 
 
@@ -151,6 +173,10 @@ class HttpTransport {
             headers.authorization = `Bearer ${this.config.token}`;
         }
 
+        if (this.accessToken) {
+            headers.authorization = `Bearer ${this.accessToken}`;
+        }
+
         if (this.sessionId) {
             headers["mcp-session-id"] = this.sessionId;
         }
@@ -175,7 +201,33 @@ class HttpTransport {
     }
 
 
-    post(message, options = {}) {
+    async post(message, options = {}) {
+
+        if (!this.auth) {
+            return this.postOnce(message, options);
+        }
+
+        /* P4-08: a valid token first; one refresh and retry on a 401 */
+        this.accessToken = await this.auth.accessToken();
+
+        try {
+
+            return await this.postOnce(message, options);
+
+        } catch (error) {
+
+            if (!error.unauthorized) {
+                throw error;
+            }
+
+            this.accessToken = await this.auth.afterUnauthorized(error.wwwAuthenticate);
+
+            return this.postOnce(message, options);
+        }
+    }
+
+
+    postOnce(message, options = {}) {
 
         const timeoutMs =
             options.timeoutMs || 30000;
@@ -198,6 +250,28 @@ class HttpTransport {
                         timeout: timeoutMs
                     },
                     response => {
+
+                        if (response.statusCode === 401) {
+
+                            response.resume();
+
+                            const error =
+                                new Error(
+                                    `MCP server "${this.name}" answered 401: ${
+                                        this.auth || this.config.oauth
+                                            ? "the sign-in is missing or expired; sign in again from the console"
+                                            : "it needs credentials (a token, or oauth: true to sign in from the console)"
+                                    }`
+                                );
+
+                            error.unauthorized = true;
+                            error.code = "MCP_UNAUTHORIZED";
+                            error.wwwAuthenticate = response.headers["www-authenticate"] || null;
+
+                            reject(error);
+
+                            return;
+                        }
 
                         const sessionId =
                             response.headers["mcp-session-id"];
@@ -362,6 +436,16 @@ class HttpTransport {
 
                     if (protocol.isNotification(payload)) {
                         this.notificationHandler(payload);
+                        return;
+                    }
+
+                    if (
+                        payload &&
+                        typeof payload.method === "string" &&
+                        payload.id !== undefined &&
+                        payload.id !== null
+                    ) {
+                        this.answerServerRequest(payload);
                     }
                 },
                 text => this.diagnose(text)
@@ -427,6 +511,30 @@ class HttpTransport {
         }
 
         resolve(envelope.result);
+    }
+
+
+    answerServerRequest(message) {
+
+        const handler =
+            this.requestHandler ||
+            (request => {
+                if (request.method === "ping") return {};
+                throw Object.assign(new Error(`method "${request.method}" is not supported by this client`), { code: -32601 });
+            });
+
+        Promise.resolve()
+            .then(() => handler(message))
+            .then(
+                result => protocol.response(message.id, result),
+                error => protocol.errorResponse(
+                    message.id,
+                    error && Number.isInteger(error.code) ? error.code : -32603,
+                    (error && error.message) || "internal error"
+                )
+            )
+            .then(answer => this.post(answer, { timeoutMs: 30000 }))
+            .catch(error => this.diagnose(`could not answer "${message.method}": ${error.message}`));
     }
 
 

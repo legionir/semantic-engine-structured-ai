@@ -46,7 +46,7 @@ module.exports = function createProfiles(host) {
         logLine
     });
 
-    const { mcpToolDeclarations, discoverMcpTools } = mcpRuntime;
+    const { mcpToolDeclarations, allMcpToolDeclarations, mcpToolSelection, discoverMcpTools } = mcpRuntime;
 
 
     function mcpToolRegistry() {
@@ -58,11 +58,12 @@ module.exports = function createProfiles(host) {
 
 
 
-    function resolveTools(toolNames) {
+    function resolveTools(toolNames, agentName) {
 
         /* Moved to agent/prompt/ToolResolver.js (Phase 5); the wrapper keeps
-           every call site and the live-registry behavior identical. */
-        return toolResolver().resolve(toolNames);
+           every call site and the live-registry behavior identical. The
+           agent name hides MCP servers limited to other agents (P4-07). */
+        return toolResolver().resolve(toolNames, agentName);
     }
 
 
@@ -134,6 +135,8 @@ module.exports = function createProfiles(host) {
         buildAgentSystemPrompt,
         discoverMcpTools,
         mcpToolDeclarations,
+        allMcpToolDeclarations,
+        mcpToolSelection,
         resolveAgentCapabilities,
         resolveAgentProfile,
         resolveDelegationProfile,
