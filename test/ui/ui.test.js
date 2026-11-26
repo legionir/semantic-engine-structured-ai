@@ -86,6 +86,10 @@ async function main() {
 
     await require("./scenarios/project-manager")({ test, backdrops, console_ });
 
+    console.log("\nlogs, terminal and files");
+
+    await require("./scenarios/operator-tools")({ test, backdrops, console_ });
+
     const failed =
         results.filter(item => !item.ok);
 

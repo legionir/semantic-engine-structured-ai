@@ -86,7 +86,7 @@ async function main() {
     await test("the complete route inventory is unique and method-aware", async () => {
 
         assert.equal(assertUnique(), true);
-        assert.equal(ROUTES.length, 47);
+        assert.equal(ROUTES.length, 65);
 
         const required = [
             "GET /auth/status",
@@ -133,6 +133,24 @@ async function main() {
             "GET /api/stats",
             "GET /api/metrics",
             "GET /api/health",
+            "GET /api/logs",
+            "POST /api/logs",
+            "DELETE /api/logs",
+            "GET /api/logs/stream",
+            "GET /api/logs/download",
+            "GET /api/terminal",
+            "POST /api/terminal",
+            "GET /api/terminal/:id/stream",
+            "POST /api/terminal/:id/input",
+            "POST /api/terminal/:id/resize",
+            "DELETE /api/terminal/:id",
+            "GET /api/files",
+            "POST /api/files",
+            "DELETE /api/files",
+            "GET /api/files/content",
+            "PUT /api/files/content",
+            "POST /api/files/rename",
+            "GET /api/files/download",
             "GET /",
             "GET /projects",
             "GET /projects/:projectId"

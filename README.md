@@ -175,7 +175,14 @@ PORT=8080 npm start
 می‌خواند دوباره رسم می‌کند؛ reducerها (`runtime-state.js`، `*-model.js`) خالص‌اند
 و viewها (`*-view.js`، `chat.js`) هیچ‌گاه HTML رشته‌ای نمی‌سازند. درخواست‌ها و
 جریان رویدادها در کنترلرهای جدا برای هر بخش هستند (`*-controller.js`،
-`project-*.js`) و `console.js` فقط کنترل‌های صفحه را به آن‌ها وصل می‌کند. صفحه با یک
+`project-*.js`) و `console.js` فقط کنترل‌های صفحه را به آن‌ها وصل می‌کند.
+دکمه‌های **Logs**، **Terminal** و **Files** در هدر سه ابزار عملیاتی را باز می‌کنند:
+لاگ سراسری برنامه (به‌ویژه خطاهای درخواست به مدل با status، endpoint و بدنهٔ پاسخ
+redact‌شده، به‌صورت زنده و با نشان تعداد خطاهای جدید روی دکمه)، ترمینال سیستم با
+xterm.js (چند تب، اتصال مجدد با scrollback) و مدیریت فایل (مرور، ساخت، ویرایش،
+تغییر نام، حذف و دانلود با جلوگیری از بازنویسی تغییرات هم‌زمان). لاگ در
+`<data home>/logs/structured-ai.jsonl` هم با rotate نوشته می‌شود. xterm.js استایل
+پویای خود را از طریق CSSOM (`csp-style-bridge.js`) اعمال می‌کند تا CSP شل نشود. صفحه با یک
 Content-Security-Policy سخت‌گیر سرو می‌شود: اسکریپت، استایل و اتصال فقط از همان origin مجازند و
 اسکریپت inline خود صفحه با sha256 مجاز می‌شود که سرور هنگام سرو کردن حساب می‌کند. تست‌های UI روی happy-dom با
 `index.html` واقعی اجرا می‌شوند: `npm run test:ui`.
@@ -402,8 +409,20 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `RUN_QUEUE_LIMIT` | number | `16` | Per-project waiting-run depth (Phase 10). Overflow is rejected with RUN_QUEUE_FULL rather than hanging. |
 | `PROJECT_MEMORY_LIMIT` | number | `0` | Bytes of recorded per-project memory after which new runs are refused (Phase 10). 0 disables the cap; the value is always exposed on /api/metrics. |
 | `PROJECT_CPU_LIMIT` | number | `0` | Observational CPU percent ceiling per project (Phase 10). 0 means unlimited; the live percent is reported on /api/metrics. |
+| `LOG_LEVEL` | enum | `"info"` | Lowest level kept in the application log (Logs in the console): failed AI requests and retries, run, tool, hook and MCP failures, server errors and crashes. |
+| `LOG_BUFFER_ENTRIES` | number | `2000` | Application log entries kept in memory for the console. |
+| `LOG_FILE_ENABLED` | boolean | `true` | When the console is served, also append the application log to <data home>/logs/structured-ai.jsonl. |
+| `LOG_FILE_MAX_MB` | number | `10` | Size at which the application log file is rotated. |
+| `LOG_FILE_KEEP` | number | `3` | Rotated application log files kept next to the current one (.1 is the newest). |
+| `LOG_MAX_FIELD_CHARS` | number | `8000` | Longest message or detail text (such as a model's error response) kept in one log entry before it is clipped. |
+| `CONSOLE_TERMINAL_ENABLED` | boolean · fixed at startup | `true` | Allow the admin console token to open system terminals (an unsandboxed shell in the workspace, running as the server's user). Set through the environment and restart to change it. |
+| `CONSOLE_TERMINAL_MAX_SESSIONS` | number | `4` | Terminals that may be open at the same time. |
+| `CONSOLE_TERMINAL_SCROLLBACK_CHARS` | number | `262144` | Terminal output the server keeps per terminal, replayed when the console reconnects or reopens it. |
+| `CONSOLE_FILE_MANAGER_ENABLED` | boolean · fixed at startup | `true` | Allow the admin console token to browse, create, edit, rename and delete files inside the workspace. Set through the environment and restart to change it. |
+| `CONSOLE_FILE_MAX_BYTES` | number | `2097152` | Largest file the console file manager opens or saves as text. |
+| `CONSOLE_FILE_LIST_MAX` | number | `5000` | Entries the console file manager lists in one folder; a larger folder is shown truncated. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۱۸۶ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۱۹۸ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -478,6 +497,30 @@ method/path کامل در
 | `GET/POST` | `/api/mcp` | وضعیت یا افزودن MCP server |
 | `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
 | `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
+
+### لاگ، ترمینال و مدیریت فایل (فقط token ادمین)
+
+این سه گروه فقط با token master کار می‌کنند؛ token محدود به پروژه پاسخ `403`
+می‌گیرد. ترمینال و مدیریت فایل با `CONSOLE_TERMINAL_ENABLED=false` و
+`CONSOLE_FILE_MANAGER_ENABLED=false` (فقط از محیط و با restart) خاموش می‌شوند.
+
+| روش | مسیر | توضیح |
+|---|---|---|
+| `GET` | `/api/logs` | ورودی‌های لاگ با فیلتر `level` (حداقل سطح)، `source`، `q`، `after` (خواندن افزایشی) و `limit`، به‌همراه `summary` |
+| `POST` | `/api/logs` | ثبت خطای مرورگر پنل `{level, message, details}` با منبع `panel` |
+| `DELETE` | `/api/logs` | پاک کردن لاگ؛ فایل جاری rotate می‌شود و حذف نمی‌شود |
+| `GET` | `/api/logs/stream` | SSE ورودی‌های جدید (`snapshot`، `entry`، `cleared`) |
+| `GET` | `/api/logs/download` | دانلود کل فایل JSONL |
+| `GET/POST` | `/api/terminal` | وضعیت و فهرست ترمینال‌ها / باز کردن ترمینال `{cols, rows}` |
+| `GET` | `/api/terminal/:id/stream` | SSE خروجی (`snapshot` با scrollback، `output`، `exit`) |
+| `POST` | `/api/terminal/:id/input` و `/resize` | ورودی صفحه‌کلید `{data}` / تغییر اندازه `{cols, rows}` |
+| `DELETE` | `/api/terminal/:id` | بستن ترمینال |
+| `GET/POST/DELETE` | `/api/files` | فهرست پوشه (`path`) / ساخت `{path, type: file\|directory}` / حذف (`recursive=1` برای پوشه) |
+| `GET/PUT` | `/api/files/content` | خواندن / ذخیرهٔ atomic `{path, content, expected_mtime_ms}`؛ اگر فایل در این فاصله تغییر کرده باشد `409` |
+| `POST` | `/api/files/rename` | تغییر نام یا جابه‌جایی `{from, to}` |
+| `GET` | `/api/files/download` | دانلود فایل |
+
+همهٔ مسیرهای `/api/files` پارامتر اختیاری `projectId` را می‌پذیرند (ریشهٔ همان پروژه)؛ هیچ مسیری، حتی از طریق symlink، از ریشه خارج نمی‌شود.
 
 ### API پروژه‌ها
 
