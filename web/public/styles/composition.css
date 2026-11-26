@@ -280,3 +280,42 @@
 }
 .mention-option[data-type="directory"] { color: var(--accent); }
 .mention-option.active, .mention-option:hover { background: var(--panel-3); }
+
+/* -- conversation tabs (P1-03): one per live conversation, with its state */
+.conversation-tabs-host:empty { display: none; }
+.conversation-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 6px 12px 0; scrollbar-width: thin; }
+.conversation-tab {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 260px;
+  padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--r-pill);
+  background: var(--panel-2); color: var(--muted); font-size: 12px; cursor: pointer;
+}
+.conversation-tab:hover { border-color: var(--accent); color: var(--text); }
+.conversation-tab.active { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.conversation-tab .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-tab .tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
+.conversation-tab.running .tab-dot { background: var(--accent); animation: tab-pulse 1.4s var(--ease) infinite; }
+.conversation-tab.awaiting .tab-dot { background: var(--warn); }
+.conversation-tab.done .tab-dot { background: var(--ok); }
+.conversation-tab.failed .tab-dot, .conversation-tab.cancelled .tab-dot { background: var(--bad); }
+.conversation-tab .tab-badge { font-size: 10.5px; opacity: .85; }
+.conversation-tab.awaiting .tab-badge { color: var(--warn); }
+.conversation-tab .tab-queue { font-family: var(--mono); font-size: 10.5px; color: var(--accent); }
+.conversation-tab.attention { box-shadow: inset 0 0 0 1px var(--warn); }
+@keyframes tab-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .conversation-tab.running .tab-dot { animation: none; } }
+
+/* -- message queue (P1-04): what waits for the project's next turn */
+.message-queue-host:empty { display: none; }
+.message-queue { margin: 0 12px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: var(--r-md); background: var(--panel-2); font-size: 12.5px; }
+.message-queue.paused { border-color: var(--warn); }
+.message-queue .queue-head { display: flex; align-items: center; gap: 8px; }
+.message-queue .queue-paused { color: var(--warn); font-size: 11.5px; }
+.message-queue .grow-right { flex: 1; }
+.message-queue .queue-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; max-height: 180px; overflow-y: auto; }
+.message-queue .queue-item { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line-soft); }
+.message-queue .queue-index { color: var(--faint); font-family: var(--mono); min-width: 1.5em; }
+.message-queue .queue-text { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-queue .queue-item.correction .queue-text em { color: var(--warn); font-style: normal; }
+.message-queue .queue-item-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+.message-queue .queue-item.editing { flex-direction: column; align-items: stretch; }
+.message-queue .queue-edit { width: 100%; min-height: 54px; resize: vertical; }

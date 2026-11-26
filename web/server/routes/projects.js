@@ -20,6 +20,7 @@ const { sendJson } = require("../Response");
 const { readBody } = require("../RequestBody");
 const ProjectRecordsRoutes = require("./project-records");
 const ProjectRunsRoutes = require("./project-runs");
+const ProjectConversationRoutes = require("./project-conversation");
 
 
 module.exports = async function ProjectsRoutes(shared, request) {
@@ -35,6 +36,14 @@ module.exports = async function ProjectsRoutes(shared, request) {
         req,
         res
     } = request;
+
+    /* ------------------- every live conversation (P1-03 tabs) */
+
+    if (pathname === "/api/conversations" && req.method === "GET") {
+
+        sendJson(res, 200, { conversations: shared.conversationsFor(claims) });
+        return true;
+    }
 
     /* ---------------------------------- projects (Phase 7+9) */
 
@@ -155,6 +164,10 @@ module.exports = async function ProjectsRoutes(shared, request) {
         }
 
         if (await ProjectRunsRoutes(shared, request, project)) {
+            return true;
+        }
+
+        if (await ProjectConversationRoutes(shared, request, project)) {
             return true;
         }
 

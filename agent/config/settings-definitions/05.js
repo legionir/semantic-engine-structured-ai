@@ -290,5 +290,14 @@ module.exports = [
         "values": ["off", "read-only"],
         "default": "read-only",
         "description": "Whether !`command` in a SKILL.md body is replaced by its output when the skill is loaded: read-only runs commands CommandRisk rates low, from shipped or operator skills and trusted workspaces only; off runs none."
+    },
+    {
+        "key": "PROJECT_QUEUE_MAX",
+        "group": "console",
+        "type": "number",
+        "default": 20,
+        "min": 0,
+        "max": 200,
+        "description": "Messages a project's conversation keeps queued while its run is busy; each starts as the next turn when the run ends. 0 turns the queue off and a busy project answers 409 as before (roadmap P1-04)."
     }
 ];

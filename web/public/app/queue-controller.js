@@ -4,9 +4,11 @@
 |--------------------------------------------------------------------------
 |
 | A task sent to several projects runs once per project, one after another.
+| The second half of the file asks the server to change one project's
+| message queue (roadmap P1-04).
 */
 
-import { state } from "./store.js";
+import { state, touch } from "./store.js";
 import { failureText, notifyError, pushMessage, setStatus } from "./console-core.js";
 import { projectById } from "./project-routing.js";
 
@@ -167,4 +169,88 @@ export async function drainProjectTaskQueue() {
     if (!streamSees(next.projectId)) {
         watchProjectRun(next);
     }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| A project's message queue (roadmap P1-04)
+|--------------------------------------------------------------------------
+|
+| A message sent while the project is busy waits for its next turn. The
+| queue panel edits, deletes, clears and resumes it; every change comes
+| back on the stream as queue:changed, so these actions only ask.
+*/
+
+async function queueRequest(path, method, body, failureLabel) {
+
+    const projectId = state.currentProjectId;
+
+    if (!projectId) {
+        return null;
+    }
+
+    try {
+
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}${path}`, {
+            method,
+            headers: body ? { "content-type": "application/json" } : {},
+            ...(body ? { body: JSON.stringify(body) } : {})
+        });
+
+        if (!response.ok) {
+            notifyError(await failureText(response, failureLabel));
+            return null;
+        }
+
+        return await response.json().catch(() => ({}));
+
+    } catch (error) {
+
+        notifyError(`${failureLabel}: ${error.message || "network error"}`);
+        return null;
+    }
+}
+
+
+export const messageQueueActions = Object.freeze({
+
+    edit(itemId) {
+        state.editingQueueItem = itemId;
+        touch("queue");
+    },
+
+    async save(itemId, text) {
+
+        const value = String(text || "").trim();
+
+        if (value === "") {
+            notifyError("A queued message cannot be empty; delete it instead.");
+            return;
+        }
+
+        if (await queueRequest(`/queue/${encodeURIComponent(itemId)}`, "PATCH", { text: value }, "The queued message was not saved")) {
+            state.editingQueueItem = null;
+            touch("queue");
+        }
+    },
+
+    remove(itemId) {
+        return queueRequest(`/queue/${encodeURIComponent(itemId)}`, "DELETE", null, "The queued message was not deleted");
+    },
+
+    clear() {
+        return queueRequest("/queue", "DELETE", null, "The queue was not cleared");
+    },
+
+    resume() {
+        return queueRequest("/queue/resume", "POST", null, "The queue was not resumed");
+    }
+});
+
+
+/* a message for the running turn: read before the model's next step */
+export async function sendCorrection(text) {
+
+    return queueRequest("/correction", "POST", { text }, "The correction was not sent");
 }

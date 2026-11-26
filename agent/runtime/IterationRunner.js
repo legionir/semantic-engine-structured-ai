@@ -14,6 +14,7 @@ const { host } = require("./engineContext");
 
 const RetryController = require("./RetryController");
 const RunState = require("./RunState");
+const RunCorrections = require("./RunCorrections");
 
 
 async function runSubAgentLoop({
@@ -335,6 +336,9 @@ async function runMainLoop({
             depth: 0,
             iteration
         });
+
+        /* an operator's mid-run correction is read before the next decision */
+        RunCorrections.drainInto(h.currentRun(), messages, h.events, iteration);
 
         if (
             RunState.shouldHintDelegation(

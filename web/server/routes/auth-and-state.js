@@ -26,6 +26,7 @@ module.exports = async function AuthAndStateRoutes(shared, request) {
         loginRateLimiter,
         passwordMatches,
         passwordSessionToken,
+        projectSnapshot,
         snapshot,
         snapshotFor,
         sseHub
@@ -102,15 +103,17 @@ module.exports = async function AuthAndStateRoutes(shared, request) {
             claims
         };
 
-        const liveEvents =
-            snapshot().events
-                .map(event => eventForClient(event, client))
-                .filter(Boolean);
-
-        const snap = {
-            ...snapshotFor(claims),
-            events: liveEvents
-        };
+        /* a project's stream starts from that project's conversation */
+        const snap =
+            filterProjectId
+                ? projectSnapshot(filterProjectId, claims)
+                : {
+                    ...snapshotFor(claims),
+                    events:
+                        snapshot().events
+                            .map(event => eventForClient(event, client))
+                            .filter(Boolean)
+                };
 
         sseHub.attach(
             req,

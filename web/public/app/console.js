@@ -26,8 +26,10 @@ import { submitDiscussion, toggleDiscussionMode } from "./discussion-controller.
 import { mountViews, openEventsModal, openExecutionModal, openPlanModal } from "./panels-controller.js";
 import { changeApprovalMode, changeAutoContinue, loadSettings, openLlmSettings, openSettings } from "./settings-controller.js";
 import { connect } from "./stream-controller.js";
-import { stopProjectQueue } from "./queue-controller.js";
-import { removeAttachment, selectedReasoningEffort, submitTask } from "./composer-controller.js";
+import { removeAttachment, selectedReasoningEffort, submitCorrection, submitTask } from "./composer-controller.js";
+import { initConversations, toggleNotifications } from "./conversations-controller.js";
+import { messageQueueActions, stopProjectQueue } from "./queue-controller.js";
+import { QueuePanel } from "./queue-view.js";
 import { mountDashboard } from "./projects-controller.js";
 import { initProjects } from "./project-manager.js";
 import { installPanelErrorReporting, openLogs, startLogBadge } from "./logs-controller.js";
@@ -68,7 +70,8 @@ el("cancelButton").addEventListener("click", async () => {
     state.stopPending = true;
     touch("run");
 
-    const projectId = state.activeProjectId;
+    /* the conversation on screen; the default view stops the run it shows */
+    const projectId = state.currentProjectId || state.activeProjectId;
     const url = projectId
         ? `/api/projects/${encodeURIComponent(projectId)}/cancel`
         : "/api/cancel";
@@ -87,7 +90,12 @@ el("cancelButton").addEventListener("click", async () => {
 el("clearButton").addEventListener("click", async () => {
 
     try {
-        const response = await fetch("/api/clear", { method: "POST" });
+        /* a project's tab starts its own conversation afresh */
+        const projectId = state.currentProjectId;
+        const response = await fetch(
+            projectId ? `/api/projects/${encodeURIComponent(projectId)}/clear` : "/api/clear",
+            { method: "POST" }
+        );
         if (!response.ok) {
             notifyError(await failureText(response, "The conversation was not cleared"));
             return;
@@ -130,6 +138,8 @@ el("executionButton").addEventListener("click", openExecutionModal);
 el("eventsButton").addEventListener("click", openEventsModal);
 el("discussionButton").addEventListener("click", toggleDiscussionMode);
 el("approvalsButton").addEventListener("click", () => approvals.open());
+el("notificationsButton").addEventListener("click", toggleNotifications);
+el("correctButton").addEventListener("click", submitCorrection);
 
 
 el("task").addEventListener("keydown", event => {
@@ -147,6 +157,10 @@ mountDashboard();
 mount(el("attachmentList"), () => Attachments({ state, onRemove: removeAttachment }), ["attachments", "settings"]);
 
 initMentions();
+
+mount(el("messageQueue"), () => QueuePanel({ state, actions: messageQueueActions }), ["queue", "projects"]);
+
+initConversations();
 
 connect();
 

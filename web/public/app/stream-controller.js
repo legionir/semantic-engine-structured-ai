@@ -16,6 +16,29 @@ import { projectRunSettled } from "./queue-controller.js";
 
 
 /*
+| The summary of every conversation (tabs, notifications) arrives beside
+| the events and is not one of them: whoever shows it subscribes here, so
+| this module does not depend on its readers.
+*/
+const summaryListeners = new Set();
+
+export function onConversationSummary(listener) {
+
+    summaryListeners.add(listener);
+
+    return () => summaryListeners.delete(listener);
+}
+
+
+function applySummary(conversations) {
+
+    for (const listener of summaryListeners) {
+        listener(conversations);
+    }
+}
+
+
+/*
 | Side effects an event asks for. Run for live events only: a snapshot or
 | a stored session is replayed to redraw the past, not to re-trigger it.
 */
@@ -116,6 +139,12 @@ export function connect() {
 
         if (payload.type === "snapshot") {
             applySnapshot(payload.snapshot);
+            applySummary(state.conversations);
+            return;
+        }
+
+        if (payload.type === "conversations") {
+            if (Array.isArray(payload.conversations)) applySummary(payload.conversations);
             return;
         }
 

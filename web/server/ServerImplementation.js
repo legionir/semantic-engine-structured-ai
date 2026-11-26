@@ -38,6 +38,8 @@ const { ApprovalStore } = require("../../agent/policy");
 const ProcessOutputBus = require("../../agent/tools/process/ProcessOutputBus");
 
 const createCallLog = require("./console/call-log");
+const createConversations = require("./console/conversations");
+const createProjectQueue = require("./console/project-queue");
 const createSessionLog = require("./console/session-log");
 const createSnapshot = require("./console/snapshot");
 const createLiveEvents = require("./console/live-events");
@@ -107,35 +109,20 @@ function createServer(runtime, options = {}) {
 
     const state = {
         status: "idle",
-
         cycles: 0,
-
         lastPlanSignature: null,
-
         stopRequested: false,
-
         task: null,
-
         history: [],
-
         events: [],
-
         turnCounter: 0,
-
         currentTurnId: null,
-
         approvals: new Map(),
-
         answer: null,
-
         error: null,
-
         startedAt: null,
-
         finishedAt: null,
-
         discussion: null,
-
         projectId: null
     };
 
@@ -195,6 +182,8 @@ function createServer(runtime, options = {}) {
     };
 
     Object.assign(shared, createCallLog(shared));
+    Object.assign(shared, createConversations(shared));
+    Object.assign(shared, createProjectQueue(shared));
     Object.assign(shared, createSessionLog(shared));
     Object.assign(shared, createSnapshot(shared));
     Object.assign(shared, createLiveEvents(shared));
@@ -229,8 +218,12 @@ function createServer(runtime, options = {}) {
     const ctx = {
         DISCUSSION_MODULE,
         activateSession,
+        addMessage: shared.addMessage,
         approvalStore,
         calls,
+        clearForeground: shared.clearForeground,
+        conversations: shared.conversations,
+        conversationsFor: shared.conversationsFor,
         consolePasswordRequired,
         discussionService,
         eventForClient,
@@ -239,7 +232,9 @@ function createServer(runtime, options = {}) {
         logs: shared.logs,
         passwordMatches,
         passwordSessionToken,
+        projectQueue: shared.projectQueue,
         projectSlotBusy,
+        projectSnapshot: shared.projectSnapshot,
         requestReasoningEffort,
         resolveApproval,
         runtime,

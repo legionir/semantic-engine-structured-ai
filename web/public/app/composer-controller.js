@@ -10,7 +10,7 @@
 import { state, touch } from "./store.js";
 import { el, failureText, notifyError, setStatus } from "./console-core.js";
 import { projectById } from "./project-routing.js";
-import { drainProjectTaskQueue, labelChatForProject } from "./queue-controller.js";
+import { drainProjectTaskQueue, labelChatForProject, sendCorrection } from "./queue-controller.js";
 
 
 function selectedTaskScope() {
@@ -19,7 +19,7 @@ function selectedTaskScope() {
 }
 
 
-function selectedTaskProjectIds() {
+export function selectedTaskProjectIds() {
 
     if (selectedTaskScope() === "multiple") {
         return [...state.taskProjectIds];
@@ -150,6 +150,22 @@ export async function uploadFor(projectIds, filesByProject) {
 }
 
 
+/* "Correct now": the text reaches the running turn before its next step */
+export async function submitCorrection() {
+
+    const field = el("task");
+    const text = field ? field.value.trim() : "";
+
+    if (text === "" || !state.currentProjectId) {
+        return;
+    }
+
+    if (await sendCorrection(text)) {
+        clearComposer();
+    }
+}
+
+
 export async function submitTask(task, reasoningEffort) {
 
     const targets = selectedTaskProjectIds();
@@ -171,6 +187,9 @@ export async function submitTask(task, reasoningEffort) {
     if (state.attachments.length > 0) {
         task = taskWithAttachments(task, files.get(projectId || "__default__"));
     }
+
+    /* a busy project queues the message for its next turn (P1-04) */
+    const busy = state.status === "running";
 
     state.activeProjectId = projectId;
     setStatus("running");
@@ -198,12 +217,19 @@ export async function submitTask(task, reasoningEffort) {
     }
 
     if (!response.ok) {
-        setStatus("idle");
+        if (!busy) setStatus("idle");
         notifyError(await failureText(response, "The task was not started"));
         return;
     }
 
+    const accepted = typeof response.json === "function" ? await response.json().catch(() => ({})) : {};
+
     clearComposer();
+
+    if (accepted && accepted.queued === true) {
+        /* the queue panel shows it; the run on screen goes on */
+        return;
+    }
 
     if (projectId) {
         labelChatForProject(projectId);

@@ -79,8 +79,15 @@ module.exports = function createSessionLog(shared) {
 
         state.session.messages.push(message);
 
+        /* a foreground project run keeps the project's own transcript too,
+           and its stream receives the message in full (P1-03) */
+        if (state.projectId && shared.conversations) {
+            shared.conversations.mirrorMessage(state.projectId, message);
+        }
+
         runtime.events.emit("session:message", {
             session: state.session.id,
+            ...(state.projectId ? { project_id: state.projectId } : {}),
             message
         });
 
@@ -206,11 +213,22 @@ module.exports = function createSessionLog(shared) {
     }
 
 
-    async function recordGitReport() {
+    /*
+    | Options name another conversation: a project's workspace, its turn and
+    | its own transcript (a background turn). Without them it is the
+    | foreground run in the active workspace, as it always was.
+    */
+    async function recordGitReport(options = {}) {
 
         const workspace =
+            options.workspace ||
             runtime.createRuntimeContext()
                 .workspace_root;
+
+        const projectId =
+            options.projectId === undefined
+                ? state.projectId
+                : options.projectId;
 
         const report = await gitReport(workspace);
 
@@ -223,10 +241,11 @@ module.exports = function createSessionLog(shared) {
             deleted: report.deleted,
             text: report.text,
             ok: report.ok,
-            turn_id: state.currentTurnId || null
+            turn_id: options.turnId || state.currentTurnId || null,
+            ...(projectId ? { project_id: projectId } : {})
         });
 
-        addMessage({
+        (options.addMessage || addMessage)({
             role: "system",
             kind: "git-report",
             content: report.text,
@@ -314,10 +333,57 @@ module.exports = function createSessionLog(shared) {
             session: sessions.summarise(loaded)
         });
 
+        if (shared.conversations) {
+            shared.conversations.syncForeground();
+        }
+
         return loaded;
     }
 
+    /*
+    | "New conversation" on the foreground: the previous conversation is kept
+    | on disk; this starts the next one rather than erasing it. The project
+    | the foreground holds starts afresh too. False while a task runs.
+    */
+    function clearForeground() {
+
+        if (state.status === "running") {
+            return false;
+        }
+
+        state.cycles = 0;
+        state.lastPlanSignature = null;
+        state.history = [];
+        state.events = [];
+
+        saveSession();
+
+        state.session = sessions.emptySession();
+
+        calls.clear();
+        state.answer = null;
+        state.error = null;
+        state.status = "idle";
+
+        const conv =
+            state.projectId && shared.conversations
+                ? shared.conversations.get(state.projectId)
+                : null;
+
+        if (conv && !conv.background) {
+            shared.conversations.resetConversation(state.projectId);
+        }
+
+        runtime.events.emit("session:cleared", {
+            ...(state.projectId ? { project_id: state.projectId } : {})
+        });
+
+        return true;
+    }
+
+
     return {
+        clearForeground,
         sessions,
         sessionsEnabled,
         saveSession,

@@ -48,6 +48,7 @@
       <button type="button" id="logsButton" class="chip button" title="application log: AI request errors, failures, crashes">Logs <span id="logsBadge" class="logs-badge" hidden>0</span></button>
       <button type="button" id="terminalButton" class="chip button" title="open a system terminal in the workspace">Terminal</button>
       <button type="button" id="filesButton" class="chip button" title="browse and edit workspace files">Files</button>
+      <button type="button" id="notificationsButton" class="chip button" title="browser notifications when a conversation in the background finishes, fails or needs an approval" aria-pressed="false">Notify · off</button>
       <button type="button" id="settingsButton" class="chip button" title="open runtime settings">Settings</button>
     </nav>
   </div>
@@ -83,9 +84,13 @@
         </div>
       </div>
 
+      <div id="conversationTabs" class="conversation-tabs-host"></div>
+
       <div id="chat" class="chat">
         <p class="empty">No messages yet. Describe a task to start.</p>
       </div>
+
+      <div id="messageQueue" class="message-queue-host"></div>
 
       <form id="taskForm" class="composer">
         <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why. Type @ to point at a file; paste a screenshot to attach it" aria-autocomplete="list" aria-controls="mentionList" aria-expanded="false"></textarea>
@@ -104,6 +109,7 @@
         <div id="discussionOptions" class="discussion-options-row" hidden></div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
+          <button type="button" id="correctButton" class="ghost" title="Send the text to the running turn: the agent reads it before its next step" hidden>Correct now</button>
           <button type="button" id="cancelButton" class="ghost" disabled>Stop</button>
           <button type="button" id="discussionButton" class="ghost" title="Multi-agent discussion: specialist personas deliberate in rounds and an observer writes the synthesis">
             Discussion

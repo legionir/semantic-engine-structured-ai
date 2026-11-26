@@ -23,11 +23,9 @@ module.exports = async function ControlRoutes(shared, request) {
 
     const {
         approvalStore,
-        calls,
+        clearForeground,
         resolveApproval,
         runtime,
-        saveSession,
-        sessions,
         state,
         toolRuntime
     } = shared;
@@ -142,8 +140,19 @@ module.exports = async function ControlRoutes(shared, request) {
             runtime.cancelRun("web console");
         }
 
+        /* only the foreground's questions: a background project's run
+           keeps its own pending approval (P1-03) */
         for (const id of approvalStore.pendingKeys()) {
-            resolveApproval(id, false);
+
+            const pending = approvalStore.getPending(id);
+
+            if (
+                !pending ||
+                pending.ownerTurnId === state.currentTurnId ||
+                (pending.project_id || null) === (state.projectId || null)
+            ) {
+                resolveApproval(id, false);
+            }
         }
 
         sendJson(res, 200, { cancelled: true });
@@ -160,7 +169,7 @@ module.exports = async function ControlRoutes(shared, request) {
             return true;
         }
 
-        if (state.status === "running") {
+        if (!clearForeground()) {
 
             sendJson(res, 409, {
                 error: "cannot clear while a task is running"
@@ -168,27 +177,6 @@ module.exports = async function ControlRoutes(shared, request) {
 
             return true;
         }
-
-        state.cycles = 0;
-        state.lastPlanSignature = null;
-        state.history = [];
-        state.events = [];
-
-        /*
-        | The previous conversation is kept on disk; this
-        | starts the next one rather than erasing it.
-        */
-
-        saveSession();
-
-        state.session = sessions.emptySession();
-
-        calls.clear();
-        state.answer = null;
-        state.error = null;
-        state.status = "idle";
-
-        runtime.events.emit("session:cleared", {});
 
         sendJson(res, 200, { cleared: true });
 

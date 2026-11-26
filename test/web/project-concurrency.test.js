@@ -6,7 +6,8 @@
 |--------------------------------------------------------------------------
 |
 | Project A and project B run at the same time; a second run for the SAME
-| project is refused; the foreground (default) run does not block a project.
+| project waits in its queue (refused with queue:false); the foreground
+| (default) run does not block a project.
 |--------------------------------------------------------------------------
 */
 
@@ -104,7 +105,8 @@ async function main() {
     const runtime = require(path.join(REPO, "agent", "agent.js"));
     const { createServer } = require(path.join(REPO, "web", "server.js"));
 
-    const web = createServer(runtime, {});
+    /* the polling below must not trip the API rate limit on a slow runner */
+    const web = createServer(runtime, { apiRateLimit: 100000 });
     const address = await web.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${address.port}`;
 
@@ -125,7 +127,9 @@ async function main() {
 
         while (Date.now() < deadline) {
 
-            const { body } = await api("GET", `/api/projects/${projectId}/run`);
+            const { status, body } = await api("GET", `/api/projects/${projectId}/run`);
+
+            assert.strictEqual(status, 200, `GET /run answered ${status}: ${JSON.stringify(body)}`);
 
             if (body.status !== "running") {
                 return body;
@@ -152,20 +156,36 @@ async function main() {
         assert.ok(overlap.max >= 2, `the two model calls never overlapped (max ${overlap.max})`);
     });
 
-    await test("a second run for the SAME project is refused while the first runs", async () => {
+    await test("a second run for the SAME project waits for its turn (or is refused with queue:false)", async () => {
 
         const first = await api("POST", "/api/projects/prj-a/tasks", { task: "first" });
         const duplicate = await api("POST", "/api/projects/prj-a/tasks", { task: "duplicate" });
+        const refused = await api("POST", "/api/projects/prj-a/tasks", { task: "refused", queue: false });
 
         assert.strictEqual(first.status, 202);
-        assert.strictEqual(duplicate.status, 409);
-        assert.match(duplicate.body.error, /already has a run/);
+        assert.strictEqual(duplicate.status, 202);
+        assert.strictEqual(duplicate.body.queued, true, "the message waits in the project's queue (P1-04)");
+        assert.strictEqual(refused.status, 409);
+        assert.match(refused.body.error, /already has a run/);
 
-        assert.strictEqual((await waitIdle("prj-a")).status, "done");
+        /* the queued message is the next turn; afterwards the project is free */
+        const deadline = Date.now() + 15000;
+
+        let run = await waitIdle("prj-a");
+
+        while (run.queue_length > 0 || run.task !== "duplicate") {
+
+            assert.ok(Date.now() < deadline, "the queued message never ran");
+            await new Promise(done => setTimeout(done, 100));
+            run = await waitIdle("prj-a");
+        }
+
+        assert.strictEqual(run.status, "done");
 
         const again = await api("POST", "/api/projects/prj-a/tasks", { task: "after" });
 
         assert.strictEqual(again.status, 202, "the project accepts work again once idle");
+        assert.notStrictEqual(again.body.queued, true);
 
         await waitIdle("prj-a");
     });

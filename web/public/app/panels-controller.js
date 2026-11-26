@@ -219,16 +219,28 @@ function bindRunControls() {
         if (dot) dot.className = `dot ${state.status}`;
         if (text) text.textContent = state.reconnecting ? "reconnecting" : state.status;
 
+        /* a running project takes more messages: they wait in its queue
+           (P1-04), or reach the running turn with "Correct now" */
+        const queueable =
+            state.status === "running" && Boolean(state.currentProjectId) &&
+            !state.discussionMode && (state.taskScopeMode || "current") !== "multiple";
+
         if (run) {
             run.disabled =
-                state.status === "running" || state.uploading || state.submitting || discussionRunning;
+                (state.status === "running" && !queueable) || state.uploading || state.submitting || discussionRunning;
             run.textContent =
                 state.uploading && state.status !== "running"
                     ? "Uploading files…"
                     : discussionRunning
                         ? "Discussion running…"
-                        : state.discussionMode ? "Start discussion" : "Run task";
+                        : queueable
+                            ? "Queue message"
+                            : state.discussionMode ? "Start discussion" : "Run task";
         }
+
+        const correct = el("correctButton");
+
+        if (correct) correct.hidden = !queueable;
 
         if (cancel) {
             cancel.disabled = state.status !== "running" || state.stopPending;

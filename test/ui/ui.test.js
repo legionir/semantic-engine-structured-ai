@@ -82,6 +82,10 @@ async function main() {
 
     await require("./scenarios/projects")({ test, Modal, backdrops, card, console_ });
 
+    console.log("\nparallel conversations, queue and notifications");
+
+    await require("./scenarios/conversations")({ test, console_ });
+
     console.log("\nprojects manager and attachments");
 
     await require("./scenarios/project-manager")({ test, backdrops, console_ });

@@ -152,6 +152,8 @@ node bin/agent.js -i -w /path/to/project
 
 **اشاره به فایل و تصویر:** `@مسیر` در متن تسک (مثلاً `@src/app.js` یا `@docs/`) هنگام ارسال خوانده و به پیام افزوده می‌شود (مجموعاً تا `TASK_MENTION_MAX_CHARS`)؛ پوشه به‌صورت فهرست و تصویر به‌صورت تصویر. فقط مسیرهای داخل پروژه پذیرفته می‌شوند. در کنسول وب، تایپ `@` فهرست فایل‌ها را پیشنهاد می‌دهد و اسکرین‌شاتِ paste‌شده پیوست می‌شود؛ تصویرهای پیوست و تصویرهایی که ابزارهای MCP برمی‌گردانند به مدل نشان داده می‌شوند، مگر `MODEL_IMAGE_INPUT=off` باشد.
 
+**گفتگوهای موازی پروژه‌ها:** هر پروژه گفتگوی زندهٔ خودش را دارد (transcript، وضعیت، رویدادها و approvalها) و چند پروژه هم‌زمان اجرا می‌شوند؛ در کنسول وب هر گفتگو یک تب با نشان وضعیت (running، awaiting approval، done، failed) دارد و انتخاب تب استریم همان پروژه را با snapshot کاملش باز می‌کند. پیامی که به پروژهٔ مشغول فرستاده شود در صف نوبت بعد می‌نشیند (زیر composer قابل ویرایش، حذف و ادامه است) و دکمهٔ «Correct now» متن را پیش از قدم بعدی به همان run می‌رساند. Stop صف را پاک نمی‌کند. با دکمهٔ «Notify» اعلان مرورگر برای پایان، خطا یا انتظار approval فقط وقتی صفحه در پس‌زمینه است فعال می‌شود؛ کلیک روی اعلان همان گفتگو را باز می‌کند و عنوان صفحه تعداد گفتگوهای نیازمند توجه را نشان می‌دهد.
+
 ---
 
 ### حالت ۳: کنسول وب و داشبورد زنده (Web Console)
@@ -445,8 +447,9 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `SKILLS_MARKDOWN_ENABLED` | boolean | `true` | Load SKILL.md skills from .agent/skills and .claude/skills of the project, <data home>/skills and agent/skills, next to the registry skills (roadmap P3-02). |
 | `TASK_MENTION_MAX_CHARS` | number | `40000` | How many characters of the files named with @path in a message are read into it, for all mentions together; the rest is named but not inlined (roadmap P1-09). |
 | `SKILL_COMMANDS` | enum | `"read-only"` | Whether !`command` in a SKILL.md body is replaced by its output when the skill is loaded: read-only runs commands CommandRisk rates low, from shipped or operator skills and trusted workspaces only; off runs none. |
+| `PROJECT_QUEUE_MAX` | number | `20` | Messages a project's conversation keeps queued while its run is busy; each starts as the next turn when the run ends. 0 turns the queue off and a busy project answers 409 as before (roadmap P1-04). |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۱۷ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۱۸ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -557,8 +560,15 @@ method/path کامل در
 | `GET` | `/api/projects/:projectId/state` | snapshot محدود به همان پروژه |
 | `GET` | `/api/projects/:projectId/events` | event stream پروژه‌ای |
 | `GET` | `/api/projects/:projectId/sessions` | sessionهای همان پروژه |
-| `POST` | `/api/projects/:projectId/tasks` یا `/chat` | اجرای task با پاسخ `202 {accepted, project_id}` |
-| `POST` | `/api/projects/:projectId/cancel` | لغو فقط runهای همان پروژه |
+| `POST` | `/api/projects/:projectId/tasks` یا `/chat` | اجرای task با پاسخ `202 {accepted, project_id}`؛ اگر پروژه مشغول باشد پیام در صف نوبت بعد می‌نشیند: `202 {queued:true, queued_message, queue_length}` (با `queue:false` یا `PROJECT_QUEUE_MAX=0` همان `409` تاریخی؛ صف پر: `429 PROJECT_QUEUE_FULL`) |
+| `POST` | `/api/projects/:projectId/cancel` | لغو فقط runهای همان پروژه؛ صف پیام‌ها پاک نمی‌شود و فقط متوقف (paused) می‌شود مگر بدنه `{clear_queue:true}` باشد (پاسخ: `queue_cleared`) |
+| `GET` | `/api/projects/:projectId/run` | وضعیت گفتگوی پروژه: `status`، `task`، `background`، `turn_id`، `pending_approvals`، `queue_length`، `queue_paused` |
+| `GET/POST/DELETE` | `/api/projects/:projectId/queue` | صف پیام‌های نوبت بعد: خواندن، افزودن (`text`، اختیاری `reasoning_effort`؛ پروژهٔ بیکار فوراً شروع می‌کند) و پاک‌کردن کامل |
+| `PATCH/DELETE` | `/api/projects/:projectId/queue/:itemId` | ویرایش متن یا حذف یک پیام صف |
+| `POST` | `/api/projects/:projectId/queue/resume` | ادامهٔ صفی که با Stop متوقف شده |
+| `POST` | `/api/projects/:projectId/correction` | پیام اصلاحی وسط اجرا: پیش از قدم بعدی مدل تزریق و در journal ثبت می‌شود (`run:correction`)؛ اگر run تمام شده باشد به صف یا اجرای جدید می‌رود |
+| `POST` | `/api/projects/:projectId/clear` | شروع دوبارهٔ گفتگوی همان پروژه (بدون اثر روی گفتگوهای دیگر) |
+| `GET` | `/api/conversations` | یک خط برای هر گفتگوی زنده (پیش‌فرض و هر پروژه): وضعیت، approvalهای منتظر، طول صف؛ همین خلاصه با پیام `{type:"conversations"}` روی هر event stream هم ارسال می‌شود |
 | `GET` | `/api/projects/:projectId/health` یا `/metrics` | سلامت و metrics همان پروژه |
 | `GET/POST` | `/api/projects/:projectId/discussions` | list یا شروع discussion پایدار |
 | `GET` | `/api/projects/:projectId/discussions/:discussionId` | replay transcript کامل همان پروژه |

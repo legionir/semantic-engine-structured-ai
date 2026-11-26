@@ -22,12 +22,12 @@ module.exports = async function ProjectRecordsRoutes(shared, request, project) {
     const {
         DISCUSSION_MODULE,
         approvalStore,
+        conversations,
         discussionService,
-        eventForClient,
         requestReasoningEffort,
         runtime,
+        projectSnapshot,
         sessions,
-        snapshot,
         sseHub,
         startDiscussion,
         state
@@ -215,22 +215,24 @@ module.exports = async function ProjectRecordsRoutes(shared, request, project) {
 
         requireAccess(projectId, "project:read");
         const record = requireRecord(projectId);
-        const live = state.projectId === record.id;
+        const conv = conversations.get(record.id);
+        /* the foreground holds this project, or its own conversation does */
+        const live =
+            conv && (conv.background || state.projectId !== record.id)
+                ? conv
+                : state.projectId === record.id ? state : null;
         const ctx =
             runtime.projects.createProjectContext(record);
 
         sendJson(res, 200, {
             project: record,
-            status: live ? state.status : "idle",
-            task: live ? state.task : null,
-            answer: live ? state.answer : null,
-            error: live ? state.error : null,
-            events:
-                state.events
-                    .map(event =>
-                        eventForClient(event, { projectId: record.id, claims })
-                    )
-                    .filter(Boolean),
+            status: live ? live.status : "idle",
+            task: live ? live.task : null,
+            answer: live ? live.answer : null,
+            error: live ? live.error : null,
+            background: Boolean(conv && conv.background),
+            queue_length: conv ? conv.queue.length : 0,
+            events: projectSnapshot(record.id, claims).events,
             sessions:
                 sessions.listSessions(ctx.dataRoot),
             pending_approvals:
@@ -284,10 +286,7 @@ module.exports = async function ProjectRecordsRoutes(shared, request, project) {
         };
 
         const snap = {
-            events:
-                snapshot().events
-                    .map(event => eventForClient(event, client))
-                    .filter(Boolean)
+            events: projectSnapshot(projectId, claims).events
         };
 
         sseHub.attach(

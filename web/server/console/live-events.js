@@ -23,6 +23,8 @@ module.exports = function createLiveEvents(shared) {
     const {
         addMessage,
         approvalStore,
+        conversations,
+        conversationsFor,
         eventForClient,
         executionMessageKey,
         forStream,
@@ -31,6 +33,74 @@ module.exports = function createLiveEvents(shared) {
         sseHub,
         state
     } = shared;
+
+    /* the plan an event carries is its own project's, even when the
+       event is emitted outside the run (run:status of a project turn) */
+    function planViewFor(projectId) {
+
+        if (
+            !projectId ||
+            typeof runtime.runWithProject !== "function" ||
+            typeof runtime.resolveRunProjectContext !== "function"
+        ) {
+            return runtime.currentPlanView();
+        }
+
+        try {
+
+            return runtime.runWithProject(
+                runtime.resolveRunProjectContext({ projectId }),
+                () => runtime.currentPlanView()
+            );
+
+        } catch {
+
+            return runtime.currentPlanView();
+        }
+    }
+
+
+    /*
+    | Every console learns how every conversation it may see is doing (the
+    | tabs' badges, notifications), whichever project its stream shows. The
+    | summary is not a runtime event: it is pushed beside the stream, at
+    | most once per tick, when a conversation may have changed state.
+    */
+    const SUMMARY_TRIGGERS = new Set([
+        "run:start",
+        "run:status",
+        "approval:request",
+        "approval:resolved",
+        "queue:changed",
+        "session:cleared"
+    ]);
+
+    let summaryPending = false;
+
+    function scheduleSummary() {
+
+        if (summaryPending) {
+            return;
+        }
+
+        summaryPending = true;
+
+        setImmediate(() => {
+
+            summaryPending = false;
+
+            const list = conversations.list();
+
+            sseHub.broadcast(
+                { type: "conversations", conversations: list },
+                (value, client) => ({
+                    ...value,
+                    conversations: conversationsFor(client.claims, value.conversations)
+                })
+            );
+        });
+    }
+
 
     function broadcast(rawEvent) {
 
@@ -50,20 +120,25 @@ module.exports = function createLiveEvents(shared) {
                 carriesPlan
                     ? {
                         ...rawEvent,
-                        plan: runtime.currentPlanView()
+                        plan: planViewFor(rawEvent.project_id)
                     }
                     : rawEvent
             );
 
         state.events.push(event);
 
+        /* each project replays its own events, whatever else ran (P1-03) */
+        conversations.recordEvent(event);
+
         /*
         | Stored in the same shape the browser received, so replaying a
-        | session redraws exactly what the live run drew.
+        | session redraws exactly what the live run drew. A background turn
+        | belongs to its project's conversation, not the foreground session.
         */
 
         if (
             sessionsEnabled() &&
+            !conversations.backgroundOwnerOf(event) &&
             event.type !== "session:message" &&
             event.type !== "session:switched"
         ) {
@@ -79,6 +154,10 @@ module.exports = function createLiveEvents(shared) {
             event,
             (value, client) => eventForClient(value, client)
         );
+
+        if (SUMMARY_TRIGGERS.has(event.type)) {
+            scheduleSummary();
+        }
     }
 
 
@@ -87,9 +166,20 @@ module.exports = function createLiveEvents(shared) {
     | disabled. Persistence is an optional storage feature; it must never
     | turn the live conversation into a single final-answer bubble.
     */
+    /* a background turn's message goes to its own conversation */
+    function messageFor(event, entry) {
+
+        const owner = conversations.backgroundOwnerOf(event);
+
+        return owner
+            ? conversations.addMessage(owner, entry)
+            : addMessage(entry);
+    }
+
+
     runtime.events.bus.on("agent:response", event => {
 
-        addMessage({
+        messageFor(event, {
             role: "assistant",
             kind: "model",
             agent: event.scope || event.agent,
@@ -110,7 +200,7 @@ module.exports = function createLiveEvents(shared) {
     */
     runtime.events.bus.on("agent:thinking", event => {
 
-        addMessage({
+        messageFor(event, {
             role: "assistant",
             kind: "thinking",
             agent: event.scope || event.agent,
@@ -162,7 +252,15 @@ module.exports = function createLiveEvents(shared) {
                 | same object the store holds, so this mutation is visible to
                 | the sweep below.
                 */
-                request.ownerTurnId = state.currentTurnId || null;
+                const run =
+                    runtime.runManager && typeof runtime.runManager.current === "function"
+                        ? runtime.runManager.current()
+                        : null;
+
+                /* the turn of the run that asked, so a background project's
+                   approval reaches (and is swept by) its own conversation */
+                request.ownerTurnId =
+                    (run && run.turnId) || state.currentTurnId || null;
 
                 runtime.events.emit("approval:request", {
                     id: request.id,

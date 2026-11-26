@@ -44,7 +44,9 @@ export const REGIONS = Object.freeze([
     "dashboard",
     "logs",
     "terminal",
-    "files"
+    "files",
+    "tabs",
+    "queue"
 ]);
 
 
@@ -150,6 +152,18 @@ export function createState() {
         taskProjectIds: [],
         dashboard: { open: false, projectId: null, tab: "overview", request: 0, loading: false, data: null, saving: false, saveMessage: "" },
         multiQueue: [],
+
+        /* conversationState per project (P1-03 / P1-04 / P1-05): one line
+           per live conversation, the visible project's message queue, the
+           conversations that finished or asked while the page was hidden,
+           and whether the operator wants browser notifications */
+        conversations: [],
+        queue: null,
+        conversationMode: null,
+        attention: new Set(),
+        notificationsEnabled: false,
+        editingQueueItem: null,
+
         attachments: [],
         attachmentError: null,
         gatewayHealth: null
