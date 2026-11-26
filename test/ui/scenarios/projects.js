@@ -59,6 +59,7 @@ module.exports = async function Projects({ test, Modal, backdrops, card, console
 
         for (const box of [...options.querySelectorAll(".persona-box")]) {
             box.checked = false;
+            box.dispatch("change");
         }
 
         document.getElementById("task").value = "design auth";
@@ -74,7 +75,9 @@ module.exports = async function Projects({ test, Modal, backdrops, card, console
 
         /* a selection goes to the discussion endpoint, not /api/tasks */
 
-        [...options.querySelectorAll(".persona-box")][0].checked = true;
+        const first = [...options.querySelectorAll(".persona-box")][0];
+        first.checked = true;
+        first.dispatch("change");
 
         document.getElementById("taskForm").dispatch("submit");
 

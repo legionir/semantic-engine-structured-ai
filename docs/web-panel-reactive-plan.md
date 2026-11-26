@@ -10,7 +10,7 @@
 > - ردیف پنهان `#rowTwo` حذف شد. Execution و Events دیگر نسخهٔ صفحه ندارند و فقط وقتی مودالشان باز است رسم می‌شوند.
 > - تست‌های UI به گروه‌های جدا در `test/ui/scenarios/` تقسیم شدند (همان ترتیب و همان خروجی)، و `app.css` به یک فایل پایه و پنج فایل در `web/public/styles/` که به همان ترتیب لینک می‌شوند.
 > - سرور: `web/server/ServerImplementation.js` (۳۵۳۶ خط) شکسته شد. مسیرهای API در هفت گروه مرتب در `web/server/routes/` قرار گرفتند و handler آن‌ها را به همان ترتیب صدا می‌زند. state و helperهای closure در factoryهای `web/server/console/` هستند و سرو فایل‌های ایستا، همراه با `MIME`، در `console/static-files.js`. کد منتقل‌شده token به token با نسخهٔ قبل یکی است.
-> - Projects manager و فرم New Project هنوز به‌صورت imperative ساخته می‌شوند، ولی خطاهای آن‌ها گزارش می‌شود.
+> - Projects manager، فرم New Project، انتخاب‌گر personaهای Discussion و دو برچسب هدر (نام پروژهٔ فعال و چیپ health) هم از store رسم می‌شوند. Projects manager وقتی فهرست پروژه‌ها عوض شود سر جایش دوباره رسم می‌شود و انتخابِ تأییدنشده حفظ می‌شود. حذف یک پروژه آن را از scope چندپروژه‌ای هم بیرون می‌برد.
 > - کارایی: replay یک snapshot با ۵۰۰ رویداد روی happy-dom حدود ۲۴۰ms طول می‌کشد، در برابر حدود ۶۰۰۰ms در نسخهٔ legacy. خود reduce حدود ۲ms است و بقیه هزینهٔ DOM شبیه‌سازی‌شده است. سقف تست ۱۵۰۰ms گذاشته شد تا CI ناپایدار نشود.
 
 

@@ -9,167 +9,92 @@
 */
 
 import { state, touch } from "./store.js";
-import { mountInModal } from "./dom.js";
-import { Discussion } from "./discussion-view.js";
-import { el, node } from "./console-core.js";
+import { bind, mount, mountInModal } from "./dom.js";
+import { Discussion, DiscussionOptions } from "./discussion-view.js";
+import { el } from "./console-core.js";
 import { clearComposer, taskWithAttachments, uploadFor } from "./composer-controller.js";
 
 
-function discussionOptionsRow() {
+/* the spec's example panel, so a first run already shows a disagreement
+   instead of a monologue */
+const PRESELECT =
+    new Set(["security", "backend", "frontend", "architect", "performance"]);
 
-    const container =
-        el("discussionOptions");
 
-    if (!container || container.dataset.built === "1") {
-        return container;
-    }
+const optionActions = {
 
-    container.dataset.built = "1";
+    toggle(id, checked) {
+        const selection = new Set(state.discussionSelection || []);
+        if (checked) selection.add(id);
+        else selection.delete(id);
+        state.discussionSelection = [...selection];
+        touch("composer");
+    },
 
-    const grid = node("div", "discussion-personas");
+    selectAll(checked) {
+        state.discussionSelection = checked ? state.discussionPersonas.map(persona => persona.id) : [];
+        touch("composer");
+    },
 
-    const setAll = checked => {
+    /* the field is drawn from this value, so a redraw keeps what was typed */
+    rounds(value) {
+        state.discussionRounds = value;
+    },
 
-        for (const box of grid.querySelectorAll("input[type=checkbox]")) {
-            box.checked = checked;
-        }
-    };
+    view: () => openDiscussion()
+};
 
-    /* the spec's example panel, so a first run already shows a
-       disagreement instead of a monologue */
-    const preselect =
-        new Set(["security", "backend", "frontend", "architect", "performance"]);
 
-    for (const persona of state.discussionPersonas) {
+/*
+| The options row under the task box and the Discussion button's state are
+| drawn from the store: the row while discussion mode is on, the button's
+| highlight whenever the mode flips.
+*/
+export function mountDiscussionComposer() {
 
-        const label = node("label", "discussion-persona");
-        label.title = persona.description;
+    const options = el("discussionOptions");
 
-        const checkbox = node("input", "persona-box");
-        checkbox.type = "checkbox";
-        checkbox.value = persona.id;
-        checkbox.checked = preselect.has(persona.id);
+    mount(options, DiscussionOptions, ["discussion", "composer"], { state, actions: optionActions });
 
-        label.append(checkbox, node("span", null, persona.id));
-
-        grid.appendChild(label);
-    }
-
-    const head = node("div", "discussion-persona-head");
-    head.appendChild(node("span", null, "personas"));
-
-    head.append(
-        Modal.button("all", "link", () => setAll(true)),
-        Modal.button("none", "link", () => setAll(false))
-    );
-
-    const bottom = node("div", "discussion-meta");
-
-    const rounds = node("input", "filter");
-    rounds.id = "discussionRounds";
-    rounds.type = "number";
-    rounds.min = "1";
-    rounds.max = "10";
-    rounds.value = "5";
-    rounds.title = "maximum rounds (1-10)";
-
-    const status = node("span", "muted discussion-status-line");
-    status.id = "discussionStatusLine";
-
-    bottom.append(
-        node("span", null, "max rounds"),
-        rounds,
-        status
-    );
-
-    container.append(head, grid, bottom);
-
-    return container;
+    bind(["discussion", "composer"], () => {
+        if (options) options.hidden = !state.discussionMode;
+        el("discussionButton")?.classList.toggle("active", state.discussionMode);
+    });
 }
 
 
 function selectedDiscussionPersonas() {
 
-    const boxes =
-        el("discussionOptions")?.querySelectorAll(
-            ".persona-box"
-        );
+    const selection = new Set(state.discussionSelection || []);
 
-    return [
-        ...(boxes || [])
-    ].filter(box => box.checked).map(box => box.value);
+    return state.discussionPersonas
+        .filter(persona => selection.has(persona.id))
+        .map(persona => persona.id);
 }
 
 
-/*
-| The composer's discussion status line and the Discussion button. The run
-| button is not touched here: its label and state are derived from the
-| store in bindRunControls().
-*/
-export function refreshDiscussionComposerStatus() {
-
-    const button = el("discussionButton");
-    const line = el("discussionStatusLine");
-    const discussion = state.discussion;
-
-    if (button) {
-        button.classList.toggle("active", state.discussionMode);
-    }
-
-    if (!line || line.dataset.error === "1") {
-        return;
-    }
-
-    line.className = "muted discussion-status-line";
-    line.replaceChildren();
-
-    if (!discussion) {
-        return;
-    }
-
-    let text;
-
-    if (discussion.status === "running") {
-        const round =
-            discussion.rounds?.length
-                ? `${discussion.rounds.length} of ${discussion.max_rounds}`
-                : "starting";
-        text = `round ${round} ·`;
-    } else if (discussion.status === "done") {
-        text = `done in ${discussion.total_rounds} round(s) ·`;
-    } else {
-        text = `failed · ${discussion.error || "unknown error"}`;
-    }
-
-    line.appendChild(node("span", null, text));
-
-    if (discussion.status !== "failed") {
-        line.appendChild(Modal.button("view", "link", () => openDiscussion()));
-    }
-}
-
-
-/* an error on the composer line stays until the operator acts again */
 function showDiscussionError(message) {
 
-    const line = el("discussionStatusLine");
-
-    if (!line) {
-        return;
-    }
-
-    line.dataset.error = "1";
-    line.className = "bad";
-    line.textContent = message;
+    state.discussionError = message;
+    touch("composer");
 }
 
 
-function clearDiscussionError() {
+async function loadPersonas() {
 
-    const line = el("discussionStatusLine");
+    try {
+        const response = await fetch("/api/discussion/personas");
+        const payload = await response.json();
+        state.discussionPersonas = response.ok ? payload.personas || [] : [];
+    } catch {
+        state.discussionPersonas = [];
+    }
 
-    if (line) {
-        delete line.dataset.error;
+    /* the first list that arrives gets the default panel; a failed load
+       leaves the selection open for the next attempt */
+    if (state.discussionSelection === null && state.discussionPersonas.length > 0) {
+        state.discussionSelection =
+            state.discussionPersonas.filter(persona => PRESELECT.has(persona.id)).map(persona => persona.id);
     }
 }
 
@@ -187,24 +112,7 @@ export async function toggleDiscussionMode() {
     state.discussionMode = !state.discussionMode;
 
     if (state.discussionMode && state.discussionPersonas.length === 0) {
-
-        try {
-            const response = await fetch("/api/discussion/personas");
-            const payload = await response.json();
-            state.discussionPersonas = response.ok ? payload.personas || [] : [];
-        } catch {
-            state.discussionPersonas = [];
-        }
-    }
-
-    const options = el("discussionOptions");
-
-    if (options) {
-        options.hidden = !state.discussionMode;
-    }
-
-    if (state.discussionMode) {
-        discussionOptionsRow();
+        await loadPersonas();
     }
 
     touch("composer");
@@ -253,7 +161,8 @@ function openDiscussion() {
 */
 export async function submitDiscussion(task, reasoningEffort) {
 
-    clearDiscussionError();
+    state.discussionError = null;
+    touch("composer");
 
     const personas = selectedDiscussionPersonas();
 
@@ -263,7 +172,7 @@ export async function submitDiscussion(task, reasoningEffort) {
     }
 
     const maxRounds =
-        Math.max(1, Math.min(10, Number(el("discussionRounds")?.value) || 5));
+        Math.max(1, Math.min(10, Number(state.discussionRounds) || 5));
 
     const files = new Map();
 

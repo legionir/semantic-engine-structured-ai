@@ -108,6 +108,29 @@ export function discussionStatusLine(discussion) {
 }
 
 
+/* the composer's one-line summary under the persona picker ("" = nothing to say) */
+export function composerDiscussionText(discussion) {
+
+    if (!discussion) {
+        return "";
+    }
+
+    if (discussion.status === "running") {
+        const round =
+            discussion.rounds?.length
+                ? `${discussion.rounds.length} of ${discussion.max_rounds}`
+                : "starting";
+        return `round ${round} ·`;
+    }
+
+    if (discussion.status === "done") {
+        return `done in ${discussion.total_rounds} round(s) ·`;
+    }
+
+    return `failed · ${discussion.error || "unknown error"}`;
+}
+
+
 /*
 | One canonical reading order: each round's messages followed by the
 | observer's decision on that round, then any decision without a round,

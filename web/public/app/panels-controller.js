@@ -21,7 +21,7 @@ import { Plan, planSummary } from "./plan-view.js";
 import { Chat, waitingText } from "./chat.js";
 import { EventsPanel } from "./event-view.js";
 import { approvals, el, openCallByKey, openCallDetail } from "./console-core.js";
-import { refreshDiscussionComposerStatus } from "./discussion-controller.js";
+import { mountDiscussionComposer } from "./discussion-controller.js";
 
 
 export function openExecutionModal() {
@@ -195,7 +195,7 @@ export function mountViews() {
 
     bind(["approvals"], () => approvals.sync());
 
-    bind(["discussion", "composer"], () => refreshDiscussionComposerStatus());
+    mountDiscussionComposer();
 }
 
 

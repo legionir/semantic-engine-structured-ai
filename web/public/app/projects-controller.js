@@ -16,18 +16,53 @@ import { connect } from "./stream-controller.js";
 import { navigateConsole, parseProjectRoute, projectById, readStoredProjectId, writeStoredProjectId } from "./project-routing.js";
 
 
-export function renderProjectSwitcher() {
-
-    const label = el("activeProjectName");
-    if (!label) return;
+function projectLabel() {
 
     if (state.taskScopeMode === "multiple" && state.taskProjectIds.length > 1) {
-        label.textContent = `Multiple projects · ${state.taskProjectIds.length}`;
-        return;
+        return `Multiple projects · ${state.taskProjectIds.length}`;
     }
 
     const project = projectById(state.currentProjectId);
-    label.textContent = project ? (project.name || project.id) : "Default Workspace";
+    return project ? (project.name || project.id) : "Default Workspace";
+}
+
+
+function paintGatewayHealth() {
+
+    const chip = el("gatewayHealth");
+
+    /* until the first answer the chip keeps the page's placeholder */
+    if (!chip || !state.gatewayHealth) {
+        return;
+    }
+
+    const health = state.gatewayHealth;
+    const status = health.status || health.gateway?.status || "unknown";
+    const tone = status === "ok" ? "health-ok" : status === "down" ? "health-down" : "health-degraded";
+
+    chip.textContent = `health · ${status}`;
+    chip.classList.remove("health-ok", "health-degraded", "health-down");
+    chip.classList.add(tone);
+    chip.href = state.currentProjectId
+        ? `/projects/${encodeURIComponent(state.currentProjectId)}?tab=overview`
+        : "/api/health";
+}
+
+
+/*
+| The project bar's label and the health chip follow the store: the label
+| whenever the projects, the visible project or the task scope change, the
+| chip (whose link names the visible project) on health and project changes.
+*/
+export function bindProjectHeader() {
+
+    bind(["projects"], () => {
+        const label = el("activeProjectName");
+        const text = projectLabel();
+        if (label && label.textContent !== text) label.textContent = text;
+    });
+
+    bind(["header", "projects"], paintGatewayHealth);
 }
 
 
@@ -43,11 +78,12 @@ export async function loadProjects() {
 
         const payload = await response.json();
         state.projects = payload.projects || [];
-        renderProjectSwitcher();
 
     } catch {
         state.projects = [];
     }
+
+    touch("projects");
 }
 
 
@@ -66,7 +102,7 @@ export function setCurrentProject(projectId, options = {}) {
 
     state.currentProjectId = next;
     writeStoredProjectId(next);
-    renderProjectSwitcher();
+    touch("projects");
 
     if (!options.skipNavigate) {
         navigateConsole(next, options.dashboard ? (options.tab || "overview") : null, options.replace);
@@ -86,32 +122,6 @@ export function setCurrentProject(projectId, options = {}) {
 }
 
 
-function refreshGatewayHealthChip(health) {
-
-    const chip = el("gatewayHealth");
-
-    if (!chip) {
-        return;
-    }
-
-    const status = health?.status || health?.gateway?.status || "unknown";
-    chip.textContent = `health · ${status}`;
-    chip.classList.remove("health-ok", "health-degraded", "health-down");
-
-    if (status === "ok") {
-        chip.classList.add("health-ok");
-    } else if (status === "down") {
-        chip.classList.add("health-down");
-    } else {
-        chip.classList.add("health-degraded");
-    }
-
-    chip.href = state.currentProjectId
-        ? `/projects/${encodeURIComponent(state.currentProjectId)}?tab=overview`
-        : "/api/health";
-}
-
-
 export async function loadGatewayHealth() {
 
     try {
@@ -123,7 +133,7 @@ export async function loadGatewayHealth() {
         }
 
         state.gatewayHealth = await response.json();
-        refreshGatewayHealthChip(state.gatewayHealth);
+        touch("header");
 
     } catch {
         /* health is optional */
@@ -237,6 +247,7 @@ export function openProjectDashboard(projectId, tab) {
 
     state.taskScopeMode = "current";
     state.taskProjectIds = [];
+    touch("projects");
     Object.assign(state.dashboard, {
         open: true,
         projectId,
@@ -295,6 +306,7 @@ export function applyProjectRoute(fromPop) {
     if (projectId) {
         state.taskScopeMode = "current";
         state.taskProjectIds = [];
+        touch("projects");
     }
 
     if (route.dashboard && projectId) {

@@ -1,11 +1,14 @@
 /*
 | Discussion modal body. Drawn from state.discussion alone, so the live
 | transcript and a reopened one are the same view in the same order.
+|
+| DiscussionOptions is the composer's row under the task box: the persona
+| picker, the round limit and the status line, drawn from the store.
 */
 
 import { html } from "./dom.js";
 import { markdownParagraph } from "./markdown.js";
-import { discussionStatusLine, discussionTimeline } from "./discussion-model.js";
+import { composerDiscussionText, discussionStatusLine, discussionTimeline } from "./discussion-model.js";
 
 
 function Report({ report }) {
@@ -86,5 +89,63 @@ export function Discussion({ state }) {
                     return null;
             }
         })}
+    `;
+}
+
+
+/* an error stays on the line until the operator submits again */
+function ComposerStatus({ state, onView }) {
+
+    if (state.discussionError) {
+        return html`<span class="bad" id="discussionStatusLine">${state.discussionError}</span>`;
+    }
+
+    const text = composerDiscussionText(state.discussion);
+
+    return html`<span class="muted discussion-status-line" id="discussionStatusLine">
+        ${text ? html`<span>${text}</span>` : null}
+        ${text && state.discussion.status !== "failed"
+            ? html`<button type="button" class="link" onClick=${onView}>view</button>`
+            : null}
+    </span>`;
+}
+
+
+export function DiscussionOptions({ state, actions }) {
+
+    const selected = new Set(state.discussionSelection || []);
+
+    return html`
+        <div class="discussion-persona-head">
+            <span>personas</span>
+            <button type="button" class="link" onClick=${() => actions.selectAll(true)}>all</button>
+            <button type="button" class="link" onClick=${() => actions.selectAll(false)}>none</button>
+        </div>
+        <div class="discussion-personas">
+            ${state.discussionPersonas.map(persona => html`<label class="discussion-persona" key=${persona.id} title=${persona.description}>
+                <input
+                    type="checkbox"
+                    class="persona-box"
+                    value=${persona.id}
+                    checked=${selected.has(persona.id)}
+                    onChange=${event => actions.toggle(persona.id, event.currentTarget.checked)}
+                />
+                <span>${persona.id}</span>
+            </label>`)}
+        </div>
+        <div class="discussion-meta">
+            <span>max rounds</span>
+            <input
+                class="filter"
+                id="discussionRounds"
+                type="number"
+                min="1"
+                max="10"
+                title="maximum rounds (1-10)"
+                value=${state.discussionRounds}
+                onInput=${event => actions.rounds(event.currentTarget.value)}
+            />
+            <${ComposerStatus} state=${state} onView=${actions.view} />
+        </div>
     `;
 }

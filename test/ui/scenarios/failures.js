@@ -224,6 +224,91 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         Modal.closeTop("test");
     });
 
+    await test("the persona picker follows the store and keeps the operator's choices", async () => {
+        console_.send({ type: "run:status", status: "idle" });
+        const toggle = byId("discussionButton");
+        const options = byId("discussionOptions");
+        const boxes = () => [...options.querySelectorAll(".persona-box")];
+        const checked = () => boxes().filter(box => box.checked).map(box => box.value);
+        const link = label => [...options.querySelectorAll("button")].find(item => item.textContent === label);
+        const posts = () => console_.posted.filter(item => item.url === "/api/discussion");
+        const line = () => byId("discussionStatusLine");
+
+        console_.reply("/api/discussion/personas", new Error("offline"));
+        toggle.dispatch("click");
+        await settle();
+        assert.equal(options.hidden, false);
+        assert.equal(boxes().length, 0, "nothing to pick yet");
+        toggle.dispatch("click");
+        await settle();
+        assert.equal(options.hidden, true);
+        assert.equal(toggle.classList.contains("active"), false);
+
+        console_.reply("/api/discussion/personas", { personas: [
+            { id: "security", description: "threat modelling" }, { id: "backend" }, { id: "qa" }
+        ] });
+        toggle.dispatch("click");
+        await settle();
+        assert.deepEqual(boxes().map(box => box.value), ["security", "backend", "qa"], "a failed load is tried again");
+        assert.deepEqual(checked(), ["security", "backend"], "the default panel is preselected");
+        assert.equal(boxes()[0].parentNode.title, "threat modelling");
+        assert.equal(toggle.classList.contains("active"), true);
+
+        link("none").dispatch("click");
+        assert.deepEqual(checked(), []);
+        link("all").dispatch("click");
+        assert.deepEqual(checked(), ["security", "backend", "qa"]);
+        const qa = boxes()[2];
+        qa.checked = false;
+        qa.dispatch("change");
+
+        toggle.dispatch("click");
+        await settle();
+        toggle.dispatch("click");
+        await settle();
+        assert.deepEqual(checked(), ["security", "backend"], "turning the mode off and on keeps the choice");
+
+        const rounds = byId("discussionRounds");
+        rounds.value = "3";
+        rounds.dispatch("input");
+        console_.reply("/api/discussion", { __status: 400, body: { error: "too many personas" } });
+        byId("task").value = "debate";
+        byId("taskForm").dispatch("submit");
+        await settle();
+        assert.equal(line().textContent, "too many personas");
+        assert.equal(line().className, "bad");
+        assert.equal(byId("discussionRounds"), rounds, "the field survives the redraw");
+        assert.equal(rounds.value, "3");
+        assert.deepEqual(posts().at(-1).body.personas, ["security", "backend"]);
+        assert.equal(posts().at(-1).body.max_rounds, 3);
+
+        console_.reply("/api/discussion", {});
+        byId("taskForm").dispatch("submit");
+        await settle();
+        assert.equal(line().className, "muted discussion-status-line", "a new attempt clears the error");
+        assert.equal(line().textContent, "round starting ·view");
+        if (Modal.openCount > 0) Modal.closeTop("test");
+
+        console_.send({
+            type: "discussion:finish",
+            id: null,
+            total_rounds: 2,
+            hit_max_rounds: false,
+            stopped_reason: null,
+            final_report: { summary: "s", agreed_points: [], unresolved: [], next_steps: [] }
+        });
+        await settle();
+        assert.equal(line().textContent, "done in 2 round(s) ·view");
+        [...line().querySelectorAll("button")].find(item => item.textContent === "view").dispatch("click");
+        await settle();
+        assert.equal(Modal.openCount, 1, "view opens the transcript");
+        Modal.closeTop("test");
+
+        toggle.dispatch("click");
+        await settle();
+        assert.equal(options.hidden, true);
+    });
+
     await test("a discussion that cannot start says why", async () => {
         console_.reply("/api/discussion/personas", { personas: [{ id: "security", name: "Security Agent" }] });
         console_.send({ type: "run:status", status: "idle" });
@@ -231,6 +316,7 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         await settle();
         const box = byId("discussionOptions").querySelector(".persona-box");
         box.checked = true;
+        box.dispatch("change");
         console_.reply("/api/discussion", new Error("socket hang up"));
         byId("task").value = "debate";
         byId("taskForm").dispatch("submit");

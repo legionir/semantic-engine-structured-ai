@@ -124,6 +124,11 @@ export function createState() {
         discussion: null,
         discussionMode: false,
         discussionPersonas: [],
+        /* the composer's persona picker: null until the personas first load */
+        discussionSelection: null,
+        discussionRounds: "5",
+        /* an error on the composer line stays until the operator submits again */
+        discussionError: null,
 
         /* projectState */
         projects: [],

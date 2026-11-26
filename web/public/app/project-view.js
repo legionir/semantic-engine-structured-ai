@@ -9,6 +9,11 @@
 | draws it. A slow response for a tab the operator already left is
 | dropped by the controller (request token), so a tab never shows the
 | data of another tab or project.
+|
+| ProjectsManager and NewProjectForm are the two project modals' bodies.
+| The manager draws the registered list from the store and the operator's
+| unconfirmed choice from `picker`, so a list that changes while it is
+| open redraws in place without losing that choice.
 |--------------------------------------------------------------------------
 */
 
@@ -180,4 +185,60 @@ export function dashboardHeading(dashboard, fallback) {
         title: record?.name || dashboard.projectId || "",
         subtitle: `${record?.rootPath || ""} · ${dashboard.data?.health?.status || "unknown"}`
     };
+}
+
+
+/*
+| Text fields are uncontrolled and read on Create (as in the MCP form), so
+| a redraw for the message line never touches what was typed.
+*/
+export function NewProjectForm({ form, refs }) {
+
+    return html`
+        <label class="mcp-field">
+            <span class="label">name</span>
+            <input name="name" placeholder="Display name" ref=${refs.name} />
+        </label>
+        <label class="mcp-field">
+            <span class="label">root path (created if missing)</span>
+            <input name="rootPath" placeholder="/absolute/path/to/workspace" ref=${refs.root} />
+        </label>
+        <p class="mcp-message">${form.message}</p>
+    `;
+}
+
+
+export function ProjectsManager({ state, picker, actions }) {
+
+    return html`
+        <label class="project-choice-row">
+            <input
+                type="radio"
+                name="projectSelectionMode"
+                value="workspace"
+                checked=${picker.workspace}
+                onChange=${event => actions.chooseWorkspace(event.currentTarget.checked)}
+            />
+            <span class="name">Default Workspace</span>
+            <span class="muted">Use the default workspace</span>
+        </label>
+        ${state.projects.length === 0 ? html`<p class="empty">No registered projects yet.</p>` : null}
+        ${state.projects.map(project => {
+            const name = project.name || project.id;
+            return html`<div class="project-row" key=${project.id}>
+                <input
+                    type="checkbox"
+                    class="project-picker-checkbox"
+                    value=${project.id}
+                    aria-label=${`Select ${name}`}
+                    checked=${picker.ids.has(project.id)}
+                    onChange=${event => actions.toggle(project.id, event.currentTarget.checked)}
+                />
+                <span class="name">${name}</span>
+                <span class="muted">${project.rootPath || ""}</span>
+                <button type="button" class="ghost" onClick=${() => actions.open(project.id)}>Open</button>
+                <button type="button" class="ghost danger" onClick=${() => actions.remove(project)}>Delete</button>
+            </div>`;
+        })}
+    `;
 }

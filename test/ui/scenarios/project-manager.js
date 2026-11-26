@@ -113,7 +113,7 @@ module.exports = async function ProjectManager({ test, backdrops, console_ }) {
 
     await test("a refused or failed delete keeps the project and says why; deleting the open one falls back to the default", async () => {
 
-        let manager = await openManager();
+        const manager = await openManager();
         const deleteOf = (root, name) =>
             button([...root.querySelectorAll(".project-row")].find(row => row.textContent.includes(name)), "Delete");
         const errorCount = errors().length;
@@ -135,15 +135,17 @@ module.exports = async function ProjectManager({ test, backdrops, console_ }) {
         console_.reply("/api/projects", { projects: PROJECTS });
         deleteOf(manager, "Gamma").dispatch("click");
         await settle();
-        assert.equal(manager.isConnected, false);
         assert.equal(byId("activeProjectName").textContent, "Default Workspace");
         assert.notEqual(console_.storage["structured-ai.currentProjectId"], "prj-g", "the deleted project is forgotten");
         assert.doesNotMatch(console_.sourceUrl(), /projectId=prj-g/, "and its event stream is left");
 
-        manager = modal();
-        assert.ok(manager, "the manager reopens with the new list");
+        assert.ok(manager.isConnected, "the manager stays open and redraws with the new list");
+        assert.equal(modal(), manager);
         assert.equal(manager.querySelectorAll(".project-row").length, 2);
         assert.doesNotMatch(manager.textContent, /Gamma/);
+        assert.match(manager.textContent, /2 registered/);
+        assert.equal(manager.querySelector("input[name=projectSelectionMode]").checked, true, "the default takes over the deleted selection");
+        assert.equal(button(manager, "Confirm").disabled, false);
         button(manager, "Close").dispatch("click");
         await settle();
     });
@@ -163,6 +165,116 @@ module.exports = async function ProjectManager({ test, backdrops, console_ }) {
         await settle();
         assert.equal(byId("projectDashboard").hidden, true);
         await useDefaultWorkspace();
+    });
+
+    await test("the Projects manager redraws in place and keeps an unconfirmed choice", async () => {
+
+        const gamma = { id: "prj-g", name: "Gamma", rootPath: "/tmp/gamma" };
+        console_.reply("/api/projects", { projects: [...PROJECTS, gamma] });
+        const manager = await openManager();
+        const box = name => [...manager.querySelectorAll(".project-row")]
+            .find(row => row.textContent.includes(name)).querySelector(".project-picker-checkbox");
+        const confirm = button(manager, "Confirm");
+
+        const alpha = box("Alpha");
+        alpha.checked = true;
+        alpha.dispatch("change");
+        assert.equal(manager.querySelector("input[name=projectSelectionMode]").checked, false, "a project replaces the default");
+
+        console_.reply("DELETE /api/projects/prj-g", { ok: true });
+        console_.reply("/api/projects", { projects: PROJECTS });
+        button([...manager.querySelectorAll(".project-row")].find(row => row.textContent.includes("Gamma")), "Delete").dispatch("click");
+        await settle();
+
+        assert.ok(manager.isConnected, "the open manager is redrawn, not replaced");
+        assert.equal(modal(), manager);
+        assert.doesNotMatch(manager.textContent, /Gamma/);
+        assert.equal(box("Alpha"), alpha, "the row that stayed is the same node");
+        assert.equal(alpha.checked, true, "the unconfirmed choice survives the redraw");
+        assert.equal(byId("activeProjectName").textContent, "Default Workspace", "nothing is applied before Confirm");
+        assert.equal(button(manager, "Confirm"), confirm);
+
+        alpha.checked = false;
+        alpha.dispatch("change");
+        assert.equal(confirm.disabled, true, "nothing chosen, nothing to confirm");
+        button(manager, "Close").dispatch("click");
+        await settle();
+    });
+
+    await test("a deleted project leaves a multi-project scope", async () => {
+
+        const gamma = { id: "prj-g", name: "Gamma", rootPath: "/tmp/gamma" };
+        console_.reply("/api/projects", { projects: [...PROJECTS, gamma] });
+        let manager = await openManager();
+        for (const box of manager.querySelectorAll(".project-picker-checkbox")) {
+            box.checked = true;
+            box.dispatch("change");
+        }
+        button(manager, "Confirm").dispatch("click");
+        await settle();
+        assert.equal(byId("activeProjectName").textContent, "Multiple projects · 3");
+
+        manager = await openManager();
+        const remove = name => button([...manager.querySelectorAll(".project-row")].find(row => row.textContent.includes(name)), "Delete");
+
+        console_.reply("DELETE /api/projects/prj-g", { ok: true });
+        console_.reply("/api/projects", { projects: PROJECTS });
+        remove("Gamma").dispatch("click");
+        await settle();
+        assert.equal(byId("activeProjectName").textContent, "Multiple projects · 2", "the label follows the scope while the manager is open");
+        assert.equal(console_.storage["structured-ai.currentProjectId"], "prj-a", "Alpha stays the visible project");
+
+        console_.reply("DELETE /api/projects/prj-a", { ok: true });
+        console_.reply("/api/projects", { projects: [PROJECTS[1]] });
+        remove("Alpha").dispatch("click");
+        await settle();
+        assert.equal(byId("activeProjectName").textContent, "Beta", "one project left is a single-project scope");
+        assert.equal(console_.storage["structured-ai.currentProjectId"], "prj-b", "the visible project moves to the one still selected");
+        assert.match(console_.sourceUrl(), /projectId=prj-b/);
+        assert.equal(manager.querySelector(".project-row .project-picker-checkbox").checked, true, "and the manager shows it selected");
+
+        button(manager, "Close").dispatch("click");
+        await settle();
+        console_.reply("/api/projects", { projects: PROJECTS });
+        await useDefaultWorkspace();
+        assert.equal(byId("activeProjectName").textContent, "Default Workspace");
+    });
+
+    await test("the New Project form keeps what was typed while it reports a problem", async () => {
+
+        byId("newProjectButton").dispatch("click");
+        await settle();
+        const form = modal();
+        const [name, root] = form.querySelectorAll("input");
+        name.value = "Delta";
+        root.value = "";
+        button(form, "Create").dispatch("click");
+        await settle();
+
+        assert.equal(form.querySelector(".mcp-message").textContent, "a root path is required");
+        assert.equal(form.querySelectorAll("input")[0], name, "the field is the same node");
+        assert.equal(name.value, "Delta", "and still holds the name");
+
+        button(form, "Cancel").dispatch("click");
+        await settle();
+    });
+
+    await test("the health chip links to the visible project's overview", async () => {
+
+        const chip = byId("gatewayHealth");
+        assert.match(chip.textContent, /^health · /);
+        assert.equal(chip.getAttribute("href"), "/api/health");
+
+        const manager = await openManager();
+        const beta = [...manager.querySelectorAll(".project-row")].find(row => row.textContent.includes("Beta")).querySelector(".project-picker-checkbox");
+        beta.checked = true;
+        beta.dispatch("change");
+        button(manager, "Confirm").dispatch("click");
+        await settle();
+        assert.equal(chip.getAttribute("href"), "/projects/prj-b?tab=overview", "the link follows a project change without a new health check");
+
+        await useDefaultWorkspace();
+        assert.equal(chip.getAttribute("href"), "/api/health");
     });
 
     /* a file input's value cannot be set from script; record what the code assigns */

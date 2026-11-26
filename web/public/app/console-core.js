@@ -20,23 +20,6 @@ import { createApprovals } from "./approval-state.js";
 export const el = id => document.getElementById(id);
 
 
-export function node(tag, className, text) {
-
-    const element =
-        document.createElement(tag);
-
-    if (className) {
-        element.className = className;
-    }
-
-    if (text !== undefined && text !== null) {
-        element.textContent = text;
-    }
-
-    return element;
-}
-
-
 /*
 | Handles of open modals and in-flight flags. They describe the page, not
 | the runtime, so they live beside the store's data rather than in it.
