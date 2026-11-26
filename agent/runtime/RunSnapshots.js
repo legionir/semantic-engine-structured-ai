@@ -317,7 +317,9 @@ async function currentBlob(repository, repoPath) {
         return "not-a-file";
     }
 
-    return (await git(repository.top, ["hash-object", "--no-filters", "--", repoPath])).trim();
+    /* with the same filters `git add` applied when the snapshot was taken
+       (core.autocrlf, .gitattributes), so a CRLF checkout is no conflict */
+    return (await git(repository.top, ["hash-object", "--", repoPath])).trim();
 }
 
 

@@ -11,6 +11,7 @@ const fs = require("fs");
 const os = require("os");
 const http = require("http");
 const path = require("path");
+const { removeTempDirs } = require("../helpers/cleanup");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -659,11 +660,8 @@ async function main() {
         await stub.close();
     } catch { /* best-effort */ }
 
-    await runtime.eventstore.flush();
-    await runtime.journal.flush();
-    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    fs.rmSync(OTHER_ROOT, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    /* flushes both stores and never fails the suite over a temp folder (Windows EBUSY) */
+    await removeTempDirs(runtime, WORKSPACE, OTHER_ROOT, DATA_HOME);
 
     process.exit(failed.length === 0 ? 0 : 1);
 }

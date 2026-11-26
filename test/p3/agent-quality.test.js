@@ -21,6 +21,10 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { removeTempDirs } = require("../helpers/cleanup");
 
+/* a restored file comes back through git's checkout filters (CRLF under
+   core.autocrlf on Windows), so contents are compared line by line */
+const read = file => fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+
 const temp = prefix => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 
 const WORKSPACE = temp("p3-ws-");
@@ -503,7 +507,7 @@ async function main() {
         const action = await runtime.runAgent({ task: "[approved] The plan is approved. Execute it." });
 
         assert.equal(action.error, null);
-        assert.equal(fs.readFileSync(path.join(WORKSPACE, "planned.txt"), "utf8"), "yes\n");
+        assert.equal(read(path.join(WORKSPACE, "planned.txt")), "yes\n");
 
         const body = requests.filter(item => (item.messages || []).map(textOf).join("\n").includes("[approved]"))[0];
         const context = body.messages.map(textOf).find(text => text.includes("\"runtime_context\""));
@@ -610,14 +614,14 @@ async function main() {
         const conflict = await api("POST", `/api/snapshots/${encodeURIComponent(snapshotRun)}/revert`, {});
         assert.equal(conflict.status, 409);
         assert.deepEqual(conflict.body.conflicts, ["edit.txt"]);
-        assert.equal(fs.readFileSync(path.join(WORKSPACE, "edit.txt"), "utf8"), "edited later\n");
+        assert.equal(read(path.join(WORKSPACE, "edit.txt")), "edited later\n");
 
         const reverted = await api("POST", `/api/snapshots/${encodeURIComponent(snapshotRun)}/revert`, { force: true });
         assert.equal(reverted.status, 200);
         assert.equal(fs.existsSync(path.join(WORKSPACE, "created.txt")), false, "a created file is removed");
-        assert.equal(fs.readFileSync(path.join(WORKSPACE, "edit.txt"), "utf8"), "before\n", "an edited file is restored");
-        assert.equal(fs.readFileSync(path.join(WORKSPACE, "gone.txt"), "utf8"), "gone\n", "a deleted file is back");
-        assert.equal(fs.readFileSync(path.join(WORKSPACE, "keep.txt"), "utf8"), "keep\nstaged\n", "an untouched file stays");
+        assert.equal(read(path.join(WORKSPACE, "edit.txt")), "before\n", "an edited file is restored");
+        assert.equal(read(path.join(WORKSPACE, "gone.txt")), "gone\n", "a deleted file is back");
+        assert.equal(read(path.join(WORKSPACE, "keep.txt")), "keep\nstaged\n", "an untouched file stays");
     });
 
     await test("P3-09 a project without git answers 409 with a clear message", async () => {
