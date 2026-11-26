@@ -146,6 +146,11 @@ node bin/agent.js -i -w /path/to/project
 * `/approve` — تغییر حالت تأییدیه به `auto`، `prompt` یا `deny`
 * `/tools` — مشاهده ابزارهای فعال
 * `/save` — ذخیره آخرین پاسخ در یک فایل
+* `/init` — بررسی پروژه و نوشتن یا به‌روزکردن `AGENTS.md` (معادل `node bin/agent.js init`)
+
+**دستورالعمل پروژه (`AGENTS.md` / `CLAUDE.md`):** اگر ریشهٔ پروژه `AGENTS.md` یا `CLAUDE.md` داشته باشد، متن آن (حداکثر `PROJECT_INSTRUCTIONS_MAX_CHARS` نویسه) در هر درخواست به ایجنت اصلی و زیرایجنت‌ها می‌رسد؛ `AGENTS.override.md` جای هر دو را می‌گیرد. فایل‌های هم‌نام در زیرپوشه‌ها (تا عمق `PROJECT_INSTRUCTIONS_SCAN_DEPTH`) فقط فهرست می‌شوند تا ایجنت هنگام کار در آن پوشه بخواندشان. symlinkی که به بیرون پروژه اشاره کند خوانده نمی‌شود.
+
+**اشاره به فایل و تصویر:** `@مسیر` در متن تسک (مثلاً `@src/app.js` یا `@docs/`) هنگام ارسال خوانده و به پیام افزوده می‌شود (مجموعاً تا `TASK_MENTION_MAX_CHARS`)؛ پوشه به‌صورت فهرست و تصویر به‌صورت تصویر. فقط مسیرهای داخل پروژه پذیرفته می‌شوند. در کنسول وب، تایپ `@` فهرست فایل‌ها را پیشنهاد می‌دهد و اسکرین‌شاتِ paste‌شده پیوست می‌شود؛ تصویرهای پیوست و تصویرهایی که ابزارهای MCP برمی‌گردانند به مدل نشان داده می‌شوند، مگر `MODEL_IMAGE_INPUT=off` باشد.
 
 ---
 
@@ -421,8 +426,27 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `CONSOLE_FILE_MANAGER_ENABLED` | boolean · fixed at startup | `true` | Allow the admin console token to browse, create, edit, rename and delete files inside the workspace. Set through the environment and restart to change it. |
 | `CONSOLE_FILE_MAX_BYTES` | number | `2097152` | Largest file the console file manager opens or saves as text. |
 | `CONSOLE_FILE_LIST_MAX` | number | `5000` | Entries the console file manager lists in one folder; a larger folder is shown truncated. |
+| `AGENT_REASONING_EFFORT` | enum | `"inherit"` | Default reasoning effort inherited by layer models whose effort is set to inherit. |
+| `ENDPOINT_MAIN_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for the root orchestrator. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_L1_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for depth-1 agents. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_L2_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for depth-2 agents. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_L3_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for depth-3+ agents. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_SUMMARY_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for the context summariser. Inherit uses AGENT_REASONING_EFFORT. |
+| `UPLOAD_MAX_REQUEST_BYTES` | number | `41943040` | Maximum size of one multipart upload request in bytes. |
+| `UPLOAD_MAX_FILE_BYTES` | number | `20971520` | Maximum size of one uploaded file in bytes. |
+| `UPLOAD_MAX_FILES` | number | `8` | Maximum number of files accepted in one upload request. |
+| `PROJECT_INSTRUCTIONS_ENABLED` | boolean | `true` | Put the workspace's AGENTS.md / CLAUDE.md (AGENTS.override.md wins) into every prompt, and list the instruction files of sub-directories for the agent to read (roadmap P1-01). |
+| `PROJECT_INSTRUCTIONS_MAX_CHARS` | number | `32768` | How many characters of the root instruction files reach the model; the rest is cut and the cut is reported once to the application log. |
+| `PROJECT_INSTRUCTIONS_SCAN_DEPTH` | number | `3` | How many directory levels below the workspace root are searched for AGENTS.md / CLAUDE.md files to list. 0 lists none. |
+| `CHILD_ENV_PASSTHROUGH` | string | `""` | Extra environment variable names (comma or space separated) passed to processes started for the model: terminal, background processes, git, stdio MCP servers. A name that looks like a credential (KEY, TOKEN, SECRET, PASSWORD, AUTH...) is never passed, even when listed (roadmap P2-02). |
+| `MODEL_IMAGE_INPUT` | enum | `"on"` | Whether pictures reach the model: screenshots and other images returned by MCP tools, and images attached to a message. off keeps a text placeholder, for a model that cannot read images (roadmap P3-01, P1-09). |
+| `MODEL_IMAGE_MAX_BYTES` | number | `3932160` | Largest picture (decoded bytes) sent to the model; a larger one is replaced by a note saying why. |
+| `IMAGE_CONTEXT_CHARS` | number | `3000` | How many characters one image part counts as when the conversation size is measured for compaction; its base64 text is not counted. |
+| `SKILLS_MARKDOWN_ENABLED` | boolean | `true` | Load SKILL.md skills from .agent/skills and .claude/skills of the project, <data home>/skills and agent/skills, next to the registry skills (roadmap P3-02). |
+| `TASK_MENTION_MAX_CHARS` | number | `40000` | How many characters of the files named with @path in a message are read into it, for all mentions together; the rest is named but not inlined (roadmap P1-09). |
+| `SKILL_COMMANDS` | enum | `"read-only"` | Whether !`command` in a SKILL.md body is replaced by its output when the skill is loaded: read-only runs commands CommandRisk rates low, from shipped or operator skills and trusted workspaces only; off runs none. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۱۹۸ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۱۷ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -488,6 +512,7 @@ method/path کامل در
 | روش | مسیر | پاسخ قراردادی |
 |---|---|---|
 | `POST` | `/api/tasks` | `202 {"accepted":true}` برای مسیر single-project تاریخی |
+| `GET` | `/api/mentions?q=&projectId=` | تا ۳۰ فایل/پوشهٔ داخل پروژه برای تکمیل `@` در composer (دسترسی `project:read`) |
 | `GET` | `/api/events` | SSE event stream؛ با `projectId` قابل فیلتر است |
 | `GET` | `/api/state` | snapshot وضعیت، messages، events، approvals و run |
 | `POST` | `/api/cancel` | لغو run جاری |
@@ -797,6 +822,14 @@ integration/e2e اجرا می‌شوند. برای وضعیت جاری، خرو�
 
 - skillهای declarative در `agent/registry/skills.json` و منابع حجیم در
   `agent/skills/<name>/` قرار می‌گیرند؛ `SkillTools` آن‌ها را lazy می‌خواند.
+- skill با فرمت استاندارد `SKILL.md` (front matter با `name`، `description`،
+  و اختیاری `triggers` و `mcp_server`) از `.agent/skills/<dir>/` و
+  `.claude/skills/<dir>/` پروژه، `<data home>/skills/<dir>/` و
+  `agent/skills/<dir>/` خوانده می‌شود؛ بقیهٔ فایل‌های پوشه منابع آن‌اند و
+  تغییرها بدون ری‌استارت دیده می‌شوند. نام skillهای registry قابل جایگزینی
+  نیست. `` !`command` `` در متن skill هنگام `skill_get` با خروجی دستور جایگزین
+  می‌شود، فقط برای دستورهای فقط‌خواندنی و skillهای خود سرور یا workspace
+  مورد اعتماد (`SKILL_COMMANDS`).
 - agent profile در `agent/registry/agents.json` و personaهای discussion در
   `agent/registry/personas.json` ثبت می‌شوند. toolها و policy آن profile باید
   هم‌زمان contract-tested باشند.

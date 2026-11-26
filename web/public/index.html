@@ -88,7 +88,8 @@
       </div>
 
       <form id="taskForm" class="composer">
-        <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
+        <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why. Type @ to point at a file; paste a screenshot to attach it" aria-autocomplete="list" aria-controls="mentionList" aria-expanded="false"></textarea>
+        <ul id="mentionList" class="mention-list" role="listbox" aria-label="Files matching the @ mention" hidden></ul>
         <label class="effort-control" for="taskEffort">
           <span>Effort</span>
           <select id="taskEffort" aria-label="Reasoning effort for all agent layers">

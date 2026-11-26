@@ -2,6 +2,7 @@ const { execFileSync } = require("child_process");
 const nodePath = require("path");
 
 const settings = require("../config");
+const childEnvironment = require("../tools/process/ChildEnvironment");
 const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
 
 /*
@@ -93,6 +94,7 @@ function gitStatusMap(root = WORKSPACE_ROOT) {
                 ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
                 {
                     cwd: root,
+                    env: childEnvironment.build({ GIT_TERMINAL_PROMPT: "0" }),
                     encoding: "utf8",
                     timeout: settings.get("GIT_TIMEOUT_MS"),
                     windowsHide: true,

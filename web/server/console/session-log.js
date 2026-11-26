@@ -15,6 +15,8 @@
 */
 
 const { execFile } = require("child_process");
+const childEnvironment = require("../../../agent/tools/process/ChildEnvironment");
+const { withoutImages } = require("../../../agent/runtime/ImageChannel");
 
 
 module.exports = function createSessionLog(shared) {
@@ -52,7 +54,7 @@ module.exports = function createSessionLog(shared) {
 
         state.session.status = state.status;
 
-        state.session.history = state.history;
+        state.session.history = withoutImages(state.history);
 
         state.session.calls = [...calls.values()];
 
@@ -125,6 +127,7 @@ module.exports = function createSessionLog(shared) {
                 ["status", "--short", "--branch"],
                 {
                     cwd: workspace,
+                    env: childEnvironment.build({ GIT_TERMINAL_PROMPT: "0" }),
                     timeout: 8000,
                     maxBuffer: 4 * 1024 * 1024,
                     windowsHide: true

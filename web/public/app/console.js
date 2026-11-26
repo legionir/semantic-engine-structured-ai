@@ -33,6 +33,7 @@ import { initProjects } from "./project-manager.js";
 import { installPanelErrorReporting, openLogs, startLogBadge } from "./logs-controller.js";
 import { openTerminal } from "./terminal-controller.js";
 import { openFiles } from "./files-controller.js";
+import { initMentions } from "./mention-controller.js";
 
 
 el("taskForm").addEventListener("submit", async submitEvent => {
@@ -143,7 +144,9 @@ mountViews();
 
 mountDashboard();
 
-mount(el("attachmentList"), () => Attachments({ state, onRemove: removeAttachment }), ["attachments"]);
+mount(el("attachmentList"), () => Attachments({ state, onRemove: removeAttachment }), ["attachments", "settings"]);
+
+initMentions();
 
 connect();
 

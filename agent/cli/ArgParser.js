@@ -167,6 +167,11 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
         }
     }
 
+    /* `agent init` is the CLI spelling of the /init task (roadmap P1-01) */
+    if (options.positional.length === 1 && options.positional[0] === "init") {
+        options.positional[0] = "/init";
+    }
+
     if (!options.doctor && options.positional[0] === "doctor") {
         options.doctor = true;
         options.positional.shift();

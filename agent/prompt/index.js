@@ -17,6 +17,7 @@ const MainPromptBuilder = require("./MainPromptBuilder");
 const SubAgentPromptBuilder = require("./SubAgentPromptBuilder");
 const RuntimeContextBuilder = require("./RuntimeContextBuilder");
 const ProjectContextBuilder = require("./ProjectContextBuilder");
+const ProjectInstructionsBuilder = require("./ProjectInstructionsBuilder");
 const RequestBuilder = require("./RequestBuilder");
 const PromptMessages = require("./PromptMessages");
 const { createToolResolver } = require("./ToolResolver");
@@ -30,6 +31,11 @@ function createPromptBuilder(deps) {
             listProjects: deps.listProjects
         });
 
+    const projectInstructionsBuilder =
+        new ProjectInstructionsBuilder({
+            workspaceRoot: () => deps.runtimeContext.workspaceRoot()
+        });
+
     const runtimeContextBuilder =
         new RuntimeContextBuilder(deps.runtimeContext);
 
@@ -41,13 +47,15 @@ function createPromptBuilder(deps) {
             new MainPromptBuilder({
                 ...deps.main,
                 runtimeContext: sharedRuntimeContext,
-                projectContextBuilder
+                projectContextBuilder,
+                projectInstructionsBuilder
             }),
         subAgentPromptBuilder:
             new SubAgentPromptBuilder({
                 ...deps.subAgent,
                 runtimeContext: sharedRuntimeContext,
-                projectContextBuilder
+                projectContextBuilder,
+                projectInstructionsBuilder
             }),
         runtimeContextBuilder,
         projectContextBuilder,
@@ -67,6 +75,7 @@ module.exports = {
     SubAgentPromptBuilder,
     RuntimeContextBuilder,
     ProjectContextBuilder,
+    ProjectInstructionsBuilder,
     RequestBuilder,
     PromptMessages
 };

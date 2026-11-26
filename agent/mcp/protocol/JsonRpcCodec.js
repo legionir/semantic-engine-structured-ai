@@ -137,7 +137,7 @@ function errorResponse(id, code, message, data) {
 | returned as text so an image or a resource link is not silently lost.
 */
 
-function unpackToolResult(result) {
+function unpackContent(result) {
 
     if (
         !result ||
@@ -191,6 +191,55 @@ function unpackToolResult(result) {
         parts:
             result.content.length
     };
+}
+
+
+
+/*
+| Pictures (image items, image resource blobs) used to be dropped as soon
+| as a text item was present. They now ride along under `mcp_images`, so
+| the runtime's image channel can show them to the model (roadmap P3-01).
+| A result without any text is returned whole and keeps them anyway.
+*/
+
+function isImageItem(item) {
+
+    return Boolean(
+        item &&
+        typeof item === "object" &&
+        (
+            (item.type === "image" && typeof item.data === "string") ||
+            (item.type === "resource" && item.resource && typeof item.resource.blob === "string" &&
+                /^image\//i.test(String(item.resource.mimeType || "")))
+        )
+    );
+}
+
+
+function unpackToolResult(result) {
+
+    const value = unpackContent(result);
+
+    if (
+        value === result ||
+        !result ||
+        typeof result !== "object" ||
+        !Array.isArray(result.content)
+    ) {
+        return value;
+    }
+
+    const images = result.content.filter(isImageItem);
+
+    if (images.length === 0) {
+        return value;
+    }
+
+    if (Array.isArray(value) || !value || typeof value !== "object") {
+        return { result: value, mcp_images: images };
+    }
+
+    return { ...value, mcp_images: images };
 }
 
 

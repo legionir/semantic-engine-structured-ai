@@ -50,7 +50,34 @@ function looksLikeCredential(name) {
 }
 
 
-function isInherited(name) {
+/*
+| CHILD_ENV_PASSTHROUGH names extra variables an operator wants children
+| to see (roadmap P2-02), comma or space separated. Read on every call so
+| a change applies to the next process; a credential-looking name stays
+| blocked even when listed: a child that needs a secret gets it through
+| its own explicit configuration.
+*/
+
+function extraNames() {
+
+    let raw = "";
+
+    try {
+        raw = require("../../config").get("CHILD_ENV_PASSTHROUGH") || "";
+    } catch {
+        raw = "";
+    }
+
+    return new Set(
+        String(raw)
+            .split(/[\s,]+/)
+            .map(name => name.trim().toUpperCase())
+            .filter(Boolean)
+    );
+}
+
+
+function isInherited(name, extra = extraNames()) {
 
     if (looksLikeCredential(name)) {
         return false;
@@ -60,6 +87,7 @@ function isInherited(name) {
 
     return (
         inheritedNames.has(upper) ||
+        extra.has(upper) ||
         inheritedPrefixes.some(prefix => upper.startsWith(prefix))
     );
 }
@@ -75,6 +103,7 @@ function isInherited(name) {
 function build(explicit = {}, source = process.env) {
 
     const env = {};
+    const extra = extraNames();
 
     for (const name of Object.keys(source || {})) {
 
@@ -84,7 +113,7 @@ function build(explicit = {}, source = process.env) {
             continue;
         }
 
-        if (isInherited(name)) {
+        if (isInherited(name, extra)) {
             env[name] = String(value);
         }
     }
@@ -110,5 +139,6 @@ module.exports = {
     inheritedPrefixes,
     looksLikeCredential,
     isInherited,
+    extraNames,
     build
 };

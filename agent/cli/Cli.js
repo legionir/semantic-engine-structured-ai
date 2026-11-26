@@ -124,6 +124,8 @@ Options
       --list-agents         Print the agent profiles and exit
       --list-policy         Print the policy rules and exit
       doctor, --doctor      Report process sandbox backend and capabilities
+      init                  Write AGENTS.md (instructions for coding agents)
+                            for the workspace; same as the task /init
       --trust               Trust the workspace (-w, --project or cwd): its
                             project file may then enable hooks and MCP auto
                             discovery; security settings always stay locked

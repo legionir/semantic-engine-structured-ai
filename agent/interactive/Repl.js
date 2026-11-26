@@ -8,6 +8,7 @@ const { colours, formatDuration } = require("./OutputRenderer");
 const { COMMANDS, splitCommand } = require("./ReplCommands");
 const { createApprovalHandler } = require("./ApprovalPrompt");
 const { createReplCommandHandlers } = require("./ReplCommandHandlers");
+const { isInitCommand } = require("../prompt/ProjectInstructionsBuilder");
 
 
 /*
@@ -274,7 +275,7 @@ async function startSession(runtime, options) {
 
             try {
 
-                if (line.startsWith("/")) {
+                if (line.startsWith("/") && !isInitCommand(line)) {
 
                     await handleCommand(line);
 

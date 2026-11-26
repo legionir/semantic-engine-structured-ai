@@ -355,4 +355,75 @@ module.exports = async function ProjectManager({ test, backdrops, console_ }) {
         assert.deepEqual(chips(), []);
         assert.equal(byId("attachmentList").querySelector(".attachment-error"), null);
     });
+
+    /* roadmap P1-09 */
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const typeTask = async text => {
+        const task = byId("task");
+        task.value = text;
+        task.setSelectionRange(text.length, text.length);
+        task.dispatch("input");
+        await wait(160);
+        await settle();
+    };
+    const options = () => [...byId("mentionList").querySelectorAll("li")].map(item => item.textContent);
+
+    await test("@ completes paths of the project; arrows move, Enter inserts, Escape closes", async () => {
+
+        console_.reply("GET /api/mentions?q=sr", { entries: [{ path: "src/", type: "directory" }, { path: "srv.js", type: "file" }] });
+        console_.reply("GET /api/mentions?q=src%2F", { entries: [{ path: "src/app.js", type: "file" }] });
+
+        await typeTask("fix @sr");
+        assert.equal(byId("mentionList").hidden, false);
+        assert.deepEqual(options(), ["src/", "srv.js"]);
+        assert.equal(byId("task").getAttribute("aria-expanded"), "true");
+
+        byId("task").dispatch("keydown", { key: "ArrowDown" });
+        assert.equal(byId("mentionList").querySelector("li.active").textContent, "srv.js");
+        byId("task").dispatch("keydown", { key: "ArrowUp" });
+
+        byId("task").dispatch("keydown", { key: "Enter" });
+        assert.equal(byId("task").value, "fix @src/", "a folder is inserted without a space and keeps completing");
+        await wait(160);
+        await settle();
+        assert.deepEqual(options(), ["src/app.js"]);
+
+        byId("task").dispatch("keydown", { key: "Tab" });
+        assert.equal(byId("task").value, "fix @src/app.js ");
+        assert.equal(byId("mentionList").hidden, true);
+
+        await typeTask("mail me@sr");
+        assert.equal(byId("mentionList").hidden, true, "an e-mail address is not a mention");
+
+        await typeTask("@sr");
+        byId("task").dispatch("keydown", { key: "Escape" });
+        assert.equal(byId("mentionList").hidden, true);
+        byId("task").value = "";
+    });
+
+    await test("a pasted picture becomes an attachment, with a warning while MODEL_IMAGE_INPUT is off", async () => {
+
+        const picture = new File(["png-bytes"], "image.png", { type: "image/png" });
+        byId("task").dispatch("paste", { clipboardData: { files: [picture] } });
+        await settle();
+        assert.equal(chips().length, 1);
+        assert.match(chips()[0], /^pasted-.*\.png$/);
+        assert.equal(byId("attachmentList").querySelector(".attachment-error"), null);
+
+        byId("task").dispatch("paste", { clipboardData: { files: [new File(["t"], "a.txt", { type: "text/plain" })] } });
+        await settle();
+        assert.equal(chips().length, 1, "only pictures are taken from the clipboard");
+
+        console_.reply("GET /api/settings", { settings: [{ key: "MODEL_IMAGE_INPUT", value: "off", type: "enum", values: ["on", "off"] }] });
+        byId("llmSettingsButton").dispatch("click");
+        await settle();
+        document.dispatch("keydown", { key: "Escape" });
+        await settle();
+        assert.equal(backdrops().length, 0, "the settings dialog is closed again");
+        assert.match(byId("attachmentList").textContent, /MODEL_IMAGE_INPUT is off/);
+
+        byId("attachmentList").querySelector("button[aria-label^='Remove']").dispatch("click");
+        await settle();
+        assert.deepEqual(chips(), []);
+    });
 };

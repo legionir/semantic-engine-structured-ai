@@ -15,6 +15,7 @@ Commands
   /stats                show what the runtime has executed
   /tools, /agents, /policy   show the registries
   /save <file>          write the last answer to a file
+  /init                 write AGENTS.md: instructions for agents working on this project
 
 Anything else is sent to the agent as a task.
 Ctrl-C cancels the running task, Ctrl-D leaves the session.

@@ -510,13 +510,17 @@ class McpManager {
 
         try {
 
+            /* pictures go to the image channel, a placeholder stays (P3-01) */
             const result =
-                await client.callTool(tool, args, {
-                    timeoutMs:
-                        options.timeoutMs ||
-                        settings.get("MCP_CALL_TIMEOUT_MS") ||
-                        undefined
-                });
+                require("../runtime/ImageChannel").channel.extract(
+                    await client.callTool(tool, args, {
+                        timeoutMs:
+                            options.timeoutMs ||
+                            settings.get("MCP_CALL_TIMEOUT_MS") ||
+                            undefined
+                    }),
+                    { source: `${serverName}/${tool}` }
+                );
 
             events.emit("mcp:result", {
                 server: serverName,

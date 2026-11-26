@@ -208,5 +208,87 @@ module.exports = [
         "min": 100,
         "max": 100000,
         "description": "Entries the console file manager lists in one folder; a larger folder is shown truncated."
+    },
+    {
+        "key": "PROJECT_INSTRUCTIONS_ENABLED",
+        "group": "context",
+        "type": "boolean",
+        "default": true,
+        "description": "Put the workspace's AGENTS.md / CLAUDE.md (AGENTS.override.md wins) into every prompt, and list the instruction files of sub-directories for the agent to read (roadmap P1-01)."
+    },
+    {
+        "key": "PROJECT_INSTRUCTIONS_MAX_CHARS",
+        "group": "context",
+        "type": "number",
+        "default": 32768,
+        "min": 1024,
+        "max": 262144,
+        "description": "How many characters of the root instruction files reach the model; the rest is cut and the cut is reported once to the application log."
+    },
+    {
+        "key": "PROJECT_INSTRUCTIONS_SCAN_DEPTH",
+        "group": "context",
+        "type": "number",
+        "default": 3,
+        "min": 0,
+        "max": 8,
+        "description": "How many directory levels below the workspace root are searched for AGENTS.md / CLAUDE.md files to list. 0 lists none."
+    },
+    {
+        "key": "CHILD_ENV_PASSTHROUGH",
+        "group": "policy",
+        "type": "string",
+        "default": "",
+        "description": "Extra environment variable names (comma or space separated) passed to processes started for the model: terminal, background processes, git, stdio MCP servers. A name that looks like a credential (KEY, TOKEN, SECRET, PASSWORD, AUTH...) is never passed, even when listed (roadmap P2-02)."
+    },
+    {
+        "key": "MODEL_IMAGE_INPUT",
+        "group": "endpoint",
+        "type": "enum",
+        "values": ["on", "off"],
+        "default": "on",
+        "description": "Whether pictures reach the model: screenshots and other images returned by MCP tools, and images attached to a message. off keeps a text placeholder, for a model that cannot read images (roadmap P3-01, P1-09)."
+    },
+    {
+        "key": "MODEL_IMAGE_MAX_BYTES",
+        "group": "endpoint",
+        "type": "number",
+        "default": 3932160,
+        "min": 1024,
+        "max": 20971520,
+        "description": "Largest picture (decoded bytes) sent to the model; a larger one is replaced by a note saying why."
+    },
+    {
+        "key": "IMAGE_CONTEXT_CHARS",
+        "group": "context",
+        "type": "number",
+        "default": 3000,
+        "min": 0,
+        "max": 100000,
+        "description": "How many characters one image part counts as when the conversation size is measured for compaction; its base64 text is not counted."
+    },
+    {
+        "key": "SKILLS_MARKDOWN_ENABLED",
+        "group": "tools",
+        "type": "boolean",
+        "default": true,
+        "description": "Load SKILL.md skills from .agent/skills and .claude/skills of the project, <data home>/skills and agent/skills, next to the registry skills (roadmap P3-02)."
+    },
+    {
+        "key": "TASK_MENTION_MAX_CHARS",
+        "group": "context",
+        "type": "number",
+        "default": 40000,
+        "min": 0,
+        "max": 400000,
+        "description": "How many characters of the files named with @path in a message are read into it, for all mentions together; the rest is named but not inlined (roadmap P1-09)."
+    },
+    {
+        "key": "SKILL_COMMANDS",
+        "group": "tools",
+        "type": "enum",
+        "values": ["off", "read-only"],
+        "default": "read-only",
+        "description": "Whether !`command` in a SKILL.md body is replaced by its output when the skill is loaded: read-only runs commands CommandRisk rates low, from shipped or operator skills and trusted workspaces only; off runs none."
     }
 ];

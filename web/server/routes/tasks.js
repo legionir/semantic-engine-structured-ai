@@ -5,7 +5,13 @@
 | Upload and task routes
 |--------------------------------------------------------------------------
 |
-| File uploads and starting a task in the default workspace.
+| File uploads, @path completion for the composer and starting a task
+| in the default workspace.
+|
+|   GET /api/mentions?projectId=&q=src/ap   up to 30 entries of the folder
+|       named by q whose names start with its last segment, for the
+|       composer's @ completion (roadmap P1-09). Read access to the
+|       project; paths resolve through the workspace boundary.
 |
 | Called in order by the console's request handler (ServerImplementation).
 | It returns true once it has answered the request, false when the request
@@ -19,6 +25,71 @@ const path = require("path");
 const { readMultipart } = require("../Multipart");
 const { sendJson } = require("../Response");
 const { readBody } = require("../RequestBody");
+const { resolvePathInRoot } = require("../../../agent/context/WorkspaceBoundary");
+
+const MENTION_SKIP = new Set([".git", "node_modules", "upload_tmp"]);
+
+
+function workspaceRootFor(runtime, projectId) {
+
+    if (projectId) {
+        try {
+            const record = runtime.projects.registry().get(projectId);
+            return record.workspaceRoot || record.rootPath;
+        } catch (error) {
+            throw Object.assign(error, { status: 404 });
+        }
+    }
+
+    const context = runtime.createRuntimeContext();
+    const root = context?.runtime?.workspace_root || context?.workspace_root;
+
+    if (typeof root !== "string" || root.trim() === "") {
+        throw Object.assign(new Error("workspace root is unavailable"), { status: 500 });
+    }
+
+    return root;
+}
+
+
+function mentionEntries(root, query) {
+
+    const text = String(query || "").replace(/\\/g, "/").slice(0, 400);
+
+    if (text.startsWith("/") || /^[A-Za-z]:/.test(text)) {
+        return [];
+    }
+
+    const cut = text.lastIndexOf("/");
+    const folder = cut === -1 ? "" : text.slice(0, cut + 1);
+    const prefix = (cut === -1 ? text : text.slice(cut + 1)).toLowerCase();
+    const realRoot = fs.realpathSync(root);
+    let directory;
+
+    try {
+        directory = folder === "" ? realRoot : resolvePathInRoot(realRoot, folder, { mustExist: true });
+    } catch {
+        return [];
+    }
+
+    let entries;
+
+    try {
+        entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+        return [];
+    }
+
+    return entries
+        .filter(entry => !MENTION_SKIP.has(entry.name) && entry.name.toLowerCase().startsWith(prefix))
+        .filter(entry => prefix.startsWith(".") || !entry.name.startsWith("."))
+        .sort((a, b) => (b.isDirectory() - a.isDirectory()) || a.name.localeCompare(b.name))
+        .slice(0, 30)
+        .map(entry => ({
+            path: `${folder}${entry.name}${entry.isDirectory() ? "/" : ""}`,
+            type: entry.isDirectory() ? "directory" : "file"
+        }));
+}
 
 
 module.exports = async function TasksRoutes(shared, request) {
@@ -39,6 +110,28 @@ module.exports = async function TasksRoutes(shared, request) {
         res,
         url
     } = request;
+
+    /* ---------------------------------------------- @ completion */
+
+    if (
+        pathname === "/api/mentions" &&
+        req.method === "GET"
+    ) {
+        const projectId = url.searchParams.get("projectId") || null;
+        const permission = projectId
+            ? consoleAuth.authorize(claims, { projectId, permission: "project:read" })
+            : consoleAuth.authorizeUnscoped(claims, "project:read");
+
+        if (refuse(permission)) return true;
+
+        try {
+            sendJson(res, 200, { entries: mentionEntries(workspaceRootFor(runtime, projectId), url.searchParams.get("q")) });
+        } catch (error) {
+            sendJson(res, error.status || 400, { error: error.message || "completion failed" });
+        }
+
+        return true;
+    }
 
     /* ---------------------------------------------- uploads */
 

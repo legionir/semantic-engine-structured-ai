@@ -15,6 +15,7 @@
 */
 
 const consoleAuth = require("../../../agent/config/ConsoleAuth");
+const { isImageMessage } = require("../../../agent/runtime/ImageChannel");
 
 
 module.exports = function createSnapshot(shared) {
@@ -77,7 +78,7 @@ module.exports = function createSnapshot(shared) {
 
             turns:
                 state.history.filter(
-                    message => message.role === "user"
+                    message => message.role === "user" && !isImageMessage(message)
                 ).length,
 
             pending_approvals:
