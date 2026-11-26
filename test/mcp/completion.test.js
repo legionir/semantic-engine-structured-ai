@@ -463,7 +463,9 @@ async function main() {
         mock.state.expireAccess();
         mock.state.revokeRefresh();
         await assert.rejects(() => remote.callTool("whoami", {}), error => error.code === "MCP_OAUTH_REQUIRED");
-        assert.strictEqual(oauth.status("remote").signed_in, false);
+        const revoked = oauth.status("remote");
+        assert.strictEqual(revoked.signed_in, false);
+        assert.strictEqual(revoked.expires_at, null, "no stale expiry after a revoked refresh");
         assert.ok(seen.some(event => event.type === "mcp:oauth" && event.status === "expired"));
 
         oauth.signOut("remote", { forgetClient: true });

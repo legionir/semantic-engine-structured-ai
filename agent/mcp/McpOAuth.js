@@ -531,6 +531,7 @@ async function refresh(server, config = {}) {
             if (error.oauthError === "invalid_grant") {
                 writeSecret(server, "ACCESS", null);
                 writeSecret(server, "REFRESH", null);
+                saveMetadata(server, { expires_at: null, signed_in_at: null });
                 emitEvent("mcp:oauth", { server, status: "expired" });
             }
 
@@ -591,8 +592,9 @@ function status(server) {
     return {
         server,
         signed_in: access || refreshable,
-        expires_at: saved.expires_at || null,
-        expired: Boolean(saved.expires_at && saved.expires_at < Date.now()),
+        /* the expiry of a token that is still held, nothing after a sign-out */
+        expires_at: access ? saved.expires_at || null : null,
+        expired: Boolean(access && saved.expires_at && saved.expires_at < Date.now()),
         refreshable,
         scope: saved.scope || null,
         issuer: saved.issuer || null,
