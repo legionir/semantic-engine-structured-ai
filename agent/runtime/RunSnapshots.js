@@ -114,10 +114,38 @@ function assertRunId(runId) {
 }
 
 
+/*
+| Whether `root` or a folder above it has a .git entry (a directory, or the
+| file of a worktree / submodule). Checked before any git process starts:
+| spawning one blocks the event loop for a few milliseconds, and a run in a
+| workspace without git must not pay that at its start and end — with ten
+| runs starting together it added up past the P1 lag budget.
+*/
+function hasGitAbove(root) {
+
+    let current = path.resolve(root);
+
+    for (;;) {
+
+        if (fs.existsSync(path.join(current, ".git"))) {
+            return true;
+        }
+
+        const parent = path.dirname(current);
+
+        if (parent === current) {
+            return false;
+        }
+
+        current = parent;
+    }
+}
+
+
 /* { top, prefix } of the repository holding `root`, or a NOT_A_REPOSITORY error */
 async function repositoryOf(root) {
 
-    if (typeof root !== "string" || root === "" || !fs.existsSync(root)) {
+    if (typeof root !== "string" || root === "" || !fs.existsSync(root) || !hasGitAbove(root)) {
         throw notRepository(root);
     }
 
