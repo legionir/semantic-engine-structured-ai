@@ -297,7 +297,19 @@ async function main() {
 
         await foregroundIdle();
 
-        assert.ok(overlap.max >= 4, `the foreground and three projects should overlap (max ${overlap.max})`);
+        /* all four turns were live at one moment: every one started before
+           any finished (a slow runner may stagger the model calls) */
+        const turns = (await api("GET", "/api/conversations")).body.conversations
+            .filter(item => item.project_id === null || /^prj-[abc]$/.test(item.project_id));
+        const starts = turns.map(item => item.started_at);
+        const ends = turns.map(item => item.finished_at);
+
+        assert.equal(turns.length, 4);
+        assert.ok(
+            Math.max(...starts) < Math.min(...ends),
+            `the foreground and three projects should overlap (${JSON.stringify(turns.map(item => [item.project_id, item.started_at, item.finished_at]))})`
+        );
+        assert.ok(overlap.max >= 2, `the model calls never overlapped (max ${overlap.max})`);
 
         for (const key of ["a", "b", "c"]) {
 
@@ -519,7 +531,8 @@ async function main() {
         const snapshot = await streamSnapshot("prj-a");
 
         assert.deepStrictEqual(snapshot.messages, []);
-        assert.equal((await conversation("prj-a")).messages, 0);
+        /* an empty conversation is no longer listed as live */
+        assert.equal(await conversation("prj-a"), undefined);
 
         /* idle and nothing queued: a queued message starts right away */
         const queued = await api("POST", "/api/projects/prj-a/queue", { text: "from the queue" });

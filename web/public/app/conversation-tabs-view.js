@@ -56,8 +56,14 @@ export function conversationName(state, projectId) {
 export function visibleTabs(state) {
 
     const current = state.currentProjectId || null;
+    const list = state.conversations || [];
 
-    return (state.conversations || []).filter(item =>
+    /* the conversation on screen always has its tab, even while empty */
+    const all = list.some(item => item.project_id === current)
+        ? list
+        : [...list, { project_id: current, status: "idle", pending_approvals: 0, queue_length: 0, messages: 0 }];
+
+    return all.filter(item =>
         item.project_id === current ||
         item.status === "running" ||
         item.pending_approvals > 0 ||

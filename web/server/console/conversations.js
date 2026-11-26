@@ -170,6 +170,14 @@ module.exports = function createConversations(shared) {
 
         for (const conv of conversations.values()) {
 
+            const approvals = pendingApprovals(conv.projectId);
+
+            /* a buffer that only ever saw events (the default workspace's
+               own project id, for one) is not a conversation */
+            if (conv.startedAt === null && conv.messages.length === 0 && conv.queue.length === 0 && approvals === 0) {
+                continue;
+            }
+
             items.push({
                 project_id: conv.projectId,
                 status: conv.status,
@@ -177,7 +185,7 @@ module.exports = function createConversations(shared) {
                 started_at: conv.startedAt,
                 finished_at: conv.finishedAt,
                 background: conv.background,
-                pending_approvals: pendingApprovals(conv.projectId),
+                pending_approvals: approvals,
                 queue_length: conv.queue.length,
                 queue_paused: conv.queuePaused,
                 messages: conv.messages.length
