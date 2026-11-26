@@ -46,7 +46,9 @@ export const REGIONS = Object.freeze([
     "terminal",
     "files",
     "tabs",
-    "queue"
+    "queue",
+    "system",
+    "interrupted"
 ]);
 
 

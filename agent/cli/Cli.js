@@ -123,9 +123,15 @@ Options
       --list-tools          Print the tool catalogue and exit
       --list-agents         Print the agent profiles and exit
       --list-policy         Print the policy rules and exit
-      doctor, --doctor      Report process sandbox backend and capabilities
+      doctor, --doctor      Check this server: Node.js, git, port, folder
+                            permissions, token, endpoint, memory and disk,
+                            then the process sandbox (with -s/--host: the
+                            port the console would use)
       init                  Write AGENTS.md (instructions for coding agents)
                             for the workspace; same as the task /init
+      resume [id] [message] Continue the newest conversation a restart cut
+                            off (or the newest, or the one named) with its
+                            saved context; -w/--project pick where to look
       --trust               Trust the workspace (-w, --project or cwd): its
                             project file may then enable hooks and MCP auto
                             discovery; security settings always stay locked
@@ -235,12 +241,30 @@ async function main() {
             fail("doctor does not accept a task");
         }
 
+        /* P1-08: the server checks first, then the sandbox in detail */
+        try {
+            resolveWebServerOptions(options);
+        } catch (error) {
+            fail(error.message);
+        }
+
+        const serverDoctor =
+            require(path.join(REPO_ROOT, "agent", "cli", "ServerDoctor"));
+        const server = await serverDoctor.diagnose({
+            host: options.host,
+            port: options.port,
+            explicitPort: options.port !== undefined,
+            workspace: options.workspace
+        });
+
+        process.stdout.write(`${serverDoctor.formatReport(server)}\n`);
+
         const doctor =
             require(path.join(REPO_ROOT, "agent", "tools", "process", "SandboxDoctor"));
         const report = doctor.diagnose();
 
         process.stdout.write(doctor.formatReport(report));
-        process.exit(report.ok ? EXIT.SUCCESS : EXIT.FAILED);
+        process.exit(report.ok && server.ok ? EXIT.SUCCESS : EXIT.FAILED);
     }
 
     try {
@@ -422,6 +446,19 @@ async function main() {
             await runDiscussion(runtime, options);
 
         process.exit(code);
+    }
+
+    if (options.resume) {
+
+        const { runResume } = require("./ResumeCommand");
+        const result = await runResume(runtime, options, { fail });
+
+        await runtime.application.lifecycle.shutdown({
+            tools: require(path.join(REPO_ROOT, "agent", "tools")),
+            eventstore: runtime.eventstore
+        });
+
+        process.exit(result.error ? EXIT.FAILED : EXIT.SUCCESS);
     }
 
     /* ---------------------------------------------------------------- */

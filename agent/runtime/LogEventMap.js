@@ -158,6 +158,60 @@ const MAPPERS = {
         details: context(event, { name: event.name, action: event.action })
     }),
 
+    /* P1-07: once when a limit is crossed, once when it clears */
+    "system:resources": event => ({
+        level: event.level === "warning" ? "warn" : "info",
+        source: "system",
+        message: clip(event.message, 300) || `System ${event.kind || "resources"} ${event.level || ""}`.trim(),
+        details: context(event, {
+            kind: event.kind,
+            path: event.path,
+            memory_available_mb: event.memory_available_mb,
+            cpu_percent: event.cpu_percent
+        })
+    }),
+
+    "process:orphans": event => ({
+        level: "warn",
+        source: "system",
+        message:
+            `Stopped ${(event.stopped || []).length} background process(es) left by a previous run of the console` +
+            ((event.skipped || []).length > 0 ? `; ${(event.skipped || []).length} could not be verified and were left alone` : ""),
+        details: context(event, { stopped: event.stopped, skipped: event.skipped })
+    }),
+
+    /* P1-02: the URL is logged without credentials */
+    "project:clone": event => (event.status === "running"
+        ? {
+            level: "info",
+            source: "projects",
+            message: `Cloning ${clip(event.url, 300)}${event.branch ? ` (${event.branch})` : ""} into ${clip(event.path, 300)}`,
+            details: context(event, { job: event.job, shallow: event.shallow })
+        }
+        : {
+            level: event.status === "succeeded" ? "info" : "error",
+            source: "projects",
+            message: event.status === "succeeded"
+                ? `Cloned ${clip(event.url, 300)} as project ${event.project_id}`
+                : `Cloning ${clip(event.url, 300)} failed: ${clip(event.error, 500)}`,
+            details: context(event, { job: event.job, project_id: event.project_id, duration_ms: event.duration_ms })
+        }),
+
+    "run:queued": event => ({
+        level: "info",
+        source: "run",
+        message: `Run for ${event.project_id || "the default project"} waits for a free slot (${event.active} active, limit ${event.limit})`,
+        details: context(event, { reason: event.reason })
+    }),
+
+    /* P1-06 */
+    "session:interrupted": event => ({
+        level: "warn",
+        source: "run",
+        message: `${(event.sessions || []).length} conversation(s) were interrupted by a restart and can be continued`,
+        details: context(event, { sessions: event.sessions })
+    }),
+
     "discussion:error": event => ({
         level: "error",
         source: "discussion",

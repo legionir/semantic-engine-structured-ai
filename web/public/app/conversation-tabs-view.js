@@ -19,7 +19,8 @@ const BADGE_TEXT = Object.freeze({
     awaiting: "awaiting approval",
     done: "done",
     failed: "failed",
-    cancelled: "stopped"
+    cancelled: "stopped",
+    waiting: "waiting for a slot"
 });
 
 
@@ -34,6 +35,11 @@ export function badgeOf(item) {
 
     if (item.pending_approvals > 0) {
         return "awaiting";
+    }
+
+    /* P1-07: started, but over the server-wide limit of concurrent runs */
+    if (item.waiting_for_slot) {
+        return "waiting";
     }
 
     return item.status || "idle";

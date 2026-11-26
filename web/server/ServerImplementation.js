@@ -46,6 +46,7 @@ const createLiveEvents = require("./console/live-events");
 const createTaskRunner = require("./console/task-runner");
 const createDiscussionRunner = require("./console/discussion-runner");
 const createOperatorTools = require("./console/operator-tools");
+const createInterruptedRuns = require("./console/interrupted-runs");
 const { wellEncodedPath, serveStatic } = require("./console/static-files");
 
 const ROUTE_GROUPS = [
@@ -53,11 +54,13 @@ const ROUTE_GROUPS = [
     require("./routes/mcp-platform"),
     require("./routes/mcp"),
     require("./routes/sessions"),
+    require("./routes/interrupted"),
     require("./routes/tasks"),
     require("./routes/projects"),
     require("./routes/discussion"),
     require("./routes/control"),
     require("./routes/logs"),
+    require("./routes/system"),
     require("./routes/terminal"),
     require("./routes/files")
 ];
@@ -190,6 +193,7 @@ function createServer(runtime, options = {}) {
     Object.assign(shared, createLiveEvents(shared));
     Object.assign(shared, createTaskRunner(shared));
     Object.assign(shared, createDiscussionRunner(shared));
+    Object.assign(shared, createInterruptedRuns(shared));
     Object.assign(shared, createOperatorTools(shared, options.terminal));
 
     const {
@@ -228,6 +232,7 @@ function createServer(runtime, options = {}) {
         consolePasswordRequired,
         discussionService,
         eventForClient,
+        interrupted: shared.interrupted,
         loginRateLimiter,
         logHub: shared.logHub,
         logs: shared.logs,

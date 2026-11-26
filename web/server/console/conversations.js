@@ -108,6 +108,21 @@ module.exports = function createConversations(shared) {
     }
 
 
+    /* P1-07: the run exists but the server-wide limit holds it back */
+    function waitingForSlot(projectId) {
+
+        try {
+
+            const queues = runtime.runScheduler ? runtime.runScheduler.snapshot().queues : {};
+
+            return Boolean(projectId && queues[projectId] > 0);
+
+        } catch {
+            return false;
+        }
+    }
+
+
     /* GET /api/projects/:id/run - the historical slot view, plus the queue */
     function view(projectId) {
 
@@ -135,7 +150,8 @@ module.exports = function createConversations(shared) {
             turn_id: conv.currentTurnId,
             pending_approvals: pendingApprovals(projectId),
             queue_length: conv.queue.length,
-            queue_paused: conv.queuePaused
+            queue_paused: conv.queuePaused,
+            waiting_for_slot: conv.status === "running" && waitingForSlot(projectId)
         };
     }
 
@@ -188,6 +204,7 @@ module.exports = function createConversations(shared) {
                 pending_approvals: approvals,
                 queue_length: conv.queue.length,
                 queue_paused: conv.queuePaused,
+                waiting_for_slot: conv.status === "running" && waitingForSlot(conv.projectId),
                 messages: conv.messages.length
             });
         }
@@ -306,6 +323,8 @@ module.exports = function createConversations(shared) {
             conv.session.events = conv.events.slice();
             conv.session.history = withoutImages(conv.history);
             conv.session.status = conv.status;
+            conv.session.project_id = conv.projectId;
+            conv.session.task = conv.task;
             conv.session.turns =
                 conv.messages.filter(message => message.role === "user").length;
 

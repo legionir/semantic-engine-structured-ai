@@ -64,6 +64,8 @@ function assertProcessExecutionEnabled() {
 | gets signalled.
 */
 
+const ProcessLedger = require("./ProcessLedger");
+
 const USE_PROCESS_GROUPS =
     process.platform !== "win32";
 
@@ -260,6 +262,16 @@ function requireSession(processId, ctx) {
 function registerSession(session) {
 
     SESSIONS.set(session.id, session);
+
+    /* P1-07: written down, so a runtime killed hard does not leave it orphaned */
+    if (session.status === "running" && Number.isInteger(session.pid)) {
+
+        ProcessLedger.record(session, { group: USE_PROCESS_GROUPS });
+
+        if (session.child && typeof session.child.once === "function") {
+            session.child.once("close", () => ProcessLedger.forget(session));
+        }
+    }
 
     return session;
 }

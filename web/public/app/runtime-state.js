@@ -373,6 +373,16 @@ export function reduce(state, event) {
             effects.push({ type: "loadSettings" });
             break;
 
+        /* P1-07: a resource warning appeared or cleared */
+        case "system:resources":
+            effects.push({ type: "systemChanged" });
+            break;
+
+        /* P1-06: a restart cut conversations off */
+        case "session:interrupted":
+            effects.push({ type: "refreshInterrupted" });
+            break;
+
         case "queue:changed":
             if (event.project_id && event.project_id === state.currentProjectId) {
                 state.queue = { project_id: event.project_id, paused: Boolean(event.paused), items: event.items || [] };
@@ -439,6 +449,7 @@ export function applySnapshot(state, snapshot) {
     state.discussion = snapshot.discussion || null;
     state.sessions = snapshot.sessions || [];
     state.queue = snapshot.queue || null;
+    state.interrupted = Array.isArray(snapshot.interrupted) ? snapshot.interrupted : [];
     state.conversationMode = snapshot.conversation || null;
 
     if (Array.isArray(snapshot.conversations)) {

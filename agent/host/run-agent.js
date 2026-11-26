@@ -15,6 +15,7 @@
 
 const toolRuntime = require("../tools");
 const events = require("../events");
+const settings = require("../config");
 const eventstore = require("../persistence/EventStoreRepository");
 const runtimeEngine = require("../runtime/engine");
 
@@ -69,6 +70,24 @@ module.exports = function createRunAgent(host) {
                 : null;
 
         runManager.enqueue(context);
+
+        /* P1-07: a run over the server-wide limit waits; the console says so */
+        if (projectId && typeof runScheduler.canStart === "function" && !runScheduler.canStart(runScheduler.keyOf(projectId))) {
+
+            const snapshot = runScheduler.snapshot();
+
+            events.emit("run:queued", {
+                project_id: projectId,
+                turn_id: options.turn_id || null,
+                active: snapshot.total_inflight,
+                active_projects: snapshot.active_projects,
+                limit: settings.get("MAX_CONCURRENT_PROJECT_RUNS"),
+                reason:
+                    runScheduler.inflightCount(runScheduler.keyOf(projectId)) >= settings.get("MAX_RUNS_PER_PROJECT")
+                        ? "project limit"
+                        : "server-wide limit"
+            });
+        }
 
         try {
 

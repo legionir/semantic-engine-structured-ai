@@ -136,7 +136,13 @@ module.exports = function createSnapshot(shared) {
 
             /* every live conversation, for the console's tabs (P1-03) */
             conversations:
-                conversations.list()
+                conversations.list(),
+
+            /* conversations a restart cut off, with Continue (P1-06) */
+            interrupted:
+                shared.interrupted
+                    ? shared.interrupted.list()
+                    : []
         };
     }
 
@@ -202,6 +208,13 @@ module.exports = function createSnapshot(shared) {
             );
 
         snap.conversations = conversationsFor(claims, snap.conversations);
+
+        snap.interrupted =
+            snap.interrupted.filter(
+                item =>
+                    item.project_id !== null &&
+                    consoleAuth.allowsProject(claims, item.project_id)
+            );
 
         return snap;
     }

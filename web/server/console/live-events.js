@@ -69,6 +69,7 @@ module.exports = function createLiveEvents(shared) {
     const SUMMARY_TRIGGERS = new Set([
         "run:start",
         "run:status",
+        "run:queued",
         "approval:request",
         "approval:resolved",
         "queue:changed",

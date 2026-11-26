@@ -283,7 +283,8 @@ function has(name) {
 
 /*
 | Internal: used by McpConfigValidator to resolve ${secret:NAME} in
-| operator configuration. No route and no tool calls this.
+| operator configuration, and by ProjectClone for the token of a clone
+| (sent to git through its environment). No route and no tool returns it.
 */
 function resolve(name) {
 

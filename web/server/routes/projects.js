@@ -45,6 +45,74 @@ module.exports = async function ProjectsRoutes(shared, request) {
         return true;
     }
 
+    /* ------------------------- new project from a git URL (P1-02) */
+
+    if (pathname === "/api/project-clones" || pathname.startsWith("/api/project-clones/")) {
+
+        const write =
+            consoleAuth.authorize(claims, {
+                permission: "project:write"
+            });
+
+        if (!write.ok || !consoleAuth.allowsAllProjects(claims)) {
+
+            sendJson(res, 403, {
+                error: "token cannot register projects"
+            });
+            return true;
+        }
+
+        const ProjectClone = require("../../../agent/projects/ProjectClone");
+
+        if (pathname === "/api/project-clones" && req.method === "GET") {
+
+            sendJson(res, 200, { root: ProjectClone.projectsRoot(), jobs: ProjectClone.list() });
+            return true;
+        }
+
+        if (pathname === "/api/project-clones" && req.method === "POST") {
+
+            const body = await readBody(req);
+
+            try {
+
+                const job =
+                    ProjectClone.start({
+                        url: body.url,
+                        branch: body.branch,
+                        shallow: body.shallow === true,
+                        folder: body.folder,
+                        name: body.name,
+                        secret: body.secret,
+                        registry: runtime.projects.registry(),
+                        emit: (type, payload) => runtime.events.emit(type, payload)
+                    });
+
+                sendJson(res, 202, { job });
+
+            } catch (error) {
+
+                sendJson(res, error.status || 400, { error: error.message });
+            }
+
+            return true;
+        }
+
+        const jobId =
+            decodeURIComponent(pathname.slice("/api/project-clones/".length));
+
+        if (req.method === "GET" && jobId && !jobId.includes("/")) {
+
+            const job = ProjectClone.get(jobId);
+
+            sendJson(res, job ? 200 : 404, job ? { job } : { error: `unknown clone job ${jobId}` });
+            return true;
+        }
+
+        sendJson(res, 404, { error: "not found" });
+        return true;
+    }
+
     /* ---------------------------------- projects (Phase 7+9) */
 
     if (pathname === "/api/projects" || pathname.startsWith("/api/projects/")) {

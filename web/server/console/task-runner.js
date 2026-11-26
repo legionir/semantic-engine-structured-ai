@@ -19,12 +19,14 @@
 
 const createTurnSupport = require("./turn-support");
 const createBackgroundTurns = require("./background-turns");
+const startCheckpoint = require("./turn-checkpoint");
 
 
 module.exports = function createTaskRunner(shared) {
 
     const {
         addMessage,
+        calls,
         conversations,
         projectQueue,
         recordGitReport,
@@ -160,6 +162,17 @@ module.exports = function createTaskRunner(shared) {
             turn_id
         });
 
+        /* P1-06: saved now and while it runs, so a restart can continue it */
+        state.session.project_id = projectId;
+        state.session.task = task;
+
+        const stopCheckpoint =
+            startCheckpoint(
+                runtime,
+                saveSession,
+                () => `${state.history.length}:${state.session.messages.length}:${calls.size}`
+            );
+
         try {
 
             const action =
@@ -251,6 +264,8 @@ module.exports = function createTaskRunner(shared) {
             });
 
         } finally {
+
+            stopCheckpoint();
 
             state.finishedAt = Date.now();
 

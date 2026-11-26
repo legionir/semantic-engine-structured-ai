@@ -16,6 +16,8 @@
 | executed call. They share the Modal service in modal.js.
 */
 
+import { openSystem, refreshSystemWarnings } from "./system-view.js";
+import { initInterrupted } from "./interrupted-controller.js";
 import { state, touch } from "./store.js";
 import { mount } from "./dom.js";
 import { Attachments } from "./composer-view.js";
@@ -131,6 +133,7 @@ el("consoleMenu").addEventListener("click", event => {
 
 el("mcpButton").addEventListener("click", openMcp);
 el("logsButton").addEventListener("click", openLogs);
+el("systemButton").addEventListener("click", openSystem);
 el("terminalButton").addEventListener("click", openTerminal);
 el("filesButton").addEventListener("click", openFiles);
 el("historyButton").addEventListener("click", openHistory);
@@ -169,5 +172,9 @@ loadSettings();
 initProjects();
 
 startLogBadge();
+
+initInterrupted();
+
+refreshSystemWarnings();
 
 installPanelErrorReporting();

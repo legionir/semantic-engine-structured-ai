@@ -85,7 +85,8 @@ repository-root/
 ## ۳. پیش‌نیازها و راه‌اندازی سریع
 
 ### پیش‌نیازها
-* **Node.js:** نسخهٔ `>= 18.0.0`
+* **Node.js:** نسخهٔ `>= 20` (همان `engines` در `package.json`)
+* **git:** برای ابزارهای git و ساختن پروژه از URL
 * **مدل زبانی سازگار با OpenAI:** یک اندپوینت فعال مانند Local vLLM, Ollama, OpenRouter, OpenAI یا LMStudio.
 
 ### تنظیم متغیرهای اولیه
@@ -112,6 +113,62 @@ node bin/agent.js --proxy-url http://proxy.example:3128 -w /path/to/project "...
 ```bash
 npm test
 ```
+
+### نصب روی سرور (VPS) به‌عنوان سرویس
+
+این مراحل روی Ubuntu 22.04/24.04 یا Debian 12 تازه حدود ده دقیقه طول می‌کشد. فایل‌های آماده در پوشهٔ `deploy/` هستند.
+
+**۱. پیش‌نیازها** (Node.js 22، git و ابزار build برای `node-pty`):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs git build-essential python3
+```
+
+**۲. کاربر، کد و پوشه‌ها:**
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/structured-ai --shell /usr/sbin/nologin structured-ai
+sudo git clone https://github.com/legionir/semantic-engine-structured-ai /opt/structured-ai
+cd /opt/structured-ai && sudo npm ci --omit=dev
+sudo mkdir -p /srv/projects && sudo chown structured-ai: /srv/projects
+```
+
+**۳. تنظیمات:** فایل نمونه را کپی کنید و دست‌کم `AGENT_CONSOLE_TOKEN` (مثلاً خروجی `openssl rand -base64 32`) و اندپوینت مدل را در آن بنویسید.
+
+```bash
+sudo cp deploy/structured-ai.env.example /etc/structured-ai.env
+sudo chmod 600 /etc/structured-ai.env
+sudo nano /etc/structured-ai.env
+```
+
+**۴. بررسی با `doctor`:** نسخهٔ Node، git، npx/uvx/python، آزاد بودن پورت، قابل نوشتن بودن پوشهٔ داده و ورک‌اسپیس و پروژه‌ها، مجوز فایل‌های secret، token کنسول، اندپوینت مدل، حافظه و دیسک و sandbox را بررسی می‌کند. هر مورد مشکل‌دار با راه‌حلش چاپ می‌شود و اگر چیزی مانع اجرا باشد، کد خروج 1 است.
+
+```bash
+sudo bash -c 'set -a; . /etc/structured-ai.env; set +a; cd /opt/structured-ai &&
+  exec sudo -E -u structured-ai node bin/agent.js doctor -s 7777 --host 127.0.0.1 -w /srv/projects'
+```
+
+**۵. سرویس systemd** (با ری‌استارت خودکار):
+
+```bash
+sudo cp deploy/structured-ai.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now structured-ai
+journalctl -u structured-ai -f
+```
+
+**۶. HTTPS با reverse proxy:** کنسول فقط روی `127.0.0.1:7777` گوش می‌دهد. ساده‌ترین راه Caddy است که گواهی Let's Encrypt را خودش می‌گیرد:
+
+```bash
+sudo apt install -y caddy
+sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile   # دامنه را عوض کنید
+sudo systemctl reload caddy
+```
+
+برای nginx از `deploy/nginx.conf.example` استفاده کنید. دو نکته لازم است: هدر `Host` باید دست‌نخورده برسد، چون کنسول درخواستی را که `Origin` آن با `Host` نخواند رد می‌کند؛ و `proxy_buffering off` لازم است، چون نمای زنده با server-sent events کار می‌کند.
+
+پس از ری‌استارت سرویس، گفتگویی که وسط اجرا قطع شده با وضعیت «قطع‌شده» و دکمهٔ **Continue** در کنسول دیده می‌شود. از خط فرمان هم می‌توان آن را ادامه داد: `agent resume [session-id] [پیام]`.
 
 ---
 
@@ -364,6 +421,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROCESS_SANDBOX_MEMORY_MB` | number | `2048` | Memory limit in MiB for one Docker/Podman sandbox. |
 | `PROCESS_SANDBOX_PIDS_LIMIT` | number | `256` | Maximum process count for one Docker/Podman sandbox. |
 | `PROCESS_SANDBOX_TMP_MB` | number | `512` | Size of the writable /tmp tmpfs inside a Docker/Podman sandbox, in MiB. |
+| `PROCESS_ORPHAN_SWEEP` | boolean | `true` | When the console starts, stop the background processes a previous runtime started and could not stop because it was killed (recorded in `<data home>/processes.json`; on Linux a process is stopped only when its start time still matches). |
 | `TERMINAL_TIMEOUT_MS` | number | `30000` | Default timeout for terminal_exec when the call does not set one. |
 | `GIT_TIMEOUT_MS` | number | `30000` | Timeout for a single git command. |
 | `HOOKS_ENABLED` | boolean | `false` | Run declarative before_task and after_task hooks. Off by default; projects opt in through .agent/project.json. |
@@ -387,6 +445,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `SESSIONS_ENABLED` | boolean | `true` | Keep each conversation, with its events and tool calls, in .agent/sessions so it can be reopened. |
 | `SESSION_MAX_KEPT` | number | `50` | Conversations kept on disk before the oldest is removed. |
 | `SESSION_MAX_MESSAGES` | number | `400` | Chat entries kept per conversation. |
+| `SESSION_CHECKPOINT_MS` | number | `3000` | While a turn runs, its conversation (with the agent's progress so far) is saved at most this often, so a server restart loses at most this much and the turn can be continued (roadmap P1-06). 0 saves only when a turn ends. |
 | `SESSION_MAX_EVENTS` | number | `2000` | Runtime events kept per conversation, so a reopened session redraws the same cards. |
 | `SESSION_MAX_CALLS` | number | `300` | Tool calls kept per conversation with their full arguments and results. |
 | `SESSION_HISTORY_SIZE` | number | `200` | Lines of input history kept by the interactive session. |
@@ -416,12 +475,18 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `STRUCTURED_AI_TRUST_FILE` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | File that records which workspaces the operator trusted (roadmap P0-1). Empty means ~/.config/structured-ai/trusted-workspaces.json (~\AppData\Roaming\structured-ai on Windows). Never taken from a project file. اگر unset باشد، مسیر پیش‌فرض trust store سیستم‌عامل استفاده می‌شود. |
 | `RUN_HISTORY_LIMIT` | number | `100` | How many settled runs the RunManager keeps queryable after they finish. |
 | `APPROVAL_HISTORY_LIMIT` | number | `500` | How many settled approval decisions the ApprovalStore keeps in its bounded in-process history (POL-045). |
-| `MAX_CONCURRENT_PROJECT_RUNS` | number | `4` | How many distinct projects may have an active run at once (Phase 10). Extra projects wait on their own queue. |
+| `MAX_CONCURRENT_PROJECT_RUNS` | number | `4` | How many distinct projects may have an active run at once (Phase 10). Extra projects wait on their own queue instead of being refused; their tab says "waiting for a slot" (`run:queued`). On a 1 vCPU / 2 GB server keep it at 4–5. |
 | `MAX_RUNS_PER_PROJECT` | number | `1` | Active runs allowed inside one project (Phase 10). Default 1 serializes a project's runs. |
 | `MAX_WORKERS_PER_USER` | number | `8` | Hard cap on total inflight runs for this process (Phase 10). |
 | `RUN_QUEUE_LIMIT` | number | `16` | Per-project waiting-run depth (Phase 10). Overflow is rejected with RUN_QUEUE_FULL rather than hanging. |
 | `PROJECT_MEMORY_LIMIT` | number | `0` | Bytes of recorded per-project memory after which new runs are refused (Phase 10). 0 disables the cap; the value is always exposed on /api/metrics. |
 | `PROJECT_CPU_LIMIT` | number | `0` | Observational CPU percent ceiling per project (Phase 10). 0 means unlimited; the live percent is reported on /api/metrics. |
+| `RESOURCE_MONITOR_INTERVAL_MS` | number | `30000` | How often the console samples CPU, memory and disk and checks the low-memory and low-disk limits (roadmap P1-07). 0 turns the warnings off; the System view still samples on demand. |
+| `RESOURCE_MIN_FREE_MEMORY_MB` | number | `200` | Available memory in MB below which a warning goes to the global log and the System view. 0 disables the memory warning. |
+| `RESOURCE_MIN_FREE_DISK_MB` | number | `1024` | Free disk space in MB (where the data home and the workspace live) below which a warning goes to the global log and the System view. 0 disables the disk warning. |
+| `PROJECTS_ROOT` | string | `""` | Folder that projects cloned from a git URL are created in (roadmap P1-02). Empty: `<data home>/projects`. A clone can never be placed outside it. |
+| `GIT_CLONE_TOKEN` | string · secret | `""` | Access token for cloning private repositories over https when no secret is named in the clone form. Read from the environment; prefer a secret in the secret store (`GITHUB_PAT` for github.com, `GITLAB_TOKEN` for gitlab.com are used automatically). |
+| `GIT_CLONE_TIMEOUT_MS` | number | `900000` | Longest a clone may run before it is stopped and its half-written folder removed. |
 | `LOG_LEVEL` | enum | `"info"` | Lowest level kept in the application log (Logs in the console): failed AI requests and retries, run, tool, hook and MCP failures, server errors and crashes. |
 | `LOG_BUFFER_ENTRIES` | number | `2000` | Application log entries kept in memory for the console. |
 | `LOG_FILE_ENABLED` | boolean | `true` | When the console is served, also append the application log to <data home>/logs/structured-ai.jsonl. |
@@ -537,6 +602,9 @@ method/path کامل در
 | `GET/POST` | `/api/mcp/prerequisites/:id/install` | نصب یک‌کلیکی Chromium و پیگیری پیشرفت آن (ادمین) |
 | `GET` | `/api/secrets` | فهرست نام secretها و محل استفاده؛ مقدار هرگز برنمی‌گردد (ادمین) |
 | `PUT/DELETE` | `/api/secrets/:name` | ذخیره یا حذف یک secret (ادمین) |
+| `GET` | `/api/interrupted` | گفتگوهایی که ری‌استارت سرور وسط اجرا قطع کرد (P1-06)، با فیلتر token |
+| `POST` | `/api/interrupted/:id/resume` | ادامهٔ یک گفتگوی قطع‌شده با همان context، با `{message}` اختیاری؛ پاسخ `202 {where: foreground\|background}`، اگر پروژه مشغول باشد `409` |
+| `DELETE` | `/api/interrupted/:id` | کنار گذاشتن؛ وضعیت گفتگو «stopped» (`cancelled`) می‌شود |
 | `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
 | `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
 
@@ -553,6 +621,8 @@ method/path کامل در
 | `DELETE` | `/api/logs` | پاک کردن لاگ؛ فایل جاری rotate می‌شود و حذف نمی‌شود |
 | `GET` | `/api/logs/stream` | SSE ورودی‌های جدید (`snapshot`، `entry`، `cleared`) |
 | `GET` | `/api/logs/download` | دانلود کل فایل JSONL |
+| `GET` | `/api/system` | CPU، حافظه، دیسک، runهای در حال اجرا و در صف، پردازه‌های پس‌زمینه و هشدارها (P1-07) |
+| `POST` | `/api/system/processes/:id/stop` | توقف یک پردازهٔ پس‌زمینه |
 | `GET/POST` | `/api/terminal` | وضعیت و فهرست ترمینال‌ها / باز کردن ترمینال `{cols, rows}` |
 | `GET` | `/api/terminal/:id/stream` | SSE خروجی (`snapshot` با scrollback، `output`، `exit`) |
 | `POST` | `/api/terminal/:id/input` و `/resize` | ورودی صفحه‌کلید `{data}` / تغییر اندازه `{cols, rows}` |
@@ -570,6 +640,8 @@ method/path کامل در
 |---|---|---|
 | `GET` | `/api/projects` | فهرست پروژه‌های ثبت‌شده، با فیلتر token |
 | `POST` | `/api/projects` | ثبت پروژه با `rootPath` و permissionهای آن |
+| `GET/POST` | `/api/project-clones` | ریشهٔ پروژه‌ها و jobهای clone / ساخت پروژه از git URL با `{url, branch, shallow, folder, name, secret}` (P1-02)؛ پاسخ `202 {job}`، پوشهٔ موجود `409`. token از secret نام‌برده، سپس `GIT_CLONE_TOKEN`، سپس `GITHUB_PAT`/`GITLAB_TOKEN` خوانده و فقط به‌صورت header به git داده می‌شود. فقط tokenی که به همهٔ پروژه‌ها دسترسی دارد |
+| `GET` | `/api/project-clones/:id` | پیشرفت clone (`phase`، `percent`، خروجی git) و پروژهٔ ثبت‌شده پس از پایان |
 | `GET/PATCH/DELETE` | `/api/projects/:projectId` | دریافت، ویرایش یا حذف یک registry record |
 | `GET` | `/api/projects/:projectId/state` | snapshot محدود به همان پروژه |
 | `GET` | `/api/projects/:projectId/events` | event stream پروژه‌ای |

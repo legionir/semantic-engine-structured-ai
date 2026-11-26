@@ -177,6 +177,20 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
         options.positional.shift();
     }
 
+    /*
+    | `agent resume [session-id] [message]` continues the latest (or the
+    | named) conversation of the workspace or --project (roadmap P1-06).
+    */
+    if (options.positional[0] === "resume") {
+
+        options.resume = true;
+        options.positional.shift();
+
+        if (/^s-\d{4}-\d{2}-\d{2}T[\w-]+$/.test(options.positional[0] || "")) {
+            options.resumeId = options.positional.shift();
+        }
+    }
+
     return options;
 }
 

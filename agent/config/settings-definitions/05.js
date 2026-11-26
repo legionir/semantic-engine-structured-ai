@@ -299,5 +299,69 @@ module.exports = [
         "min": 0,
         "max": 200,
         "description": "Messages a project's conversation keeps queued while its run is busy; each starts as the next turn when the run ends. 0 turns the queue off and a busy project answers 409 as before (roadmap P1-04)."
+    },
+    {
+        "key": "RESOURCE_MONITOR_INTERVAL_MS",
+        "group": "runtime",
+        "type": "number",
+        "default": 30000,
+        "min": 0,
+        "max": 3600000,
+        "description": "How often the console samples CPU, memory and disk and checks the low-memory and low-disk limits (roadmap P1-07). 0 turns the warnings off; the System view still samples on demand."
+    },
+    {
+        "key": "RESOURCE_MIN_FREE_MEMORY_MB",
+        "group": "runtime",
+        "type": "number",
+        "default": 200,
+        "min": 0,
+        "description": "Available memory in MB below which a warning goes to the global log and the System view. 0 disables the memory warning."
+    },
+    {
+        "key": "RESOURCE_MIN_FREE_DISK_MB",
+        "group": "runtime",
+        "type": "number",
+        "default": 1024,
+        "min": 0,
+        "description": "Free disk space in MB (where the data home and the workspace live) below which a warning goes to the global log and the System view. 0 disables the disk warning."
+    },
+    {
+        "key": "PROCESS_ORPHAN_SWEEP",
+        "group": "tools",
+        "type": "boolean",
+        "default": true,
+        "description": "When the console starts, stop the background processes a previous runtime started and could not stop because it was killed (recorded in <data home>/processes.json; on Linux a process is stopped only when its start time still matches)."
+    },
+    {
+        "key": "PROJECTS_ROOT",
+        "group": "workspace",
+        "type": "string",
+        "default": "",
+        "description": "Folder that projects cloned from a git URL are created in (roadmap P1-02). Empty: <data home>/projects. A clone can never be placed outside it."
+    },
+    {
+        "key": "GIT_CLONE_TOKEN",
+        "group": "workspace",
+        "type": "string",
+        "default": "",
+        "secret": true,
+        "description": "Access token for cloning private repositories over https when no secret is named in the clone form. Read from the environment; prefer a secret in the secret store (GITHUB_PAT for github.com, GITLAB_TOKEN for gitlab.com are used automatically)."
+    },
+    {
+        "key": "GIT_CLONE_TIMEOUT_MS",
+        "group": "workspace",
+        "type": "number",
+        "default": 900000,
+        "min": 10000,
+        "description": "Longest a clone may run before it is stopped and its half-written folder removed."
+    },
+    {
+        "key": "SESSION_CHECKPOINT_MS",
+        "group": "persistence",
+        "type": "number",
+        "default": 3000,
+        "min": 0,
+        "max": 600000,
+        "description": "While a turn runs, its conversation (with the agent's progress so far) is saved at most this often, so a server restart loses at most this much and the turn can be continued (roadmap P1-06). 0 saves only when a turn ends."
     }
 ];

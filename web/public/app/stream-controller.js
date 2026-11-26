@@ -13,6 +13,8 @@ import { applySnapshot as reduceSnapshot, reduce } from "./runtime-state.js";
 import { refreshSession } from "./history-controller.js";
 import { loadSettings } from "./settings-controller.js";
 import { projectRunSettled } from "./queue-controller.js";
+import { refreshSystemWarnings } from "./system-view.js";
+import { refreshInterrupted } from "./interrupted-controller.js";
 
 
 /*
@@ -52,6 +54,10 @@ function runEffects(effects) {
             loadSettings();
         } else if (effect.type === "refreshSession") {
             refreshSession(effect.id);
+        } else if (effect.type === "systemChanged") {
+            refreshSystemWarnings();
+        } else if (effect.type === "refreshInterrupted") {
+            refreshInterrupted();
         }
     }
 }

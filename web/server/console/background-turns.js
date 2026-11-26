@@ -14,6 +14,9 @@
 */
 
 
+const startCheckpoint = require("./turn-checkpoint");
+
+
 module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
 
     const {
@@ -62,6 +65,14 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
         const addMessage = entry => conversations.addMessage(conv, entry);
 
         addMessage({ role: "user", kind: runOptions.kind || "message", content: task, turn_id });
+
+        /* P1-06: saved now and while it runs, so a restart can continue it */
+        const stopCheckpoint =
+            startCheckpoint(
+                runtime,
+                () => conversations.saveConversation(conv),
+                () => `${conv.history.length}:${conv.messages.length}:${conv.events.length}`
+            );
 
         /* how the turn ended; the conversation shows it once it has unwound */
         let settled = "failed";
@@ -122,6 +133,8 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
             addMessage({ role: "assistant", kind: "error", turn_id, content: error.message });
 
         } finally {
+
+            stopCheckpoint();
 
             conv.finishedAt = Date.now();
 

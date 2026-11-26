@@ -367,6 +367,37 @@ function changeTrackingComplete(runId) {
 }
 
 
+/*
+| What the server is carrying while these tools run (roadmap P1-07): CPU,
+| memory, the console's own footprint and the runs in flight or waiting.
+| No process command lines: they can carry anything the agent typed.
+*/
+function systemFigures() {
+
+    try {
+
+        const sample = require("./SystemResources").snapshot();
+        const mb = bytes => Math.round(bytes / (1024 * 1024));
+
+        return {
+            cpu_cores: sample.cpu.cores,
+            cpu_percent: sample.cpu.percent,
+            load: sample.cpu.load,
+            memory_total_mb: mb(sample.memory.total_bytes),
+            memory_available_mb: mb(sample.memory.available_bytes),
+            console_rss_mb: mb(sample.memory.process_rss_bytes),
+            console_heap_mb: mb(sample.memory.process_heap_bytes),
+            runs: sample.runs,
+            background_processes: sample.processes.length,
+            warnings: sample.warnings.map(item => item.message)
+        };
+
+    } catch {
+        return null;
+    }
+}
+
+
 async function runtimeStats(args) {
 
     const perTool =
@@ -388,7 +419,8 @@ async function runtimeStats(args) {
         total_failures: STATE.total_failures,
         files_changed: changedFiles(),
         file_tracking_complete: changeTrackingComplete(),
-        tools: perTool
+        tools: perTool,
+        system: systemFigures()
     };
 
     if (args && args.include_recent !== false) {

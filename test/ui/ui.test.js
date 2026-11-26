@@ -94,6 +94,10 @@ async function main() {
 
     await require("./scenarios/operator-tools")({ test, backdrops, console_ });
 
+    console.log("\nserver readiness: clone, interrupted, system");
+
+    await require("./scenarios/server-readiness")({ test, backdrops, console_ });
+
     const failed =
         results.filter(item => !item.ok);
 

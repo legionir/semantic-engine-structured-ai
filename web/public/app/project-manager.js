@@ -8,8 +8,9 @@
 */
 
 import { state, touch } from "./store.js";
-import { bind, mountInModal } from "./dom.js";
+import { bind, html, mountInModal } from "./dom.js";
 import { NewProjectForm, ProjectsManager } from "./project-view.js";
+import { CloneForm, loadCloneContext, startClone, suggestedFolder } from "./project-clone.js";
 import { el, failureText, notifyError } from "./console-core.js";
 import { navigateConsole, projectById } from "./project-routing.js";
 import { renderAttachments } from "./composer-controller.js";
@@ -50,11 +51,61 @@ function forgetProject(projectId) {
 }
 
 
-function openNewProjectModal() {
+/* "Folder" registers an existing or new folder; "From git URL" clones (P1-02) */
+function NewProjectBody({ form, refs, actions }) {
 
-    const form = { message: "", busy: false };
-    const refs = { name: { current: null }, root: { current: null } };
+    return html`
+        <div class="mcp-tabs" role="tablist">
+            ${[["folder", "Folder"], ["git", "From git URL"]].map(([id, label]) => html`
+                <button
+                    type="button"
+                    key=${id}
+                    class=${`mcp-tab${form.mode === id ? " active" : ""}`}
+                    aria-selected=${form.mode === id ? "true" : "false"}
+                    disabled=${form.busy}
+                    onClick=${() => actions.mode(id)}
+                >${label}</button>
+            `)}
+        </div>
+        ${form.mode === "git"
+            ? html`<${CloneForm} form=${form} refs=${refs} actions=${actions} />`
+            : html`<${NewProjectForm} form=${form} refs=${refs} />`}
+    `;
+}
+
+
+function openNewProjectModal(initialMode = "folder") {
+
+    const form = { message: "", busy: false, mode: initialMode, job: null, root: null, secrets: [], suggested: "", closed: false };
+    const refs = {
+        name: { current: null },
+        root: { current: null },
+        url: { current: null },
+        branch: { current: null },
+        folder: { current: null },
+        cloneName: { current: null },
+        secret: { current: null },
+        shallow: { current: null }
+    };
     let dispose = () => {};
+
+    const actions = {
+
+        mode(mode) {
+            form.mode = mode;
+            form.message = "";
+            createButton.textContent = mode === "git" ? "Clone" : "Create";
+            touch("projects");
+            if (mode === "git" && form.root === null) {
+                void loadCloneContext(form);
+            }
+        },
+
+        urlChanged(url) {
+            form.suggested = suggestedFolder(url);
+            touch("projects");
+        }
+    };
 
     const say = message => {
         form.message = message;
@@ -64,6 +115,16 @@ function openNewProjectModal() {
     const create = async () => {
 
         if (form.busy) {
+            return;
+        }
+
+        if (form.mode === "git") {
+
+            await startClone(form, refs, async project => {
+                await loadProjects();
+                applyScope([project.id]);
+                handle.close("cloned");
+            });
             return;
         }
 
@@ -108,17 +169,27 @@ function openNewProjectModal() {
         }
     };
 
+    const createButton = Modal.button(initialMode === "git" ? "Clone" : "Create", "", create);
+
     const handle = Modal.open({
         title: "New Project",
-        subtitle: "Registers a workspace. Root comes from you, never from the model.",
+        subtitle: "Registers a workspace or clones a repository. The location comes from you, never from the model.",
         footer: Modal.row(
-            Modal.button("Create", "", create),
+            createButton,
             Modal.button("Cancel", "ghost", () => handle.close("cancel"))
         ),
-        onClose: () => dispose()
+        onClose: () => {
+            /* a clone keeps running on the server; only the polling stops */
+            form.closed = true;
+            dispose();
+        }
     });
 
-    dispose = mountInModal(handle, NewProjectForm, ["projects"], { form, refs }, "mcp-add");
+    dispose = mountInModal(handle, NewProjectBody, ["projects"], { form, refs, actions }, "mcp-add");
+
+    if (initialMode === "git") {
+        void loadCloneContext(form);
+    }
 }
 
 
