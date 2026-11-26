@@ -242,8 +242,8 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         const backdrop = [...document.body.children].find(child => child.classList.contains("modal-backdrop"));
         const dialog = backdrop.children[0];
         const tabs = [...dialog.querySelectorAll(".mcp-tab")];
-        assert.equal(tabs.length, 2);
-        tabs[1].dispatch("click");
+        assert.deepEqual(tabs.map(tab => tab.textContent.trim()), ["Servers", "Catalogue", "Secrets", "Raw JSON"]);
+        tabs[3].dispatch("click");
 
         const textarea = [...dialog.querySelectorAll(".mcp-raw-json")][0];
         assert.ok(textarea.value.includes("mcpServers"));

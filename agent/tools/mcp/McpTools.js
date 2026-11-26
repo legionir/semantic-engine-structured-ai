@@ -305,7 +305,8 @@ async function mcpAdd(args = {}) {
                     exclude: args.exclude,
                     trust: trustLevel
                 },
-                { persist: args.persist !== false }
+                /* P4-01: the agent may never point a server at a stored secret */
+                { persist: args.persist !== false, secrets: false, target: "workspace" }
             );
 
         const tools =

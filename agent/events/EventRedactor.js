@@ -40,6 +40,9 @@ const knownShapePattern =
 
 const minimumSecretLength = 8;
 
+/* a stored secret was put there on purpose, so shorter ones count */
+const minimumStoredSecretLength = 4;
+
 let knownValueCache = { at: 0, values: [] };
 
 
@@ -103,6 +106,21 @@ function knownSecretValues() {
     } catch {
 
         /* settings are optional here: environment values still apply */
+    }
+
+    /* P4-01: every value in the secret store, however it is named */
+    try {
+
+        for (const value of require("../secrets/SecretStore").values()) {
+
+            if (value.length >= minimumStoredSecretLength) {
+                values.add(value);
+            }
+        }
+
+    } catch {
+
+        /* no store, or one that cannot be opened: nothing to add */
     }
 
     knownValueCache = {
@@ -262,6 +280,28 @@ function redactSecrets(value, seen = new WeakSet(), maskStrings = false) {
 }
 
 
+/*
+| P4-01: value-only masking for API answers: every string is scanned for
+| the secrets the runtime holds; keys and structure are left as they are.
+*/
+function maskDeep(value, seen = new WeakSet()) {
+
+    if (typeof value === "string") return maskText(value);
+
+    if (!value || typeof value !== "object" || seen.has(value)) return value;
+
+    seen.add(value);
+
+    const output = Array.isArray(value)
+        ? value.map(item => maskDeep(item, seen))
+        : Object.fromEntries(Object.entries(value).map(([key, item]) => [key, maskDeep(item, seen)]));
+
+    seen.delete(value);
+
+    return output;
+}
+
+
 function redactEvent(event, options) {
     return redact(event, options);
 }
@@ -280,6 +320,7 @@ module.exports = {
     redactForLog,
     redactSecrets: value => redactSecrets(value),
     maskText,
+    maskDeep: value => maskDeep(value),
     knownSecretValues,
     resetKnownSecrets
 };

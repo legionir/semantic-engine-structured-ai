@@ -92,6 +92,15 @@ function currentProjectId() {
 }
 
 
+/* two definitions of one server that differ only in where they were read */
+function sameServer(left, right) {
+
+    const strip = config => JSON.stringify({ ...config, source: null, origin: null });
+
+    return strip(left) === strip(right);
+}
+
+
 class McpManager {
 
     /*
@@ -126,6 +135,17 @@ class McpManager {
                 this.invalidate();
             }
         });
+
+        /*
+        | P4-01/P4-02: the user MCP file and the secret store are shared by
+        | every project's manager; a change to either is picked up on the
+        | next load. A client whose resolved definition did not change keeps
+        | its connection (load() compares them).
+        */
+        const reload = () => this.invalidate();
+
+        loader.changes.on("change", reload);
+        require("../secrets/SecretStore").changes.on("change", reload);
     }
 
 
@@ -186,6 +206,21 @@ class McpManager {
                 continue;
             }
 
+            /*
+            | The same server, now read from the file it was just saved to
+            | (add() persisted it): only where it came from changed, so the
+            | running connection is kept and told its new origin.
+            */
+            if (
+                existing &&
+                sameServer(existing.config, definition)
+            ) {
+                existing.config.source = definition.source;
+                existing.config.origin = definition.origin;
+                existing.ephemeral = false;
+                continue;
+            }
+
             if (existing) {
 
                 void closeClient(existing);
@@ -199,7 +234,9 @@ class McpManager {
 
         for (const [name, client] of [...this.clients.entries()]) {
 
-            if (seen.has(name)) {
+            /* a server added for this process only (persist: false) is in
+               no file, and a reload must not drop it */
+            if (seen.has(name) || client.ephemeral) {
                 continue;
             }
 
@@ -556,12 +593,38 @@ class McpManager {
 
         this.load();
 
+        /*
+        | options.secrets: false for a server the agent adds (mcp_add), so a
+        | ${secret:NAME} reference is refused instead of resolved.
+        */
         const normalized =
             validator.normalizeOne(
                 name,
                 definition,
-                this.workspaceRoot
+                this.workspaceRoot,
+                { secrets: options.secrets !== false }
             );
+
+        /*
+        | What is written back keeps ${secret:NAME} as a reference, so a
+        | stored token never lands in a file. Such a server belongs in the
+        | user file: a repository file may not reference the store.
+        */
+        const references =
+            require("../secrets/SecretStore").referencesIn(definition);
+
+        const persistable =
+            references.size > 0
+                ? validator.normalizeOne(
+                    name,
+                    definition,
+                    this.workspaceRoot,
+                    { secrets: true, expandSecrets: false }
+                )
+                : normalized;
+
+        const target =
+            options.target || (references.size > 0 ? "user" : "workspace");
 
         const previous =
             this.clients.get(normalized.name);
@@ -589,6 +652,8 @@ class McpManager {
             await closeClient(previous);
         }
 
+        client.ephemeral = options.persist === false;
+
         this.clients.set(normalized.name, client);
 
         let persistedTo = null;
@@ -598,7 +663,11 @@ class McpManager {
             try {
 
                 persistedTo =
-                    loader.persist(this.workspaceRoot || this.boundRoot, normalized);
+                    loader.persist(
+                        this.workspaceRoot || this.boundRoot,
+                        persistable,
+                        { target }
+                    );
 
             } catch (error) {
 

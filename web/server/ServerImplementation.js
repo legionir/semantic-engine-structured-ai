@@ -50,6 +50,7 @@ const { wellEncodedPath, serveStatic } = require("./console/static-files");
 
 const ROUTE_GROUPS = [
     require("./routes/auth-and-state"),
+    require("./routes/mcp-platform"),
     require("./routes/mcp"),
     require("./routes/sessions"),
     require("./routes/tasks"),

@@ -1,0 +1,395 @@
+{
+  "version": "1",
+  "description": "MCP servers the console can activate in one step (roadmap P4-02). Every command or URL is pinned to a version; ${input:ID} is filled from the activation form, a secret input becomes a ${secret:NAME} reference to the encrypted secret store and never a literal in a file.",
+  "categories": {
+    "code": "Code and repositories",
+    "browser": "Browser and testing",
+    "docs": "Documentation and web",
+    "project": "Project management",
+    "data": "Databases",
+    "infra": "Infrastructure",
+    "monitoring": "Monitoring",
+    "design": "Design",
+    "thinking": "Thinking aids"
+  },
+  "installers": {
+    "chromium": {
+      "label": "Headless Chromium for Playwright",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@0.0.86", "install-browser", "chromium"],
+      "with_deps_arg": "--with-deps",
+      "requires": ["npx"]
+    }
+  },
+  "servers": [
+    {
+      "id": "github",
+      "title": "GitHub",
+      "category": "code",
+      "description": "Issues, pull requests, reviews, code search and Actions through GitHub's hosted MCP server.",
+      "homepage": "https://github.com/github/github-mcp-server",
+      "transport": "http",
+      "server": {
+        "url": "https://api.githubcopilot.com/mcp/",
+        "token": "${input:token}"
+      },
+      "inputs": [
+        {
+          "id": "token",
+          "label": "GitHub personal access token",
+          "secret": "GITHUB_PAT",
+          "required": true,
+          "link": "https://github.com/settings/personal-access-tokens/new",
+          "placeholder": "github_pat_…"
+        }
+      ],
+      "prerequisites": [],
+      "trust": "default"
+    },
+    {
+      "id": "gitlab",
+      "title": "GitLab",
+      "category": "code",
+      "description": "Merge requests, issues, pipelines and repository files on gitlab.com or a self-hosted GitLab.",
+      "homepage": "https://github.com/zereight/gitlab-mcp",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@zereight/mcp-gitlab@3.1.0"],
+        "env": {
+          "GITLAB_PERSONAL_ACCESS_TOKEN": "${input:token}",
+          "GITLAB_API_URL": "${input:api_url}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "token",
+          "label": "GitLab personal access token",
+          "secret": "GITLAB_TOKEN",
+          "required": true,
+          "link": "https://gitlab.com/-/user_settings/personal_access_tokens",
+          "placeholder": "glpat-…"
+        },
+        {
+          "id": "api_url",
+          "label": "GitLab API URL",
+          "required": true,
+          "default": "https://gitlab.com/api/v4"
+        }
+      ],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "playwright",
+      "title": "Playwright",
+      "category": "browser",
+      "description": "Open pages, click, fill forms, take screenshots and test a UI in a headless Chromium on this server.",
+      "homepage": "https://github.com/microsoft/playwright-mcp",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@playwright/mcp@0.0.86", "--headless", "--browser", "chromium", "--isolated"]
+      },
+      "browsers_env": true,
+      "inputs": [],
+      "prerequisites": ["npx", "chromium"],
+      "trust": "default"
+    },
+    {
+      "id": "chrome-devtools",
+      "title": "Chrome DevTools",
+      "category": "browser",
+      "description": "Console messages, network requests and performance traces from a headless Chrome. Needs Google Chrome installed on this server.",
+      "homepage": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "chrome-devtools-mcp@1.14.0", "--headless", "--isolated"]
+      },
+      "inputs": [],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "context7",
+      "title": "Context7",
+      "category": "docs",
+      "description": "Up-to-date, version-specific documentation and code examples for libraries. Works without a key; a key raises the rate limit.",
+      "homepage": "https://github.com/upstash/context7",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@upstash/context7-mcp@4.9.0"],
+        "env": {
+          "CONTEXT7_API_KEY": "${input:api_key}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "api_key",
+          "label": "Context7 API key (optional)",
+          "secret": "CONTEXT7_API_KEY",
+          "required": false,
+          "link": "https://context7.com/dashboard"
+        }
+      ],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "brave-search",
+      "title": "Brave Search",
+      "category": "docs",
+      "description": "Web, news, image and local search through the Brave Search API.",
+      "homepage": "https://github.com/brave/brave-search-mcp-server",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@brave/brave-search-mcp-server@2.2.0", "--transport", "stdio"],
+        "env": {
+          "BRAVE_API_KEY": "${input:api_key}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "api_key",
+          "label": "Brave Search API key",
+          "secret": "BRAVE_API_KEY",
+          "required": true,
+          "link": "https://brave.com/search/api/"
+        }
+      ],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "tavily",
+      "title": "Tavily",
+      "category": "docs",
+      "description": "Search, extract and crawl the web with results shaped for agents.",
+      "homepage": "https://github.com/tavily-ai/tavily-mcp",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "tavily-mcp@0.2.22"],
+        "env": {
+          "TAVILY_API_KEY": "${input:api_key}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "api_key",
+          "label": "Tavily API key",
+          "secret": "TAVILY_API_KEY",
+          "required": true,
+          "link": "https://app.tavily.com/"
+        }
+      ],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "exa",
+      "title": "Exa",
+      "category": "docs",
+      "description": "Web search and page fetching through Exa's hosted MCP server; the basic tools need no key.",
+      "homepage": "https://github.com/exa-labs/exa-mcp-server",
+      "transport": "http",
+      "server": {
+        "url": "https://mcp.exa.ai/mcp"
+      },
+      "inputs": [],
+      "prerequisites": [],
+      "trust": "default"
+    },
+    {
+      "id": "fetch",
+      "title": "Fetch",
+      "category": "docs",
+      "description": "Fetch a URL and return it as markdown (the reference MCP server, run with uvx).",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+      "transport": "stdio",
+      "server": {
+        "command": "uvx",
+        "args": ["mcp-server-fetch@2026.11.18"]
+      },
+      "inputs": [],
+      "prerequisites": ["uvx"],
+      "trust": "default"
+    },
+    {
+      "id": "notion",
+      "title": "Notion",
+      "category": "project",
+      "description": "Search, read and edit Notion pages and databases with an internal integration token.",
+      "homepage": "https://github.com/makenotion/notion-mcp-server",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@notionhq/notion-mcp-server@2.6.1"],
+        "env": {
+          "NOTION_TOKEN": "${input:token}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "token",
+          "label": "Notion integration token",
+          "secret": "NOTION_TOKEN",
+          "required": true,
+          "link": "https://www.notion.so/profile/integrations",
+          "placeholder": "ntn_…"
+        }
+      ],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "sqlite",
+      "title": "SQLite",
+      "category": "data",
+      "description": "Query and inspect one SQLite database file.",
+      "homepage": "https://pypi.org/project/mcp-server-sqlite/",
+      "transport": "stdio",
+      "server": {
+        "command": "uvx",
+        "args": ["mcp-server-sqlite@2025.4.25", "--db-path", "${input:db_path}"]
+      },
+      "inputs": [
+        {
+          "id": "db_path",
+          "label": "Path of the SQLite database file",
+          "required": true,
+          "placeholder": "/srv/app/data.db"
+        }
+      ],
+      "prerequisites": ["uvx"],
+      "trust": "default"
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "category": "data",
+      "description": "Schema, queries, explain plans and health checks for PostgreSQL, in restricted (read-only) mode.",
+      "homepage": "https://github.com/crystaldba/postgres-mcp",
+      "transport": "stdio",
+      "server": {
+        "command": "uvx",
+        "args": ["postgres-mcp@0.3.0", "--access-mode=restricted"],
+        "env": {
+          "DATABASE_URI": "${input:database_uri}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "database_uri",
+          "label": "Connection string",
+          "secret": "POSTGRES_DATABASE_URI",
+          "required": true,
+          "placeholder": "postgresql://user:password@host:5432/db"
+        }
+      ],
+      "prerequisites": ["uvx"],
+      "trust": "default"
+    },
+    {
+      "id": "kubernetes",
+      "title": "Kubernetes",
+      "category": "infra",
+      "description": "Inspect and manage a cluster through the current kubeconfig context.",
+      "homepage": "https://github.com/Flux159/mcp-server-kubernetes",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-kubernetes@4.2.3"]
+      },
+      "inputs": [],
+      "prerequisites": ["npx", "kubectl"],
+      "trust": "restricted"
+    },
+    {
+      "id": "sentry",
+      "title": "Sentry",
+      "category": "monitoring",
+      "description": "Production errors, issues and traces from Sentry.",
+      "homepage": "https://github.com/getsentry/sentry-mcp",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@sentry/mcp-server@0.51.0"],
+        "env": {
+          "SENTRY_AUTH_TOKEN": "${input:token}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "token",
+          "label": "Sentry user auth token",
+          "secret": "SENTRY_AUTH_TOKEN",
+          "required": true,
+          "link": "https://sentry.io/settings/account/api/auth-tokens/",
+          "placeholder": "sntryu_…"
+        }
+      ],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "figma",
+      "title": "Figma",
+      "category": "design",
+      "description": "Layout and style data from Figma files, for turning a design into code.",
+      "homepage": "https://github.com/GLips/Figma-Context-MCP",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "figma-developer-mcp@0.13.2", "--stdio"],
+        "env": {
+          "FIGMA_API_KEY": "${input:api_key}"
+        }
+      },
+      "inputs": [
+        {
+          "id": "api_key",
+          "label": "Figma personal access token",
+          "secret": "FIGMA_API_KEY",
+          "required": true,
+          "link": "https://help.figma.com/hc/en-us/articles/8085703771159-Manage-personal-access-tokens"
+        }
+      ],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    },
+    {
+      "id": "sequential-thinking",
+      "title": "Sequential Thinking",
+      "category": "thinking",
+      "description": "A scratchpad tool for breaking a problem into revisable steps.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2.2.0"]
+      },
+      "inputs": [],
+      "prerequisites": ["npx"],
+      "trust": "trusted"
+    },
+    {
+      "id": "memory",
+      "title": "Knowledge graph memory",
+      "category": "thinking",
+      "description": "A small persistent knowledge graph of entities and relations the agent can write and query.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+      "transport": "stdio",
+      "server": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory@2.2.1"]
+      },
+      "inputs": [],
+      "prerequisites": ["npx"],
+      "trust": "default"
+    }
+  ]
+}

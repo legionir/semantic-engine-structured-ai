@@ -16,6 +16,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { EventEmitter } = require("events");
 
 const settings = require("../config");
 
@@ -26,6 +27,27 @@ function registryFile() {
 
     return path.join(
         __dirname, "..", "registry", "mcp_servers.json"
+    );
+}
+
+
+/*
+| P4-02: the operator's own MCP configuration, outside every workspace.
+| The console's catalogue writes here (a server for every project, or one
+| scoped to some projects), so it may reference the secret store.
+| Every manager reloads when it changes (`changes`).
+*/
+
+const changes = new EventEmitter();
+
+changes.setMaxListeners(0);
+
+
+function userFile() {
+
+    return path.join(
+        require("../projects/ProjectStore").resolveDataHome(),
+        "mcp.json"
     );
 }
 
@@ -187,6 +209,10 @@ function load(workspaceRoot) {
             file: registryFile()
         },
         {
+            source: validator.SOURCES.USER,
+            file: userFile()
+        },
+        {
             source: validator.SOURCES.PROJECT,
             file: projectFile(root)
         },
@@ -282,10 +308,12 @@ function writePrivateFile(file, text) {
 | runtime is a local decision until someone commits it.
 */
 
-function persist(workspaceRoot, config) {
+function persist(workspaceRoot, config, options = {}) {
 
     const file =
-        workspaceFile(requireRoot(workspaceRoot));
+        options.target === "user"
+            ? userFile()
+            : workspaceFile(requireRoot(workspaceRoot));
 
     const document =
         readJsonFile(file) || { mcpServers: {} };
@@ -299,6 +327,9 @@ function persist(workspaceRoot, config) {
     const stored = {
         transport: config.transport,
         description: config.description || undefined,
+        catalog: config.catalog || undefined,
+        scope: config.scope === "project" ? "project" : undefined,
+        projects: config.scope === "project" && config.projects ? config.projects : undefined,
         trust: config.trust === "default" ? undefined : config.trust,
         include: config.include || undefined,
         exclude: config.exclude || undefined
@@ -319,6 +350,7 @@ function persist(workspaceRoot, config) {
             config.headers && Object.keys(config.headers).length
                 ? config.headers
                 : undefined;
+        stored.token = config.token || undefined;
     }
 
     container[config.name] =
@@ -333,6 +365,8 @@ function persist(workspaceRoot, config) {
             `${JSON.stringify({ mcpServers: container }, null, 2)}\n`
         );
 
+        announce(file);
+
         return file;
     }
 
@@ -343,11 +377,99 @@ function persist(workspaceRoot, config) {
         `${JSON.stringify(document, null, 2)}\n`
     );
 
+    announce(file);
+
     return file;
 }
 
 
+function announce(file) {
+
+    if (file === userFile()) {
+        changes.emit("change", { file });
+    }
+}
+
+
+function containerOf(document) {
+
+    return document.mcpServers ||
+        document.mcp_servers ||
+        document.servers ||
+        document;
+}
+
+
+/* the raw (unexpanded) definition of a server in the user file */
+function readUserServer(name) {
+
+    const document = readJsonFile(userFile());
+
+    if (!document) {
+        return null;
+    }
+
+    const container = containerOf(document);
+
+    return Object.prototype.hasOwnProperty.call(container, name)
+        ? container[name]
+        : null;
+}
+
+
+function userServers() {
+
+    const document = readJsonFile(userFile());
+
+    return document ? entriesOf(document) : [];
+}
+
+
+/* writes a raw definition (placeholders kept) into the user file */
+function writeUserServer(name, definition) {
+
+    const file = userFile();
+    const document = readJsonFile(file) || { mcpServers: {} };
+    const container = containerOf(document);
+
+    container[name] = JSON.parse(JSON.stringify(definition));
+
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    writePrivateFile(file, `${JSON.stringify(document, null, 2)}\n`);
+    announce(file);
+
+    return file;
+}
+
+
+function removeUserServer(name) {
+
+    const file = userFile();
+    const document = readJsonFile(file);
+
+    if (!document) {
+        return false;
+    }
+
+    const container = containerOf(document);
+
+    if (!Object.prototype.hasOwnProperty.call(container, name)) {
+        return false;
+    }
+
+    delete container[name];
+
+    writePrivateFile(file, `${JSON.stringify(document, null, 2)}\n`);
+    announce(file);
+
+    return true;
+}
+
+
 function forget(workspaceRoot, name) {
+
+    /* a server the console put in the user file is forgotten there too */
+    const fromUser = removeUserServer(name);
 
     const file =
         workspaceFile(requireRoot(workspaceRoot));
@@ -356,7 +478,7 @@ function forget(workspaceRoot, name) {
         readJsonFile(file);
 
     if (!document) {
-        return false;
+        return fromUser;
     }
 
     const container =
@@ -366,7 +488,7 @@ function forget(workspaceRoot, name) {
         document;
 
     if (!Object.prototype.hasOwnProperty.call(container, name)) {
-        return false;
+        return fromUser;
     }
 
     delete container[name];
@@ -381,7 +503,13 @@ function forget(workspaceRoot, name) {
 
 
 module.exports = {
+    changes,
     registryFile,
+    userFile,
+    readUserServer,
+    userServers,
+    writeUserServer,
+    removeUserServer,
     projectFile,
     workspaceFile,
     readJsonFile,

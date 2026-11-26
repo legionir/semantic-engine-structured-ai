@@ -109,6 +109,55 @@ const MAPPERS = {
         details: context(event, { server: event.server, transport: event.transport })
     }),
 
+    /* P4-04: the last error of a server is in the global log */
+    "mcp:disconnected": event => ({
+        level: "warn",
+        source: "mcp",
+        message: `MCP server ${event.server || "?"} disconnected: ${clip(event.error, 500)}${
+            event.retrying
+                ? ` — reconnect attempt ${event.attempt} in ${Math.round((event.retry_in_ms || 0) / 100) / 10}s`
+                : ""}`,
+        details: context(event, {
+            server: event.server,
+            transport: event.transport,
+            code: event.code,
+            signal: event.signal,
+            attempt: event.attempt,
+            retrying: event.retrying
+        })
+    }),
+
+    "mcp:reconnected": event => ({
+        level: "info",
+        source: "mcp",
+        message: `MCP server ${event.server || "?"} reconnected after ${event.attempts || 1} attempt(s)`,
+        details: context(event, { server: event.server, tools: event.tools, down_ms: event.down_ms })
+    }),
+
+    "mcp:install": event => (event.status === "running"
+        ? {
+            level: "info",
+            source: "mcp",
+            message: `Installing ${event.id}: ${clip(event.command, 300)}`,
+            details: context(event, { id: event.id })
+        }
+        : {
+            level: event.status === "succeeded" ? "info" : "error",
+            source: "mcp",
+            message: event.status === "succeeded"
+                ? `Installed ${event.id}`
+                : `Installing ${event.id} failed: ${clip(event.error, 500)}`,
+            details: context(event, { id: event.id, exit_code: event.exit_code, duration_ms: event.duration_ms })
+        }),
+
+    /* names only: a value never reaches an event */
+    "secret:changed": event => ({
+        level: "info",
+        source: "secrets",
+        message: `Secret ${event.name || "?"} ${event.action || "changed"}`,
+        details: context(event, { name: event.name, action: event.action })
+    }),
+
     "discussion:error": event => ({
         level: "error",
         source: "discussion",

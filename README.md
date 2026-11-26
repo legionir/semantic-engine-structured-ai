@@ -405,6 +405,12 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `MCP_ALLOW_RUNTIME_ADD` | boolean | `true` | Allow a server to be added or removed while the runtime is running, with mcp_add, mcp_remove or the console. |
 | `MCP_APPROVAL` | enum | `"inherit"` | Whether calling an MCP tool needs approval. inherit follows the policy rules and each server's trust setting, always asks every time, never asks at all. |
 | `MCP_GATEWAY_APPROVAL_TTL_MS` | number | `900000` | How long an approval answer for a global MCP server is reused before the next call asks again (P0-2). 0 asks every time. |
+| `SECRET_STORE_KEY` | string | `""` | Passphrase that encrypts the secret store (`<data home>/secrets.enc`). Empty: a random key is kept in `<data home>/secrets.key`. Set through the environment and restart to change it. |
+| `MCP_RECONNECT_ENABLED` | boolean | `true` | Start an MCP server again on its own when it exits unexpectedly, waiting longer after each failed attempt. |
+| `MCP_RECONNECT_BASE_MS` | number | `1000` | Wait before the first reconnect attempt; each further attempt doubles it (±20% jitter), up to `MCP_RECONNECT_MAX_MS`. |
+| `MCP_RECONNECT_MAX_MS` | number | `60000` | Longest wait between two reconnect attempts. |
+| `MCP_RECONNECT_MAX_ATTEMPTS` | number | `10` | Reconnect attempts before a server is marked unreachable; the next tool call or Reconnect in the console tries again. |
+| `PLAYWRIGHT_BROWSERS_PATH` | string | `""` | Where the headless Chromium for browser MCP servers is installed and looked for. Empty: Playwright's default cache (`~/.cache/ms-playwright` on Linux). |
 | `WORKSPACE_ROOT` | string · fixed at startup | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Directory the agent may act in. Fixed at startup because every path check depends on it. اگر unset باشد، در runtime به `process.cwd()` برمی‌گردد. |
 | `STRUCTURED_AI_DATA_HOME` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai. اگر unset باشد، مسیر پیش‌فرض کاربر (معمولاً `~/.local/share/structured-ai`) استفاده می‌شود. |
 | `STRUCTURED_AI_TRUST_FILE` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | File that records which workspaces the operator trusted (roadmap P0-1). Empty means ~/.config/structured-ai/trusted-workspaces.json (~\AppData\Roaming\structured-ai on Windows). Never taken from a project file. اگر unset باشد، مسیر پیش‌فرض trust store سیستم‌عامل استفاده می‌شود. |
@@ -523,6 +529,14 @@ method/path کامل در
 | `GET/POST` | `/api/settings` | مشاهده یا تغییر settingهای schema |
 | `GET` | `/api/health`، `/api/metrics`، `/api/stats` | سلامت و metrics gateway/project |
 | `GET/POST` | `/api/mcp` | وضعیت یا افزودن MCP server |
+| `POST` | `/api/mcp/:name/reconnect` | اتصال دوباره به یک سرور MCP و صفر کردن شمارش تلاش‌ها |
+| `GET` | `/api/mcp/catalog` | کاتالوگ سرورهای MCP با پیش‌نیازها، ورودی‌ها و نصب‌های فعلی (ادمین) |
+| `POST` | `/api/mcp/catalog/:id/activate` | فعال‌سازی یک مدخل کاتالوگ: ذخیرهٔ توکن، نوشتن config، اتصال و فهرست ابزارها (ادمین) |
+| `POST` | `/api/mcp/catalog/:name/deactivate` | غیرفعال‌سازی و برگرداندن config، با `forget_secrets` اختیاری (ادمین) |
+| `GET` | `/api/mcp/prerequisites` | بررسی npx/uvx/python/chromium با راهنمای نصب (ادمین) |
+| `GET/POST` | `/api/mcp/prerequisites/:id/install` | نصب یک‌کلیکی Chromium و پیگیری پیشرفت آن (ادمین) |
+| `GET` | `/api/secrets` | فهرست نام secretها و محل استفاده؛ مقدار هرگز برنمی‌گردد (ادمین) |
+| `PUT/DELETE` | `/api/secrets/:name` | ذخیره یا حذف یک secret (ادمین) |
 | `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
 | `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
 
@@ -763,6 +777,16 @@ MCP_SERVERS                       متغیر محیطی، بالاترین او�
 * `POST /api/mcp` — افزودن سرور
 * `POST /api/mcp/:name/enabled` — روشن یا خاموش کردن
 * `DELETE /api/mcp/:name` — حذف
+* `POST /api/mcp/:name/reconnect` — اتصال دوباره (همان دکمهٔ Reconnect)
+
+#### کاتالوگ، secretها و پیش‌نیازها
+
+زبانهٔ **Catalogue** فهرست سرورهای آماده (`agent/registry/mcp_catalog.json`) را با نسخهٔ pin‌شده، پیش‌نیازها و سطح اعتماد نشان می‌دهد. **Activate** فرم توکن را باز می‌کند؛ توکن در secret store رمزنگاری‌شده (`<data home>/secrets.enc`، AES-256-GCM) ذخیره می‌شود، config با ارجاع `${secret:NAME}` در `<data home>/mcp.json` (سراسری یا فقط برای پروژهٔ جاری) نوشته می‌شود، سرور وصل و ابزارهایش فهرست می‌شوند. اگر اتصال شکست بخورد config و secret تازه برگردانده می‌شوند. **Deactivate** config را برمی‌گرداند و می‌تواند secretی را که دیگر استفاده نمی‌شود پاک کند.
+
+* `${secret:NAME}` فقط در config اپراتور (registry، `<data home>/mcp.json`، `MCP_SERVERS` و افزودن از کنسول) پذیرفته می‌شود؛ در فایل‌های مخزن، `mcp_add` و config ورک‌اسپیس رد می‌شود.
+* مقدار secretها هرگز از API برنمی‌گردد و در لاگ، journal و پاسخ‌های API ماسک می‌شود. هیچ ابزار agent آن را نمی‌خواند و ابزارهای فایل به `secrets.enc`/`secrets.key` دسترسی ندارند.
+* پیش از هر اتصال، npx/uvx/python و Chromium بررسی می‌شوند و نبودشان با راهنمای نصب گزارش می‌شود (کد 412). Chromium را می‌توان با یک کلیک (`playwright-mcp install-browser chromium`) نصب کرد و پیشرفتش را دید.
+* اگر سرور به‌طور غیرمنتظره قطع شود، با backoff نمایی دوباره وصل می‌شود (`MCP_RECONNECT_*`)؛ وضعیت و آخرین خطا کنار هر سرور و در لاگ سراسری (`source=mcp`) دیده می‌شود.
 
 ---
 

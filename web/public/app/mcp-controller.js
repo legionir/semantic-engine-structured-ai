@@ -12,6 +12,7 @@ import { state, touch } from "./store.js";
 import { mountInModal } from "./dom.js";
 import { connectBody, createMcpState, McpBody, mcpSubtitle } from "./mcp-view.js";
 import { notifyError } from "./console-core.js";
+import { createCatalogActions } from "./mcp-catalog-controller.js";
 
 
 async function mcpRequest(url, options = {}) {
@@ -55,7 +56,7 @@ async function refreshMcp(force = false) {
 async function loadMcpConfig() {
 
     const mcp = state.mcp;
-    const result = await mcpRequest("/api/mcp/config");
+    const result = await mcpRequest(mcp.configTarget === "user" ? "/api/mcp/config?target=user" : "/api/mcp/config");
 
     mcp.configNotice = "";
 
@@ -96,11 +97,53 @@ async function mcpServerAction(server, url, options) {
 }
 
 
+/* P4-04: while a server is waiting to reconnect, its countdown moves */
+let reconnectTicker = null;
+
+function watchReconnects() {
+
+    clearInterval(reconnectTicker);
+
+    reconnectTicker = setInterval(() => {
+
+        if (!state.mcpModal || !state.mcp?.payload) {
+            clearInterval(reconnectTicker);
+            reconnectTicker = null;
+            return;
+        }
+
+        const waiting = (state.mcp.payload.servers || []).some(server => server.state === "reconnecting" || server.state === "connecting");
+
+        if (waiting && state.mcp.tab === "servers") {
+            void refreshMcp(false);
+        }
+    }, 2000);
+}
+
+
+const { loadCatalog, loadSecrets, currentProject, ...catalogActions } =
+    createCatalogActions({ mcpRequest, refreshMcp });
+
+
 const mcpActions = {
 
     tab(tab) {
         state.mcp.tab = tab;
         touch("mcp");
+        if (tab === "catalog" && !state.mcp.catalog) void loadCatalog();
+        if (tab === "secrets") void loadSecrets();
+    },
+
+    reconnect(server) {
+        return mcpServerAction(server, `/api/mcp/${encodeURIComponent(server.name)}/reconnect`, { method: "POST" });
+    },
+
+    ...catalogActions,
+
+    async configTarget(target) {
+        state.mcp.configTarget = target === "user" ? "user" : "workspace";
+        state.mcp.configNotice = "";
+        await loadMcpConfig();
     },
 
     transport(value) {
@@ -181,7 +224,7 @@ const mcpActions = {
         mcp.configNotice = "Saving…";
         touch("mcp");
 
-        const result = await mcpRequest("/api/mcp/config", {
+        const result = await mcpRequest(mcp.configTarget === "user" ? "/api/mcp/config?target=user" : "/api/mcp/config", {
             method: "PUT",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ text })
@@ -245,13 +288,20 @@ export async function openMcp() {
         onClose: () => {
             dispose();
             state.mcpModal = null;
+            clearInterval(reconnectTicker);
+            reconnectTicker = null;
         }
     });
 
     state.mcpModal = handle;
     state.mcpOpening = false;
 
-    dispose = mountInModal(handle, () => McpBody({ mcp: state.mcp, actions: mcpActions }), ["mcp"]);
+    dispose = mountInModal(handle, () => McpBody({ mcp: state.mcp, actions: mcpActions, project: currentProject() }), ["mcp"]);
+
+    watchReconnects();
+
+    if (state.mcp.tab === "catalog") void loadCatalog();
+    if (state.mcp.tab === "secrets") void loadSecrets();
 
     return handle;
 }

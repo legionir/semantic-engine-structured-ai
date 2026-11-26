@@ -108,6 +108,48 @@
 }
 
 .mcp-add { margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+
+/* P4-04: one dot per server, the colour of its state */
+.mcp-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line); align-self: center; }
+.mcp-dot.ready { background: var(--ok); }
+.mcp-dot.connecting, .mcp-dot.reconnecting { background: var(--warn); animation: mcp-pulse 1.2s ease-in-out infinite; }
+.mcp-dot.failed { background: var(--bad); }
+@keyframes mcp-pulse { 50% { opacity: .35; } }
+.mcp-server.reconnecting { border-left-color: var(--warn); }
+.mcp-head .state.reconnecting { color: var(--warn); }
+.mcp-last-error { font-size: 11px; margin-top: 4px; overflow-wrap: anywhere; }
+
+/* P4-02: catalogue cards */
+.mcp-catalog-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.mcp-catalog-tools input[type="search"] { flex: 1 1 200px; }
+.mcp-forget { font-size: 11px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.mcp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.mcp-card {
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel-2);
+  padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.mcp-card.installed { border-left: 3px solid var(--ok); }
+.mcp-card-description { margin: 0; font-size: 12px; }
+.mcp-pinned { font-family: var(--mono); font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.mcp-prereqs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.mcp-prereq { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.mcp-prereq.ok .mark { color: var(--ok); }
+.mcp-prereq.missing .mark, .mcp-prereq.missing .label { color: var(--bad); }
+.mcp-prereq .hint, .mcp-prereq .path { color: var(--muted); overflow-wrap: anywhere; }
+.mcp-install { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; }
+.mcp-install progress { flex: 1 1 100px; height: 8px; }
+.mcp-installed { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 11px; }
+.mcp-activated ul { margin: 4px 0 0; padding-left: 16px; font-size: 11px; max-height: 140px; overflow: auto; }
+.mcp-activated .name { font-family: var(--mono); }
+.mcp-activate { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 6px; }
+.mcp-token-link { font-size: 11px; }
+
+/* P4-01: secrets, names only */
+.mcp-secrets { display: flex; flex-direction: column; gap: 6px; }
+.mcp-secret { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 5px 0; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+.mcp-secret .name { font-family: var(--mono); font-weight: 600; }
+.mcp-secret button { margin-left: auto; }
+.mcp-secret-add { margin-top: 8px; }
 .mcp-add > h3 {
   margin: 0 0 8px; font-size: 11px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--muted); font-weight: 650;

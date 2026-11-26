@@ -16,6 +16,7 @@
 */
 
 import { html } from "./dom.js";
+import { Catalog, Secrets } from "./mcp-catalog-view.js";
 
 
 const DEFAULT_CONFIG = '{\n  "mcpServers": {}\n}\n';
@@ -40,7 +41,26 @@ export function createMcpState() {
         configKey: 0,
         configError: null,
         configNotice: "",
-        saving: false
+        configTarget: "workspace",
+        saving: false,
+        /* P4-02 catalogue: loaded when its tab is first opened */
+        catalog: null,
+        catalogError: null,
+        catalogFilter: "",
+        activeEntry: null,
+        activationKey: 0,
+        activation: { busy: false, error: null, result: null, missing: null },
+        deactivating: new Set(),
+        entryErrors: new Map(),
+        forgetSecrets: true,
+        /* P4-03 one-click installs, by prerequisite id */
+        installs: new Map(),
+        /* P4-01 secret names (never values) */
+        secrets: null,
+        secretsError: null,
+        secretKey: 0,
+        secretMessage: "",
+        secretBusy: false
     };
 }
 
@@ -51,6 +71,10 @@ export function mcpStateLabel(server) {
         return "off";
     }
 
+    if (server.state === "reconnecting") {
+        return reconnectLabel(server);
+    }
+
     return {
         ready: "connected",
         idle: "not contacted yet",
@@ -58,6 +82,29 @@ export function mcpStateLabel(server) {
         failed: "unreachable",
         closed: "closed"
     }[server.state] || server.state;
+}
+
+
+/* P4-04: "reconnecting in 4s (attempt 2)" */
+export function reconnectLabel(server, now = Date.now()) {
+
+    const reconnect = server.reconnect || {};
+    const wait = reconnect.next_at ? Math.max(0, Math.ceil((reconnect.next_at - now) / 1000)) : null;
+
+    return `reconnecting${wait === null ? "" : ` in ${wait}s`}${reconnect.attempt ? ` (attempt ${reconnect.attempt})` : ""}`;
+}
+
+
+function ago(at, now = Date.now()) {
+
+    if (!at) return "";
+
+    const seconds = Math.max(0, Math.round((now - at) / 1000));
+
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+
+    return `${Math.round(seconds / 3600)}h ago`;
 }
 
 
@@ -131,6 +178,9 @@ function serverFacts(server) {
     facts.push(`${server.tool_count} tool${server.tool_count === 1 ? "" : "s"}`);
 
     if (server.stats?.calls) facts.push(`${server.stats.calls} call${server.stats.calls === 1 ? "" : "s"}`);
+    if (server.reconnect?.count) facts.push(`reconnected ${server.reconnect.count}×`);
+    if (server.catalog) facts.push(`catalogue: ${server.catalog}`);
+    if (server.scope === "project") facts.push(`projects: ${(server.projects || []).join(", ") || "none"}`);
 
     return facts.join(" · ");
 }
@@ -142,8 +192,13 @@ function ServerRow({ server, mcp, actions }) {
     const busy = mcp.pending.has(server.name);
     const failure = mcp.rowErrors.get(server.name);
 
+    const lastError = !server.error && server.reconnect?.last_error
+        ? `last error ${ago(server.reconnect.last_error_at)}: ${server.reconnect.last_error}`
+        : null;
+
     return html`<div class=${`mcp-server ${stateClass}`}>
         <div class="mcp-head">
+            <span class=${`mcp-dot ${stateClass}`} title=${mcpStateLabel(server)}></span>
             <span class="name">${server.name}</span>
             <span class="chip">${server.transport}</span>
             <span class=${`state ${stateClass}`}>${mcpStateLabel(server)}</span>
@@ -151,8 +206,10 @@ function ServerRow({ server, mcp, actions }) {
         </div>
         <div class="facts">${serverFacts(server)}</div>
         ${server.error ? html`<div class="mcp-error">${server.error}</div>` : null}
+        ${lastError ? html`<div class="mcp-last-error muted">${lastError}</div>` : null}
         ${failure ? html`<div class="mcp-error">${failure}</div>` : null}
         <div class="mcp-actions">
+            ${server.enabled ? html`<button type="button" class="ghost" disabled=${busy} onClick=${() => actions.reconnect(server)}>Reconnect</button>` : null}
             <button type="button" class="ghost" disabled=${busy} onClick=${() => actions.toggle(server)}>
                 ${server.enabled ? "Disable" : "Enable"}
             </button>
@@ -240,10 +297,18 @@ function Servers({ mcp, actions }) {
 function JsonEditor({ mcp, actions }) {
 
     const message = mcp.configError || mcp.configNotice || "";
+    const user = mcp.configTarget === "user";
 
     return html`<section class="mcp-tab-panel mcp-json-editor" hidden=${mcp.tab !== "json"}>
+        <label class="mcp-field mcp-config-target">
+            <span class="label">file</span>
+            <select onChange=${event => actions.configTarget(event.currentTarget.value)}>
+                <option value="workspace" selected=${!user}>This workspace (.agent/mcp.json)</option>
+                <option value="user" selected=${user}>All projects (user config, may use \${secret:NAME})</option>
+            </select>
+        </label>
         <p class="muted mcp-config-path">${mcp.configPath
-            ? `Workspace config: ${mcp.configPath}`
+            ? `${user ? "User" : "Workspace"} config: ${mcp.configPath}`
             : "Workspace MCP config (.agent/mcp.json)"}</p>
         <textarea
             key=${mcp.configKey}
@@ -259,15 +324,25 @@ function JsonEditor({ mcp, actions }) {
 }
 
 
-export function McpBody({ mcp, actions }) {
+export function McpBody({ mcp, actions, project = null }) {
+
+    const tab = (id, label) => html`<button type="button" class=${`mcp-tab${mcp.tab === id ? " active" : ""}`} onClick=${() => actions.tab(id)}>${label}</button>`;
 
     return html`<div class="mcp-workspace">
         <div class="mcp-tabs">
-            <button type="button" class=${`mcp-tab${mcp.tab === "servers" ? " active" : ""}`} onClick=${() => actions.tab("servers")}>Servers</button>
-            <button type="button" class=${`mcp-tab${mcp.tab === "json" ? " active" : ""}`} onClick=${() => actions.tab("json")}>Raw JSON</button>
+            ${tab("servers", "Servers")}
+            ${tab("catalog", "Catalogue")}
+            ${tab("secrets", "Secrets")}
+            ${tab("json", "Raw JSON")}
         </div>
         <div class="mcp-tab-panel" hidden=${mcp.tab !== "servers"}>
             <${Servers} mcp=${mcp} actions=${actions} />
+        </div>
+        <div class="mcp-tab-panel" hidden=${mcp.tab !== "catalog"}>
+            ${mcp.tab === "catalog" ? html`<${Catalog} mcp=${mcp} actions=${actions} project=${project} />` : null}
+        </div>
+        <div class="mcp-tab-panel" hidden=${mcp.tab !== "secrets"}>
+            ${mcp.tab === "secrets" ? html`<${Secrets} mcp=${mcp} actions=${actions} />` : null}
         </div>
         <${JsonEditor} mcp=${mcp} actions=${actions} />
     </div>`;
