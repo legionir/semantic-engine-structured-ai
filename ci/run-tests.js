@@ -279,6 +279,18 @@ function main() {
         log(section);
     }
 
+    /*
+    | On GitHub Actions each failure also becomes an ::error annotation, so
+    | the failing checks can be read from the checks API (and the PR page)
+    | without downloading the job log or the artifact.
+    */
+    if (process.env.GITHUB_ACTIONS === "true") {
+        for (const result of failed) {
+            const escape = value => String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+            process.stdout.write(`::error title=${escape(`${result.file} (${result.status})`).replace(/[:,]/g, " ")}::${escape(digest(result.output, 40, 25).slice(0, 4000))}\n`);
+        }
+    }
+
     if (options.out) {
 
         /* failures first: the CI comment keeps only the start of this file */
