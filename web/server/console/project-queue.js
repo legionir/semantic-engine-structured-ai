@@ -24,6 +24,7 @@
 */
 
 const RunCorrections = require("../../../agent/runtime/RunCorrections");
+const { runFlagOptions } = require("./run-flags");
 
 
 module.exports = function createProjectQueue(shared) {
@@ -52,6 +53,7 @@ module.exports = function createProjectQueue(shared) {
             id: item.id,
             text: item.text,
             reasoning_effort: item.reasoningEffort || null,
+            ...(item.runFlags ? { run_flags: runFlagOptions(item.runFlags) } : {}),
             kind: item.kind,
             created_at: item.createdAt,
             updated_at: item.updatedAt
@@ -108,6 +110,7 @@ module.exports = function createProjectQueue(shared) {
             id: `q${++conv.queueSeq}-${now.toString(36)}`,
             text,
             reasoningEffort: options.reasoningEffort || null,
+            runFlags: options.runFlags && Object.keys(options.runFlags).length > 0 ? { ...options.runFlags } : null,
             kind: options.kind || "message",
             createdAt: now,
             updatedAt: now

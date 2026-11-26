@@ -323,5 +323,8 @@ module.exports = {
     git_branch: gitBranch,
     git_checkout: gitCheckout,
     git_add: gitAdd,
-    git_commit: gitCommit
+    git_commit: gitCommit,
+
+    /* shared with GitRemoteTools; not a tool (objects are not published) */
+    _internal: { gitExec, gitCwd, assertString }
 };

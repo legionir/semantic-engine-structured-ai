@@ -76,7 +76,9 @@ module.exports = function createCapabilities(host) {
         "git_add",
         "git_commit",
         "git_checkout",
-        "git_branch"
+        "git_branch",
+        "git_push",
+        "git_worktree"
     ];
 
     const COMMAND_TOOLS = [

@@ -15,6 +15,7 @@ const { host } = require("./engineContext");
 const RunState = require("./RunState");
 const RetryController = require("./RetryController");
 const ReportVerifier = require("./ReportVerifier");
+const RunGoal = require("./RunGoal");
 const ToolGraph = require("./ToolGraphExecutor");
 
 
@@ -277,6 +278,47 @@ async function processDelegate(ctx) {
 }
 
 
+async function checkRunGoal(h, run, action, message, messages, progress, iteration) {
+
+    progress.goalChecks = (progress.goalChecks || 0) + 1;
+
+    const verdict = await RunGoal.checkGoal({
+        goal: run.goal,
+        action,
+        messages,
+        callAI: options => RetryController.callAI(options)
+    });
+
+    const limit = h.settings.get("GOAL_MAX_CHECKS");
+    const sendBack = verdict.met === false && progress.goalChecks <= limit && !progress.wrapup;
+
+    run.goalStatus = { goal: run.goal, met: verdict.met, reason: verdict.reason, checks: progress.goalChecks };
+
+    h.events.emit("run:goal", {
+        run_id: run.id || null,
+        agent: "main_agent",
+        iteration,
+        goal: run.goal,
+        met: verdict.met,
+        reason: verdict.reason,
+        attempt: progress.goalChecks,
+        limit,
+        outcome: verdict.met === true ? "met" : sendBack ? "continue" : "stopped"
+    });
+
+    if (!sendBack) {
+        return null;
+    }
+
+    h.logLine("main_agent", `Goal not met yet (${verdict.reason}); continuing [${progress.goalChecks}/${limit}]`);
+
+    messages.push({ role: "assistant", content: message.content ?? JSON.stringify(action) });
+    messages.push(RunGoal.notMetMessage(run.goal, verdict, progress.goalChecks));
+
+    return { type: "continue" };
+}
+
+
 async function finalize(ctx) {
 
     const h = host();
@@ -292,7 +334,22 @@ async function finalize(ctx) {
         context
     } = ctx;
 
-    if (ctx.kind === "main" && action.action === "final" && !action.error) {
+    const run = h.currentRun();
+
+    /* P3-03: a plan-mode answer IS the plan; its open steps wait for approval */
+    const planMode = ctx.kind === "main" && run && run.planMode === true;
+
+    /* P3-05: the goal decides whether the agent is really done */
+    if (ctx.kind === "main" && action.action === "final" && !action.error && !planMode && run && run.goal) {
+
+        const outcome = await checkRunGoal(h, run, action, message, messages, progress, iteration);
+
+        if (outcome) {
+            return outcome;
+        }
+    }
+
+    if (ctx.kind === "main" && action.action === "final" && !action.error && !planMode) {
 
         const planSummary =
             h.currentPlanSummary();
@@ -490,6 +547,13 @@ async function finalize(ctx) {
 
     h.events.emit("run:end", {
         action: finalAction,
+
+        /* P3-03 / P3-05: plan awaiting approval, goal verdict, what the run cost */
+        plan_mode: planMode || undefined,
+
+        goal: run && run.goalStatus ? run.goalStatus : undefined,
+
+        cost: run && run.cost ? run.cost.snapshot(h.settings.get("MAX_RUN_COST_USD")) : undefined,
 
         hooks:
             finalized.report || undefined,

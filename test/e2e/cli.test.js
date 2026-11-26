@@ -19,7 +19,7 @@ const BIN =
 const results = [];
 
 
-function startStub(handler) {
+function startStub(handler, { usage = null } = {}) {
 
     return new Promise(resolve => {
 
@@ -55,7 +55,8 @@ function startStub(handler) {
                                             state.requests.length
                                         )
                                 }
-                            ]
+                            ],
+                            ...(usage ? { model: "gpt-4o", usage } : {})
                         })
                     );
                 });
@@ -843,6 +844,156 @@ async function main() {
 
             fs.rmSync(repoAgent, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         }
+    });
+
+
+    /* ------------------------------------------- headless / CI (P3-07) */
+
+    const writeSchema = workspace => {
+        const file = path.join(workspace, "schema.json");
+        fs.writeFileSync(file, JSON.stringify({
+            type: "object",
+            required: ["status", "files"],
+            properties: {
+                status: { enum: ["ok", "fail"] },
+                files: { type: "array", items: { type: "string" } }
+            }
+        }));
+        return file;
+    };
+
+    await test("--json-schema: a conforming answer is printed alone and exits 0", async () => {
+
+        const stub = await startStub(() => finalAction("Here it is:\n```json\n{\"status\":\"ok\",\"files\":[\"a.js\"]}\n```"));
+        const workspace = makeWorkspace();
+
+        const run = await runCli(["--workspace", workspace, "--quiet", "--json-schema", writeSchema(workspace), "list files"], { port: stub.port });
+        await stub.close();
+
+        assert.equal(run.code, 0, run.stderr);
+        assert.deepEqual(JSON.parse(run.stdout), { status: "ok", files: ["a.js"] });
+
+        const prompt = JSON.stringify(stub.state.requests[0].messages);
+        assert.ok(prompt.includes("Output contract"), "the schema travels with the task");
+
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
+
+    await test("--json-schema: a violating answer exits 3 with the violations", async () => {
+
+        const stub = await startStub(() => finalAction("{\"status\":\"maybe\"}"));
+        const workspace = makeWorkspace();
+
+        const run = await runCli(["--workspace", workspace, "--quiet", "--json-schema", writeSchema(workspace), "list files"], { port: stub.port });
+        await stub.close();
+
+        assert.equal(run.code, 3, run.stderr);
+        const report = JSON.parse(run.stdout);
+        assert.ok(report.violations.some(item => /missing required property files/.test(item)));
+        assert.ok(report.violations.some(item => /must be one of/.test(item)));
+
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
+
+    await test("--json-schema: an unreadable schema is a usage error", async () => {
+
+        const workspace = makeWorkspace();
+        const run = await runCli(["--workspace", workspace, "--json-schema", path.join(workspace, "missing.json"), "x"]);
+
+        assert.equal(run.code, 2);
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
+
+    await test("--max-cost: spending the budget exits 4", async () => {
+
+        const stub = await startStub(
+            (body, count) => action({
+                action: "tool_call",
+                tool_calls: [{ id: `r${count}`, name: "fs_read", arguments: { path: "notes.txt" }, depends_on: [] }]
+            }),
+            { usage: { prompt_tokens: 2000, completion_tokens: 500 } }
+        );
+        const workspace = makeWorkspace();
+
+        const run = await runCli(
+            ["--workspace", workspace, "--quiet", "--max-cost", "0.02", "read forever"],
+            { port: stub.port, env: { AGENT_MODEL: "gpt-4o" } }
+        );
+        await stub.close();
+
+        assert.equal(run.code, 4, run.stderr);
+        assert.match(run.stderr, /cost cap of \$0\.02 was reached/);
+        assert.ok(stub.state.requests.length <= 3, "the run stopped at the cap");
+
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
+
+    await test("--max-cost rejects a negative budget", async () => {
+
+        const negative = await runCli(["--max-cost", "-1", "x"]);
+        assert.equal(negative.code, 2);
+
+        const text = await runCli(["--max-cost", "lots", "x"]);
+        assert.equal(text.code, 2);
+    });
+
+    await test("--plan refuses writes for the run", async () => {
+
+        const stub = await startStub((body, count) => count === 1
+            ? action({ action: "tool_call", tool_calls: [{ id: "w1", name: "fs_write", arguments: { path: "out.txt", content: "x" }, depends_on: [] }] })
+            : finalAction("Plan: write out.txt"));
+        const workspace = makeWorkspace();
+
+        const run = await runCli(["--workspace", workspace, "--quiet", "--plan", "write out.txt"], { port: stub.port });
+        await stub.close();
+
+        assert.equal(run.code, 0, run.stderr);
+        assert.equal(fs.existsSync(path.join(workspace, "out.txt")), false);
+        assert.ok(JSON.stringify(stub.state.requests[1].messages).includes("plan mode: the plan has not been approved yet"));
+
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
+
+    await test("review: usage errors and a project without git", async () => {
+
+        const badTarget = await runCli(["review", "everything"]);
+        assert.equal(badTarget.code, 2);
+        assert.match(badTarget.stderr, /review target must be/);
+
+        const noNumber = await runCli(["review", "pr"]);
+        assert.equal(noNumber.code, 2);
+        assert.match(noNumber.stderr, /pull request number/);
+
+        const workspace = makeWorkspace();
+        const plain = await runCli(["--workspace", workspace, "review"]);
+        assert.equal(plain.code, 2);
+        assert.match(plain.stderr, /not a git repository/);
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
+
+    await test("review: findings are printed and a high finding exits 1", async () => {
+
+        const stub = await startStub(() => ({
+            role: "assistant",
+            content: JSON.stringify({ summary: "risky", findings: [{ severity: "high", file: "notes.txt", line: 1, title: "wrong text", detail: "d", suggestion: "s" }] })
+        }));
+        const workspace = makeWorkspace();
+        const git = args => require("child_process").execFileSync("git", args, { cwd: workspace, stdio: "ignore" });
+        git(["init", "-q"]);
+        git(["-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"]);
+        git(["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "init"]);
+        fs.writeFileSync(path.join(workspace, "notes.txt"), "beta\n");
+
+        const run = await runCli(["--workspace", workspace, "review"], { port: stub.port });
+        const json = await runCli(["--workspace", workspace, "review", "--json"], { port: stub.port });
+        await stub.close();
+
+        assert.equal(run.code, 1, run.stderr);
+        assert.match(run.stdout, /\[high\] notes\.txt:1/);
+        assert.equal(JSON.parse(json.stdout).findings[0].severity, "high");
+        assert.ok(JSON.stringify(stub.state.requests[0].messages).includes("+beta"));
+
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     const failed =

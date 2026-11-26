@@ -98,6 +98,10 @@ async function main() {
 
     await require("./scenarios/server-readiness")({ test, backdrops, console_ });
 
+    console.log("\nagent quality: plan approval, cost, changes, review");
+
+    await require("./scenarios/agent-quality")({ test, backdrops, console_ });
+
     const failed =
         results.filter(item => !item.ok);
 

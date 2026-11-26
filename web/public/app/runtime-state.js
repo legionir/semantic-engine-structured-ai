@@ -19,6 +19,7 @@ import { LIMITS } from "./store.js";
 import { agentNode, graphNode, archiveCurrentExecution, resetRun } from "./execution-model.js";
 import { normalizeConversationMessage, normalizeConversationMessages, TURN_REFRESH_TYPES } from "./conversation-model.js";
 import { reduceDiscussion } from "./discussion-model.js";
+import { reduceRunExtras } from "./run-extras.js";
 
 
 export function eventVisibleForProject(state, event) {
@@ -111,6 +112,8 @@ export function reduce(state, event) {
     }
 
     const tree = () => regions.add("tree");
+
+    reduceRunExtras(state, event, regions);
 
     switch (event.type) {
 

@@ -96,6 +96,7 @@ module.exports = async function TasksRoutes(shared, request) {
 
     const {
         requestReasoningEffort,
+        requestRunFlags,
         runtime,
         startTask,
         state
@@ -235,8 +236,10 @@ module.exports = async function TasksRoutes(shared, request) {
                 ? body.task.trim()
                 : "";
         let reasoningEffort;
+        let runFlags;
         try {
             reasoningEffort = requestReasoningEffort(body);
+            runFlags = requestRunFlags(body);
         } catch (error) {
             sendJson(res, error.status || 400, { error: error.message });
             return true;
@@ -271,7 +274,7 @@ module.exports = async function TasksRoutes(shared, request) {
 
         /* the run continues in the background */
 
-        startTask(task, { reasoningEffort }).catch(() => {});
+        startTask(task, { reasoningEffort, runFlags }).catch(() => {});
 
         sendJson(res, 202, { accepted: true });
 

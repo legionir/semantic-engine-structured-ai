@@ -15,6 +15,7 @@
 
 
 const startCheckpoint = require("./turn-checkpoint");
+const { runFlagOptions } = require("./run-flags");
 
 
 module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
@@ -85,7 +86,8 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
                     turn_id,
                     history: conv.history,
                     projectId,
-                    ...(runOptions.reasoningEffort ? { reasoning_effort: runOptions.reasoningEffort } : {})
+                    ...(runOptions.reasoningEffort ? { reasoning_effort: runOptions.reasoningEffort } : {}),
+                    ...runFlagOptions(runOptions.runFlags)
                 });
 
             conv.answer = action.response ? action.response.content : null;
@@ -175,6 +177,7 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
                 error: conv.error,
                 turn_id,
                 background: true,
+                ...(runOptions.runFlags && runOptions.runFlags.planMode ? { plan_mode: true } : {}),
                 ...attribution(projectId)
             });
 
@@ -185,6 +188,7 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
                 scheduleNext(next.text, {
                     projectId,
                     reasoningEffort: next.reasoningEffort,
+                    runFlags: next.runFlags,
                     kind: next.kind
                 });
 

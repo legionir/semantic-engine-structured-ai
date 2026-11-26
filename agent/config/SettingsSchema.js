@@ -29,7 +29,8 @@ const DEFINITIONS = [
     ...require("./settings-definitions/02"),
     ...require("./settings-definitions/03"),
     ...require("./settings-definitions/04"),
-    ...require("./settings-definitions/05")
+    ...require("./settings-definitions/05"),
+    ...require("./settings-definitions/06")
 ];
 
 

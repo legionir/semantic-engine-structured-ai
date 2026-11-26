@@ -103,7 +103,9 @@
       "git_branch",
       "git_checkout",
       "git_add",
-      "git_commit"
+      "git_commit",
+      "git_push",
+      "git_worktree"
     ]
   },
   {

@@ -20,6 +20,7 @@
 const createTurnSupport = require("./turn-support");
 const createBackgroundTurns = require("./background-turns");
 const startCheckpoint = require("./turn-checkpoint");
+const { runFlagOptions } = require("./run-flags");
 
 
 module.exports = function createTaskRunner(shared) {
@@ -189,7 +190,8 @@ module.exports = function createTaskRunner(shared) {
                         : {}),
                     ...(runOptions.reasoningEffort
                         ? { reasoning_effort: runOptions.reasoningEffort }
-                        : {})
+                        : {}),
+                    ...runFlagOptions(runOptions.runFlags)
                 });
 
             state.answer =
@@ -331,6 +333,8 @@ module.exports = function createTaskRunner(shared) {
                 answer: state.answer,
                 error: state.error,
                 turn_id,
+                /* P3-03: the panel offers approve / revise for this plan */
+                ...(runOptions.runFlags && runOptions.runFlags.planMode ? { plan_mode: true } : {}),
                 ...attribution(projectId)
             });
 
@@ -346,6 +350,7 @@ module.exports = function createTaskRunner(shared) {
                 scheduleNext(next.text, {
                     projectId,
                     reasoningEffort: next.reasoningEffort,
+                    runFlags: next.runFlags,
                     kind: next.kind
                 });
             }

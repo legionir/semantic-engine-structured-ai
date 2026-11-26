@@ -112,7 +112,9 @@ module.exports = function createTurnSupport(shared) {
 
         target.lastPlanSignature = signature;
 
+        /* P3-03: a plan waits for the operator, never for the next cycle */
         const wanted =
+            !(runOptions.runFlags && runOptions.runFlags.planMode) &&
             runtime.settings.get("AUTO_CONTINUE") === true &&
             target.status === "done" &&
             plan.exists &&

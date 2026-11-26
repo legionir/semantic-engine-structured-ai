@@ -61,7 +61,7 @@ async function main() {
         assert.deepStrictEqual(canonical, snapshot);
 
         const names = canonical.map(item => item.function?.name);
-        assert.equal(names.length, 48);
+        assert.equal(names.length, 50);
         assert.equal(new Set(names).size, names.length);
         assert.ok(names.includes("fs_read"));
         assert.ok(names.includes("checkpoint_undo"));

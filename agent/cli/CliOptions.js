@@ -221,11 +221,12 @@ function applyEnvironment(options) {
         environment.AGENT_VERBOSE = "0";
     }
 
-    if (options.json) {
+    if (options.json || options.jsonSchema || options.review) {
 
         /*
-        | stdout carries the result, so progress and the runtime's own
-        | final dump move out of the way.
+        | stdout carries the result (the action, the validated answer of
+        | --json-schema, a review), so progress and the runtime's own final
+        | dump move out of the way.
         */
 
         environment.AGENT_LOG_STREAM = "stderr";

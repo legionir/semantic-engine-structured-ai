@@ -60,6 +60,16 @@ module.exports = function createRunLimits(host) {
 
     function budgetSentence() {
 
+        /* P3-05: the dollar cap, with what was spent */
+        if (currentRun().cancelled_reason === "cost_cap" && currentRun().cost) {
+
+            const spent = currentRun().cost.snapshot(settings.get("MAX_RUN_COST_USD"));
+
+            return `the cost cap of $${spent.max_cost_usd} was reached: $${
+                spent.cost_usd.toFixed(4)
+            } spent on ${spent.requests} model request(s) (${spent.prompt_tokens} input, ${spent.completion_tokens} output tokens)`;
+        }
+
         if (currentRun().inHook) {
 
             return `the ${currentRun().hook_phase || "hook"} budget of ${
@@ -83,7 +93,8 @@ module.exports = function createRunLimits(host) {
                         ? ` (${currentRun().cancelled_reason})`
                         : ""
                 }: ${what}${
-                    currentRun().cancelled_reason === "deadline"
+                    currentRun().cancelled_reason === "deadline" ||
+                    currentRun().cancelled_reason === "cost_cap"
                         ? ` — ${budgetSentence()}`
                         : ""
                 }`
@@ -166,7 +177,8 @@ module.exports = function createRunLimits(host) {
             */
 
             state.reason =
-                currentRun().cancelled_reason === "deadline"
+                currentRun().cancelled_reason === "deadline" ||
+                currentRun().cancelled_reason === "cost_cap"
                     ? budgetSentence()
                     : `run cancelled (${
                         currentRun().cancelled_reason || "unknown"

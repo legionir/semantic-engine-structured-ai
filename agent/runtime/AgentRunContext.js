@@ -18,7 +18,7 @@
 */
 
 const RunCancellation = require("./RunCancellation");
-const { RunBudget, AgentSpawnBudget } = require("./RunBudget");
+const { RunBudget, AgentSpawnBudget, RunCost } = require("./RunBudget");
 
 
 class AgentRunContext {
@@ -30,7 +30,10 @@ class AgentRunContext {
         parentRunId = null,
         turnId = null,
         messages = [],
-        reasoningEffort = null
+        reasoningEffort = null,
+        planMode = false,
+        goal = null,
+        maxCostUsd = null
     } = {}) {
 
         this.runId = runId;
@@ -42,6 +45,17 @@ class AgentRunContext {
         this.task = task;
 
         this.reasoningEffort = reasoningEffort;
+
+        /* P3-03: until the operator approves the plan, nothing may change */
+        this.planMode = planMode === true;
+
+        /* P3-05: the end condition checked when the agent says it is done,
+           and what the run has cost against its dollar cap */
+        this.goal = typeof goal === "string" && goal.trim() !== "" ? goal.trim() : null;
+
+        this.goalStatus = null;
+
+        this.cost = new RunCost({ maxUsd: maxCostUsd });
 
         this.parentRunId = parentRunId;
 

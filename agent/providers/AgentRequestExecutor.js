@@ -195,6 +195,11 @@ function createAgentRequestExecutor(deps) {
             throw new Error(`Invalid JSON response: ${text}`);
         }
 
+        /* P3-05: what the response cost, against the run's cap */
+        if (typeof deps.recordUsage === "function" && data && data.usage) {
+            deps.recordUsage({ model: data.model || profile.model, usage: data.usage, agent, role: role || "MAIN" });
+        }
+
         return data;
     }
 

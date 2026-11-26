@@ -80,6 +80,8 @@
         <div class="head-tools">
           <div class="attachment-list" id="attachmentList" aria-live="polite"></div>
           <span class="muted" id="sessionTitle"></span>
+          <button type="button" id="taskChangesButton" class="chip button" title="What each task changed in the workspace; revert a whole task" aria-label="Task changes"><span>Changes</span></button>
+          <button type="button" id="reviewButton" class="chip button" title="Review the current diff, a branch, a commit or a pull request" aria-label="Review"><span>Review</span></button>
           <button type="button" id="attachFilesButton" class="chip button" title="Attach files to the next task" aria-label="Attach files"><span>Attach</span></button>
           <input type="file" id="attachmentInput" multiple hidden>
         </div>
@@ -92,6 +94,8 @@
       <div id="chat" class="chat">
         <p class="empty">No messages yet. Describe a task to start.</p>
       </div>
+
+      <div id="planApproval" class="plan-approval-host"></div>
 
       <div id="messageQueue" class="message-queue-host"></div>
 
@@ -109,6 +113,19 @@
           </select>
           <span class="effort-hint">applies to all layers when changed</span>
         </label>
+        <div class="run-options" id="runOptions">
+          <label class="effort-control" title="The agent only investigates and writes a plan; nothing changes until you approve it">
+            <input type="checkbox" id="taskPlanMode"> Plan first
+          </label>
+          <label class="effort-control run-goal" for="taskGoal">
+            <span>Goal</span>
+            <input type="text" id="taskGoal" maxlength="2000" placeholder="optional: the condition that ends the run" aria-label="Goal of the run">
+          </label>
+          <label class="effort-control" for="taskMaxCost" title="Stop the run when it has cost this many dollars (empty: the server setting)">
+            <span>Cap $</span>
+            <input type="number" id="taskMaxCost" min="0" step="0.05" placeholder="—" aria-label="Dollar cap for the run">
+          </label>
+        </div>
         <div id="discussionOptions" class="discussion-options-row" hidden></div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
@@ -118,6 +135,7 @@
             Discussion
           </button>
           <span class="muted grow-right" id="runTimer"></span>
+          <span class="run-cost" id="runCost" aria-live="polite"></span>
         </div>
       </form>
     </div>

@@ -18,6 +18,7 @@
 
 import { openSystem, refreshSystemWarnings } from "./system-view.js";
 import { initInterrupted } from "./interrupted-controller.js";
+import { initQuality } from "./quality-controller.js";
 import { state, touch } from "./store.js";
 import { mount } from "./dom.js";
 import { Attachments } from "./composer-view.js";
@@ -174,6 +175,8 @@ initProjects();
 startLogBadge();
 
 initInterrupted();
+
+initQuality();
 
 refreshSystemWarnings();
 

@@ -41,6 +41,7 @@ module.exports = async function ProjectConversationRoutes(shared, request, proje
         conversations,
         projectQueue,
         requestReasoningEffort,
+        requestRunFlags,
         runtime,
         startTask,
         state
@@ -81,6 +82,7 @@ module.exports = async function ProjectConversationRoutes(shared, request, proje
         startTask(next.text, {
             projectId,
             reasoningEffort: next.reasoningEffort,
+            runFlags: next.runFlags,
             kind: next.kind
         }).catch(() => {});
 
@@ -109,16 +111,18 @@ module.exports = async function ProjectConversationRoutes(shared, request, proje
         }
 
         let reasoningEffort;
+        let runFlags;
 
         try {
             reasoningEffort = requestReasoningEffort(body);
+            runFlags = requestRunFlags(body);
         } catch (error) {
             return fail(error.status || 400, error.message);
         }
 
         try {
 
-            const item = projectQueue.add(projectId, text, { reasoningEffort });
+            const item = projectQueue.add(projectId, text, { reasoningEffort, runFlags });
 
             const started = drain();
 

@@ -219,6 +219,33 @@ const MAPPERS = {
         details: context(event, { id: event.id })
     }),
 
+    /* P3-05 */
+    "run:cost_cap": event => ({
+        level: "warn",
+        source: "run",
+        message: `Run stopped at its cost cap: $${Number(event.cost_usd || 0).toFixed(4)} of $${event.max_cost_usd ?? "?"} spent on ${event.requests ?? "?"} model request(s)`,
+        details: context(event, { max_cost_usd: event.max_cost_usd, unpriced_models: event.unpriced_models })
+    }),
+
+    "run:goal": event => ({
+        level: event.met === true ? "info" : event.outcome === "stopped" ? "warn" : "info",
+        source: "run",
+        message: event.met === true
+            ? `Goal met: ${clip(event.goal, 160)}`
+            : `Goal not met (${event.outcome === "stopped" ? "checks used up" : "the agent goes on"}): ${clip(event.reason, 300)}`,
+        details: context(event, { goal: clip(event.goal, 500), attempt: event.attempt, outcome: event.outcome })
+    }),
+
+    /* P3-09: a task's revert is an operator action worth finding later */
+    "run:snapshot": event => event.phase === "reverted"
+        ? {
+            level: "info",
+            source: "run",
+            message: `Task ${event.run_id} reverted: ${event.restored ?? 0} file(s) restored, ${event.removed ?? 0} removed`,
+            details: context(event)
+        }
+        : null,
+
     "report:mismatch": event => ({
         level: "warn",
         source: "run",

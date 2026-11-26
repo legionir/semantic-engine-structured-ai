@@ -62,7 +62,8 @@ const ROUTE_GROUPS = [
     require("./routes/logs"),
     require("./routes/system"),
     require("./routes/terminal"),
-    require("./routes/files")
+    require("./routes/files"),
+    require("./routes/agent-quality")
 ];
 
 /* keystrokes and resizes of an open terminal come in bursts */
@@ -103,6 +104,8 @@ function createServer(runtime, options = {}) {
                 "tools"
             )
         );
+
+    const { requestRunFlags } = require("./console/run-flags");
 
     const requestReasoningEffort = body => {
         const value = body && body.reasoning_effort;
@@ -242,6 +245,7 @@ function createServer(runtime, options = {}) {
         projectSlotBusy,
         projectSnapshot: shared.projectSnapshot,
         requestReasoningEffort,
+        requestRunFlags,
         resolveApproval,
         runtime,
         saveSession,

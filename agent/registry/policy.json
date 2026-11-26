@@ -225,6 +225,30 @@
       "reason": "changes repository state"
     },
     {
+      "id": "repository_publication",
+      "tools": [
+        "git_push",
+        "git_worktree"
+      ],
+      "action": "require_approval",
+      "reason": "publishes commits to a remote or adds and removes working trees"
+    },
+    {
+      "id": "worktree_listing_is_free",
+      "tools": [
+        "git_worktree"
+      ],
+      "when": {
+        "argument_matches": {
+          "action": [
+            "^list$"
+          ]
+        }
+      },
+      "action": "allow",
+      "reason": "inspection only"
+    },
+    {
       "id": "repository_inspection_is_free",
       "tools": [
         "git_status",

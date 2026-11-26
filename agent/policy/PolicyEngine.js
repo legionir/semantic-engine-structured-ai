@@ -5,9 +5,45 @@ const settings = require("../config");
 const { PolicyMatcher, DECISIONS } = require("./PolicyMatcher");
 const { PolicyRegistry } = require("./PolicyRegistry");
 const { ApprovalManager } = require("./ApprovalManager");
+const { planModeRefusal, isPlanModeRun } = require("./PlanModeGate");
 const {
     PolicyDeniedError
 } = require("./PolicyErrors");
+
+
+function currentRunContext() {
+
+    try {
+
+        const runtime = require("../runtime");
+
+        return runtime.runManager && typeof runtime.runManager.current === "function"
+            ? runtime.runManager.current()
+            : null;
+
+    } catch {
+        return null;
+    }
+}
+
+
+function planModeRefusalForCurrentRun(toolName, args) {
+
+    if (!isPlanModeRun(currentRunContext())) {
+        return null;
+    }
+
+    return planModeRefusal(toolName, args || {}, {
+        catalogueEntry: (name, callArgs) => {
+            try {
+                const { manager } = require("../mcp/McpManager");
+                return manager ? destructiveHintEntry(manager, name, callArgs || {}) : null;
+            } catch {
+                return null;
+            }
+        }
+    });
+}
 
 
 function currentProjectId() {
@@ -397,6 +433,21 @@ class PolicyEngine {
 
 
     async enforce(toolName, args, agent) {
+
+        /* P3-03: plan mode refuses project changes before any rule or approval */
+        const planRefusal = planModeRefusalForCurrentRun(toolName, args);
+
+        if (planRefusal) {
+
+            this.onDecision({
+                tool: toolName,
+                agent,
+                decision: DECISIONS.DENY,
+                reason: planRefusal,
+                rule: "plan_mode"
+            });
+            throw new PolicyDeniedError(toolName, planRefusal);
+        }
 
         const evaluation =
             this.evaluate(toolName, args, agent);

@@ -2,8 +2,27 @@
 
 /* Run the normalized tool-call action through policy, dependency scheduling and events. */
 
+const ScopedRules = require("../prompt/ScopedRules");
+const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
+
 function createToolGraphRunner({ host, assertToolAllowed, normalizeToolCalls, describeGraph, executeDependencyGraph, resolveArgumentReferences, appendToolConversation }) {
 let GRAPH_SEQUENCE = 0;
+
+
+function noteTouchedPaths(name, args) {
+
+    try {
+
+        const run = host().currentRun();
+        const project = typeof host().effectiveProject === "function" ? host().effectiveProject(run && run.project) : null;
+
+        ScopedRules.noteToolCall(run, project ? project.workspaceRoot : WORKSPACE_ROOT, name, args);
+
+    } catch {
+        /* rule scoping is advisory; it never fails a tool call */
+    }
+}
+
 
 async function executeToolGraph(
     toolCalls,
@@ -176,6 +195,9 @@ async function executeToolGraph(
                         resolvedArguments,
                         scope || "main_agent"
                     );
+
+                    /* P3-06: the files this run works on decide its scoped rules */
+                    noteTouchedPaths(call.name, resolvedArguments);
 
                     host().logObject(
                         scope,

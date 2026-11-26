@@ -142,7 +142,8 @@ export async function drainProjectTaskQueue() {
                     headers: { "content-type": "application/json" },
                     body: JSON.stringify({
                         task: next.task,
-                        ...(next.reasoningEffort ? { reasoning_effort: next.reasoningEffort } : {})
+                        ...(next.reasoningEffort ? { reasoning_effort: next.reasoningEffort } : {}),
+                        ...(next.runFlags || {})
                     })
                 }
             );

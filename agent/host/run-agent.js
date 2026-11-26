@@ -18,6 +18,9 @@ const events = require("../events");
 const settings = require("../config");
 const eventstore = require("../persistence/EventStoreRepository");
 const runtimeEngine = require("../runtime/engine");
+const RunSnapshots = require("../runtime/RunSnapshots");
+const { logs } = require("../runtime/LogStore");
+const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
 
 
 module.exports = function createRunAgent(host) {
@@ -61,7 +64,10 @@ module.exports = function createRunAgent(host) {
                 task: options.task || "",
                 parentRunId: options.parent_run_id || null,
                 project: projectContext,
-                reasoningEffort: options.reasoning_effort || null
+                reasoningEffort: options.reasoning_effort || null,
+                planMode: options.plan_mode === true,
+                goal: options.goal || null,
+                maxCostUsd: options.max_cost_usd ?? null
             });
 
         const projectId =
@@ -94,9 +100,32 @@ module.exports = function createRunAgent(host) {
         return await runScheduler.schedule(projectId, () =>
             runManager.execute(context, async () => {
 
+            /* P3-09: the working tree before and after the task, as hidden refs */
+            const snapshotRoot =
+                projectContext?.workspaceRoot || WORKSPACE_ROOT;
+
+            const snapshotOptions =
+                { events, log: logs, projectId };
+
+            await RunSnapshots.captureQuietly(snapshotRoot, context.runId, "before", snapshotOptions);
+
             try {
-                return await runAgentCore(options);
+
+                const action = await runAgentCore(options);
+
+                /* a run that answered after a limit cut it short says which */
+                if (context.cancelled_reason && action && typeof action === "object" && !action.stop_reason) {
+                    action.stop_reason = context.cancelled_reason;
+                }
+
+                return action;
+
             } catch (error) {
+
+                /* which limit stopped it, for the CLI exit code (P3-07) */
+                if (context.cancelled_reason && !error.cancelledReason) {
+                    error.cancelledReason = context.cancelled_reason;
+                }
 
                 if (
                     context.started_at &&
@@ -148,6 +177,8 @@ module.exports = function createRunAgent(host) {
 
                 throw error;
 
+            } finally {
+                await RunSnapshots.captureQuietly(snapshotRoot, context.runId, "after", snapshotOptions);
             }
 
             /* Leaving the async scopes restores the correlation context:

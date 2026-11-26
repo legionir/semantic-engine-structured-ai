@@ -187,6 +187,30 @@ node bin/agent.js -w /path/to/project "بررسی کن چرا تست لاگین 
 node bin/agent.js -w /path/to/project --json "لیست تمامی کنترلرهای موجود"
 ```
 
+حالت headless برای CI (roadmap P3-07):
+
+```bash
+# پاسخ نهایی باید با JSON Schema بخواند؛ فقط همان JSON روی stdout می‌آید
+node bin/agent.js -w . --json-schema out.schema.json "فایل‌های تغییرکرده را فهرست کن"
+
+# سقف هزینه، هدف (پایان فقط وقتی هدف برآورده شد) و حالت برنامه‌ریزی
+node bin/agent.js -w . --max-cost 0.50 --goal "npm test سبز است" "تست‌ها را درست کن"
+node bin/agent.js -w . --plan "کش را اضافه کن"
+
+# بازبینی کد: diff (پیش‌فرض)، staged، branch <ref>، commit <ref>، pr <n>
+node bin/agent.js -w . review branch --base main --json
+node bin/agent.js -w . review pr 42 --post
+```
+
+| کد خروج | معنی |
+|---|---|
+| `0` | موفق |
+| `1` | شکست اجرا؛ در `review`: یافتهٔ high یا critical |
+| `2` | خطای استفاده (پرچم نامعتبر، پروژهٔ بدون git در review) |
+| `3` | پاسخ نهایی با `--json-schema` نخواند (تخلف‌ها روی stdout) |
+| `4` | بودجه تمام شد (`--max-cost`، `MAX_RUN_MS`، سقف توکن) |
+| `130` | قطع با سیگنال |
+
 ---
 
 ### حالت ۲: نشست تعاملی در ترمینال (Interactive REPL)
@@ -519,8 +543,17 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `TASK_MENTION_MAX_CHARS` | number | `40000` | How many characters of the files named with @path in a message are read into it, for all mentions together; the rest is named but not inlined (roadmap P1-09). |
 | `SKILL_COMMANDS` | enum | `"read-only"` | Whether !`command` in a SKILL.md body is replaced by its output when the skill is loaded: read-only runs commands CommandRisk rates low, from shipped or operator skills and trusted workspaces only; off runs none. |
 | `PROJECT_QUEUE_MAX` | number | `20` | Messages a project's conversation keeps queued while its run is busy; each starts as the next turn when the run ends. 0 turns the queue off and a busy project answers 409 as before (roadmap P1-04). |
+| `GIT_ALLOW_FORCE_PUSH` | boolean | `false` | Whether git_push may be asked for force: true (sent as --force-with-lease). Off: every force push is refused, approved or not (roadmap P3-04). |
+| `GIT_WORKTREE_ROOTS` | string | `""` | Comma-separated absolute folders git_worktree may create worktrees in, besides the workspace itself (roadmap P3-04). A path outside both is refused. |
+| `RUN_SNAPSHOTS` | boolean | `true` | Before and after every run in a git workspace, record the whole working tree under refs/structured-ai/runs/<run> without touching the branch or the index, so a task can be diffed and reverted as a unit (roadmap P3-09). |
+| `MAX_RUN_COST_USD` | number | `0` | Dollar cap for one run, from the token usage the endpoint reports and the model's price (roadmap P3-05). 0: no cap; the cost is still counted and shown. |
+| `MODEL_PRICES` | string | `""` | JSON object of extra or corrected prices in dollars per million tokens, by model name or prefix: {"my-model": {"input": 0.5, "output": 1.5}}. Merged over the built-in table. |
+| `GOAL_MAX_CHECKS` | number | `3` | How many times a run with a goal is sent back to work when its final answer does not meet the goal (roadmap P3-05). 0 checks the goal but never sends it back. |
+| `PROJECT_RULES_ENABLED` | boolean | `true` | Read rule files from .agent/rules, .claude/rules and .cursor/rules (roadmap P3-06). A rule with globs front matter reaches the model only once the agent works on a matching file; one without globs always applies. |
+| `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
+| `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۱۸ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۴۱ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -623,6 +656,10 @@ method/path کامل در
 | `GET` | `/api/logs/download` | دانلود کل فایل JSONL |
 | `GET` | `/api/system` | CPU، حافظه، دیسک، runهای در حال اجرا و در صف، پردازه‌های پس‌زمینه و هشدارها (P1-07) |
 | `POST` | `/api/system/processes/:id/stop` | توقف یک پردازهٔ پس‌زمینه |
+| `GET` | `/api/snapshots` | تسک‌های ثبت‌شده با snapshot گیت (P3-09)، با `projectId` اختیاری؛ پروژهٔ بدون git پاسخ `409 NOT_A_REPOSITORY` |
+| `GET` | `/api/snapshots/:runId` | فایل‌های تغییرکردهٔ یک تسک `{status, path}` و patch آن |
+| `POST` | `/api/snapshots/:runId/revert` | برگرداندن کل تسک `{projectId?, force?}`؛ فایلی که بعد از تسک دوباره تغییر کرده `409 SNAPSHOT_CONFLICT` با فهرست `conflicts` می‌دهد مگر `force: true` |
+| `POST` | `/api/review` | بازبینی ساختاریافته (P3-08) `{projectId?, target: diff\|staged\|branch\|commit\|pr, ref?, base?, number?, focus?, post?}`؛ پاسخ `{summary, findings[], fix_task}` |
 | `GET/POST` | `/api/terminal` | وضعیت و فهرست ترمینال‌ها / باز کردن ترمینال `{cols, rows}` |
 | `GET` | `/api/terminal/:id/stream` | SSE خروجی (`snapshot` با scrollback، `output`، `exit`) |
 | `POST` | `/api/terminal/:id/input` و `/resize` | ورودی صفحه‌کلید `{data}` / تغییر اندازه `{cols, rows}` |

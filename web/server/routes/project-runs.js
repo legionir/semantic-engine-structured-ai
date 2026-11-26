@@ -24,6 +24,7 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
         projectQueue,
         projectSlotBusy,
         requestReasoningEffort,
+        requestRunFlags,
         runtime,
         slotView,
         startTask,
@@ -116,8 +117,10 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
                     ? body.message.trim()
                     : "";
         let reasoningEffort;
+        let runFlags;
         try {
             reasoningEffort = requestReasoningEffort(body);
+            runFlags = requestRunFlags(body);
         } catch (error) {
             sendJson(res, error.status || 400, { error: error.message });
             return true;
@@ -153,7 +156,7 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
             try {
 
                 const item =
-                    projectQueue.add(projectId, task, { reasoningEffort });
+                    projectQueue.add(projectId, task, { reasoningEffort, runFlags });
 
                 sendJson(res, 202, {
                     accepted: true,
@@ -193,7 +196,7 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
             return true;
         }
 
-        startTask(task, { projectId: record.id, reasoningEffort }).catch(() => {});
+        startTask(task, { projectId: record.id, reasoningEffort, runFlags }).catch(() => {});
 
         sendJson(res, 202, {
             accepted: true,

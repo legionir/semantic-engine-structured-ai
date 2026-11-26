@@ -48,7 +48,9 @@ export const REGIONS = Object.freeze([
     "tabs",
     "queue",
     "system",
-    "interrupted"
+    "interrupted",
+    "quality",
+    "review"
 ]);
 
 

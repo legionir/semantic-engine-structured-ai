@@ -96,6 +96,10 @@ const ROUTES = Object.freeze([
     ["PUT", "/api/files/content"],
     ["POST", "/api/files/rename"],
     ["GET", "/api/files/download"],
+    ["GET", "/api/snapshots"],
+    ["GET", "/api/snapshots/:runId"],
+    ["POST", "/api/snapshots/:runId/revert"],
+    ["POST", "/api/review"],
     ["GET", "/"],
     ["GET", "/projects"],
     ["GET", "/projects/:projectId"]

@@ -41,7 +41,9 @@ const MUTATING_TOOLS = [
     "git_add",
     "git_commit",
     "git_checkout",
-    "git_branch"
+    "git_branch",
+    "git_push",
+    "git_worktree"
 ];
 
 

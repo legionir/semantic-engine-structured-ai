@@ -909,6 +909,92 @@
   {
     "type": "function",
     "function": {
+      "name": "git_push",
+      "description": "Push commits to a remote with the repository's own git credentials. Always needs approval. force is refused unless the operator enabled GIT_ALLOW_FORCE_PUSH, and is then sent as --force-with-lease. remote and branch are plain names, not refspecs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "remote": {
+            "type": "string",
+            "description": "Remote name. Defaults to origin when branch is given; otherwise git's configured push target."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to push. Omit to push the current branch to its upstream."
+          },
+          "set_upstream": {
+            "type": "boolean",
+            "description": "Record the remote branch as the upstream (--set-upstream)."
+          },
+          "tags": {
+            "type": "boolean",
+            "description": "Also push tags."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Overwrite the remote branch with --force-with-lease. Refused unless GIT_ALLOW_FORCE_PUSH is on."
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "git_worktree",
+      "description": "Manage Git worktrees: list them, add one (only inside the workspace or a GIT_WORKTREE_ROOTS folder) on an existing ref or a new branch, or remove one of this repository's worktrees. add and remove need approval.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository path."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "list",
+              "add",
+              "remove"
+            ],
+            "description": "What to do."
+          },
+          "path": {
+            "type": "string",
+            "description": "Worktree folder for add and remove, relative to cwd or absolute."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Branch or commit to check out in a new worktree (add)."
+          },
+          "new_branch": {
+            "type": "string",
+            "description": "Create this branch for the new worktree (add, git worktree add -b)."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "remove: also remove a worktree with uncommitted changes."
+          }
+        },
+        "required": [
+          "cwd",
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "net_fetch",
       "description": "Fetch a URL over HTTP or HTTPS and return the response body as text. Loopback, link-local, cloud metadata, and private network addresses are refused.",
       "parameters": {
