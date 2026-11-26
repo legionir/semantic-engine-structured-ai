@@ -63,6 +63,9 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
 
         addMessage({ role: "user", kind: runOptions.kind || "message", content: task, turn_id });
 
+        /* how the turn ended; the conversation shows it once it has unwound */
+        let settled = "failed";
+
         try {
 
             const action =
@@ -76,7 +79,7 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
 
             conv.answer = action.response ? action.response.content : null;
             conv.error = action.error || null;
-            conv.status = action.error ? "failed" : "done";
+            settled = action.error ? "failed" : "done";
 
             if (conv.answer) {
                 addMessage({ role: "assistant", kind: "response", turn_id, content: conv.answer });
@@ -104,7 +107,7 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
                 retryable: false
             };
 
-            conv.status = cancelled ? "cancelled" : "failed";
+            settled = cancelled ? "cancelled" : "failed";
 
             if (!error.runTerminalEmitted) {
 
@@ -139,6 +142,11 @@ module.exports = function createBackgroundTurns(shared, support, scheduleNext) {
 
                 /* a report that cannot be made must not keep the turn open */
             }
+
+            /* the project is free only now that its turn has unwound: a
+               message sent meanwhile waited in the queue instead of
+               starting a turn this one's ending would then trample */
+            conv.status = settled;
 
             /* a waiting message is the operator's next turn; it goes first */
             const next = projectQueue.takeNext(conv);

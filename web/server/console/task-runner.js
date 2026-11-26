@@ -254,10 +254,17 @@ module.exports = function createTaskRunner(shared) {
 
             state.finishedAt = Date.now();
 
+            /* how this turn ended, kept apart from the shared state a turn
+               started while this one unwinds would overwrite */
+            const settled = {
+                status: state.status,
+                answer: state.answer,
+                error: state.error
+            };
+
             if (conv) {
 
                 Object.assign(conv, {
-                    status: state.status,
                     answer: state.answer,
                     error: state.error,
                     finishedAt: state.finishedAt,
@@ -273,6 +280,13 @@ module.exports = function createTaskRunner(shared) {
             );
             if (runtime.eventstore && typeof runtime.eventstore.flush === "function") {
                 await runtime.eventstore.flush();
+            }
+
+            /* the project is free only now that its turn has unwound: a
+               message sent meanwhile waited in the queue instead of
+               starting a turn this one's ending would then trample */
+            if (conv) {
+                conv.status = settled.status;
             }
 
             /* a message queued for this project is the operator's next
