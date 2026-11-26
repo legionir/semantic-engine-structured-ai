@@ -534,7 +534,7 @@ setTimeout(() => {
 
 main().then(
     () => {
-        try { fs.rmSync(BASE, { recursive: true, force: true }); } catch { /* best effort */ }
+        try { fs.rmSync(BASE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
         setTimeout(() => process.exit(process.exitCode || 0), 200).unref();
     },
     error => {

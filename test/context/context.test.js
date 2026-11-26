@@ -460,7 +460,7 @@ async function main() {
 
     await test("archive is written before fold/compaction and search/get match the repository", async () => {
 
-        fs.rmSync(path.join(WORKSPACE, ".agent"), { recursive: true, force: true });
+        fs.rmSync(path.join(WORKSPACE, ".agent"), { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
         const messages = transcript(6, 800);
 
@@ -804,7 +804,7 @@ async function main() {
 
     await test("memory and archive recover after restart from the project data root", async () => {
 
-        fs.rmSync(path.join(WORKSPACE, ".agent"), { recursive: true, force: true });
+        fs.rmSync(path.join(WORKSPACE, ".agent"), { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
         const memory = memoryRepository.emptyMemory();
         memory.decisions.push("use workspace-relative paths");
@@ -903,7 +903,7 @@ async function main() {
 
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     process.exit(failed.length === 0 ? 0 : 1);
 

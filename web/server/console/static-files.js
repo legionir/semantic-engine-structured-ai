@@ -7,8 +7,16 @@
 |
 | Serving web/public, with deep links falling back to index.html.
 |
+| Every file is sent with nosniff; the page itself also carries a strict
+| Content-Security-Policy. The console loads nothing from another origin
+| and never evaluates strings, so scripts, styles and connections are
+| limited to this origin (CSS icons are data: images). The page's own
+| inline scripts are allowed by their sha256, computed from the file as
+| it is served, so editing one can never leave a stale hash behind.
+|
 */
 
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { sendJson } = require("../Response");
@@ -28,6 +36,34 @@ const MIME = {
     ".svg": "image/svg+xml",
     ".ico": "image/x-icon"
 };
+
+
+function inlineScriptHashes(html) {
+
+    const hashes = [];
+
+    for (const match of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
+        hashes.push(`'sha256-${crypto.createHash("sha256").update(match[1], "utf8").digest("base64")}'`);
+    }
+
+    return hashes;
+}
+
+
+function contentSecurityPolicy(html) {
+
+    return [
+        "default-src 'self'",
+        ["script-src 'self'", ...inlineScriptHashes(html)].join(" "),
+        "style-src 'self'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'"
+    ].join("; ");
+}
 
 
 function wellEncodedPath(pathname) {
@@ -64,15 +100,23 @@ function serveStatic(req, res, pathname) {
     const body =
         fs.readFileSync(target);
 
-    res.writeHead(200, {
+    const headers = {
         "content-type":
             MIME[path.extname(target)] ||
             "application/octet-stream",
 
         "cache-control": "no-store",
 
+        "x-content-type-options": "nosniff",
+
         "content-length": body.length
-    });
+    };
+
+    if (path.extname(target) === ".html") {
+        headers["content-security-policy"] = contentSecurityPolicy(body.toString("utf8"));
+    }
+
+    res.writeHead(200, headers);
 
     res.end(body);
 }

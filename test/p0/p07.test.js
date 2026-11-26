@@ -448,7 +448,7 @@ async function main() {
 
     for (const dir of [WORKSPACE, DATA_HOME, SCRATCH]) {
         try {
-            fs.rmSync(dir, { recursive: true, force: true });
+            fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         } catch {
             /* best effort on Windows file locks */
         }

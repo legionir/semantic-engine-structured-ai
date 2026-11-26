@@ -226,7 +226,7 @@ async function main() {
         assert.equal(second.before_task[0].id, "override_again");
         assert.notEqual(second, first);
 
-        fs.rmSync(directory, { recursive: true, force: true });
+        fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
 

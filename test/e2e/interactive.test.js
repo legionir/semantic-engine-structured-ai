@@ -283,7 +283,7 @@ async function main() {
         assert.match(run.stdout, /approval  : prompt/);
         assert.match(run.stdout, /goodbye/);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("history is carried from one task to the next", async () => {
@@ -328,7 +328,7 @@ async function main() {
             )
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("/clear starts a new conversation", async () => {
@@ -369,7 +369,7 @@ async function main() {
             ["saw 1 user messages", "saw 1 user messages"]
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("a piped y does not approve: without a TTY the session refuses", async () => {
@@ -409,7 +409,7 @@ async function main() {
             false
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("an approval answered with n refuses the tool", async () => {
@@ -453,7 +453,7 @@ async function main() {
             /denied by the operator/
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("/approve switches the mode for the rest of the session", async () => {
@@ -494,7 +494,7 @@ async function main() {
             true
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("commands typed after a task run in order", async () => {
@@ -527,7 +527,7 @@ async function main() {
         assert.ok(historyAt > answerAt, "/history ran before the task finished");
         assert.match(run.stdout, /calls: \d+, failures: \d+/);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("/help, /tools, /agents and /policy list the runtime", async () => {
@@ -551,7 +551,7 @@ async function main() {
         assert.match(run.stdout, /require_approval/);
         assert.match(run.stdout, /max_run_ms/);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("an unknown command is reported without ending the session", async () => {
@@ -573,7 +573,7 @@ async function main() {
         assert.match(run.stdout, /still here/);
         assert.equal(run.code, 0);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("/save writes the last answer to a file", async () => {
@@ -601,7 +601,7 @@ async function main() {
             "the answer to save"
         );
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("Ctrl-C cancels the running task but keeps the session", async () => {
@@ -641,7 +641,7 @@ async function main() {
         assert.match(run.stdout, /goodbye/);
         assert.equal(run.code, 0);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     await test("--interactive cannot be combined with --json", async () => {
@@ -666,7 +666,7 @@ async function main() {
         assert.equal(run.code, 2);
         assert.match(run.stderr, /cannot be combined/);
 
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
 
     const failed =

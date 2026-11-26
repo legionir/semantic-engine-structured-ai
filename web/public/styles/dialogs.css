@@ -117,6 +117,7 @@
   gap: 8px; align-items: center; padding: 3px 0;
 }
 .mcp-field .label { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.mcp-field textarea.mcp-env { width: 100%; resize: vertical; font-family: monospace; }
 .mcp-field input, .mcp-field select {
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: 6px; color: var(--text); padding: 5px 7px;

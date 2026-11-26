@@ -279,5 +279,5 @@ module.exports = async function discussionCases(ctx) {
 
     require(path.join(REPO_ROOT, "agent", "tools")).shutdown();
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 };

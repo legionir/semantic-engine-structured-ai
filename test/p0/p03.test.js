@@ -162,7 +162,7 @@ async function settle(promise) {
 function cleanup() {
 
     try {
-        fs.rmSync(BASE, { recursive: true, force: true });
+        fs.rmSync(BASE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     } catch {
         /* best effort */
     }

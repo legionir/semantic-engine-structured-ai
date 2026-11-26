@@ -258,7 +258,7 @@ async function main() {
 
     for (const dir of [WORKSPACE, PROJECT_ROOT, DATA_HOME]) {
 
-        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
 
     process.exit(ok ? 0 : 1);

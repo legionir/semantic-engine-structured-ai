@@ -211,7 +211,7 @@ async function main() {
     server.close();
 
     for (const dir of [WORKSPACE, ROOT_A, ROOT_B, DATA_HOME]) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
 
     process.exit(failed === 0 ? 0 : 1);

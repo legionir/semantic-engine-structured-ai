@@ -277,6 +277,41 @@ async function main() {
         assert.equal(refused.status, 403);
     });
 
+    await test("the page carries a strict CSP that admits exactly its own inline script; every file is nosniff", async () => {
+
+        const crypto = require("crypto");
+        const get = async url => fetch(`${baseUrl}${url}`, { headers: { authorization: `Bearer ${server.token}` } });
+
+        for (const url of ["/", "/projects/prj-a?tab=overview"]) {
+            const page = await get(url);
+            const html = await page.text();
+            const csp = page.headers.get("content-security-policy") || "";
+            assert.equal(page.status, 200, url);
+            assert.equal(page.headers.get("x-content-type-options"), "nosniff");
+
+            const directives = Object.fromEntries(csp.split(";").map(part => part.trim().split(/\s+/)).map(([name, ...values]) => [name, values]));
+            assert.deepEqual(directives["default-src"], ["'self'"]);
+            assert.deepEqual(directives["style-src"], ["'self'"], "no inline styles");
+            assert.deepEqual(directives["connect-src"], ["'self'"]);
+            assert.deepEqual(directives["object-src"], ["'none'"]);
+            assert.deepEqual(directives["base-uri"], ["'none'"]);
+            assert.ok(!csp.includes("unsafe-inline") && !csp.includes("unsafe-eval"), csp);
+            assert.ok(!csp.includes("frame-ancestors"), "the console may still be embedded (previews)");
+
+            const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(match => match[1]);
+            assert.ok(inline.length >= 1, "the page has its auth-pending script");
+            const hashes = inline.map(code => `'sha256-${crypto.createHash("sha256").update(code, "utf8").digest("base64")}'`);
+            assert.deepEqual(directives["script-src"], ["'self'", ...hashes], "exactly this origin and the page's own inline scripts");
+            assert.doesNotMatch(html, /\son[a-z]+\s*=\s*"/i, "no inline event handlers, which the policy would block");
+            assert.doesNotMatch(html, /\sstyle\s*=\s*"/i, "no style attributes, which the policy would block");
+        }
+
+        const script = await get("/app/main.js");
+        await script.text();
+        assert.equal(script.headers.get("x-content-type-options"), "nosniff");
+        assert.equal(script.headers.get("content-security-policy"), null, "the policy belongs to the page");
+    });
+
     await server.close();
     await runtime.eventstore.flush();
     await runtime.journal.flush();

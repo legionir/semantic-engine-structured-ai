@@ -693,8 +693,8 @@ async function main() {
 
     await new Promise(resolve => stub.server.close(resolve));
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     console.log(`\n${results.filter(item => item.ok).length}/${results.length} passed`);
 

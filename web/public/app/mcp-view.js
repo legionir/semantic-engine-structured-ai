@@ -194,8 +194,8 @@ function AddForm({ mcp, actions }) {
             <textarea
                 name="env"
                 rows="3"
+                class="mcp-env"
                 placeholder=${ENV_PLACEHOLDER}
-                style="width: 100%; resize: vertical; font-family: monospace"
             ></textarea>
         </label>
         <p class="mcp-message">${mcp.formMessage}</p>

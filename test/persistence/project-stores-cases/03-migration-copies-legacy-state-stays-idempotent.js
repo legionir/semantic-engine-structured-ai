@@ -198,7 +198,7 @@ module.exports = async function migrationCopiesLegacyStateStaysIdempotentCases(c
                 )
             );
 
-            fs.rmSync(LEGACY, { recursive: true, force: true });
+            fs.rmSync(LEGACY, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
         } finally {
 
@@ -249,7 +249,7 @@ module.exports = async function migrationCopiesLegacyStateStaysIdempotentCases(c
 
         assert.equal(conflict.code, 2);
 
-        fs.rmSync(ADOPT, { recursive: true, force: true });
+        fs.rmSync(ADOPT, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
     });
 };

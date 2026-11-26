@@ -76,13 +76,13 @@ async function main() {
     } finally {
         clearInterval(tick);
         tools.shutdown();
-        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
 }
 
 main().catch(error => {
     console.error(error);
     tools.shutdown();
-    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     process.exit(1);
 });

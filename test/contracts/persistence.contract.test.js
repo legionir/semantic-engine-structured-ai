@@ -116,7 +116,7 @@ async function main() {
 
     const failed = results.filter(item => !item.ok);
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
-    fs.rmSync(WORKSPACE, { recursive: true, force: true });
+    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     process.exit(failed.length === 0 ? 0 : 1);
 }
 
