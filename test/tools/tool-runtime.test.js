@@ -14,6 +14,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const { removeTempDirs } = require("../helpers/cleanup");
 const os = require("os");
 const path = require("path");
 
@@ -377,15 +378,7 @@ async function main() {
         /* ignore */
     }
 
-    await runtime.eventstore.flush();
-    await runtime.journal.flush();
-
-    /* best effort: Windows can still hold a handle a moment after the last write */
-    try {
-        fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    } catch (error) {
-        console.log(`  (left ${WORKSPACE}: ${error.code || error.message})`);
-    }
+    await removeTempDirs(runtime, WORKSPACE);
 
     process.exit(failed.length === 0 ? 0 : 1);
 

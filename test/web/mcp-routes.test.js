@@ -16,6 +16,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const { removeTempDirs } = require("../helpers/cleanup");
 const os = require("os");
 const path = require("path");
 
@@ -277,20 +278,11 @@ async function main() {
 
     await require(path.join(REPO, "agent", "tools")).mcp._manager.shutdown();
     await server.close();
-    await runtime.eventstore.flush();
-    await runtime.journal.flush();
 
     const failed = results.filter(item => !item.ok);
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
 
-    /* best effort: Windows can still hold a handle a moment after the last write */
-    for (const dir of [WORKSPACE, TRUST_HOME]) {
-        try {
-            fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-        } catch (error) {
-            console.log(`  (left ${dir}: ${error.code || error.message})`);
-        }
-    }
+    await removeTempDirs(runtime, WORKSPACE, TRUST_HOME);
 
     process.exit(failed.length === 0 ? 0 : 1);
 }

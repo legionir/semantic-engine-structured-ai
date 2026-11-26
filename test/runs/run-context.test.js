@@ -24,6 +24,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const { removeTempDirs } = require("../helpers/cleanup");
 const os = require("os");
 const http = require("http");
 const path = require("path");
@@ -693,8 +694,7 @@ async function main() {
 
     await new Promise(resolve => stub.server.close(resolve));
 
-    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await removeTempDirs(runtime, WORKSPACE, DATA_HOME);
 
     console.log(`\n${results.filter(item => item.ok).length}/${results.length} passed`);
 
