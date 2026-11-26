@@ -100,5 +100,113 @@ module.exports = [
         "min": 0,
         "max": 100,
         "description": "Observational CPU percent ceiling per project (Phase 10). 0 means unlimited; the live percent is reported on /api/metrics."
+    },
+    {
+        "key": "LOG_LEVEL",
+        "group": "logging",
+        "type": "enum",
+        "values": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+        ],
+        "default": "info",
+        "description": "Lowest level kept in the application log (Logs in the console): failed AI requests and retries, run, tool, hook and MCP failures, server errors and crashes."
+    },
+    {
+        "key": "LOG_BUFFER_ENTRIES",
+        "group": "logging",
+        "type": "number",
+        "default": 2000,
+        "min": 100,
+        "max": 50000,
+        "description": "Application log entries kept in memory for the console."
+    },
+    {
+        "key": "LOG_FILE_ENABLED",
+        "group": "logging",
+        "type": "boolean",
+        "default": true,
+        "description": "When the console is served, also append the application log to <data home>/logs/structured-ai.jsonl."
+    },
+    {
+        "key": "LOG_FILE_MAX_MB",
+        "group": "logging",
+        "type": "number",
+        "default": 10,
+        "min": 1,
+        "max": 1024,
+        "description": "Size at which the application log file is rotated."
+    },
+    {
+        "key": "LOG_FILE_KEEP",
+        "group": "logging",
+        "type": "number",
+        "default": 3,
+        "min": 1,
+        "max": 20,
+        "description": "Rotated application log files kept next to the current one (.1 is the newest)."
+    },
+    {
+        "key": "LOG_MAX_FIELD_CHARS",
+        "group": "logging",
+        "type": "number",
+        "default": 8000,
+        "min": 500,
+        "max": 200000,
+        "description": "Longest message or detail text (such as a model's error response) kept in one log entry before it is clipped."
+    },
+    {
+        "key": "CONSOLE_TERMINAL_ENABLED",
+        "group": "console",
+        "type": "boolean",
+        "default": true,
+        "fixed": true,
+        "description": "Allow the admin console token to open system terminals (an unsandboxed shell in the workspace, running as the server's user). Set through the environment and restart to change it."
+    },
+    {
+        "key": "CONSOLE_TERMINAL_MAX_SESSIONS",
+        "group": "console",
+        "type": "number",
+        "default": 4,
+        "min": 1,
+        "max": 32,
+        "description": "Terminals that may be open at the same time."
+    },
+    {
+        "key": "CONSOLE_TERMINAL_SCROLLBACK_CHARS",
+        "group": "console",
+        "type": "number",
+        "default": 262144,
+        "min": 4096,
+        "max": 16777216,
+        "description": "Terminal output the server keeps per terminal, replayed when the console reconnects or reopens it."
+    },
+    {
+        "key": "CONSOLE_FILE_MANAGER_ENABLED",
+        "group": "console",
+        "type": "boolean",
+        "default": true,
+        "fixed": true,
+        "description": "Allow the admin console token to browse, create, edit, rename and delete files inside the workspace. Set through the environment and restart to change it."
+    },
+    {
+        "key": "CONSOLE_FILE_MAX_BYTES",
+        "group": "console",
+        "type": "number",
+        "default": 2097152,
+        "min": 1024,
+        "max": 52428800,
+        "description": "Largest file the console file manager opens or saves as text."
+    },
+    {
+        "key": "CONSOLE_FILE_LIST_MAX",
+        "group": "console",
+        "type": "number",
+        "default": 5000,
+        "min": 100,
+        "max": 100000,
+        "description": "Entries the console file manager lists in one folder; a larger folder is shown truncated."
     }
 ];

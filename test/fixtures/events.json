@@ -72,10 +72,7 @@
     "tool:graph",
     "tool:start"
   ],
-  "excluded_mechanic_names": [
-    "event",
-    "change"
-  ],
+  "excluded_mechanic_names": ["event", "change", "entry", "cleared", "sink-error"],
   "baseline_final_turn_sequence": [
     "run:start",
     "agent:iteration",
