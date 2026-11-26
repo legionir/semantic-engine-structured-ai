@@ -41,7 +41,10 @@ export const REGIONS = Object.freeze([
     "settings",
     "mcp",
     "history",
-    "dashboard"
+    "dashboard",
+    "logs",
+    "terminal",
+    "files"
 ]);
 
 
@@ -119,6 +122,16 @@ export function createState() {
 
         /* mcpState: filled by mcp-view's createMcpState when the modal opens */
         mcp: null,
+        /* operator tools: filled by their controllers when first opened */
+        logs: null,
+        terminal: null,
+        files: null,
+        /* how often the Logs badge checks for new errors (ms) */
+        logBadgePollMs: 20000,
+        /* keystrokes typed within this window go in one request (ms) */
+        terminalInputFlushMs: 8,
+        /* a dialog resize settles this long before the shell is told (ms) */
+        terminalResizeDebounceMs: 120,
 
         /* discussion */
         discussion: null,

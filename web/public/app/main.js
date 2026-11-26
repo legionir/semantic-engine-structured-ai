@@ -27,6 +27,9 @@ import * as dom from "./dom.js";
 import * as formatters from "./formatters.js";
 import * as direction from "./direction.js";
 import * as markdown from "./markdown.js";
+import * as logs from "./logs-view.js";
+import * as terminal from "./terminal-view.js";
+import * as files from "./files-view.js";
 
 /* The controller owns the browser wiring and mounts every view. */
 import "./console.js";
@@ -52,7 +55,10 @@ export const modules = Object.freeze({
   dom,
   formatters,
   direction,
-  markdown
+  markdown,
+  logs,
+  terminal,
+  files
 });
 
 if (typeof globalThis !== "undefined") {

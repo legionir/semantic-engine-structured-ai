@@ -1,5 +1,5 @@
 {
-  "description": "Browser ESM dependencies vendored verbatim from the npm registry; only the trailing sourceMappingURL comment is removed. To update: download the tarball named in `source`, copy the listed dist file here, strip the sourceMappingURL line, and update `version` and `sha256` (test/ui/reactive.test.js checks the digests).",
+  "description": "Browser ESM dependencies vendored verbatim from the npm registry; only the trailing sourceMappingURL comment is removed. To update: download the tarball named in `source`, copy the listed dist file here (an .mjs file is saved as .module.js), strip the sourceMappingURL line, and update `version` and `sha256` (test/ui/reactive.test.js checks the digests).",
   "files": {
     "preact.module.js": {
       "package": "preact",
@@ -21,6 +21,27 @@
       "source": "https://registry.npmjs.org/@preact/signals-core/-/signals-core-1.14.5.tgz#package/dist/signals-core.module.js",
       "license": "MIT",
       "sha256": "9cbedfaa6e7830244458b8cb7bf32b51d5d0fd36e848bde986f5ba082a543d97"
+    },
+    "xterm.module.js": {
+      "package": "@xterm/xterm",
+      "version": "6.0.0",
+      "source": "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz#package/lib/xterm.mjs",
+      "license": "MIT",
+      "sha256": "3fd3d0046d2604ea5860235e2f96625a2fab158dcf3d4cfb0f7c1655559a5d9a"
+    },
+    "xterm.css": {
+      "package": "@xterm/xterm",
+      "version": "6.0.0",
+      "source": "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz#package/css/xterm.css",
+      "license": "MIT",
+      "sha256": "854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6"
+    },
+    "xterm-addon-fit.module.js": {
+      "package": "@xterm/addon-fit",
+      "version": "0.11.0",
+      "source": "https://registry.npmjs.org/@xterm/addon-fit/-/addon-fit-0.11.0.tgz#package/lib/addon-fit.mjs",
+      "license": "MIT",
+      "sha256": "aa22c5f28e4d64118ac0e7d60276b3384188e59dd104c96e43760d6e2cedd771"
     }
   }
 }

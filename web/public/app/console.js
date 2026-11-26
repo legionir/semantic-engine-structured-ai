@@ -30,6 +30,9 @@ import { stopProjectQueue } from "./queue-controller.js";
 import { removeAttachment, selectedReasoningEffort, submitTask } from "./composer-controller.js";
 import { mountDashboard } from "./projects-controller.js";
 import { initProjects } from "./project-manager.js";
+import { installPanelErrorReporting, openLogs, startLogBadge } from "./logs-controller.js";
+import { openTerminal } from "./terminal-controller.js";
+import { openFiles } from "./files-controller.js";
 
 
 el("taskForm").addEventListener("submit", async submitEvent => {
@@ -118,6 +121,9 @@ el("consoleMenu").addEventListener("click", event => {
 });
 
 el("mcpButton").addEventListener("click", openMcp);
+el("logsButton").addEventListener("click", openLogs);
+el("terminalButton").addEventListener("click", openTerminal);
+el("filesButton").addEventListener("click", openFiles);
 el("historyButton").addEventListener("click", openHistory);
 el("executionButton").addEventListener("click", openExecutionModal);
 el("eventsButton").addEventListener("click", openEventsModal);
@@ -144,3 +150,7 @@ connect();
 loadSettings();
 
 initProjects();
+
+startLogBadge();
+
+installPanelErrorReporting();
