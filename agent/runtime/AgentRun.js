@@ -16,6 +16,8 @@ const Delegation = require("./DelegationRunner");
 
 const { isInitCommand, initTask } = require("../prompt/ProjectInstructionsBuilder");
 const { expandTask } = require("../prompt/TaskMentions");
+const { parseSkillCommand, attachSkill } = require("../tools/skills/SkillCommand");
+const { syncSkillIndex } = require("../prompt/SkillIndexMessage");
 const { channel: imageChannel } = require("./ImageChannel");
 
 
@@ -142,22 +144,47 @@ async function runAgentCore(options = {}) {
     | words as its task.
     */
 
+    /* `/skill <name> [message]`: that skill's full text rides with this message */
+    const skillCommand =
+        parseSkillCommand(options.task);
+
     const prepared =
         expandTask(
-            options.task && options.task.trim() !== ""
-                ? options.task
-                : h.readTask(),
+            skillCommand
+                ? skillCommand.message
+                : options.task && options.task.trim() !== ""
+                    ? options.task
+                    : h.readTask(),
             (projectContext && (projectContext.workspaceRoot || projectContext.rootPath)) ||
                 require("../context/WorkspaceBoundary").WORKSPACE_ROOT
         );
 
+    if (skillCommand) {
+
+        prepared.task =
+            await attachSkill(skillCommand, prepared.task, {
+                toolContext: require("../tools/ToolContext").from({
+                    agent: "main_agent",
+                    runId: h.currentRun().runId,
+                    projectContext: projectContext || undefined
+                })
+            });
+    }
+
     if (messages.length === 0) {
 
         messages.push(
-            ...h.createMainAgentMessages(prepared.task)
+            ...h.createMainAgentMessages(prepared.task, { omitSkillIndex: Boolean(skillCommand) })
         );
 
     } else {
+
+        /* the index of this turn: refreshed, or none beside a chosen skill */
+        if (skillCommand) {
+            syncSkillIndex(messages, null);
+        } else if (typeof h.createSkillIndexMessage === "function") {
+            syncSkillIndex(messages, h.createSkillIndexMessage(prepared.task));
+        }
 
         messages.push({
             role: "user",

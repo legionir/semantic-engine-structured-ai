@@ -221,6 +221,33 @@ module.exports = [
         "description": "Cap on one slice of a skill resource, so a house style cannot flood the conversation."
     },
     {
+        "key": "SKILL_INDEX_MAX_CHARS",
+        "group": "tools",
+        "type": "number",
+        "default": 3000,
+        "min": 500,
+        "max": 100000,
+        "description": "Budget of the prompt's skill index (the skills sent to the AI). Skills past it are listed by name only."
+    },
+    {
+        "key": "SKILL_INDEX_DESCRIPTION_CHARS",
+        "group": "tools",
+        "type": "number",
+        "default": 200,
+        "min": 40,
+        "max": 1000,
+        "description": "Each description in the prompt's skill index is cut to this many characters."
+    },
+    {
+        "key": "SKILL_COMMAND_MAX_CHARS",
+        "group": "tools",
+        "type": "number",
+        "default": 60000,
+        "min": 1000,
+        "max": 400000,
+        "description": "Cap on the skill text `/skill <name>` attaches to a message (the whole SKILL.md body, unlike skill_get's SKILL_RESOURCE_CHARS)."
+    },
+    {
         "key": "WRITE_EDIT_HINT_BYTES",
         "group": "tools",
         "type": "number",
@@ -305,6 +332,24 @@ module.exports = [
         "min": 1000,
         "max": 3600000,
         "description": "Default timeout for terminal_exec when the call does not set one."
+    },
+    {
+        "key": "TERMINAL_CANCEL_GRACE_MS",
+        "group": "tools",
+        "type": "number",
+        "default": 2000,
+        "min": 0,
+        "max": 60000,
+        "description": "When a run is stopped, a running terminal_exec command gets SIGTERM and, after this many milliseconds, SIGKILL."
+    },
+    {
+        "key": "TOOL_CANCEL_WAIT_MS",
+        "group": "tools",
+        "type": "number",
+        "default": 3000,
+        "min": 0,
+        "max": 60000,
+        "description": "When a run is stopped, how long the runtime waits for a running tool to stop on its own before it abandons the call and ends the run."
     },
     {
         "key": "GIT_TIMEOUT_MS",

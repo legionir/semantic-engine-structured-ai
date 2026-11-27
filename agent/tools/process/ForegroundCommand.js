@@ -56,6 +56,13 @@ function assertNoForeignCd(ctx, command) {
 }
 
 
+function cancelledError(command) {
+    const error = new Error(`Run cancelled: the command was not started (${command}).`);
+    error.code = "RUN_CANCELLED";
+    return error;
+}
+
+
 function terminalExec(args, context) {
 
     const ctx = ToolContext.from(context);
@@ -94,10 +101,41 @@ function terminalExec(args, context) {
             ? args.timeout_ms
             : settings.get("TERMINAL_TIMEOUT_MS");
 
+    /* Stop pressed before the command even started */
+    if (ctx.signal && ctx.signal.aborted) {
+        return Promise.reject(cancelledError(args.command));
+    }
+
     return new Promise(resolve => {
 
         const child =
             ProcessManager.spawnInGroup(ctx, args.command, cwd);
+
+        /*
+        | Stop (or the run deadline) aborts the run's signal: the whole
+        | process group gets SIGTERM, and SIGKILL after a short grace, so a
+        | build or a `sleep` started by the agent does not outlive the run.
+        */
+        let cancelled = false;
+        let graceTimer = null;
+
+        const onAbort = () => {
+            if (cancelled) return;
+            cancelled = true;
+            ProcessManager.killTree(child, "SIGTERM");
+            graceTimer = setTimeout(
+                () => ProcessManager.killTree(child, "SIGKILL"),
+                settings.get("TERMINAL_CANCEL_GRACE_MS")
+            );
+            if (typeof graceTimer.unref === "function") graceTimer.unref();
+        };
+
+        const detachAbort = () => {
+            clearTimeout(graceTimer);
+            if (ctx.signal) ctx.signal.removeEventListener("abort", onAbort);
+        };
+
+        if (ctx.signal) ctx.signal.addEventListener("abort", onAbort, { once: true });
 
         let stdout = "";
         let stderr = "";
@@ -154,6 +192,7 @@ function terminalExec(args, context) {
             error => {
 
                 clearTimeout(timer);
+                detachAbort();
 
                 resolve({
                     cwd:
@@ -191,6 +230,7 @@ function terminalExec(args, context) {
             (code, signal) => {
 
                 clearTimeout(timer);
+                detachAbort();
 
                 resolve({
                     cwd:
@@ -213,6 +253,8 @@ function terminalExec(args, context) {
 
                     timed_out: timedOut,
 
+                    cancelled,
+
                     stdout:
                         truncateText(stdout).text,
 
@@ -222,7 +264,7 @@ function terminalExec(args, context) {
                     output_truncated: outputTruncated,
 
                     success:
-                        code === 0 && !timedOut
+                        code === 0 && !timedOut && !cancelled
                 });
             }
         );

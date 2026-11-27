@@ -241,6 +241,32 @@ async function fileManagerTests() {
         await rejects(files.openForDownload("src"), 400);
     });
 
+    await test("upload() stores any bytes atomically, asks before replacing and enforces its own limit", async () => {
+        const { Readable } = require("stream");
+        const bytes = Buffer.from([0, 1, 2, 250, 255, 0, 10, 13]);
+        const stored = await files.upload("uploads/pic.bin", Readable.from([bytes.subarray(0, 3), bytes.subarray(3)]), { maxBytes: 1024 });
+        assert.deepEqual([stored.path, stored.size, stored.created], ["uploads/pic.bin", 8, true]);
+        assert.deepEqual(fs.readFileSync(path.join(ROOT, "uploads", "pic.bin")), bytes, "binary bytes are kept exactly");
+
+        const clash = await rejects(files.upload("uploads/pic.bin", Readable.from([Buffer.from("x")]), { maxBytes: 1024 }), 409, /Already exists/);
+        assert.equal(clash.exists, true);
+        assert.deepEqual(fs.readFileSync(path.join(ROOT, "uploads", "pic.bin")), bytes, "a refused upload leaves the file alone");
+        const replaced = await files.upload("uploads/pic.bin", Readable.from([Buffer.from("new")]), { overwrite: true, maxBytes: 1024 });
+        assert.deepEqual([replaced.created, fs.readFileSync(path.join(ROOT, "uploads", "pic.bin"), "utf8")], [false, "new"]);
+
+        await rejects(files.upload("uploads/huge.bin", Readable.from([Buffer.alloc(600), Buffer.alloc(600)]), { maxBytes: 1024 }), 413, /CONSOLE_FILE_UPLOAD_MAX_BYTES/);
+        assert.ok(!fs.existsSync(path.join(ROOT, "uploads", "huge.bin")), "an oversized upload leaves nothing behind");
+        assert.deepEqual(fs.readdirSync(path.join(ROOT, "uploads")).filter(name => name.endsWith(".upload")), [], "no temp file is left");
+
+        await rejects(files.upload("../outside/x.bin", Readable.from([Buffer.from("x")])), 400);
+        await rejects(files.upload("src", Readable.from([Buffer.from("x")]), { overwrite: true }), 400, /Is a directory/);
+        await rejects(files.upload(".", Readable.from([Buffer.from("x")])), 400);
+        if (linked) {
+            await rejects(files.upload("inside.js", Readable.from([Buffer.from("x")]), { overwrite: true }), 400, /symlink/);
+        }
+        await files.remove("uploads", true);
+    });
+
     limit = 64;
 }
 

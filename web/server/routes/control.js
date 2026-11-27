@@ -19,6 +19,47 @@ const { sendJson } = require("../Response");
 const { listModels, listModelCatalog, clearModelCatalogCache } = require("../../../agent/providers/ModelCatalog");
 
 
+/* the id of the project a run without an explicit project runs in */
+function defaultProjectIdOf(runtime) {
+
+    try {
+        const context = typeof runtime.resolveRunProjectContext === "function"
+            ? runtime.resolveRunProjectContext({})
+            : null;
+        return (context && (context.projectId || (context.project && context.project.id))) || null;
+    } catch {
+        return null;
+    }
+}
+
+
+/* is this tracked run the one the console's Stop button means? */
+function isForegroundRun(run, state, defaultProjectId, conversations) {
+
+    if (state.currentTurnId && run.turnId === state.currentTurnId) {
+        return true;
+    }
+
+    const projectId = run.projectId || null;
+
+    if (projectId === (state.projectId || null)) {
+        return true;
+    }
+
+    if (!state.projectId && defaultProjectId && projectId === defaultProjectId) {
+
+        /* a background conversation of that same project keeps running */
+        const conv = conversations && typeof conversations.get === "function"
+            ? conversations.get(projectId)
+            : null;
+
+        return !(conv && conv.background && run.turnId && conv.currentTurnId === run.turnId);
+    }
+
+    return false;
+}
+
+
 module.exports = async function ControlRoutes(shared, request) {
 
     const {
@@ -130,8 +171,17 @@ module.exports = async function ControlRoutes(shared, request) {
             : [];
         let cancelledTrackedRun = false;
 
+        /*
+        | The foreground run is found by its turn id first. A console with no
+        | project selected (state.projectId null) runs in the workspace's
+        | default project, whose run carries that project's id — matching on
+        | the raw null missed it, the global legacy RUN (no controller) was
+        | "cancelled" instead, and Stop answered 200 while the run went on.
+        */
+        const defaultProjectId = state.projectId ? null : defaultProjectIdOf(runtime);
+
         for (const run of [...activeRuns, ...queuedRuns]) {
-            if ((run.projectId || null) === (state.projectId || null)) {
+            if (isForegroundRun(run, state, defaultProjectId, shared.conversations)) {
                 cancelledTrackedRun = runtime.cancelRunById(run.runId, "web console") || cancelledTrackedRun;
             }
         }

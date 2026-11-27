@@ -23,6 +23,7 @@ export const COMMANDS = [
     { id: "terminalButton", title: "Terminal", subtitle: "Open system terminal inside workspace", category: "Tools", keys: ["terminal", "shell", "bash", "console", "cli"] },
     { id: "filesButton", title: "Files", subtitle: "Browse, view, and edit workspace files", category: "Tools", keys: ["files", "workspace", "code", "browser", "editor"] },
     { id: "notificationsButton", title: "Notifications", subtitle: "Toggle background browser notifications", category: "Settings", keys: ["notifications", "notify", "alert", "bell"] },
+    { id: "logoutButton", title: "Sign Out", subtitle: "Sign out of the console on this browser", category: "Account", keys: ["sign out", "logout", "log out", "exit", "leave"] },
     { id: "settingsButton", title: "Settings", subtitle: "Open runtime and agent configuration", category: "Settings", keys: ["settings", "config", "preferences", "options"] },
     { id: "approvalsButton", title: "Approvals", subtitle: "Review and respond to pending tool approvals", category: "Actions", keys: ["approvals", "pending", "confirm", "allow", "deny"] },
     { id: "discussionButton", title: "Discussion", subtitle: "Start multi-agent deliberation and synthesis", category: "Actions", keys: ["discussion", "deliberate", "personas", "multi-agent"] },
@@ -34,6 +35,7 @@ export const COMMANDS = [
     { id: "runButton", title: "Run Task / Cancel", subtitle: "Execute current prompt or cancel running turn", category: "Actions", keys: ["run", "execute", "stop", "cancel", "submit"] },
     { id: "attachFilesButton", title: "Attach Files", subtitle: "Attach files or images to next task", category: "Actions", keys: ["attach", "upload", "files", "screenshot"] },
     { id: "templatesButton", title: "Task Templates", subtitle: "Save and load reusable task descriptions", category: "Tools", keys: ["templates", "prompts", "snippets", "saved", "reuse"] },
+    { id: "skillsButton", title: "Skills", subtitle: "Browse every skill and choose which are sent to the AI", category: "Tools", keys: ["skills", "persona", "audit", "skill", "library"] },
     { id: "chatFormatToggle", title: "Toggle Raw / Markdown View", subtitle: "Switch agent responses between rendered Markdown and raw text", category: "Navigation", keys: ["raw", "markdown", "preview", "format", "toggle"] }
 ];
 

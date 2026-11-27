@@ -228,6 +228,7 @@ node bin/agent.js -i -w /path/to/project
 * `/tools` — مشاهده ابزارهای فعال
 * `/save` — ذخیره آخرین پاسخ در یک فایل
 * `/init` — بررسی پروژه و نوشتن یا به‌روزکردن `AGENTS.md` (معادل `node bin/agent.js init`)
+* `/skill <name> [task]` — فرستادن تسک همراه متن کامل یک skill (هر skill موجود؛ بدون فهرست skillها در آن درخواست)
 
 **دستورالعمل پروژه (`AGENTS.md` / `CLAUDE.md`):** اگر ریشهٔ پروژه `AGENTS.md` یا `CLAUDE.md` داشته باشد، متن آن (حداکثر `PROJECT_INSTRUCTIONS_MAX_CHARS` نویسه) در هر درخواست به ایجنت اصلی و زیرایجنت‌ها می‌رسد؛ `AGENTS.override.md` جای هر دو را می‌گیرد. فایل‌های هم‌نام در زیرپوشه‌ها (تا عمق `PROJECT_INSTRUCTIONS_SCAN_DEPTH`) فقط فهرست می‌شوند تا ایجنت هنگام کار در آن پوشه بخواندشان. symlinkی که به بیرون پروژه اشاره کند خوانده نمی‌شود.
 
@@ -440,6 +441,9 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `MAX_HASH_BYTES` | number | `52428800` | Largest file fs_info will hash. |
 | `WRITE_SHRINK_WARNING` | number | `0.4` | Share of a file an overwrite may remove before the result carries a warning. 1 disables the warning. |
 | `SKILL_RESOURCE_CHARS` | number | `8000` | Cap on one slice of a skill resource, so a house style cannot flood the conversation. |
+| `SKILL_INDEX_MAX_CHARS` | number | `3000` | Budget of the prompt's skill index (the skills sent to the AI). Skills past it are listed by name only. |
+| `SKILL_INDEX_DESCRIPTION_CHARS` | number | `200` | Each description in the prompt's skill index is cut to this many characters. |
+| `SKILL_COMMAND_MAX_CHARS` | number | `60000` | Cap on the skill text `/skill <name>` attaches to a message (the whole SKILL.md body, unlike skill_get's SKILL_RESOURCE_CHARS). |
 | `WRITE_EDIT_HINT_BYTES` | number | `4000` | Overwriting an existing file larger than this suggests fs_edit instead. 0 turns the suggestion off. |
 | `PROCESS_SANDBOX_MODE` | enum | `"deny"` | Process execution mode. deny is fail-closed; bwrap is Linux-only; docker and podman require a running container engine; test is only for the repository test harness. |
 | `PROCESS_SANDBOX_IMAGE` | string | `"node:22-bookworm"` | Container image for Docker/Podman process sandboxes. Repository project files cannot override it. |
@@ -450,6 +454,8 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROCESS_SANDBOX_TMP_MB` | number | `512` | Size of the writable /tmp tmpfs inside a Docker/Podman sandbox, in MiB. |
 | `PROCESS_ORPHAN_SWEEP` | boolean | `true` | When the console starts, stop the background processes a previous runtime started and could not stop because it was killed (recorded in `<data home>/processes.json`; on Linux a process is stopped only when its start time still matches). |
 | `TERMINAL_TIMEOUT_MS` | number | `30000` | Default timeout for terminal_exec when the call does not set one. |
+| `TERMINAL_CANCEL_GRACE_MS` | number | `2000` | When a run is stopped, a running terminal_exec command gets SIGTERM and, after this many milliseconds, SIGKILL. |
+| `TOOL_CANCEL_WAIT_MS` | number | `3000` | When a run is stopped, how long the runtime waits for a running tool to stop on its own before it abandons the call and ends the run. |
 | `GIT_TIMEOUT_MS` | number | `30000` | Timeout for a single git command. |
 | `HOOKS_ENABLED` | boolean | `false` | Run declarative before_task and after_task hooks. Off by default; projects opt in through .agent/project.json. |
 | `HOOK_TIMEOUT_MS` | number | `300000` | Independent wall-clock budget for each hook phase, including after_task when the main run deadline was spent. |
@@ -540,6 +546,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `CONSOLE_TERMINAL_SCROLLBACK_CHARS` | number | `262144` | Terminal output the server keeps per terminal, replayed when the console reconnects or reopens it. |
 | `CONSOLE_FILE_MANAGER_ENABLED` | boolean · fixed at startup | `true` | Allow the admin console token to browse, create, edit, rename and delete files inside the workspace. Set through the environment and restart to change it. |
 | `CONSOLE_FILE_MAX_BYTES` | number | `2097152` | Largest file the console file manager opens or saves as text. |
+| `CONSOLE_FILE_UPLOAD_MAX_BYTES` | number | `52428800` | Largest file the console file manager accepts as an upload (any file type). The body is streamed to disk, so this is not held in memory. |
 | `CONSOLE_FILE_LIST_MAX` | number | `5000` | Entries the console file manager lists in one folder; a larger folder is shown truncated. |
 | `AGENT_REASONING_EFFORT` | enum | `"inherit"` | Default reasoning effort inherited by layer models whose effort is set to inherit. |
 | `ENDPOINT_MAIN_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for the root orchestrator. Inherit uses AGENT_REASONING_EFFORT. |
@@ -571,7 +578,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
 | `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۵۹ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۶۵ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -619,8 +626,8 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 ## ۶. مستندات کامل اندپوینت‌های سرور وب کنسول (Web Server & REST / SSE API)
 
 سرور canonical با `node bin/agent.js --serve <port> -w <path>` اجرا می‌شود.
-APIهای runtime token-protected هستند؛ مسیرهای `/auth/status` و `/auth/login`
-برای ورود به پنل استثنا هستند. برای فعال‌کردن رمز ورود، پیش از اجرا تنظیم کنید:
+APIهای runtime token-protected هستند؛ مسیرهای `/auth/status`، `/auth/login` و `/auth/logout`
+برای ورود به پنل و خروج از آن استثنا هستند. برای فعال‌کردن رمز ورود، پیش از اجرا تنظیم کنید:
 
 ```bash
 AGENT_CONSOLE_PASSWORD_REQUIRED=true AGENT_CONSOLE_PASSWORD='choose-a-long-password' node bin/agent.js --serve 7777
@@ -636,6 +643,12 @@ AGENT_CONSOLE_PASSWORD_REQUIRED=true AGENT_CONSOLE_PASSWORD='choose-a-long-passw
   ورود را برمی‌گرداند.
 - با رمز، هر ورود یک نشست جدا با عمر `CONSOLE_PASSWORD_SESSION_TTL_MS` می‌سازد
   (حداکثر `CONSOLE_PASSWORD_SESSIONS_MAX` نشست هم‌زمان).
+- **خروج:** دکمهٔ **Sign out** آخرین گزینهٔ منوی بالای پنل است و در پالت فرمان هم هست. بعد از تأیید، `POST /auth/logout` فرستاده می‌شود:
+  - نشست رمزدار همان مرورگر در سرور باطل می‌شود، پس کپی cookie هم دیگر کار نمی‌کند.
+  - هر دو cookie کنسول با `Max-Age=0` منقضی می‌شوند.
+  - token یا نشستی که در حافظهٔ تب بوده پاک می‌شود و صفحه بدون query دوباره بارگذاری می‌شود تا صفحهٔ ورود بیاید.
+  - این مسیر فقط از همان origin پذیرفته می‌شود و بدون اعتبار معتبر هم پاسخ `200 {ok, revoked}` می‌دهد، پس تکرارش بی‌خطر است. اگر سرور خروج را تأیید نکند، کاربر وارد می‌ماند و خطا نمایش داده می‌شود.
+  - تسک‌های در حال اجرا متوقف نمی‌شوند. token کنسول هم باطل نمی‌شود، چون جزو تنظیمات است نه نشست.
 - روی HTTPS cookie با `Secure; SameSite=None; Partitioned` صادر می‌شود تا پنل
   داخل iframe هم کار کند. روی HTTP همان `SameSite=Strict` می‌ماند.
 - اگر مرورگر cookie را در iframe مسدود کند، صفحه token یا نشست را فقط در
@@ -690,6 +703,9 @@ method/path کامل در
 | `DELETE` | `/api/interrupted/:id` | کنار گذاشتن؛ وضعیت گفتگو «stopped» (`cancelled`) می‌شود |
 | `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
 | `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
+| `GET` | `/api/skills?projectId=` | همهٔ skillها (registry، داخلی، کاربر، پروژه و کتابخانه‌ها) با `prompt_enabled`، کتابخانه‌ها و اندازهٔ index (دسترسی `project:read`) |
+| `PUT` | `/api/skills/prompt` | `{name, enabled}`: ارسال یا عدم ارسال یک skill به AI در index پرامپت (ادمین) |
+| `POST` | `/api/skills/prompt/reset` | بازگشت به پیش‌فرض: skillهای پیشنهادی کتابخانه‌ها و بقیه روشن (ادمین) |
 
 ### لاگ، ترمینال و مدیریت فایل (فقط token ادمین)
 
@@ -718,6 +734,7 @@ method/path کامل در
 | `GET/PUT` | `/api/files/content` | خواندن / ذخیرهٔ atomic `{path, content, expected_mtime_ms}`؛ اگر فایل در این فاصله تغییر کرده باشد `409` |
 | `POST` | `/api/files/rename` | تغییر نام یا جابه‌جایی `{from, to}` |
 | `GET` | `/api/files/download` | دانلود فایل |
+| `PUT` | `/api/files/upload?path=&overwrite=1` | آپلود مستقیم: بدنهٔ خام درخواست (هر نوع فایل، متنی یا باینری) در `path` ذخیره می‌شود؛ streaming و atomic (فایل موقت + rename). اگر فایل وجود داشته باشد `409` با `exists: true`، مگر با `overwrite=1`. سقف حجم `CONSOLE_FILE_UPLOAD_MAX_BYTES` (پیش‌فرض ۵۰MB)؛ بیشتر از آن `413` و هیچ فایلی باقی نمی‌ماند |
 
 همهٔ مسیرهای `/api/files` پارامتر اختیاری `projectId` را می‌پذیرند (ریشهٔ همان پروژه)؛ هیچ مسیری، حتی از طریق symlink، از ریشه خارج نمی‌شود.
 
@@ -725,15 +742,24 @@ method/path کامل در
 
 این بخش‌ها فقط در مرورگر کار می‌کنند و API تازه‌ای ندارند:
 
+- **منوی بالای پنل** بر اساس کاربرد و اهمیت در چهار گروه چیده شده است. در منوی کشویی موبایل هر گروه یک عنوان کوچک دارد و در دسکتاپ گروه‌ها با خط عمودی جدا می‌شوند:
+  - **Work:** Commands، History، Templates، Files، Terminal
+  - **Monitor:** Plan، Execution، Events، Logs، System
+  - **Configure:** Settings، LLM settings، MCP، Skills، Notify
+  - **Account:** Sign out
 - **پالت فرمان:** با `Ctrl+K` (یا `Cmd+K`) یا از نوار ناوبری باز می‌شود و همهٔ نماها، پنجره‌ها و کارها را جست‌وجو می‌کند.
 - **دستورهای `/` در کادر پیام:**
   - دستورهای داخلی `/raw` (نمایش متن خام یا Markdown) و `/templates`
+  - `/skill <نام> <پیام>`: متن کامل آن skill همراه پیام فرستاده می‌شود (نام‌ها تکمیل خودکار دارند؛ `/skill` تنها پنجرهٔ Skills را باز می‌کند)
   - promptهای سرورهای MCP به شکل `/server:prompt`
   - قالب‌های ذخیره‌شده به شکل `/tpl:<نام>`
   - ماژول‌های دیگر با `registerCommandProvider` دستور اضافه می‌کنند.
 - **قالب‌های تسک:** شرح تسک‌های پرتکرار در `localStorage` همان مرورگر ذخیره می‌شود. جست‌وجو، ویرایش و حذف (با تأیید) دارد و با JSON وارد و صادر می‌شود. در ورود قالبی با نام تکراری، بین بازنویسی و رد کردن انتخاب می‌کنید.
+  - **قالب‌های نمونه:** در اولین بازدید هر مرورگر شش قالب آماده اضافه می‌شود: Fix failing tests، Review changes، Add tests for a module، Explain the codebase، Refactor safely و Security audit. هر کدام mode و effort مناسب خودش را دارد (مثلاً بازبینی و ممیزی امنیتی در `plan` و فقط‌خواندنی). این‌ها قالب معمولی‌اند و ویرایش یا حذف می‌شوند. قالب حذف‌شده دوباره برنمی‌گردد (کلید `structured-ai.taskTemplates.samplesSeeded`). دکمهٔ **Samples** در پنجرهٔ Templates فقط نمونه‌های جاافتاده را اضافه می‌کند و به قالبی با همان نام دست نمی‌زند.
+- **ردیف زیر کادر پیام:** به ترتیب **Mode** (auto / prompt / deny / plan)، **Changes** و **Review**. سوییچ **Raw** (نمایش متن خام یا Markdown پاسخ‌ها) کنار Effort و Cap $ در **Options** است.
 - **Discussion** در یک پنجرهٔ جدا اجرا می‌شود: موضوع، persona و تعداد دورها در همان‌جا انتخاب می‌شود و گفتگوی زنده همان‌جا نمایش داده می‌شود.
 - **ویرایش فایل** در پنجره‌ای جدا از فهرست فایل‌ها انجام می‌شود. ساخت، تغییر نام، حذف و تعارض ذخیره با دیالوگ‌های داخل پنل پرسیده می‌شوند، نه `confirm()` مرورگر.
+- **آپلود در Files:** دکمهٔ **⇪ Upload** در نوار ابزار Files یک یا چند فایل از هر نوعی را در پوشهٔ فعلی آپلود می‌کند. کشیدن و رها کردن فایل روی فهرست هم همین کار را می‌کند. فایل‌ها یکی‌یکی و به‌صورت خام با `PUT /api/files/upload` فرستاده می‌شوند و پیشرفت و خطاها زیر نوار ابزار نمایش داده می‌شوند. اگر نامی از قبل وجود داشته باشد، پیش از جایگزینی تأیید گرفته می‌شود.
 
 ### API پروژه‌ها
 
@@ -1048,6 +1074,25 @@ integration/e2e اجرا می‌شوند. برای وضعیت جاری، خرو�
   نیست. `` !`command` `` در متن skill هنگام `skill_get` با خروجی دستور جایگزین
   می‌شود، فقط برای دستورهای فقط‌خواندنی و skillهای خود سرور یا workspace
   مورد اعتماد (`SKILL_COMMANDS`).
+- **کتابخانهٔ skill:** هر پوشه در `agent/skill-library/<library>/` یک کتابخانه
+  است (فعلاً `persona`، ۲۱۸ skill از
+  [legionir/persona](https://github.com/legionir/persona) با مجوز Apache-2.0).
+  نام‌ها پایین‌ترین اولویت را دارند: skill پروژه، کاربر، داخلی یا registry با
+  همان نام برنده است. به‌روزرسانی با `node tools/sync-skill-library.js`
+  (جزئیات در `agent/skill-library/README.md`).
+- **skillهای ارسالی به AI:** همهٔ skillها با `skill_get` و `/skill` در دسترس‌اند،
+  اما فقط skillهای «ارسالی به AI» در index پرامپت (`available_skills`) فهرست
+  می‌شوند. پیش‌فرض: از کتابخانه فقط skillهای `recommended` در `manifest.json`
+  (۱۲ مورد)، و بقیهٔ skillها همه. انتخاب ادمین در پنجرهٔ **Skills** کنسول
+  (`PUT /api/skills/prompt`) در `<data home>/skills-prompt.json` ذخیره می‌شود
+  و از درخواست بعدی اثر دارد. هر توضیح به جملهٔ آغازینش (حداکثر
+  `SKILL_INDEX_DESCRIPTION_CHARS`) کوتاه می‌شود و پس از
+  `SKILL_INDEX_MAX_CHARS` بقیه فقط با نام می‌آیند.
+- **`/skill <name> [message]`:** در کنسول، چت پروژه، صف و REPL هر skillی را
+  (ارسالی به AI یا نه) با متن کامل همراه همان پیام می‌فرستد (تا
+  `SKILL_COMMAND_MAX_CHARS`). آن درخواست index skillها را ندارد و پیام عادی
+  بعدی دوباره index تازه را می‌فرستد. نام ناشناخته پیش از هر درخواست به مدل
+  خطا می‌دهد.
 - agent profile در `agent/registry/agents.json` و personaهای discussion در
   `agent/registry/personas.json` ثبت می‌شوند. toolها و policy آن profile باید
   هم‌زمان contract-tested باشند.

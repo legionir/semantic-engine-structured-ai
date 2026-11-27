@@ -312,6 +312,11 @@ csp-style { display: none; }
 
 .files-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .files-toolbar button { padding: 5px 10px; font-size: 12px; }
+.files-browser { position: relative; border-radius: var(--r-sm); transition: box-shadow .12s ease, background .12s ease; }
+.files-browser.drop-target { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+.files-drop-hint { margin: 0; font-size: 12px; color: var(--accent); font-weight: 600; }
+.files-upload-status { margin: 0; font-size: 12px; color: var(--muted, var(--text)); }
+.files-upload-status.has-failures { color: var(--warn); }
 .files-root,
 .files-filter {
   background: var(--panel-2);

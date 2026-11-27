@@ -72,11 +72,26 @@ function setConsoleCookie(res, name, value, req = null, options = {}) {
 }
 
 
+/* expire the named cookies with the same attributes they were set with */
+function clearConsoleCookies(res, names, req = null, options = {}) {
+
+    const attributes = isHttpsRequest(req, options)
+        ? "HttpOnly; Secure; SameSite=None; Partitioned; Path=/"
+        : "HttpOnly; SameSite=Strict; Path=/";
+
+    res.setHeader(
+        "set-cookie",
+        names.map(name => `${name}=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; ${attributes}`)
+    );
+}
+
+
 module.exports = {
     sendJson,
     sendError,
     sendSseHeaders,
     writeSse,
     isHttpsRequest,
-    setConsoleCookie
+    setConsoleCookie,
+    clearConsoleCookies
 };

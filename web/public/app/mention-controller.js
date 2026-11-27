@@ -9,6 +9,9 @@
 | message when it is sent, so the agent starts with the file in front of
 | it.
 |
+| "/skill " followed by part of a name lists every skill (GET /api/skills);
+| choosing one completes "/skill <name> " and the message follows.
+|
 | Typing / at the start of an empty message lists the prompts of the
 | connected MCP servers as commands (/server:prompt, roadmap P4-10);
 | choosing one asks for its arguments and puts the rendered text in the
@@ -25,6 +28,7 @@ import { renderAttachments, writeTaskDraft } from "./composer-controller.js";
 import { runPromptCommand } from "./mcp-commands.js";
 import { executeSlashCommand, matchCommands } from "./slash-commands.js";
 import { apiFetch } from "./auth-transport.js";
+import { matchSkillItems } from "./skills-controller.js";
 
 
 const ui = { items: [], active: 0, start: -1, request: 0, timer: null };
@@ -47,6 +51,33 @@ export function slashAtCaret(textarea) {
     const match = /^\/([\w.:-]*)$/.exec(textarea.value.slice(0, caret));
 
     return match ? { start: 0, query: match[1] } : null;
+}
+
+
+/* "/skill qa" typed at the start: complete the skill name */
+export function skillAtCaret(textarea) {
+
+    const caret = textarea.selectionStart;
+    const match = /^\/skills?\s+([\w.-]*)$/i.exec(textarea.value.slice(0, caret));
+
+    return match ? { start: caret - match[1].length, query: match[1] } : null;
+}
+
+
+async function lookupSkills(query, start) {
+
+    const ticket = ++ui.request;
+
+    try {
+        const items = await matchSkillItems(query);
+        if (ticket !== ui.request) return;
+        ui.items = items;
+        ui.active = 0;
+        ui.start = start;
+        draw();
+    } catch {
+        if (ticket === ui.request) close();
+    }
 }
 
 
@@ -110,7 +141,7 @@ function draw() {
         option.setAttribute("role", "option");
         option.setAttribute("aria-selected", String(index === ui.active));
         option.className = `mention-option${index === ui.active ? " active" : ""}`;
-        const label = (item.type === "prompt" || item.type === "command") && item.description
+        const label = (item.type === "prompt" || item.type === "command" || item.type === "skill") && item.description
             ? `${item.path} — ${item.description}`
             : item.path;
         option.textContent = label;
@@ -172,6 +203,16 @@ function choose() {
         return;
     }
 
+    /* a skill name completes "/skill <name> " and the message follows */
+    if (item.type === "skill") {
+        const head = `/skill ${item.path} `;
+        textarea.value = `${head}${textarea.value.slice(caret).replace(/^\s+/, "")}`;
+        textarea.setSelectionRange(head.length, head.length);
+        writeTaskDraft(textarea.value);
+        close();
+        return;
+    }
+
     if (item.type === "command") {
         if (item.acceptsArgs) {
             const next = `${item.path} ${textarea.value.slice(caret).replace(/^\s+/, "")}`;
@@ -180,6 +221,8 @@ function choose() {
             textarea.setSelectionRange(pos, pos);
             writeTaskDraft(textarea.value);
             close();
+            /* /skill goes straight on to its skill list */
+            if (item.name === "skill") onInput();
             return;
         }
         textarea.value = textarea.value.slice(caret).replace(/^\s+/, "");
@@ -206,9 +249,15 @@ function onInput() {
 
     const textarea = el("task");
     const found = textarea ? mentionAtCaret(textarea) : null;
-    const command = textarea && !found ? slashAtCaret(textarea) : null;
+    const skill = textarea && !found ? skillAtCaret(textarea) : null;
+    const command = textarea && !found && !skill ? slashAtCaret(textarea) : null;
 
     clearTimeout(ui.timer);
+
+    if (skill) {
+        ui.timer = setTimeout(() => lookupSkills(skill.query, skill.start), 80);
+        return;
+    }
 
     if (command) {
         ui.timer = setTimeout(() => lookupCommands(command.query, command.start), 80);
@@ -278,4 +327,4 @@ export function initMentions() {
 }
 
 
-export const mentionActions = { mentionAtCaret, slashAtCaret, matchPromptCommands, close, choose, lookup, onPaste };
+export const mentionActions = { mentionAtCaret, slashAtCaret, skillAtCaret, matchPromptCommands, close, choose, lookup, lookupSkills, onPaste };

@@ -85,9 +85,18 @@ module.exports = async function frictionFoundInARealRunCases(ctx) {
             ["description", "name"]
         );
 
+        /* the runtime's own skills stay as small as they were */
+        const own = index.filter(entry => !skills._activeSkills().some(skill => skill.name === entry.name && skill.origin === "library"));
+
         assert.ok(
-            JSON.stringify(index).length < 1500,
-            `the index is ${JSON.stringify(index).length} chars`
+            JSON.stringify(own).length < 1500,
+            `the index is ${JSON.stringify(own).length} chars`
+        );
+
+        /* the recommended library skills come in by their opening clause, inside the budget */
+        assert.ok(
+            JSON.stringify(index).length <= require("../../../agent/config").get("SKILL_INDEX_MAX_CHARS"),
+            `the whole index is ${JSON.stringify(index).length} chars`
         );
 
         /* what arrives when it is asked for */

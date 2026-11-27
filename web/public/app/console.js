@@ -39,12 +39,15 @@ import { initProjects } from "./project-manager.js";
 import { installPanelErrorReporting, openLogs, startLogBadge } from "./logs-controller.js";
 import { openTerminal } from "./terminal-controller.js";
 import { openFiles } from "./files-controller.js";
+import { initLogout } from "./logout-controller.js";
 import { initMentions } from "./mention-controller.js";
 import { initCommandPalette, openCommandPalette } from "./palette-controller.js";
 import { loadPromptCommands, runPromptCommand } from "./mcp-commands.js";
 import { executeSlashCommand, listCommands, registerCommand, registerCommandProvider } from "./slash-commands.js";
 import { listTemplates } from "./task-templates.js";
+import { seedSampleTemplates } from "./task-template-samples.js";
 import { applyTemplateToComposer, closeTemplatesModal, loadTemplateByName, openTemplatesModal } from "./templates-controller.js";
+import { openSkillsModal, skillSlashCommand } from "./skills-controller.js";
 
 
 function clearComposerInput() {
@@ -168,6 +171,7 @@ el("approvalMode").addEventListener("change", event => {
 el("settingsButton").addEventListener("click", openSettings);
 el("llmSettingsButton").addEventListener("click", openLlmSettings);
 el("planButton").addEventListener("click", openPlanModal);
+initLogout(el("logoutButton"));
 
 const closeMobileMenu = () => {
     const header = el("consoleHeader");
@@ -217,6 +221,7 @@ el("notificationsButton").addEventListener("click", toggleNotifications);
 el("correctButton").addEventListener("click", submitCorrection);
 el("chatFormatToggle")?.addEventListener("click", toggleChatRawMode);
 el("templatesButton")?.addEventListener("click", openTemplatesModal);
+el("skillsButton")?.addEventListener("click", () => void openSkillsModal());
 
 
 el("task").addEventListener("keydown", event => {
@@ -358,6 +363,9 @@ function registerConsoleSlashCommands() {
         }
     ];
 
+    /* /skill <name> [message]: the skill's full text rides with the message */
+    builtins.push(skillSlashCommand({ submit: task => submitTask(task, selectedReasoningEffort()) }));
+
     for (const command of builtins) registerCommand(command);
 
     registerCommandProvider(async () => {
@@ -373,6 +381,9 @@ function registerConsoleSlashCommands() {
             execute: () => runPromptCommand(prompt)
         }));
     });
+
+    /* first visit only: a starter set of templates (see task-template-samples.js) */
+    seedSampleTemplates();
 
     registerCommandProvider(() => listTemplates().map(template => ({
         name: `tpl:${template.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || template.id}`,

@@ -29,6 +29,8 @@
 |                                                other agents write
 |   <data home>/skills/<dir>/SKILL.md           every project on this host
 |   agent/skills/<dir>/SKILL.md                 shipped with the runtime
+|   agent/skill-library/<lib>/<dir>/SKILL.md    shipped third-party libraries
+|                                                (SkillLibrary.js)
 |
 | A name already taken by a registry skill (skills.json, skill.json) is
 | skipped, so a repository cannot replace a built-in procedure under its
@@ -62,6 +64,9 @@ function reportOnce(key, message, details) {
 }
 
 
+const DOUBLE_QUOTE_ESCAPES = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+
+
 /* `[a, b]`, `"a"`, `a` -> string or string[] */
 function scalar(raw) {
 
@@ -71,8 +76,13 @@ function scalar(raw) {
         return value.slice(1, -1).split(",").map(item => scalar(item)).filter(item => item !== "");
     }
 
-    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-        return value.slice(1, -1);
+    /* YAML double quotes take backslash escapes, single quotes double themselves */
+    if (value.length >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+        return value.slice(1, -1).replace(/\\(["\\/bfnrt])/g, (whole, char) => DOUBLE_QUOTE_ESCAPES[char]);
+    }
+
+    if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
+        return value.slice(1, -1).replace(/''/g, "'");
     }
 
     return value;
@@ -82,8 +92,9 @@ function scalar(raw) {
 
 /*
 | The front matter subset skills use: `key: value`, `key: [a, b]`, a key
-| followed by `- item` lines, and `>`/`|` blocks folded into one line.
-| Nested maps are kept as their raw text; nothing here evaluates YAML.
+| followed by `- item` lines, `>`/`|` blocks folded into one line, and a
+| key followed by indented `key: value` lines (one level, e.g. metadata).
+| Nothing here evaluates YAML.
 */
 function parseFrontMatter(text) {
 
@@ -96,6 +107,8 @@ function parseFrontMatter(text) {
 
     const meta = {};
     let current = null;
+    /* a key with nothing after the colon may open a list or a nested map */
+    let opened = false;
 
     for (const line of match[1].split(/\r?\n/)) {
 
@@ -111,7 +124,16 @@ function parseFrontMatter(text) {
         if (pair) {
             current = pair[1].toLowerCase();
             const value = pair[2].trim();
+            opened = value === "";
             meta[current] = value === "" || value === ">" || value === "|" ? "" : scalar(value);
+            continue;
+        }
+
+        const nested = /^\s+([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(line);
+
+        if (nested && current && (opened || isPlainObject(meta[current]))) {
+            meta[current] = { ...(isPlainObject(meta[current]) ? meta[current] : {}), [nested[1].toLowerCase()]: scalar(nested[2]) };
+            opened = false;
             continue;
         }
 
@@ -121,6 +143,13 @@ function parseFrontMatter(text) {
     }
 
     return { meta, body: source.slice(match[0].length).trim() };
+
+}
+
+
+function isPlainObject(value) {
+
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 }
 
@@ -189,6 +218,11 @@ function readSkill(directory, origin) {
 
     const server = typeof meta.mcp_server === "string" && meta.mcp_server !== "" ? meta.mcp_server : null;
 
+    /* e.g. metadata.type: SUPERVISOR / EXECUTOR / COMPOSITE (persona library) */
+    const kind = isPlainObject(meta.metadata) && typeof meta.metadata.type === "string" && meta.metadata.type !== ""
+        ? meta.metadata.type.toLowerCase()
+        : null;
+
     return {
         name,
         description: description.slice(0, 500),
@@ -196,6 +230,7 @@ function readSkill(directory, origin) {
         origin,
         ...(triggers.length > 0 ? { triggers } : {}),
         ...(server ? { requires: { mcp_server: server } } : {}),
+        ...(kind ? { kind } : {}),
         markdown: body,
         resources: listResources(directory),
         root: directory
@@ -291,6 +326,15 @@ function loadMarkdownSkills({ takenNames = new Set(), workspaceRoot } = {}) {
             names.add(skill.name);
             skills.push(skill);
         }
+    }
+
+    /* shipped third-party libraries come last: anything above wins a name */
+    for (const skill of require("./SkillLibrary").loadLibrarySkills()) {
+
+        if (names.has(skill.name) || takenNames.has(skill.name)) continue;
+
+        names.add(skill.name);
+        skills.push(skill);
     }
 
     return skills;

@@ -1,0 +1,26 @@
+{
+  "name": "persona",
+  "title": "Persona library",
+  "description": "190 role personas and 28 composite audit protocols as Agent Skills (SKILL.md).",
+  "license": "Apache-2.0",
+  "source": {
+    "repository": "https://github.com/legionir/persona",
+    "branch": "claude-code-format",
+    "commit": "d192e675cc5191d4d6bda796907289b72b0c26f1",
+    "path": "skills/"
+  },
+  "recommended": [
+    "forensic-security-threat-audit",
+    "testing-quality-assurance-audit",
+    "clean-code-construction-review",
+    "software-design-architecture-review",
+    "api-integration-contract-audit",
+    "performance-scalability-audit",
+    "production-readiness-reliability-audit",
+    "supply-chain-dependency-audit",
+    "technical-debt-modernization-audit",
+    "documentation-quality-audit",
+    "data-database-integrity-audit",
+    "frontend-design-system-review"
+  ]
+}

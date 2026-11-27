@@ -101,6 +101,9 @@ export function createState() {
         /* how often a queued run on a project outside the visible stream
            is checked for its end (ms) */
         queuePollMs: 1500,
+        /* how long the skill list (GET /api/skills) is reused for the
+           /skill completion before it is fetched again (ms) */
+        skillsCacheMs: 30000,
         status: "idle",
         startedAt: null,
         stopPending: false,

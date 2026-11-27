@@ -347,6 +347,43 @@ async function main() {
         assert.ok(!fs.existsSync(path.join(WORKSPACE, "lib")));
     });
 
+    await test("PUT /api/files/upload stores raw bytes, refuses a clash unless overwrite=1, and caps the size", async () => {
+        const put = (url, bytes, token = server.token) => fetch(`${baseUrl}${url}`, {
+            method: "PUT",
+            headers: { "content-type": "application/octet-stream", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+            body: bytes
+        }).then(async response => ({ status: response.status, body: await response.json().catch(() => null) }));
+
+        const bytes = Buffer.from([137, 80, 78, 71, 0, 0, 255, 1]);
+        const created = await put("/api/files/upload?path=up/logo.png", bytes);
+        assert.equal(created.status, 201, JSON.stringify(created.body));
+        assert.deepEqual([created.body.entry.path, created.body.entry.size], ["up/logo.png", 8]);
+        assert.deepEqual(fs.readFileSync(path.join(WORKSPACE, "up", "logo.png")), bytes);
+
+        const clash = await put("/api/files/upload?path=up/logo.png", Buffer.from("x"));
+        assert.deepEqual([clash.status, clash.body.exists], [409, true]);
+        const replaced = await put("/api/files/upload?path=up/logo.png&overwrite=1", Buffer.from("again"));
+        assert.equal(replaced.status, 200);
+        assert.equal(fs.readFileSync(path.join(WORKSPACE, "up", "logo.png"), "utf8"), "again");
+
+        assert.equal((await put("/api/files/upload?path=../escape.bin", Buffer.from("x"))).status, 400);
+        assert.equal((await put("/api/files/upload", Buffer.from("x"))).status, 400);
+        assert.equal((await call("POST", "/api/files/upload", {})).status, 405);
+        assert.equal((await put("/api/files/upload?path=up/x.bin", Buffer.from("x"), null)).status, 401);
+        assert.equal((await put("/api/files/upload?path=up/x.bin", Buffer.from("x"), SCOPED)).status, 403);
+
+        settings.set("CONSOLE_FILE_UPLOAD_MAX_BYTES", 1024);
+        try {
+            const big = await put("/api/files/upload?path=up/big.bin", Buffer.alloc(4096));
+            assert.equal(big.status, 413);
+            assert.match(big.body.error, /CONSOLE_FILE_UPLOAD_MAX_BYTES \(1024 bytes\)/);
+            assert.ok(!fs.existsSync(path.join(WORKSPACE, "up", "big.bin")));
+        } finally {
+            settings.reset("CONSOLE_FILE_UPLOAD_MAX_BYTES");
+        }
+        assert.equal((await call("DELETE", "/api/files?path=up&recursive=1")).status, 200);
+    });
+
     await test("the files routes refuse escapes, unknown projects and wrong methods", async () => {
         assert.equal((await call("GET", "/api/files?path=../")).status, 400);
         assert.equal((await call("GET", "/api/files?path=missing")).status, 404);

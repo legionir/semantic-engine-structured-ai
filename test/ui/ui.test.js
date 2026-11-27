@@ -102,6 +102,10 @@ async function main() {
 
     await require("./scenarios/agent-quality")({ test, backdrops, console_ });
 
+    console.log("\nskills: the Skills panel and /skill");
+
+    await require("./scenarios/skills")({ test, backdrops, console_ });
+
     const failed =
         results.filter(item => !item.ok);
 

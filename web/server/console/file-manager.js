@@ -249,6 +249,62 @@ class FileManager {
     }
 
 
+    /*
+    | Store an uploaded file (any bytes, text or binary) at `relative`.
+    | The body is streamed into a temp file next to the target and renamed
+    | over it only when complete, so a cut connection or an oversized body
+    | leaves nothing behind. An existing file is replaced only with
+    | `overwrite`; a directory or a symlink is never replaced.
+    */
+    async upload(relative, source, { overwrite = false, maxBytes } = {}) {
+        const limit = Number(maxBytes) > 0 ? Number(maxBytes) : this.maxBytes();
+        const target = this.resolve(relative, { noFollow: true });
+        if (target === this.root) throw failure(400, "Is a directory: .");
+        try {
+            const existing = await fs.promises.lstat(target).catch(error => {
+                if (error.code === "ENOENT") return null;
+                throw error;
+            });
+            if (existing) {
+                if (existing.isSymbolicLink()) throw failure(400, `Refusing to write to symlink: ${this.relative(target)}`);
+                if (existing.isDirectory()) throw failure(400, `Is a directory: ${this.relative(target)}`);
+                if (!overwrite) throw failure(409, `Already exists: ${this.relative(target)}`, { exists: true });
+            } else {
+                await fs.promises.mkdir(path.dirname(target), { recursive: true });
+            }
+            const mode = existing ? existing.mode & 0o777 : 0o644;
+            const temp = path.join(path.dirname(target), `.${path.basename(target)}.${crypto.randomBytes(4).toString("hex")}.upload`);
+            let handle = null;
+            let size = 0;
+            try {
+                handle = await fs.promises.open(temp, "wx", mode);
+                for await (const chunk of source) {
+                    size += chunk.length;
+                    if (size > limit) {
+                        throw failure(413, `The upload is larger than CONSOLE_FILE_UPLOAD_MAX_BYTES (${limit} bytes).`);
+                    }
+                    await handle.write(chunk);
+                }
+                await handle.sync();
+                await handle.close();
+                handle = null;
+                await fs.promises.chmod(temp, mode).catch(() => {});
+                await fs.promises.rename(temp, target);
+            } catch (error) {
+                if (handle) {
+                    await handle.close().catch(() => {});
+                }
+                await fs.promises.rm(temp, { force: true }).catch(() => {});
+                throw error;
+            }
+            const stats = await fs.promises.lstat(target);
+            return { ...this.describe(target, stats), created: !existing };
+        } catch (error) {
+            throw translate(error, relative);
+        }
+    }
+
+
     async create(relative, type, content = "") {
         if (type !== "file" && type !== "directory") throw failure(400, "type must be \"file\" or \"directory\"");
         const target = this.resolve(relative, { noFollow: true });

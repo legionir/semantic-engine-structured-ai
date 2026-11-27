@@ -227,6 +227,11 @@ async function main() {
 
         const authedStatus = await fetch(`${baseUrl}/auth/status`, { headers: { cookie } });
         assert.deepEqual(await authedStatus.json(), { passwordRequired: false, authenticated: true });
+
+        const logout = await fetch(`${baseUrl}/auth/logout`, { method: "POST", headers: { cookie } });
+        assert.equal(logout.status, 200);
+        assert.deepEqual(await logout.json(), { ok: true, revoked: false }, "token mode has no session to revoke");
+        assert.ok(logout.headers.getSetCookie().some(line => /^structured_ai_console=;.*Max-Age=0/.test(line)), "the token cookie is expired");
     });
 
     await test("a project can be renamed but never re-rooted, and unknown projects are 404", async () => {

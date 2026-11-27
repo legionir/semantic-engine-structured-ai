@@ -117,11 +117,14 @@ function createWindow() {
         url: "http://localhost/",
         width: 1280,
         height: 900,
+        /* nothing is fetched or run from the page: no scripts, stylesheets
+           or iframes (happy-dom >= 21 also defaults the last two to off;
+           they stay explicit so a downgrade cannot turn them back on) */
         settings: {
             disableJavaScriptEvaluation: true,
             disableJavaScriptFileLoading: true,
-            disableCSSFileLoading: true,
-            disableIframePageLoading: true,
+            enableCSSFileLoading: false,
+            enableIframePageLoading: false,
             disableComputedStyleRendering: true
         }
     });
@@ -323,6 +326,11 @@ async function bootConsole({ Modal, defaults }) {
     document.getElementById("projectDashboard").hidden = true;
 
     const { store, storage } = createStorage();
+
+    /* a returning operator: the starter templates were seeded on an earlier
+       visit, so the scenarios start from an empty template list (seeding
+       itself is tested in settings-and-modals.js) */
+    store["structured-ai.taskTemplates.samplesSeeded"] = "1";
 
     global.localStorage = storage;
 

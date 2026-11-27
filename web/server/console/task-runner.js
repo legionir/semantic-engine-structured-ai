@@ -244,9 +244,17 @@ module.exports = function createTaskRunner(shared) {
 
         } catch (error) {
 
+            /* outside the run's async scope currentRun() is the idle legacy
+               run, so the run's own verdict travels on the error */
+            const cancelled =
+                runtime.isRunCancelled() ||
+                Boolean(error && error.cancelledReason) ||
+                state.stopRequested === true ||
+                Boolean(conv && conv.stopRequested);
+
             state.error = {
                 code:
-                    runtime.isRunCancelled()
+                    cancelled
                         ? "CANCELLED"
                         : error.name || "RUNTIME_ERROR",
 
@@ -257,7 +265,7 @@ module.exports = function createTaskRunner(shared) {
             };
 
             state.status =
-                runtime.isRunCancelled() || (conv && conv.stopRequested)
+                cancelled
                     ? "cancelled"
                     : "failed";
 
@@ -267,7 +275,7 @@ module.exports = function createTaskRunner(shared) {
 
                 runtime.events.emit("run:error", {
                     message: error.message,
-                    cancelled: runtime.isRunCancelled(),
+                    cancelled,
                     ...attribution(projectId)
                 });
             }

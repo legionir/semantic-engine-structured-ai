@@ -227,6 +227,15 @@ module.exports = [
         "description": "Largest file the console file manager opens or saves as text."
     },
     {
+        "key": "CONSOLE_FILE_UPLOAD_MAX_BYTES",
+        "group": "console",
+        "type": "number",
+        "default": 52428800,
+        "min": 1024,
+        "max": 2147483648,
+        "description": "Largest file the console file manager accepts as an upload (any file type). The body is streamed to disk, so this is not held in memory."
+    },
+    {
         "key": "CONSOLE_FILE_LIST_MAX",
         "group": "console",
         "type": "number",

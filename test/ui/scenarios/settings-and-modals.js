@@ -375,6 +375,13 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
 
         assert.equal(home.children.length, 1, "until done mirror stays in policyHome");
         assert.ok(document.querySelector(".composer-tools #approvalMode"), "approval/plan mode lives next to Changes and Review");
+        const toolsRow = document.querySelector(".composer-tools");
+        assert.ok(toolsRow.children[0].contains(approvalMode), "Mode is the first control in the tools row");
+        assert.deepEqual(
+            [...toolsRow.children].map(child => child.id || (child.classList.contains("composer-mode") ? "mode" : child.tagName)),
+            ["mode", "taskChangesButton", "reviewButton"],
+            "the tools row reads Mode, Changes, Review"
+        );
         assert.deepEqual([...approvalMode.options].map(option => option.value), ["auto", "prompt", "deny", "plan"]);
 
         document.getElementById("settingsButton").dispatch("click");
@@ -472,6 +479,74 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         assert.match(backdrops[0].textContent, /Events/);
 
         Modal.closeTop("test");
+    });
+
+    await test("the header menu is grouped by use (work, monitor, configure, account) and ends with Sign out", async () => {
+
+        const nav = document.querySelector("#consoleMenu .bar-nav");
+        const layout = [...nav.children].map(child => child.classList.contains("bar-nav-sep") ? `— ${child.dataset.label}` : child.id);
+        assert.deepEqual(layout, [
+            "— Work", "commandPaletteButton", "historyButton", "templatesButton", "filesButton", "terminalButton",
+            "— Monitor", "planButton", "executionButton", "eventsButton", "logsButton", "systemButton",
+            "— Configure", "settingsButton", "llmSettingsButton", "mcpButton", "skillsButton", "notificationsButton",
+            "— Account", "logoutButton"
+        ]);
+        for (const sep of nav.querySelectorAll(".bar-nav-sep")) {
+            assert.equal(sep.getAttribute("role"), "separator");
+            assert.equal(sep.getAttribute("aria-label"), sep.dataset.label, "a screen reader hears the group name");
+        }
+        assert.ok(nav.querySelector(".bar-nav-sep").classList.contains("first"), "the first group has no rule above it");
+        assert.equal(document.getElementById("logoutButton").textContent.trim(), "Sign out");
+    });
+
+    await test("Sign out asks first, revokes the session on the server, forgets in-memory credentials and reloads", async () => {
+
+        const button = document.getElementById("logoutButton");
+        const logoutPosts = () => console_.posted.filter(call => call.url === "/auth/logout");
+        const reloads = [];
+        location.replace = target => reloads.push(target);
+        try {
+            /* cancel keeps everything */
+            button.dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            let confirm = document.querySelector(".modal.confirm-modal");
+            assert.ok(confirm, "Sign out opens a confirmation");
+            assert.match(confirm.textContent, /keep running on the server/);
+            [...confirm.querySelectorAll(".modal-foot button")].find(b => b.textContent === "Cancel").dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            assert.deepEqual([logoutPosts().length, reloads.length], [0, 0], "cancelled: nothing sent, no reload");
+
+            /* a failed request keeps the operator signed in and says so */
+            console_.reply("POST /auth/logout", { __status: 500, body: { error: "boom" } });
+            button.dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            confirm = document.querySelector(".modal.confirm-modal");
+            [...confirm.querySelectorAll(".modal-foot button")].find(b => b.textContent === "Sign out").dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 20));
+            assert.equal(logoutPosts().length, 1);
+            assert.equal(reloads.length, 0, "no reload when the server did not sign out");
+            assert.match(document.getElementById("chat").textContent, /Sign out failed: request failed \(500\)/);
+
+            /* confirmed: POST /auth/logout, credentials forgotten, page reloaded without its query */
+            console_.reply("POST /auth/logout", { ok: true, revoked: true });
+            window.__structuredAiConsoleSession = "in-memory-session";
+            location.pathname = "/projects/demo";
+            button.dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            confirm = document.querySelector(".modal.confirm-modal");
+            assert.ok(confirm.querySelector(".modal-foot button.danger"), "the confirm button is marked as a danger action");
+            [...confirm.querySelectorAll(".modal-foot button")].find(b => b.textContent === "Sign out").dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 20));
+            assert.equal(logoutPosts().length, 2);
+            assert.equal(logoutPosts().at(-1).method, "POST");
+            assert.equal(window.__structuredAiConsoleSession, undefined, "the in-memory session is forgotten");
+            assert.deepEqual(reloads, ["/projects/demo"], "reloads the same page without ?token=");
+            assert.equal(backdrops().length, 0);
+        } finally {
+            delete location.replace;
+            location.pathname = "/";
+            delete window.__structuredAiConsoleSession;
+        }
     });
 
     await test("command palette opens via button and keyboard, filters commands, and executes action", async () => {
@@ -742,6 +817,33 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
 
         svc.remove(svc.get("Code Review").id);
 
+        /* sample templates: seeded once per storage, re-added only on request, never duplicated */
+        const { SAMPLE_TASK_TEMPLATES, SAMPLES_SEEDED_KEY, seedSampleTemplates } =
+            await import(pathToFileURL(path.join(harness.PUBLIC_DIR, "app", "task-template-samples.js")).href);
+        assert.ok(SAMPLE_TASK_TEMPLATES.length >= 5, "a useful starter set ships");
+        for (const sample of SAMPLE_TASK_TEMPLATES) {
+            assert.ok(sample.id.startsWith("tpl-sample-") && sample.name && sample.content.trim() && sample.category, `${sample.id} is complete`);
+            assert.ok(["auto", "prompt", "deny", "plan"].includes(sample.mode), `${sample.id} has a valid mode`);
+            assert.ok(["inherit", "low", "medium", "high", "xhigh"].includes(sample.effort), `${sample.id} has a valid effort`);
+        }
+        const seedStore = new Map();
+        const seedAdapter = {
+            getItem: k => (seedStore.has(k) ? seedStore.get(k) : null),
+            setItem: (k, v) => seedStore.set(k, String(v)),
+            removeItem: k => seedStore.delete(k)
+        };
+        const seeded = createTaskTemplateService({ storage: seedAdapter });
+        seeded.save({ name: "Review changes", content: "my own review prompt" });
+        assert.equal(seedSampleTemplates({ service: seeded, storage: seedAdapter }), SAMPLE_TASK_TEMPLATES.length - 1, "first visit seeds, skipping a name the operator already uses");
+        assert.equal(seeded.get("Review changes").content, "my own review prompt", "the operator's template is kept");
+        assert.equal(seedStore.get(SAMPLES_SEEDED_KEY), "1");
+        seeded.remove("tpl-sample-security-audit");
+        assert.equal(seedSampleTemplates({ service: seeded, storage: seedAdapter }), 0, "a deleted sample does not come back on the next load");
+        assert.equal(seeded.get("tpl-sample-security-audit"), null);
+        assert.equal(seedSampleTemplates({ service: seeded, storage: seedAdapter, force: true }), 1, "force re-adds only what is missing");
+        assert.equal(seeded.list().length, SAMPLE_TASK_TEMPLATES.length);
+        assert.equal(seeded.get("tpl-sample-fix-failing-tests").mode, "prompt");
+
         const used = svc.recordUse(created.id);
         assert.equal(used.usageCount, 1);
         assert.equal(svc.remove(created.id), true);
@@ -913,6 +1015,36 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         }
         assert.equal(listModal.querySelectorAll(".template-item").length, 0);
         assert.equal(backdrops().length, 1, "deleting templates keeps the Templates modal open");
+        assert.match(listModal.querySelector(".templates-empty").textContent, /Samples/, "the empty list points at the samples");
+
+        /* the Samples button adds the starter set, once */
+        const samplesBtn = listModal.querySelector(".templates-modal-actions .template-samples-btn");
+        assert.ok(samplesBtn, "Samples button sits with Import and Export");
+        samplesBtn.dispatch("click");
+        const sampleCount = listModal.querySelectorAll(".template-item").length;
+        assert.ok(sampleCount >= 5, `samples are listed (${sampleCount})`);
+        assert.match(listModal.querySelector(".templates-modal-msg").textContent, new RegExp(`Added ${sampleCount} sample templates`));
+        assert.match(listModal.textContent, /Fix failing tests/);
+        assert.match(listModal.textContent, /Security audit/);
+        samplesBtn.dispatch("click");
+        assert.equal(listModal.querySelectorAll(".template-item").length, sampleCount, "a second click adds nothing");
+        assert.match(listModal.querySelector(".templates-modal-msg").textContent, /already here/);
+
+        const reviewSample = listModal.querySelector(".templates-search");
+        reviewSample.value = "Review changes";
+        reviewSample.dispatch("input");
+        task.value = "";
+        listModal.querySelector(".template-load-btn").dispatch("click");
+        assert.match(task.value, /Review the uncommitted changes/);
+        assert.equal(document.getElementById("approvalMode").value, "plan", "a sample sets its mode");
+        assert.equal(document.getElementById("taskEffort").value, "high", "a sample sets its effort");
+
+        templatesBtn.dispatch("click");
+        listModal = templatesDialog();
+        while (listModal.querySelector(".template-delete-btn")) {
+            listModal.querySelector(".template-delete-btn").dispatch("click");
+            listModal.querySelector(".template-confirm-delete-btn").dispatch("click");
+        }
         Modal.closeTop("test");
         assert.equal(backdrops().length, 0);
 

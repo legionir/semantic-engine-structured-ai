@@ -67,6 +67,7 @@ const ROUTE_GROUPS = [
     require("./routes/system"),
     require("./routes/terminal"),
     require("./routes/files"),
+    require("./routes/skills"),
     require("./routes/agent-quality")
 ];
 
@@ -205,6 +206,21 @@ function createServer(runtime, options = {}) {
         return matched;
     }
 
+    /* sign-out: forget the session the request carries, so a copied cookie
+       or in-memory session stops working too */
+    function revokePasswordSession(req, url) {
+        const supplied = requestPasswordSession(req, url);
+        if (typeof supplied !== "string" || supplied.length === 0) return false;
+        let revoked = false;
+        for (const token of [...passwordSessions.keys()]) {
+            if (tokenMatches(supplied, token)) {
+                passwordSessions.delete(token);
+                revoked = true;
+            }
+        }
+        return revoked;
+    }
+
     function passwordMatches(candidate) {
         if (typeof candidate !== "string") return false;
         const supplied = Buffer.from(candidate);
@@ -278,6 +294,7 @@ function createServer(runtime, options = {}) {
         logs: shared.logs,
         issuePasswordSession,
         passwordMatches,
+        revokePasswordSession,
         projectQueue: shared.projectQueue,
         projectSlotBusy,
         projectSnapshot: shared.projectSnapshot,
@@ -334,6 +351,7 @@ function createServer(runtime, options = {}) {
 
             const authStatusRoute = pathname === "/auth/status" && req.method === "GET";
             const authLoginRoute = pathname === "/auth/login" && req.method === "POST";
+            const authLogoutRoute = pathname === "/auth/logout" && req.method === "POST";
             const trustedProxy = isTrustedProxy(
                 req,
                 runtime.settings && typeof runtime.settings.get === "function"
@@ -342,7 +360,7 @@ function createServer(runtime, options = {}) {
             );
 
             if (
-                (isApiRequest || authLoginRoute) &&
+                (isApiRequest || authLoginRoute || authLogoutRoute) &&
                 !sameOrigin(
                     req.headers.origin,
                     req.headers.host,
@@ -426,6 +444,7 @@ function createServer(runtime, options = {}) {
             /* what the route groups read about this request */
             const request = {
                 authLoginRoute,
+                authLogoutRoute,
                 authStatusRoute,
                 authenticated,
                 claims,

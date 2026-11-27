@@ -30,7 +30,7 @@ function scriptedServer(fallback) {
         if (!route) return fallback(url, options);
         const body = typeof options.body === "string" ? JSON.parse(options.body) : null;
         calls.push({ method, url, body });
-        const answer = await route.answer({ url, body, query: new URL(url, "http://console").searchParams });
+        const answer = await route.answer({ url, body, raw: options.body, headers: options.headers || {}, query: new URL(url, "http://console").searchParams });
         const status = answer && answer.__status ? answer.__status : 200;
         const payload = answer && answer.__status ? answer.body : answer;
         return { ok: status >= 200 && status < 300, status, json: async () => payload };
@@ -395,6 +395,72 @@ module.exports = async function OperatorTools({ test, backdrops, console_ }) {
         assert.ok(promptModal?.querySelector(".modal-prompt-input"), "Rename modal renders styled prompt input");
         [...promptModal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Cancel").dispatch("click");
         await settle(10);
+
+        close("files");
+        assert.equal(backdrops().length, 0);
+    });
+
+    server.on("PUT", "/api/files/upload", ({ query, raw, headers }) => {
+        const name = query.get("path");
+        if (disk[name] && query.get("overwrite") !== "1") return { __status: 409, body: { error: `Already exists: ${name}`, exists: true } };
+        if (raw && raw.tooBig) return { __status: 413, body: { error: "The upload is larger than CONSOLE_FILE_UPLOAD_MAX_BYTES (1024 bytes)." } };
+        const created = !disk[name];
+        disk[name] = { content: raw.text, mtime_ms: 7000, uploadedAs: headers["content-type"] };
+        return { __status: created ? 201 : 200, body: { entry: { name, path: name, type: "file", size: raw.size, mtime_ms: 7000, created } } };
+    });
+
+    await test("the Files dialog uploads picked or dropped files into the current folder, asking before it replaces one", async () => {
+        document.getElementById("filesButton").dispatch("click");
+        await settle(10);
+        const modal = dialog("files");
+        const uploadButton = modal.querySelector(".files-toolbar .files-upload-button");
+        const input = modal.querySelector(".files-toolbar input.files-upload-input");
+        assert.ok(uploadButton, "Upload sits in the Files toolbar");
+        assert.equal(uploadButton.textContent.trim(), "⇪ Upload");
+        assert.ok(input && input.hidden && input.multiple, "a hidden multi-file picker backs the button");
+        let picked = 0;
+        input.click = () => { picked++; };
+        uploadButton.dispatch("click");
+        assert.equal(picked, 1, "the button opens the file picker");
+
+        const file = (name, text, extra = {}) => ({ name, size: text.length, text, ...extra });
+        Object.defineProperty(input, "files", { value: [file("logo.png", "PNGDATA"), file("README.md", "replaced readme")], configurable: true });
+        input.dispatch("change");
+        await settle(10);
+        const confirmReplace = document.querySelector(".modal.confirm-modal");
+        assert.ok(confirmReplace, "a name that exists asks first");
+        assert.match(confirmReplace.textContent, /README\.md already exists/);
+        [...confirmReplace.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Replace").dispatch("click");
+        await settle(10);
+        assert.equal(disk["logo.png"].content, "PNGDATA", "the raw file is the request body");
+        assert.equal(disk["logo.png"].uploadedAs, "application/octet-stream");
+        assert.equal(disk["README.md"].content, "replaced readme", "confirmed: replaced");
+        const uploads = server.calls.filter(call => call.url.startsWith("/api/files/upload"));
+        assert.deepEqual(uploads.map(call => new URL(call.url, "http://x").searchParams.get("overwrite")), [null, null, "1"], "overwrite=1 only after the confirmation");
+        assert.match(modal.querySelector(".files-upload-status").textContent, /Uploaded 2 of 2/);
+        assert.ok([...modal.querySelectorAll(".file-name")].some(node => node.textContent === "logo.png"), "the listing is re-read after the upload");
+
+        /* drag and drop onto the directory pane */
+        const browser = modal.querySelector(".files-browser");
+        const drag = (type, files = []) => {
+            const event = new window.Event(type, { bubbles: true, cancelable: true });
+            Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files, dropEffect: "none" } });
+            browser.dispatchEvent(event);
+            return event;
+        };
+        assert.equal(drag("dragenter").defaultPrevented, true, "dragging files over the pane accepts the drop");
+        await settle(4);
+        assert.ok(modal.querySelector(".files-browser").classList.contains("drop-target"), "the pane is highlighted while dragging");
+        assert.match(modal.querySelector(".files-drop-hint").textContent, /Drop to upload into root/);
+        drag("drop", [file("notes.txt", "dropped"), file("huge.bin", "x", { tooBig: true })]);
+        await settle(10);
+        assert.equal(modal.querySelector(".files-browser").classList.contains("drop-target"), false);
+        assert.equal(disk["notes.txt"].content, "dropped", "a dropped file is uploaded");
+        assert.equal(disk["huge.bin"], undefined);
+        const status = modal.querySelector(".files-upload-status");
+        assert.ok(status.classList.contains("has-failures"));
+        assert.match(status.textContent, /Uploaded 1 of 2 · failed: huge\.bin/);
+        assert.match(modal.querySelector(".files-error").textContent, /huge\.bin: .*CONSOLE_FILE_UPLOAD_MAX_BYTES/);
 
         close("files");
         assert.equal(backdrops().length, 0);

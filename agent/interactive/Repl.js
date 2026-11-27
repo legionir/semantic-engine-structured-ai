@@ -9,6 +9,7 @@ const { COMMANDS, splitCommand } = require("./ReplCommands");
 const { createApprovalHandler } = require("./ApprovalPrompt");
 const { createReplCommandHandlers } = require("./ReplCommandHandlers");
 const { isInitCommand } = require("../prompt/ProjectInstructionsBuilder");
+const { parseSkillCommand } = require("../tools/skills/SkillCommand");
 
 
 /*
@@ -275,7 +276,8 @@ async function startSession(runtime, options) {
 
             try {
 
-                if (line.startsWith("/") && !isInitCommand(line)) {
+                /* /init and /skill are tasks the runtime expands */
+                if (line.startsWith("/") && !isInitCommand(line) && !parseSkillCommand(line)) {
 
                     await handleCommand(line);
 
