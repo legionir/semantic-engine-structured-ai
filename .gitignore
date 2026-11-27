@@ -29,3 +29,6 @@
 # scratch: pristine HEAD copies and throwaway repros used by the audit
 # workflow (see FIX-PLAN-REVIEW-FINDINGS.md, section 10) - never commit
 /tmp-baseline/
+
+# Google AI Studio session artifacts (plans, screenshots); never source
+/.aistudio/

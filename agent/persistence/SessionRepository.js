@@ -85,6 +85,8 @@ function emptySession(id) {
         id: id || newId(),
         title: null,
         workspace: WORKSPACE_ROOT,
+        project_id: null,
+        project_name: null,
         created_at: stamp,
         updated_at: stamp,
         status: "idle",
@@ -127,6 +129,12 @@ function summarise(session) {
             session.title ||
             titleFrom(session),
 
+        workspace: session.workspace || WORKSPACE_ROOT,
+
+        project_id: session.project_id || null,
+
+        ...(session.project_name ? { project_name: session.project_name } : {}),
+
         created_at: session.created_at,
 
         updated_at: session.updated_at,
@@ -149,6 +157,31 @@ function summarise(session) {
 | have, and it costs nothing to derive.
 */
 
+function titleTextOf(content) {
+
+    if (typeof content === "string") {
+        return content;
+    }
+
+    if (Array.isArray(content)) {
+        return content
+            .map(part => {
+                if (typeof part === "string") return part;
+                if (part && typeof part === "object" && typeof part.text === "string") return part.text;
+                return "";
+            })
+            .filter(Boolean)
+            .join(" ");
+    }
+
+    if (content && typeof content === "object" && typeof content.text === "string") {
+        return content.text;
+    }
+
+    return "";
+}
+
+
 function titleFrom(session) {
 
     const first =
@@ -161,7 +194,7 @@ function titleFrom(session) {
     }
 
     const text =
-        String(first.content || "").trim().split("\n")[0];
+        titleTextOf(first.content).trim().split("\n")[0];
 
     return text.length > 60
         ? `${text.slice(0, 60)}…`
@@ -271,12 +304,11 @@ function saveSession(session, root) {
     | bounded, so a workspace used for a year still opens quickly.
     */
 
-    index.sessions.sort(
-        (left, right) =>
-            String(right.updated_at).localeCompare(
-                String(left.updated_at)
-            )
-    );
+    index.sessions.sort((left, right) => {
+        const a = String(left.updated_at || "");
+        const b = String(right.updated_at || "");
+        return a === b ? 0 : (b > a ? 1 : -1);
+    });
 
     const limit =
         settings.get("SESSION_MAX_KEPT");

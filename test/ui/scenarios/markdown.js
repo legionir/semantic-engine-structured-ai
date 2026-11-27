@@ -109,6 +109,17 @@ module.exports = async function SafeMarkdown({ test }) {
         assert.ok(link, "every kind nests inside the previous one");
         assert.equal(link.textContent, "f");
 
+        const sameOuter = draw("*italic **bold** text*");
+        const em = sameOuter.querySelector("em");
+        assert.ok(em, "single delimiter wraps nested double delimiter");
+        assert.equal(em.querySelector("strong")?.textContent, "bold");
+        assert.equal(em.textContent, "italic bold text");
+
+        const nestedWithCode = draw("*italic **bold `code **` bold** text*");
+        const emCode = nestedWithCode.querySelector("em");
+        assert.ok(emCode, "nested double delimiter with inline code does not terminate early");
+        assert.equal(emCode.querySelector("strong code")?.textContent, "code **");
+
         const started = Date.now();
         const hostile = draw(`${"[a](".repeat(20000)} \`x ~~y **z`);
         assert.ok(Date.now() - started < 2000, "a long run of unclosed openers does not stall the page");
@@ -127,6 +138,20 @@ module.exports = async function SafeMarkdown({ test }) {
         assert.equal(blocks[1].querySelector("code").getAttribute("class"), null, "no language, no class");
         assert.equal(blocks[1].textContent, "plain");
         assert.equal(blocks[2].textContent, "unterminated");
+
+        const nestedFence = draw("````md\n```js\nconst x = 1;\n```\n````");
+        const outerBlock = nestedFence.querySelector("pre.md-code-block code.language-md");
+        assert.ok(outerBlock);
+        assert.equal(outerBlock.textContent, "```js\nconst x = 1;\n```");
+
+        const backtickInsideBlock = draw("```js highlight\n```not-closing\n```also-inside```\n```");
+        const codeNode = backtickInsideBlock.querySelector("pre.md-code-block code.language-js");
+        assert.ok(codeNode, "multi-token fence info keeps first language token");
+        assert.equal(codeNode.textContent, "```not-closing\n```also-inside```");
+
+        const inlineBacktickLine = draw("before\n```inline```\nafter");
+        assert.equal(inlineBacktickLine.querySelectorAll("pre.md-code-block").length, 0, "inline backticks are not opened as fenced blocks");
+        assert.match(inlineBacktickLine.textContent, /after/);
     });
 
     await test("tables, rules, quotes and both list kinds produce the console's element structure", () => {

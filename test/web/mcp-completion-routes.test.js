@@ -356,6 +356,11 @@ async function main() {
         const foreign = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }, { headers: { origin: "https://evil.example" } });
         assert.strictEqual(foreign.status, 403);
 
+        /* X-Forwarded-Host only counts from a TRUSTED_PROXIES address; this
+           test server trusts none, so a forged one changes nothing */
+        const forged = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }, { headers: { origin: "https://evil.example", "x-forwarded-host": "evil.example" } });
+        assert.strictEqual(forged.status, 403, "a forged X-Forwarded-Host does not pass the origin check");
+
         const init = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {} } });
         assert.strictEqual(init.status, 200, JSON.stringify(init.body));
         assert.strictEqual(init.body.result.serverInfo.name, "structured-ai");

@@ -20,6 +20,7 @@
 import { html, mount, effect } from "./dom.js";
 import { watch } from "./store.js";
 import { shorten } from "./formatters.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 export function pendingApprovals(state) {
@@ -192,7 +193,7 @@ export function createApprovals({ Modal, state, touch }) {
     async function post(id, approved) {
 
         try {
-            const response = await fetch(`/api/approvals/${encodeURIComponent(id)}`, {
+            const response = await apiFetch(`/api/approvals/${encodeURIComponent(id)}`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ approved })

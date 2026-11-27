@@ -220,10 +220,12 @@ module.exports = function createSessionLog(shared) {
     */
     async function recordGitReport(options = {}) {
 
+        const runtimeContext = options.workspace ? null : runtime.createRuntimeContext();
         const workspace =
             options.workspace ||
-            runtime.createRuntimeContext()
-                .workspace_root;
+            runtimeContext?.runtime?.workspace_root ||
+            runtimeContext?.workspace?.root ||
+            runtimeContext?.workspace_root;
 
         const projectId =
             options.projectId === undefined
@@ -256,10 +258,10 @@ module.exports = function createSessionLog(shared) {
     }
 
 
-    function activateSession(id) {
+    function activateSession(id, root) {
 
         const loaded =
-            sessions.loadSession(id);
+            sessions.loadSession(id, root);
 
         if (!loaded) {
             return null;

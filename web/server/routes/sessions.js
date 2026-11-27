@@ -13,6 +13,7 @@
 | is not one of its routes, so the next group gets it.
 */
 
+const path = require("path");
 const { sendJson } = require("../Response");
 
 
@@ -31,8 +32,156 @@ module.exports = async function SessionsRoutes(shared, request) {
         pathname,
         req,
         requireUnscoped,
-        res
+        res,
+        url
     } = request;
+
+    function projectCatalog() {
+
+        const byId = new Map();
+
+        try {
+            const listed = runtime.projects && runtime.projects.registry().list();
+            for (const item of listed || []) {
+                byId.set(item.id, item);
+            }
+        } catch {
+            /* project registry unavailable */
+        }
+
+        return byId;
+    }
+
+    function sessionRoots() {
+
+        const roots = [{
+            projectId: null,
+            projectName: null,
+            workspace: shared.workspaceRoot || null,
+            root: undefined
+        }];
+
+        for (const project of projectCatalog().values()) {
+
+            try {
+
+                const context =
+                    typeof runtime.resolveRunProjectContext === "function"
+                        ? runtime.resolveRunProjectContext({ projectId: project.id })
+                        : null;
+
+                if (context && context.dataRoot) {
+                    roots.push({
+                        projectId: project.id,
+                        projectName: project.name || project.id,
+                        workspace: context.workspaceRoot || project.rootPath || null,
+                        root: context.dataRoot
+                    });
+                }
+
+            } catch {
+                /* project root unavailable */
+            }
+        }
+
+        const seen = new Set();
+
+        return roots.filter(item => {
+
+            let dir;
+
+            try {
+                dir = path.resolve(sessions.sessionsDirectory(item.root));
+            } catch {
+                return false;
+            }
+
+            if (seen.has(dir)) {
+                return false;
+            }
+
+            seen.add(dir);
+            return true;
+        });
+    }
+
+    function annotateSummary(item, origin, projectsById) {
+
+        const projectId = item.project_id ?? origin.projectId ?? null;
+        const project = projectId ? projectsById.get(projectId) : null;
+        const workspace =
+            item.workspace ||
+            project?.rootPath ||
+            origin.workspace ||
+            shared.workspaceRoot ||
+            null;
+        const projectName =
+            item.project_name ||
+            project?.name ||
+            origin.projectName ||
+            null;
+
+        return {
+            ...item,
+            project_id: projectId,
+            ...(projectName ? { project_name: projectName } : {}),
+            ...(workspace ? { workspace } : {})
+        };
+    }
+
+    function collectSessions() {
+
+        const projectsById = projectCatalog();
+        const byId = new Map();
+
+        for (const origin of sessionRoots()) {
+
+            let listed = [];
+
+            try {
+                listed = sessions.listSessions(origin.root);
+            } catch {
+                listed = [];
+            }
+
+            for (const item of listed) {
+
+                const annotated = annotateSummary(item, origin, projectsById);
+                const prev = byId.get(annotated.id);
+
+                if (
+                    !prev ||
+                    String(annotated.updated_at || "").localeCompare(String(prev.updated_at || "")) > 0
+                ) {
+                    byId.set(annotated.id, annotated);
+                }
+            }
+        }
+
+        return [...byId.values()].sort(
+            (left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || ""))
+        );
+    }
+
+    function findSessionRoot(id, requestedProjectId) {
+
+        const roots = sessionRoots();
+
+        if (requestedProjectId) {
+            const match = roots.find(item => item.projectId === requestedProjectId);
+            if (match && sessions.loadSession(id, match.root)) {
+                return match;
+            }
+        }
+
+        for (const origin of roots) {
+            if (sessions.loadSession(id, origin.root)) {
+                return origin;
+            }
+        }
+
+        return null;
+    }
 
     /* ------------------------------------------- sessions */
 
@@ -47,7 +196,7 @@ module.exports = async function SessionsRoutes(shared, request) {
 
         sendJson(res, 200, {
             current: state.session.id,
-            sessions: sessions.listSessions()
+            sessions: collectSessions()
         });
 
         return true;
@@ -111,11 +260,15 @@ module.exports = async function SessionsRoutes(shared, request) {
             decodeURIComponent(
                 pathname.slice("/api/sessions/".length)
             );
+        const requestedProjectId = url?.searchParams?.get("projectId") || null;
 
-        const found =
-            id === state.session.id
-                ? state.session
-                : sessions.loadSession(id);
+        let found = null;
+        if (id === state.session.id) {
+            found = state.session;
+        } else {
+            const location = findSessionRoot(id, requestedProjectId);
+            found = location ? sessions.loadSession(id, location.root) : null;
+        }
 
         if (!found) {
 
@@ -147,6 +300,7 @@ module.exports = async function SessionsRoutes(shared, request) {
             decodeURIComponent(
                 pathname.slice("/api/sessions/".length)
             );
+        const requestedProjectId = url?.searchParams?.get("projectId") || null;
 
         if (state.status === "running") {
 
@@ -165,7 +319,8 @@ module.exports = async function SessionsRoutes(shared, request) {
 
         saveSession();
 
-        const opened = activateSession(id);
+        const location = findSessionRoot(id, requestedProjectId);
+        const opened = location ? activateSession(id, location.root) : null;
 
         if (!opened) {
 
@@ -196,6 +351,7 @@ module.exports = async function SessionsRoutes(shared, request) {
             decodeURIComponent(
                 pathname.slice("/api/sessions/".length)
             );
+        const requestedProjectId = url?.searchParams?.get("projectId") || null;
 
         if (id === state.session.id) {
 
@@ -206,7 +362,8 @@ module.exports = async function SessionsRoutes(shared, request) {
             return true;
         }
 
-        if (sessions.deleteSession(id)) {
+        const location = findSessionRoot(id, requestedProjectId);
+        if (location && sessions.deleteSession(id, location.root)) {
             sendJson(res, 200, { deleted: id });
         } else {
             sendJson(res, 404, { error: "unknown session" });

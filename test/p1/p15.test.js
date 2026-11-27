@@ -93,13 +93,16 @@ async function main() {
 
         try {
 
-            fs.writeFileSync(path.join(dir, "pass.js"), "console.log('fine')\n");
+            fs.writeFileSync(path.join(dir, "pass.js"), "console.log('fine'); console.log('1/1 passed')\n");
             fs.writeFileSync(path.join(dir, "fail.js"), "console.log('broken <here>'); process.exit(3)\n");
             fs.writeFileSync(path.join(dir, "hang.js"), "setInterval(() => {}, 1000)\n");
-            fs.writeFileSync(path.join(dir, "stdin.js"), "process.stdin.resume(); process.stdin.on('end', () => process.exit(0))\n");
+            fs.writeFileSync(path.join(dir, "stdin.js"), "process.stdin.resume(); process.stdin.on('end', () => { console.log('1/1 passed'); process.exit(0); })\n");
+            /* awaits a promise nothing will settle: Node runs out of work and exits 0 mid-file */
+            fs.writeFileSync(path.join(dir, "early.js"), "(async () => { console.log('  ok first'); await new Promise(() => {}); console.log('2/2 passed'); })()\n");
+            fs.writeFileSync(path.join(dir, "partial.js"), "console.log('1/2 passed')\n");
             fs.writeFileSync(
                 path.join(dir, "package.json"),
-                JSON.stringify({ scripts: { test: "node pass.js && node fail.js && node hang.js && node stdin.js" } })
+                JSON.stringify({ scripts: { test: "node pass.js && node fail.js && node hang.js && node stdin.js && node early.js && node partial.js" } })
             );
 
             const out = path.join(dir, "out.txt");
@@ -119,14 +122,16 @@ async function main() {
             assert.match(report, /FAIL fail\.js \(exit 3/);
             assert.match(report, /FAIL hang\.js \(timed out/);
             assert.match(report, /ok\s+stdin\.js/, "a test reading stdin must see end of input, not hang");
-            assert.match(report, /2\/4 passed/);
+            assert.match(report, /FAIL early\.js \(exit 0 without a "N\/N passed" summary/, "a file that stops early is a failure");
+            assert.match(report, /FAIL partial\.js \(exit 0 but its summary says 1\/2 passed/);
+            assert.match(report, /2\/6 passed/);
             assert.match(report, /broken <here>/);
 
             const junit = fs.readFileSync(xml, "utf8");
 
-            assert.match(junit, /<testsuite name="structured-ai npm test" tests="4" failures="2"/);
+            assert.match(junit, /<testsuite name="structured-ai npm test" tests="6" failures="4"/);
             assert.match(junit, /broken &lt;here&gt;/);
-            assert.equal((junit.match(/<testcase /g) || []).length, 4);
+            assert.equal((junit.match(/<testcase /g) || []).length, 6);
 
         } finally {
 
@@ -144,7 +149,8 @@ async function main() {
                 path.join(dir, "temp.js"),
                 "const fs = require('fs'); const os = require('os');\n" +
                 "const t = os.tmpdir(); const r = fs.realpathSync.native(t);\n" +
-                "if (t !== r) { console.log('FAIL temp ' + t + ' != ' + r); process.exit(1); }\n"
+                "if (t !== r) { console.log('FAIL temp ' + t + ' != ' + r); process.exit(1); }\n" +
+                "console.log('1/1 passed');\n"
             );
             fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: "node temp.js" } }));
 
@@ -198,7 +204,7 @@ async function main() {
 
         try {
 
-            fs.writeFileSync(path.join(dir, "a.js"), "\n");
+            fs.writeFileSync(path.join(dir, "a.js"), "console.log('1/1 passed')\n");
             fs.writeFileSync(path.join(dir, "b.js"), "console.log('  FAIL inner'); process.exit(1)\n");
             fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: "node a.js && node b.js" } }));
 
@@ -217,7 +223,7 @@ async function main() {
         }
     });
 
-    await test("tests do not spawn POSIX-only programs (sleep, cat, sh, timeout) or use /dev/null", () => {
+    await test("tests do not spawn POSIX-only programs (sleep, cat, sh, timeout), use /dev/null or import() a bare file path", () => {
 
         const programs = ["sleep", "cat", "sh", "bash", "timeout", "true", "false", "yes"];
         const quote = "[\"'`]";
@@ -225,7 +231,10 @@ async function main() {
         const patterns = [
             new RegExp(call + quote + "(" + programs.join("|") + ")(\\s|" + quote + ")"),
             new RegExp(quote + "/dev/" + "null" + quote),
-            new RegExp(quote + "/bin/" + "(sh|bash)" + quote)
+            new RegExp(quote + "/bin/" + "(sh|bash)" + quote),
+            /* import() of a bare file path: on Windows "D:\\..." reads as a URL
+               scheme; use pathToFileURL(...).href or a relative specifier */
+            new RegExp("\\bimport\\(\\s*path\\.(join|resolve)\\(")
         ];
 
         const self = path.resolve(__filename);

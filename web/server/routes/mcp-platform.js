@@ -51,11 +51,7 @@ function segment(pathname, prefix, suffix = "") {
         return null;
     }
 
-    try {
-        return decodeURIComponent(middle);
-    } catch {
-        return null;
-    }
+    return decodeURIComponent(middle);
 }
 
 

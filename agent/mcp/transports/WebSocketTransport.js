@@ -57,6 +57,23 @@ function acceptValue(key) {
 }
 
 
+function hasHeader(headers, targetLower) {
+
+    return Object.keys(headers).some(key => key.toLowerCase() === targetLower);
+}
+
+
+function maskedHeaders(headers) {
+
+    if (!headers || typeof headers !== "object") return undefined;
+
+    const keys = Object.keys(headers);
+    if (keys.length === 0) return undefined;
+
+    return Object.fromEntries(keys.map(key => [key, "****"]));
+}
+
+
 /*
 | A client frame must be masked with a fresh random key, and the payload
 | length is encoded in one of three widths depending on its size.
@@ -296,12 +313,16 @@ class WebSocketTransport {
 
     describe() {
 
+        const headers = maskedHeaders(this.config.headers);
+
         return {
             kind: WebSocketTransport.kind,
 
             url: this.url.toString(),
 
-            connected: this.isConnected()
+            connected: this.isConnected(),
+
+            ...(headers ? { headers } : {})
         };
     }
 
@@ -346,7 +367,7 @@ class WebSocketTransport {
                     ...(this.config.headers || {})
                 };
 
-                if (this.config.token) {
+                if (this.config.token && !hasHeader(headers, "authorization")) {
                     headers.authorization = `Bearer ${this.config.token}`;
                 }
 
@@ -355,7 +376,9 @@ class WebSocketTransport {
                 | mcp subprotocol, and one that does not care ignores it.
                 */
 
-                headers["sec-websocket-protocol"] = "mcp";
+                if (!hasHeader(headers, "sec-websocket-protocol")) {
+                    headers["sec-websocket-protocol"] = "mcp";
+                }
 
                 const request =
                     (secure ? https : http).request(

@@ -158,23 +158,7 @@ module.exports = async function TasksRoutes(shared, request) {
                 return true;
             }
 
-            let rootPath;
-            if (projectId) {
-                try {
-                    rootPath = runtime.projects.registry().get(projectId).rootPath;
-                } catch (error) {
-                    error.status = 404;
-                    throw error;
-                }
-            } else {
-                const context = runtime.createRuntimeContext();
-                rootPath = context?.runtime?.workspace_root || context?.workspace_root;
-                if (typeof rootPath !== "string" || rootPath.trim() === "") {
-                    const error = new Error("workspace root is unavailable for uploads");
-                    error.status = 500;
-                    throw error;
-                }
-            }
+            const rootPath = workspaceRootFor(runtime, projectId);
             const realRoot = fs.realpathSync(rootPath);
             const uploadDirectory = path.join(realRoot, "upload_tmp");
 
@@ -274,7 +258,11 @@ module.exports = async function TasksRoutes(shared, request) {
 
         /* the run continues in the background */
 
-        startTask(task, { reasoningEffort, runFlags }).catch(() => {});
+        startTask(task, { reasoningEffort, runFlags }).catch(error => {
+            shared.logs?.error("task", error?.message || "background task failed", {
+                status: error?.status || 500
+            });
+        });
 
         sendJson(res, 202, { accepted: true });
 

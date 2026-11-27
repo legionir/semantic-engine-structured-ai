@@ -458,4 +458,42 @@ module.exports = async function Conversation({ test, card, console_ }) {
             0
         );
     });
+
+    await test("the chat toggle button switches agent responses between rendered Markdown and raw text", () => {
+
+        const mdPayload = "# Complex Summary\n\n| File | Status |\n| --- | --- |\n| `app.js` | **ok** |\n\n```js\nconst x = 1;\n```";
+
+        console_.send({
+            type: "session:message",
+            message: { role: "user", kind: "message", content: "**User** prompt" }
+        });
+        console_.send({
+            type: "session:message",
+            message: { role: "assistant", kind: "message", content: mdPayload }
+        });
+
+        const chat = document.getElementById("chat");
+        const toggle = document.getElementById("chatFormatToggle");
+        assert.ok(toggle, "chat format toggle button exists");
+        assert.ok(document.querySelector(".composer-tools #chatFormatToggle"), "chat format toggle lives below message input in composer-tools");
+        assert.equal(toggle.getAttribute("aria-pressed"), "false");
+        assert.equal(toggle.textContent, "Raw · off");
+        assert.ok(chat.querySelector("h1.md-heading"), "Markdown heading is rendered by default");
+        assert.ok(chat.querySelector("table.md-table"), "Markdown table is rendered by default");
+        assert.equal(chat.querySelectorAll(".raw-message-content").length, 0);
+
+        toggle.dispatch("click");
+        assert.equal(toggle.getAttribute("aria-pressed"), "true");
+        assert.equal(toggle.textContent, "Raw · on");
+        const rawBlocks = [...chat.querySelectorAll(".bubble.assistant .raw-message-content")];
+        assert.ok(rawBlocks.length >= 1, "agent bubbles render raw content pre block");
+        assert.ok(rawBlocks.some(node => node.textContent === mdPayload), "raw markdown source is preserved verbatim");
+        assert.equal(chat.querySelectorAll(".bubble.assistant table.md-table").length, 0, "rendered markdown tables are replaced in raw mode");
+        assert.ok(chat.querySelector(".bubble.user .message-content strong"), "user message remains rendered");
+
+        toggle.dispatch("click");
+        assert.equal(toggle.getAttribute("aria-pressed"), "false");
+        assert.equal(toggle.textContent, "Raw · off");
+        assert.ok(chat.querySelector("table.md-table"), "Markdown preview returns when toggled back");
+    });
 };

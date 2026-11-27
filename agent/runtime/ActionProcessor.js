@@ -60,6 +60,12 @@ async function handleMalformed(progress, error, {
         iteration,
         code: error.code,
         reason: error.message,
+        finish_reason:
+            error.details?.finish_reason || null,
+        completion_tokens:
+            error.details?.completion_tokens ?? null,
+        output_chars:
+            error.details?.output_chars ?? null,
         attempt: note.attempt,
         limit: note.limit,
         max_attempts: note.maximumAttempts,
@@ -410,18 +416,10 @@ async function finalize(ctx) {
     }
 
     const nudgeGuard =
-        ctx.kind === "sub"
-            ? (
-                action.action === "final" &&
-                !progress.wrapup &&
-                RunState.isUnfinishedFinal(action, progress) &&
-                progress.nudges < h.settings.get("MAX_EMPTY_FINAL_NUDGES")
-            )
-            : (
-                action.action === "final" &&
-                RunState.isUnfinishedFinal(action, progress) &&
-                progress.nudges < h.settings.get("MAX_EMPTY_FINAL_NUDGES")
-            );
+        action.action === "final" &&
+        !progress.wrapup &&
+        RunState.isUnfinishedFinal(action, progress) &&
+        progress.nudges < h.settings.get("MAX_EMPTY_FINAL_NUDGES");
 
     if (nudgeGuard) {
 
@@ -537,10 +535,14 @@ async function finalize(ctx) {
         await h.applyAfterTaskHooks(action, null);
 
     const finalAction =
-        finalized.action;
+        finalized && finalized.action && typeof finalized.action === "object"
+            ? finalized.action
+            : action;
 
-    messages[messages.length - 1].content =
-        JSON.stringify(finalAction);
+    if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
+        messages[messages.length - 1].content =
+            JSON.stringify(finalAction);
+    }
 
     const mismatch =
         ReportVerifier.checkPerformedClaim(finalAction, progress, "main_agent");

@@ -297,21 +297,134 @@ function rateOne(words, dialect, pipedFrom, depth) {
 }
 
 
-/* The bodies of $(...) and `...` outside single quotes. */
+/* The bodies of $(...) and `...` outside unescaped single quotes. */
 function substitutions(text) {
 
-    const unquoted = String(text).replace(/'[^']*'/g, "''");
+    const source = String(text || "");
     const found = [];
 
-    const pattern = /\$\(([^()]*)\)|`([^`]*)`/g;
-    let match;
+    const scanSubstitution = start => {
+        let depth = 1;
+        let innerQuote = null;
+        let index = start;
 
-    while ((match = pattern.exec(unquoted)) !== null) {
+        while (index < source.length && depth > 0) {
+            const ch = source[index];
+            const next = source[index + 1];
 
-        const body = match[1] !== undefined ? match[1] : match[2];
+            if (innerQuote === "'") {
+                if (ch === "'") innerQuote = null;
+                index += 1;
+                continue;
+            }
 
-        if (body && body.trim()) {
-            found.push(body);
+            if (innerQuote === "\"") {
+                if (ch === "\\" && next !== undefined) {
+                    index += 2;
+                    continue;
+                }
+                if (ch === "\"") {
+                    innerQuote = null;
+                    index += 1;
+                    continue;
+                }
+                if (ch === "$" && next === "(") {
+                    depth += 1;
+                    index += 2;
+                    continue;
+                }
+                index += 1;
+                continue;
+            }
+
+            if (ch === "\\" && next !== undefined) {
+                index += 2;
+                continue;
+            }
+
+            if (ch === "'" || ch === "\"") {
+                innerQuote = ch;
+                index += 1;
+                continue;
+            }
+
+            if (ch === "$" && next === "(") {
+                depth += 1;
+                index += 2;
+                continue;
+            }
+
+            if (ch === "(") {
+                depth += 1;
+                index += 1;
+                continue;
+            }
+
+            if (ch === ")") {
+                depth -= 1;
+                if (depth === 0) {
+                    return { body: source.slice(start, index), nextIndex: index + 1 };
+                }
+                index += 1;
+                continue;
+            }
+
+            index += 1;
+        }
+
+        return { body: source.slice(start), nextIndex: source.length };
+    };
+
+    let quote = null;
+
+    for (let index = 0; index < source.length; index += 1) {
+        const ch = source[index];
+        const next = source[index + 1];
+
+        if (quote === "'") {
+            if (ch === "'") quote = null;
+            continue;
+        }
+
+        if (ch === "\\" && next !== undefined) {
+            index += 1;
+            continue;
+        }
+
+        if (quote === "\"") {
+            if (ch === "\"") {
+                quote = null;
+                continue;
+            }
+        } else if (ch === "'" || ch === "\"") {
+            quote = ch;
+            continue;
+        }
+
+        if (ch === "$" && next === "(") {
+            const { body, nextIndex } = scanSubstitution(index + 2);
+            if (body.trim()) {
+                found.push(body);
+            }
+            index = nextIndex - 1;
+            continue;
+        }
+
+        if (ch === "`") {
+            let end = index + 1;
+            while (end < source.length) {
+                if (source[end] === "\\" && source[end + 1] !== undefined) {
+                    end += 2;
+                    continue;
+                }
+                if (source[end] === "`") break;
+                end += 1;
+            }
+            const body = source.slice(index + 1, end);
+            if (body.trim()) {
+                found.push(body);
+            }
+            index = end;
         }
     }
 
@@ -380,7 +493,19 @@ function rateLine(line, dialect, depth = 0, elevated = false) {
         }
     }
 
-    return { risk: verdict.risk, reason: verdict.reason, commands: reasons };
+    if (commands.unclosedQuote) {
+        const note = rate(RISK.MEDIUM, `unclosed quote (${commands.unclosedQuote})`);
+        reasons.push(note);
+        if (ORDER[note.risk] > ORDER[verdict.risk] || verdict.reason === "nothing to run") {
+            verdict = note;
+        }
+    }
+
+    const result = { risk: verdict.risk, reason: verdict.reason, commands: reasons };
+    if (commands.warnings && commands.warnings.length > 0) {
+        result.warnings = commands.warnings.slice();
+    }
+    return result;
 }
 
 

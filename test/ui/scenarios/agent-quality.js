@@ -25,12 +25,20 @@ module.exports = async function AgentQuality({ test, backdrops, console_ }) {
 
     console_.send({ type: "run:status", status: "idle" });
 
-    await test("Plan first sends plan_mode, the goal and the cap with the task", async () => {
+    await test("Plan mode in approval selector sends plan_mode, the message as goal, and the cap with the task", async () => {
 
         console_.reply("POST /api/tasks", { __status: 202, body: { ok: true } });
 
-        byId("taskPlanMode").checked = true;
-        byId("taskGoal").value = "tests pass";
+        assert.equal(byId("taskGoal"), null, "separate taskGoal input is removed");
+        const runOptions = byId("runOptions");
+        assert.ok(runOptions.contains(byId("taskEffort")) && runOptions.contains(byId("taskMaxCost")), "Effort and Cap $ share one row");
+
+        const previousMode = byId("approvalMode").value;
+        const approvalPostsBefore = posts(/^\/api\/approval-mode$/).length;
+        byId("approvalMode").value = "plan";
+        byId("approvalMode").dispatch("change");
+        assert.equal(posts(/^\/api\/approval-mode$/).length, approvalPostsBefore, "plan mode does not post to /api/approval-mode");
+
         byId("taskMaxCost").value = "0.5";
         byId("task").value = "add a cache";
         byId("taskForm").dispatch("submit");
@@ -39,9 +47,9 @@ module.exports = async function AgentQuality({ test, backdrops, console_ }) {
         const body = posts(/^\/api\/tasks$/).at(-1).body;
         assert.equal(body.task, "add a cache");
         assert.equal(body.plan_mode, true);
-        assert.equal(body.goal, "tests pass");
+        assert.equal(body.goal, "add a cache");
         assert.equal(body.max_cost_usd, 0.5);
-        assert.equal(byId("taskPlanMode").checked, false, "plan first belongs to one task");
+        assert.equal(byId("approvalMode").value, previousMode, "plan mode belongs to one task");
         assert.equal(byId("taskMaxCost").value, "0.5", "the cap stays");
         byId("taskMaxCost").value = "";
 
@@ -171,5 +179,42 @@ module.exports = async function AgentQuality({ test, backdrops, console_ }) {
 
         console_.send({ type: "run:status", status: "idle" });
         await settle();
+    });
+
+    await test("failed submitTask preserves the plan banner and keeps the Review modal open", async () => {
+
+        console_.send({ type: "run:status", status: "done", plan_mode: true, turn_id: "t-fail" });
+        await settle();
+
+        const banner = byId("planApproval");
+        assert.match(banner.textContent, /The plan is ready for your approval/);
+
+        console_.reply("POST /api/tasks", { __status: 409, body: { error: "busy" } });
+        button(banner, "Approve and run").dispatch("click");
+        await settle();
+
+        assert.match(banner.textContent, /The plan is ready for your approval/, "plan banner stays visible on rejected submit");
+
+        console_.send({ type: "run:status", status: "idle" });
+        await settle();
+
+        console_.reply("POST /api/review", {
+            label: "the uncommitted changes",
+            summary: "One risky change.",
+            truncated: false,
+            findings: [{ severity: "high", file: "b.js", line: 9, title: "null check missing" }]
+        });
+
+        byId("reviewButton").dispatch("click");
+        await settle();
+        const view = modal();
+        button(view, "Review").dispatch("click");
+        await settle();
+
+        button(view, "Fix selected").dispatch("click");
+        await settle();
+
+        assert.ok(modal(), "Review modal stays open when submitTask returns false");
+        await close();
     });
 };

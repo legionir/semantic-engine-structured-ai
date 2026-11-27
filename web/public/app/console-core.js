@@ -87,11 +87,12 @@ export function resetProjectView() {
 
     batch(() => {
         resetRun(state, true);
+        state.queuePeakTotal = 0;
         state.messages = [];
         state.events = [];
         state.logRows = [];
         state.approvals.clear();
-        touch("tree", "chat", "log", "approvals", "plan");
+        touch("tree", "chat", "log", "approvals", "plan", "run");
     });
 }
 

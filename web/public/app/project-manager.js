@@ -15,6 +15,7 @@ import { el, failureText, notifyError } from "./console-core.js";
 import { navigateConsole, projectById } from "./project-routing.js";
 import { renderAttachments } from "./composer-controller.js";
 import { applyProjectRoute, bindProjectHeader, closeProjectDashboard, loadGatewayHealth, loadProjects, openProjectDashboard, setCurrentProject } from "./projects-controller.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 /* the task scope the composer sends to: one project (or the default) or several */
@@ -76,7 +77,8 @@ function NewProjectBody({ form, refs, actions }) {
 
 function openNewProjectModal(initialMode = "folder") {
 
-    const form = { message: "", busy: false, mode: initialMode, job: null, root: null, secrets: [], suggested: "", closed: false };
+    const mode = initialMode === "git" ? "git" : "folder";
+    const form = { message: "", busy: false, mode, job: null, root: null, secrets: [], suggested: "", closed: false };
     const refs = {
         name: { current: null },
         root: { current: null },
@@ -143,7 +145,7 @@ function openNewProjectModal(initialMode = "folder") {
             let response;
 
             try {
-                response = await fetch("/api/projects", {
+                response = await apiFetch("/api/projects", {
                     method: "POST",
                     headers: { "content-type": "application/json" },
                     body: JSON.stringify({ name: name || undefined, rootPath, createIfMissing: true })
@@ -169,7 +171,7 @@ function openNewProjectModal(initialMode = "folder") {
         }
     };
 
-    const createButton = Modal.button(initialMode === "git" ? "Clone" : "Create", "", create);
+    const createButton = Modal.button(mode === "git" ? "Clone" : "Create", "", create);
 
     const handle = Modal.open({
         title: "New Project",
@@ -185,37 +187,47 @@ function openNewProjectModal(initialMode = "folder") {
         }
     });
 
-    dispose = mountInModal(handle, NewProjectBody, ["projects"], { form, refs, actions }, "mcp-add");
+    dispose = mountInModal(handle, NewProjectBody, ["projects"], { form, refs, actions }, "new-project-body");
 
-    if (initialMode === "git") {
+    if (mode === "git") {
         void loadCloneContext(form);
     }
 }
 
 
-async function openProjectsManager() {
+function initialPicker(scoped) {
 
-    await loadProjects();
+    const ids = new Set(scoped.filter(id => projectById(id)));
+    return {
+        ids,
+        workspace: ids.size === 0 && state.taskScopeMode !== "multiple" && !state.currentProjectId,
+        dirty: false
+    };
+}
+
+
+function openProjectsManager() {
 
     /* the operator's choice until Confirm; it starts from the current scope */
     const scoped =
         state.taskScopeMode === "multiple"
             ? state.taskProjectIds
             : state.currentProjectId ? [state.currentProjectId] : [];
-    const picker = { ids: new Set(scoped.filter(id => projectById(id))) };
-    picker.workspace = picker.ids.size === 0 && state.taskScopeMode !== "multiple" && !state.currentProjectId;
+    const picker = initialPicker(scoped);
 
     const changed = () => touch("projects");
 
     const actions = {
 
         chooseWorkspace(checked) {
+            picker.dirty = true;
             picker.workspace = checked;
             if (checked) picker.ids.clear();
             changed();
         },
 
         toggle(id, checked) {
+            picker.dirty = true;
             if (checked) {
                 picker.ids.add(id);
                 picker.workspace = false;
@@ -235,7 +247,7 @@ async function openProjectsManager() {
             const name = project.name || project.id;
 
             try {
-                const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}`, { method: "DELETE" });
+                const response = await apiFetch(`/api/projects/${encodeURIComponent(project.id)}`, { method: "DELETE" });
                 if (!response.ok) {
                     notifyError(await failureText(response, `${name} was not deleted`));
                     return;
@@ -261,10 +273,14 @@ async function openProjectsManager() {
 
     let stopFooter = () => {};
     let dispose = () => {};
+    let open = true;
+
+    const subtitleText = () =>
+        state.projectsLoading && state.projects.length === 0 ? "Loading…" : `${state.projects.length} registered`;
 
     const handle = Modal.open({
         title: "Projects",
-        subtitle: `${state.projects.length} registered`,
+        subtitle: subtitleText(),
         size: "medium",
         footer: Modal.row(
             Modal.button("New Project", "ghost", () => {
@@ -275,6 +291,7 @@ async function openProjectsManager() {
             Modal.button("Close", "ghost", () => handle.close("footer"))
         ),
         onClose: () => {
+            open = false;
             stopFooter();
             dispose();
         }
@@ -283,15 +300,31 @@ async function openProjectsManager() {
     dispose = mountInModal(handle, ProjectsManager, ["projects"], { state, picker, actions }, "sessions");
 
     stopFooter = bind(["projects"], () => {
-        handle.setSubtitle(`${state.projects.length} registered`);
+        handle.setSubtitle(subtitleText());
         confirmButton.disabled = !picker.workspace && picker.ids.size === 0;
     });
+
+    void loadProjects().then(() => {
+        if (!open) return;
+        if (!picker.dirty) {
+            const refreshed = initialPicker(scoped);
+            picker.ids = refreshed.ids;
+            picker.workspace = refreshed.workspace;
+        } else {
+            for (const id of [...picker.ids]) {
+                if (!projectById(id)) picker.ids.delete(id);
+            }
+        }
+        changed();
+    });
+
+    return handle;
 }
 
 
 function bindProjectControls() {
 
-    el("newProjectButton")?.addEventListener("click", openNewProjectModal);
+    el("newProjectButton")?.addEventListener("click", () => openNewProjectModal("folder"));
     el("projectsButton")?.addEventListener("click", openProjectsManager);
 
     const attachButton = el("attachFilesButton");

@@ -235,7 +235,7 @@ module.exports = async function ControlRoutes(shared, request) {
                 sendJson(res, 200, catalog);
             }
         } catch (error) {
-            sendJson(res, 502, { error: error.message });
+            sendJson(res, error.status || 502, { error: error.message });
         }
         return true;
     }
@@ -319,6 +319,10 @@ module.exports = async function ControlRoutes(shared, request) {
         req.method === "GET"
     ) {
 
+        if (requireAdmin()) {
+            return true;
+        }
+
         sendJson(
             res,
             200,
@@ -348,7 +352,8 @@ module.exports = async function ControlRoutes(shared, request) {
                 }
             }
 
-            snap.projects = allowed;
+            sendJson(res, 200, { projects: allowed });
+            return true;
         }
 
         sendJson(res, 200, snap);
@@ -365,15 +370,26 @@ module.exports = async function ControlRoutes(shared, request) {
         if (!consoleAuth.allowsAllProjects(claims)) {
 
             const allowed = {};
+            let ok = 0;
+            let degraded = 0;
+            let down = 0;
 
             for (const [id, item] of Object.entries(health.projects)) {
 
                 if (consoleAuth.allowsProject(claims, id)) {
                     allowed[id] = item;
+                    if (item.status === "down") down++;
+                    else if (item.status === "degraded") degraded++;
+                    else ok++;
                 }
             }
 
-            health.projects = allowed;
+            sendJson(res, 200, {
+                status: down + degraded === 0 ? "ok" : "degraded",
+                counts: { ok, degraded, down },
+                projects: allowed
+            });
+            return true;
         }
 
         sendJson(res, 200, health);

@@ -276,6 +276,8 @@ class OpenAIResponsesProvider extends LLMProvider {
     async readStream(response, request, onDelta) {
 
         let text = "";
+        const calls = [];
+        const items = new Map();
 
         for await (const event of readSse(response.body)) {
 
@@ -293,15 +295,49 @@ class OpenAIResponsesProvider extends LLMProvider {
 
                 onDelta({ type: "text", text: data.delta || "" });
 
+            } else if (type === "response.output_item.added") {
+
+                const item = data.item;
+
+                if (item && item.type === "function_call") {
+                    const idx = Number.isInteger(data.output_index) ? data.output_index : calls.length;
+                    const entry = {
+                        id: item.call_id || item.id || `call_${idx + 1}`,
+                        itemId: item.id || null,
+                        name: item.name || "",
+                        arguments: typeof item.arguments === "string" ? item.arguments : ""
+                    };
+                    calls[idx] = entry;
+                    if (entry.itemId) items.set(entry.itemId, entry);
+                    items.set(`idx:${idx}`, entry);
+                }
+
             } else if (type === "response.function_call_arguments.delta") {
+
+                const idx = Number.isInteger(data.output_index) ? data.output_index : 0;
+                const tracked = (data.item_id && items.get(data.item_id)) || items.get(`idx:${idx}`) || calls[idx];
+                const delta = data.delta || "";
+
+                if (tracked) {
+                    tracked.arguments += delta;
+                }
 
                 onDelta({
                     type: "tool_call",
-                    index: data.output_index || 0,
-                    id: data.item_id || null,
-                    name: "",
-                    arguments: data.delta || ""
+                    index: idx,
+                    id: tracked ? tracked.id : (data.item_id || null),
+                    name: tracked ? tracked.name : "",
+                    arguments: delta
                 });
+
+            } else if (type === "response.function_call_arguments.done") {
+
+                const idx = Number.isInteger(data.output_index) ? data.output_index : 0;
+                const tracked = (data.item_id && items.get(data.item_id)) || items.get(`idx:${idx}`) || calls[idx];
+
+                if (tracked && typeof data.arguments === "string") {
+                    tracked.arguments = data.arguments;
+                }
 
             } else if (type === "response.completed" || type === "response.incomplete") {
 
@@ -317,12 +353,15 @@ class OpenAIResponsesProvider extends LLMProvider {
             }
         }
 
+        const collectedCalls = calls.filter(item => item && item.name);
+
         /* the stream ended without response.completed: keep what arrived */
         return chatResponse({
             model: request.model,
             provider: this.name,
             text,
-            finishReason: "length"
+            toolCalls: collectedCalls,
+            finishReason: collectedCalls.length > 0 ? "tool_calls" : "length"
         });
     }
 }

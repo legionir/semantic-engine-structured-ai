@@ -12,6 +12,7 @@
 
 import { html } from "./dom.js";
 import { formatStamp } from "./operator-api.js";
+import { SkeletonRows } from "./skeleton-view.js";
 
 
 export const LOG_LEVELS = Object.freeze(["debug", "info", "warn", "error"]);
@@ -144,18 +145,15 @@ export function LogsBody({ logs, actions }) {
                 value=${logs.text}
                 onInput=${event => actions.text(event.currentTarget.value)}
             />
-            <div class="logs-actions">
-                <button type="button" class="ghost" onClick=${() => actions.refresh()}>Refresh</button>
-                <a class="chip button" href="/api/logs/download" download>Download</a>
-                <button type="button" class="ghost danger" onClick=${() => actions.clear()}>Clear</button>
-            </div>
         </div>
         ${logs.error ? html`<p class="logs-error" role="alert">${logs.error}</p>` : null}
-        ${entries.length === 0
-            ? html`<p class="empty">${logs.loading ? "Loading…" : "No log entries match these filters."}</p>`
-            : html`<ul class="log-list">
-                ${entries.map(entry => html`<${LogRow} key=${entry.id} entry=${entry} open=${logs.expanded.has(entry.id)} actions=${actions} />`)}
-            </ul>`}
+        ${logs.loading && entries.length === 0
+            ? html`<${SkeletonRows} count=${6} label="Loading…" />`
+            : entries.length === 0
+                ? html`<p class="empty">No log entries match these filters.</p>`
+                : html`<ul class="log-list">
+                    ${entries.map(entry => html`<${LogRow} key=${entry.id} entry=${entry} open=${logs.expanded.has(entry.id)} actions=${actions} />`)}
+                </ul>`}
         ${logs.summary?.file ? html`<p class="muted logs-file">Log file: ${logs.summary.file}</p>` : null}
     </div>`;
 }

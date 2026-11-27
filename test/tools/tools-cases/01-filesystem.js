@@ -206,6 +206,13 @@ module.exports = async function filesystemCases(ctx) {
         );
         assert.equal(fs.existsSync(path.join(WORKSPACE, ".agent", "checkpoints")), true);
 
+        await run("fs_write", { path: "move-blocker.txt", content: "temp" });
+        await rejects(
+            run("fs_move", { source: "move-blocker.txt", destination: ".agent", overwrite: true }),
+            /secret store|checkpoint/i
+        );
+        await run("fs_delete", { path: "move-blocker.txt" });
+
         await rejects(
             run("fs_write", {
                 path: "not-created/parent/file.txt",

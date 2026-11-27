@@ -196,7 +196,12 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
             return true;
         }
 
-        startTask(task, { projectId: record.id, reasoningEffort, runFlags }).catch(() => {});
+        startTask(task, { projectId: record.id, reasoningEffort, runFlags }).catch(error => {
+            shared.logs?.error("task", error?.message || "project task failed", {
+                project_id: record.id,
+                status: error?.status || 500
+            });
+        });
 
         sendJson(res, 202, {
             accepted: true,

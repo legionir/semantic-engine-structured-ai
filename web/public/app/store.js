@@ -87,6 +87,7 @@ export function createState() {
         messages: [],
         waiting: null,
         openExecutionKeys: new Set(),
+        chatRawMode: false,
 
         /* eventState */
         events: [],
@@ -112,6 +113,7 @@ export function createState() {
         model: "",
         turnsText: "",
         approvalMode: null,
+        composerPlanMode: false,
         autoContinue: false,
         reconnecting: false,
 
@@ -122,8 +124,10 @@ export function createState() {
 
         /* settingsState */
         settings: [],
+        settingsLoading: false,
         settingsStatus: new Map(),
         modelCatalog: null,
+        modelCatalogLoading: false,
         modelCatalogResult: null,
 
         /* mcpState: filled by mcp-view's createMcpState when the modal opens */
@@ -142,20 +146,26 @@ export function createState() {
         /* discussion */
         discussion: null,
         discussionMode: false,
+        discussionShowSetup: true,
+        discussionDraft: "",
         discussionPersonas: [],
-        /* the composer's persona picker: null until the personas first load */
+        discussionPersonasLoading: false,
+        /* the modal's persona picker: null until the personas first load */
         discussionSelection: null,
         discussionRounds: "5",
-        /* an error on the composer line stays until the operator submits again */
+        /* an error on the setup form stays until the operator submits again */
         discussionError: null,
 
         /* projectState */
         projects: [],
+        projectsLoading: false,
         currentProjectId: null,
         taskScopeMode: "current",
         taskProjectIds: [],
         dashboard: { open: false, projectId: null, tab: "overview", request: 0, loading: false, data: null, saving: false, saveMessage: "" },
         multiQueue: [],
+        multiQueueTotal: 0,
+        multiQueueActive: false,
 
         /* conversationState per project (P1-03 / P1-04 / P1-05): one line
            per live conversation, the visible project's message queue, the
@@ -163,6 +173,7 @@ export function createState() {
            and whether the operator wants browser notifications */
         conversations: [],
         queue: null,
+        queuePeakTotal: 0,
         conversationMode: null,
         attention: new Set(),
         notificationsEnabled: false,

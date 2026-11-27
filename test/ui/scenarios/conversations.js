@@ -209,10 +209,14 @@ module.exports = async function Conversations({ test, console_ }) {
         await tick();
 
         const run = document.getElementById("runButton");
+        const queue = document.getElementById("queueButton");
         const correct = document.getElementById("correctButton");
 
         assert.equal(run.disabled, false);
-        assert.equal(run.textContent, "Queue message");
+        assert.equal(run.textContent, "Stop");
+        assert.ok(run.classList.contains("is-stop"));
+        assert.equal(queue.hidden, false);
+        assert.equal(queue.textContent, "Queue message");
         assert.equal(correct.hidden, false);
 
         console_.reply("POST /api/projects/prj-a/tasks", {
@@ -230,6 +234,7 @@ module.exports = async function Conversations({ test, console_ }) {
         assert.equal(post.body.task, "then add tests");
         assert.equal(document.getElementById("task").value, "", "the composer is cleared");
         assert.equal(state.status, "running", "the run on screen goes on");
+        assert.equal(document.getElementById("statusText").className, "status-pill running", "statusText reflects running pill with processing indicator");
         assert.equal(document.querySelectorAll("#chat .bubble.error").length, 0);
     });
 
@@ -315,7 +320,7 @@ module.exports = async function Conversations({ test, console_ }) {
 
         console_.send({ type: "run:status", status: "running", project_id: "prj-a" });
         console_.reply("POST /api/projects/prj-a/cancel", { cancelled: true });
-        document.getElementById("cancelButton").dispatch("click");
+        document.getElementById("runButton").dispatch("click");
         await tick();
         assert.ok(console_.posted.some(item => item.url === "/api/projects/prj-a/cancel"));
         console_.send({ type: "run:status", status: "cancelled", project_id: "prj-a" });
@@ -353,5 +358,51 @@ module.exports = async function Conversations({ test, console_ }) {
 
         setCurrentProject("prj-a");
         await tick();
+    });
+
+    await test("Run task / Stop button tracks internal task queue progress without changing its label", async () => {
+
+        const run = document.getElementById("runButton");
+
+        console_.snapshot({ turns: 0, status: "idle", plan: null, queue: null, messages: [] });
+        await tick();
+        assert.equal(run.textContent, "Run task");
+        assert.equal(run.classList.contains("has-progress"), false);
+        assert.equal(run.dataset.progress, undefined);
+
+        console_.send({ type: "run:status", status: "running", project_id: "prj-a" });
+        await tick();
+        assert.equal(run.textContent, "Stop");
+        assert.equal(run.classList.contains("has-progress"), true);
+        assert.equal(run.classList.contains("is-indeterminate"), true);
+        assert.equal(run.dataset.progress, "0");
+
+        console_.send({
+            type: "plan:updated",
+            project_id: "prj-a",
+            plan: { exists: true, objective: "Ship", steps: 4, done: 2, blocked: 0, phases: [] }
+        });
+        await tick();
+        assert.equal(run.textContent, "Stop");
+        assert.equal(run.classList.contains("is-indeterminate"), false);
+        assert.equal(run.dataset.progress, "50");
+
+        /* paused with remaining plan steps shows progress on the Run task button itself */
+        console_.send({ type: "run:status", status: "done", project_id: "prj-a" });
+        await tick();
+        assert.equal(run.textContent, "Run task");
+        assert.equal(run.classList.contains("has-progress"), true);
+        assert.equal(run.dataset.progress, "50");
+
+        /* finishing all plan steps clears the progress ring */
+        console_.send({
+            type: "plan:updated",
+            project_id: "prj-a",
+            plan: { exists: true, objective: "Ship", steps: 4, done: 4, blocked: 0, phases: [] }
+        });
+        await tick();
+        assert.equal(run.textContent, "Run task");
+        assert.equal(run.classList.contains("has-progress"), false);
+        assert.equal(run.dataset.progress, undefined);
     });
 };

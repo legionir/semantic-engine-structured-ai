@@ -201,11 +201,15 @@ module.exports = async function ProjectRecordsRoutes(shared, request, project) {
             projectId: record.id,
             projectContext: ctx,
             reasoningEffort
-        }).catch(() => {});
+        }).catch(error => {
+            shared.logs?.error("discussion", error?.message || "background discussion failed", {
+                project_id: record.id
+            });
+        });
 
         sendJson(res, 202, {
             accepted: true,
-            id: state.discussion.id,
+            id: state.discussion?.id || null,
             project_id: record.id
         });
         return true;

@@ -7,7 +7,9 @@ const PathBoundary = require("./PathBoundary");
 const checkpoints = require("../../persistence/FileCheckpointRepository");
 
 const {
-    lexists
+    lexists,
+    isInsideRoot,
+    assertNotSecretStoreOrAncestor
 } = require("../../context/WorkspaceBoundary");
 
 
@@ -385,17 +387,35 @@ async function fsMove(args, context) {
         );
     }
 
+    if (source === destination) {
+
+        throw new Error(
+            "Source and destination are identical."
+        );
+    }
+
+    const sourceStats = await fs.promises.lstat(source);
+
+    if (!sourceStats.isSymbolicLink()) {
+        if (isInsideRoot(source, destination)) {
+            throw new Error("A directory cannot be moved into itself.");
+        }
+        assertNotSecretStoreOrAncestor(source, args.source);
+    }
+
     ctx.assertSafe(path.dirname(source), { rejectSymlinks: true });
     ctx.assertSafe(destination, { rejectSymlinks: true });
 
-    if (
-        lexists(destination) &&
-        args.overwrite !== true
-    ) {
-
-        throw new Error(
-            `Destination already exists: ${args.destination}. Set overwrite to replace it.`
-        );
+    if (lexists(destination)) {
+        if (args.overwrite !== true) {
+            throw new Error(
+                `Destination already exists: ${args.destination}. Set overwrite to replace it.`
+            );
+        }
+        const destinationStats = await fs.promises.lstat(destination);
+        if (!destinationStats.isSymbolicLink()) {
+            assertNotSecretStoreOrAncestor(destination, args.destination);
+        }
     }
 
     const checkpoint = checkpoints.createCheckpoint(
@@ -498,6 +518,8 @@ async function fsDelete(args, context) {
             `Path is a directory: ${args.path}. Set recursive to delete it.`
         );
     }
+
+    assertNotSecretStoreOrAncestor(target, args.path);
 
     const checkpoint = checkpoints.createCheckpoint(
         [target],

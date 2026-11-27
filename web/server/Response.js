@@ -39,11 +39,35 @@ function writeSse(res, value) {
 }
 
 
-function setConsoleCookie(res, name, value) {
+function isHttpsRequest(req, options = {}) {
+
+    if (!req) {
+        return false;
+    }
+
+    if (req.socket && req.socket.encrypted) {
+        return true;
+    }
+
+    if (options.trustForwarded === false) {
+        return false;
+    }
+
+    const proto = String(req.headers && req.headers["x-forwarded-proto"] || "");
+
+    return proto.split(",").some(part => part.trim().toLowerCase() === "https");
+}
+
+
+function setConsoleCookie(res, name, value, req = null, options = {}) {
+
+    const attributes = isHttpsRequest(req, options)
+        ? "HttpOnly; Secure; SameSite=None; Partitioned; Path=/"
+        : "HttpOnly; SameSite=Strict; Path=/";
 
     res.setHeader(
         "set-cookie",
-        `${name}=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/`
+        `${name}=${encodeURIComponent(value)}; ${attributes}`
     );
 }
 
@@ -53,5 +77,6 @@ module.exports = {
     sendError,
     sendSseHeaders,
     writeSse,
+    isHttpsRequest,
     setConsoleCookie
 };

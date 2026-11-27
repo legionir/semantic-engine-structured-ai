@@ -86,6 +86,8 @@ async function main() {
 
     const explicitTask = resolveWebServerOptions({ positional: ["run this task"] }, { PORT: "8765" });
     assert.equal(explicitTask.serve, undefined);
+    const pipedTask = resolveWebServerOptions({ positional: [] }, { PORT: "8765" }, { pipedStdin: true });
+    assert.equal(pipedTask.serve, undefined);
     assert.doesNotThrow(() => resolveWebServerOptions({ positional: ["run this task"] }, { PORT: "bad" }));
     assert.throws(() => resolveWebServerOptions({ positional: [] }, { PORT: "bad" }), /PORT must be an integer/);
   });

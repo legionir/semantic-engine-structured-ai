@@ -107,7 +107,14 @@ function partOf(part) {
         return { inlineData: { mimeType: part.mediaType, data: part.data } };
     }
 
-    return { fileData: { mimeType: part.mediaType, fileUri: part.url } };
+    if (part.url) {
+        if (/^(?:gs:\/\/|https:\/\/generativelanguage\.googleapis\.com\/)/i.test(part.url)) {
+            return { fileData: { mimeType: part.mediaType, fileUri: part.url } };
+        }
+        return { text: `[Image URL: ${part.url}]` };
+    }
+
+    return null;
 }
 
 
@@ -153,12 +160,16 @@ function contentsOf(messages) {
         const parts =
             partsOf(message.content)
                 .filter(part => part.type !== "text" || part.text !== "")
-                .map(partOf);
+                .map(partOf)
+                .filter(Boolean);
 
         if (message.role === "assistant") {
 
             for (const call of toolCallsOf(message)) {
-                parts.push({ functionCall: { name: call.name, args: argumentsObject(call.arguments) } });
+                parts.push({
+                    functionCall: { name: call.name, args: argumentsObject(call.arguments) },
+                    ...(call.thoughtSignature ? { thoughtSignature: call.thoughtSignature } : {})
+                });
             }
 
             push("model", parts);
@@ -288,6 +299,13 @@ class GeminiProvider extends LLMProvider {
 
         if (request.responseFormat && !body.tools) {
             config.responseMimeType = "application/json";
+            if (
+                request.responseFormat.type === "json_schema" &&
+                request.responseFormat.json_schema &&
+                request.responseFormat.json_schema.schema
+            ) {
+                config.responseSchema = sanitizeSchema(request.responseFormat.json_schema.schema);
+            }
         }
 
         if (Object.keys(config).length > 0) {
@@ -339,10 +357,13 @@ class GeminiProvider extends LLMProvider {
 
             if (part.functionCall) {
 
+                const signature = part.thoughtSignature || part.thought_signature;
+
                 state.calls.push({
                     id: part.functionCall.id || `call_${state.calls.length + 1}`,
                     name: part.functionCall.name,
-                    arguments: part.functionCall.args || {}
+                    arguments: part.functionCall.args || {},
+                    ...(signature ? { thoughtSignature: signature } : {})
                 });
             }
         }

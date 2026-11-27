@@ -21,12 +21,23 @@ function Stamp({ at }) {
 }
 
 
-export function Bubble({ message }) {
+function AgentBody({ content, rawMode, className = "message-content" }) {
+
+    if (rawMode) {
+        return html`<pre class=${`raw-message-content ${className}`.trim()}>${content}</pre>`;
+    }
+
+    return html`<${Markdown} class=${className} text=${content} />`;
+}
+
+
+export function Bubble({ message, rawMode = false }) {
 
     const kind = message.kind || "message";
     const content = String(message.content || "");
     const direction = directionOf(content);
     const className = `${`bubble ${message.role} ${kind === "message" ? "" : kind}`.trim()} ${direction}`;
+    const showRaw = Boolean(rawMode && message.role === "assistant");
 
     if (kind === "thinking") {
 
@@ -35,7 +46,7 @@ export function Bubble({ message }) {
             <details open=${true}>
                 <summary>${`thinking${message.agent ? ` · ${message.agent}` : ""}${
                     message.iteration ? ` · iteration ${message.iteration}` : ""}`}</summary>
-                <${Markdown} class="thinking-content message-content" text=${content} />
+                <${AgentBody} content=${content} rawMode=${showRaw} className="thinking-content message-content" />
             </details>
         </div>`;
     }
@@ -45,7 +56,7 @@ export function Bubble({ message }) {
         return html`<div class=${className} dir=${direction}>
             <span class="who">${`${message.agent || "agent"} · response${
                 message.iteration ? ` · iteration ${message.iteration}` : ""}`}</span>
-            <${Markdown} text=${content} />
+            <${AgentBody} content=${content} rawMode=${showRaw} />
             ${message.truncated ? html`<span class="truncated">response preview truncated</span>` : null}
             <${Stamp} at=${message.at} />
         </div>`;
@@ -55,14 +66,14 @@ export function Bubble({ message }) {
 
         return html`<div class=${className} dir=${direction}>
             <span class="who">${`git${message.branch ? ` · ${message.branch}` : ""}`}</span>
-            <${Markdown} text=${content} />
+            <${AgentBody} content=${content} rawMode=${showRaw} />
             <${Stamp} at=${message.at} />
         </div>`;
     }
 
     return html`<div class=${className} dir=${direction}>
         <span class="who">${`${WHO[message.role] || message.role}${kind === "error" ? " · failed" : ""}`}</span>
-        <${Markdown} text=${content} />
+        <${AgentBody} content=${content} rawMode=${showRaw} />
         <${Stamp} at=${message.at} />
     </div>`;
 }
@@ -127,6 +138,7 @@ export function Chat({ state, onToggleExecution }) {
     }
 
     const items = conversationItems(state.messages, indexTurnEvents(state.events));
+    const rawMode = Boolean(state.chatRawMode);
 
     return html`${items.map(item => item.type === "execution"
         ? html`<${ExecutionBlock}
@@ -136,5 +148,5 @@ export function Chat({ state, onToggleExecution }) {
             open=${state.openExecutionKeys.has(item.key)}
             onToggle=${onToggleExecution}
         />`
-        : html`<${Bubble} key=${item.key} message=${item.message} />`)}${pending}`;
+        : html`<${Bubble} key=${item.key} message=${item.message} rawMode=${rawMode} />`)}${pending}`;
 }

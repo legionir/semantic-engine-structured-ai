@@ -319,6 +319,9 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `AGENT_CONSOLE_TOKENS` | string · secret | `""` | JSON map of extra console tokens to { allowedProjects, permissions } (Phase 9). The AGENT_CONSOLE_TOKEN itself remains a master token. |
 | `AGENT_CONSOLE_PASSWORD_REQUIRED` | boolean · fixed at startup | `false` | Require a password login before the web console UI is loaded. Configure AGENT_CONSOLE_PASSWORD and restart to change this. |
 | `AGENT_CONSOLE_PASSWORD` | string · secret, fixed at startup | `""` | Password used by the web console login when AGENT_CONSOLE_PASSWORD_REQUIRED=true. Set through the environment and restart to change it. |
+| `CONSOLE_PASSWORD_SESSION_TTL_MS` | number | `86400000` | How long one password sign-in stays valid when AGENT_CONSOLE_PASSWORD_REQUIRED is on, in milliseconds. Each sign-in gets its own session; a restart ends all of them. |
+| `CONSOLE_PASSWORD_SESSIONS_MAX` | number | `500` | Most password sign-in sessions kept at once. Expired sessions go first, then the oldest is dropped to make room for a new sign-in. |
+| `TRUSTED_PROXIES` | string · fixed at startup | `""` | Comma-separated list of trusted reverse proxy IP addresses (for example 127.0.0.1,::1). Empty ignores X-Forwarded-Host and X-Forwarded-Proto headers. |
 | `AGENT_TEMPERATURE` | number | `0.2` | Sampling temperature used when a profile does not set one. |
 | `RESPONSE_FORMAT_MODE` | enum | `"auto"` | Whether to send response_format. auto stops sending it to an endpoint that rejected it, always keeps sending it, never leaves it out from the start. |
 | `AGENT_SCHEMA` | enum · fixed at startup | `"default"` | Which response schema file to send. Read once at startup. |
@@ -506,6 +509,8 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `MCP_OAUTH_FLOW_TTL_MS` | number | `600000` | How long an MCP OAuth sign-in started from the console may take before its one-time state expires (roadmap P4-08). |
 | `MCP_OPENAPI_MAX_OPERATIONS` | number | `64` | Most operations of an OpenAPI document mcp_build turns into tools of one generated MCP server (roadmap P4-09); the rest are left out. |
 | `MCP_DEFERRED_LINE_CHARS` | number | `120` | Length of the one-line description each deferred MCP tool gets in the model's index when tool definitions are loaded lazily (roadmap P4-06). |
+| `MCP_OAUTH_TIMEOUT_MS` | number | `15000` | Time limit for one OAuth request to an MCP authorization server (metadata discovery, client registration, token exchange and refresh), in milliseconds. MAX_REQUEST_MS caps it when smaller. |
+| `MCP_OAUTH_MAX_RESPONSE_BYTES` | number | `262144` | Largest OAuth metadata or token response, in bytes, read from an MCP authorization server; a bigger one is refused. |
 | `PLAYWRIGHT_BROWSERS_PATH` | string | `""` | Where the headless Chromium for browser MCP servers is installed and looked for. Empty: Playwright's default cache (`~/.cache/ms-playwright` on Linux). |
 | `WORKSPACE_ROOT` | string · fixed at startup | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Directory the agent may act in. Fixed at startup because every path check depends on it. اگر unset باشد، در runtime به `process.cwd()` برمی‌گردد. |
 | `STRUCTURED_AI_DATA_HOME` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai. اگر unset باشد، مسیر پیش‌فرض کاربر (معمولاً `~/.local/share/structured-ai`) استفاده می‌شود. |
@@ -566,7 +571,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
 | `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۵۴ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۵۹ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -623,6 +628,24 @@ AGENT_CONSOLE_PASSWORD_REQUIRED=true AGENT_CONSOLE_PASSWORD='choose-a-long-passw
 
 فلگ و رمز در طول عمر process ثابت‌اند؛ صفحهٔ وب پس از ورود یک cookie امنِ
 `HttpOnly` می‌گیرد. URL حاوی bearer token برای حالت رمزدار چاپ نمی‌شود.
+
+**ورود، iframe و reverse proxy:**
+
+- بدون رمز، صفحهٔ ورود token کنسول را می‌گیرد و `POST /auth/login` با
+  `{token}` آن را بررسی و cookie را تنظیم می‌کند. `/auth/status` وضعیت واقعی
+  ورود را برمی‌گرداند.
+- با رمز، هر ورود یک نشست جدا با عمر `CONSOLE_PASSWORD_SESSION_TTL_MS` می‌سازد
+  (حداکثر `CONSOLE_PASSWORD_SESSIONS_MAX` نشست هم‌زمان).
+- روی HTTPS cookie با `Secure; SameSite=None; Partitioned` صادر می‌شود تا پنل
+  داخل iframe هم کار کند. روی HTTP همان `SameSite=Strict` می‌ماند.
+- اگر مرورگر cookie را در iframe مسدود کند، صفحه token یا نشست را فقط در
+  حافظهٔ همان تب نگه می‌دارد و با هدر (`Authorization` یا `x-console-session`)
+  می‌فرستد. فقط EventSource و لینک دانلود، که هدر نمی‌پذیرند، آن را در آدرس
+  می‌گذارند. سرور `?session=` را فقط برای `GET` و `HEAD` می‌پذیرد.
+- `X-Forwarded-Host` و `X-Forwarded-Proto` فقط وقتی درخواست از نشانی‌ای در
+  `TRUSTED_PROXIES` بیاید حساب می‌شوند: در بررسی Origin (کنسول و `/mcp`)، در
+  تشخیص HTTPS برای cookie و در آدرس بازگشت OAuth. اگر خالی باشد، نادیده گرفته
+  می‌شوند.
 method/path کامل در
 [`test/fixtures/api-surface.json`](test/fixtures/api-surface.json) و
 `web/server/RouteInventory.js` ثبت شده‌اند.
@@ -697,6 +720,20 @@ method/path کامل در
 | `GET` | `/api/files/download` | دانلود فایل |
 
 همهٔ مسیرهای `/api/files` پارامتر اختیاری `projectId` را می‌پذیرند (ریشهٔ همان پروژه)؛ هیچ مسیری، حتی از طریق symlink، از ریشه خارج نمی‌شود.
+
+### ابزارهای کار سریع در پنل
+
+این بخش‌ها فقط در مرورگر کار می‌کنند و API تازه‌ای ندارند:
+
+- **پالت فرمان:** با `Ctrl+K` (یا `Cmd+K`) یا از نوار ناوبری باز می‌شود و همهٔ نماها، پنجره‌ها و کارها را جست‌وجو می‌کند.
+- **دستورهای `/` در کادر پیام:**
+  - دستورهای داخلی `/raw` (نمایش متن خام یا Markdown) و `/templates`
+  - promptهای سرورهای MCP به شکل `/server:prompt`
+  - قالب‌های ذخیره‌شده به شکل `/tpl:<نام>`
+  - ماژول‌های دیگر با `registerCommandProvider` دستور اضافه می‌کنند.
+- **قالب‌های تسک:** شرح تسک‌های پرتکرار در `localStorage` همان مرورگر ذخیره می‌شود. جست‌وجو، ویرایش و حذف (با تأیید) دارد و با JSON وارد و صادر می‌شود. در ورود قالبی با نام تکراری، بین بازنویسی و رد کردن انتخاب می‌کنید.
+- **Discussion** در یک پنجرهٔ جدا اجرا می‌شود: موضوع، persona و تعداد دورها در همان‌جا انتخاب می‌شود و گفتگوی زنده همان‌جا نمایش داده می‌شود.
+- **ویرایش فایل** در پنجره‌ای جدا از فهرست فایل‌ها انجام می‌شود. ساخت، تغییر نام، حذف و تعارض ذخیره با دیالوگ‌های داخل پنل پرسیده می‌شوند، نه `confirm()` مرورگر.
 
 ### API پروژه‌ها
 

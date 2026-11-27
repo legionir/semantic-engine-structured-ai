@@ -12,9 +12,9 @@
 */
 
 import { state, touch } from "./store.js";
-import { mountInModal } from "./dom.js";
-import { createFilesState, FilesBody, filesSubtitle, isDirty } from "./files-view.js";
-import { apiRequest, query } from "./operator-api.js";
+import { mount, mountInModal } from "./dom.js";
+import { createFilesState, FileEditorBody, FileEditorFooter, fileEditorSubtitle, fileEditorTitle, FilesBody, filesSubtitle, isDirty } from "./files-view.js";
+import { apiRequest, confirmDialog, promptDialog, query } from "./operator-api.js";
 
 
 function files() {
@@ -26,18 +26,23 @@ function files() {
 
 
 function changed() {
-    state.filesModal?.setSubtitle(filesSubtitle(files()));
+    const target = files();
+    state.filesModal?.setSubtitle(filesSubtitle(target));
+    if (state.fileEditorModal && state.fileEditorModal.isOpen()) {
+        if (target.open) state.fileEditorModal.setTitle(fileEditorTitle(target));
+        state.fileEditorModal.setSubtitle(fileEditorSubtitle(target));
+    }
     touch("files");
 }
 
 
-function ask(message, initial = "") {
-    return typeof window !== "undefined" && typeof window.prompt === "function" ? window.prompt(message, initial) : null;
+function ask(message, initial = "", title = "Files") {
+    return promptDialog(message, initial, { title });
 }
 
 
-function confirmed(message) {
-    return typeof window === "undefined" || typeof window.confirm !== "function" || window.confirm(message);
+function confirmed(message, confirmLabel = "Confirm", confirmClass = "") {
+    return confirmDialog(message, { title: "Files", confirmLabel, confirmClass });
 }
 
 
@@ -85,7 +90,12 @@ export async function listDirectory(dirPath = files().path) {
 async function loadFile(filePath) {
 
     const target = files();
+    target.fileLoading = true;
+    changed();
+
     const result = await apiRequest(`/api/files/content${query(scoped({ path: filePath }))}`);
+
+    target.fileLoading = false;
 
     if (!result.ok) {
         target.error = result.error;
@@ -118,7 +128,7 @@ const actions = {
 
     async root(projectId) {
         const target = files();
-        if (isDirty(target) && !confirmed("Discard the unsaved changes?")) {
+        if (isDirty(target) && !(await confirmed("Discard the unsaved changes?", "Discard"))) {
             changed();
             return false;
         }
@@ -139,15 +149,24 @@ const actions = {
 
     async openFile(filePath) {
         const target = files();
-        if (target.open?.path === filePath) return true;
-        if (isDirty(target) && !confirmed(`Discard the unsaved changes to ${target.open.path}?`)) return false;
-        return loadFile(filePath);
+        if (target.open?.path === filePath) {
+            openFileEditorModal(filePath);
+            return true;
+        }
+        if (isDirty(target) && !(await confirmed(`Discard the unsaved changes to ${target.open.path}?`, "Discard"))) return false;
+        const editor = openFileEditorModal(filePath);
+        const ok = await loadFile(filePath);
+        if (!ok && state.fileEditorModal === editor && !target.open) {
+            editor.close("error");
+        }
+        return ok;
     },
 
-    closeFile() {
+    async closeFile() {
         const target = files();
-        if (isDirty(target) && !confirmed(`Discard the unsaved changes to ${target.open.path}?`)) return false;
+        if (isDirty(target) && !(await confirmed(`Discard the unsaved changes to ${target.open.path}?`, "Discard"))) return false;
         target.open = null;
+        state.fileEditorModal?.close("close");
         changed();
         return true;
     },
@@ -182,7 +201,7 @@ const actions = {
 
         if (result.status === 409 && !force) {
             changed();
-            if (confirmed(`${file.path} changed on disk since it was opened. Overwrite it with your version?`)) {
+            if (await confirmed(`${file.path} changed on disk since it was opened. Overwrite it with your version?`, "Overwrite", "danger")) {
                 return actions.save(true);
             }
             file.error = "Not saved: the file changed on disk. Use Reload to see the current version (your edits will be replaced).";
@@ -215,13 +234,17 @@ const actions = {
     async reload() {
         const target = files();
         if (!target.open) return false;
-        if (isDirty(target) && !confirmed("Reload from disk and discard your unsaved changes?")) return false;
+        if (isDirty(target) && !(await confirmed("Reload from disk and discard your unsaved changes?", "Reload"))) return false;
         return loadFile(target.open.path);
     },
 
     async create(type) {
         const target = files();
-        const name = ask(type === "directory" ? "New folder name (a/b/c creates the whole path):" : "New file name:");
+        const name = await ask(
+            type === "directory" ? "New folder name (a/b/c creates the whole path):" : "New file name:",
+            "",
+            type === "directory" ? "New folder" : "New file"
+        );
         if (!validName(name)) return false;
         const filePath = join(target.listing?.path || target.path, name.trim());
         const result = await apiRequest("/api/files", { json: scoped({ path: filePath, type }) });
@@ -237,7 +260,7 @@ const actions = {
 
     async rename(entry) {
         const target = files();
-        const next = ask(`Rename or move ${entry.path} to (relative to the root):`, entry.path);
+        const next = await ask(`Rename or move ${entry.path} to (relative to the root):`, entry.path, "Rename");
         if (!validName(next) || next.trim() === entry.path) return false;
         const result = await apiRequest("/api/files/rename", { json: scoped({ from: entry.path, to: next.trim() }) });
         if (!result.ok) {
@@ -256,7 +279,7 @@ const actions = {
     async remove(entry) {
         const target = files();
         const isDir = entry.type === "directory";
-        if (!confirmed(isDir ? `Delete the folder ${entry.path} and everything in it?` : `Delete ${entry.path}?`)) return false;
+        if (!(await confirmed(isDir ? `Delete the folder ${entry.path} and everything in it?` : `Delete ${entry.path}?`, "Delete", "danger"))) return false;
         const result = await apiRequest(`/api/files${query(scoped({ path: entry.path, recursive: isDir ? "1" : undefined }))}`, { method: "DELETE" });
         if (!result.ok) {
             target.error = result.error;
@@ -265,11 +288,57 @@ const actions = {
         }
         if (target.open && (target.open.path === entry.path || target.open.path.startsWith(`${entry.path}/`))) {
             target.open = null;
+            state.fileEditorModal?.close("deleted");
         }
         await listDirectory(target.path);
         return true;
     }
 };
+
+
+function openFileEditorModal(filePath) {
+
+    if (state.fileEditorModal && state.fileEditorModal.isOpen()) {
+        state.fileEditorModal.setTitle(filePath.split("/").pop() || filePath);
+        state.fileEditorModal.setSubtitle(fileEditorSubtitle(files()));
+        return state.fileEditorModal;
+    }
+
+    let dispose = () => {};
+    let disposeFooter = () => {};
+
+    const footerHost = document.createElement("div");
+    footerHost.className = "modal-row files-editor-actions";
+
+    const handle = Modal.open({
+        title: filePath.split("/").pop() || filePath,
+        subtitle: fileEditorSubtitle(files()),
+        size: "large",
+        className: "file-editor-modal",
+        footer: footerHost,
+        onClose: () => {
+            dispose();
+            disposeFooter();
+            state.fileEditorModal = null;
+        }
+    });
+
+    state.fileEditorModal = handle;
+    dispose = mountInModal(
+        handle,
+        () => FileEditorBody({ files: state.files, actions }),
+        ["files"],
+        {},
+        "file-editor-modal-content"
+    );
+    disposeFooter = mount(
+        footerHost,
+        () => FileEditorFooter({ files: state.files, actions }),
+        ["files"]
+    );
+
+    return handle;
+}
 
 
 export async function openFiles() {
@@ -287,6 +356,7 @@ export async function openFiles() {
         size: "large",
         className: "files-modal",
         onClose: () => {
+            state.fileEditorModal?.close("parent");
             dispose();
             state.filesModal = null;
         }
@@ -296,7 +366,9 @@ export async function openFiles() {
     dispose = mountInModal(
         handle,
         () => FilesBody({ files: state.files, projects: state.projects, actions }),
-        ["files", "projects"]
+        ["files", "projects"],
+        {},
+        "files-modal-content"
     );
 
     await listDirectory(target.path);

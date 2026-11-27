@@ -306,6 +306,15 @@ async function main() {
 
         runtime.settings.set("AGENT_MODEL", "contract-model");
 
+        /* This test checks the body's shape, not timing. The file-wide 1 s
+           request / 2 s run limits are a hang guard, and a cold first request
+           on a slow Windows runner can need more than that. */
+        const previousRequestMs = runtime.settings.get("MAX_REQUEST_MS");
+        const previousRunMs = runtime.settings.get("MAX_RUN_MS");
+
+        runtime.settings.set("MAX_REQUEST_MS", 20000);
+        runtime.settings.set("MAX_RUN_MS", 30000);
+
         try {
 
             runtime.startRun();
@@ -313,6 +322,9 @@ async function main() {
             await runtime.runAgent({ task: "Answer and stop." });
 
         } finally {
+
+            runtime.settings.set("MAX_REQUEST_MS", previousRequestMs);
+            runtime.settings.set("MAX_RUN_MS", previousRunMs);
 
             if (previousUrl === undefined || previousUrl === null) {
 

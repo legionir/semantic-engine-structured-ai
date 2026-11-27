@@ -4,6 +4,10 @@
    agent.js. Runtime-specific behavior is injected at construction. */
 
 const { httpTransport } = require("./HttpTransport");
+const { fromSettings, inherit } = require("./ProviderConfig");
+const { ProviderRouter } = require("./ProviderRouter");
+const { providerNames } = require("./ProviderRegistry");
+const { asProviderError } = require("./ProviderError");
 const { logs: defaultLogs, clip } = require("../runtime/LogStore");
 
 /* Where a request went, without credentials or query parameters. */
@@ -38,6 +42,46 @@ function createAgentRequestExecutor(deps) {
             .test(String(text || ""));
     }
 
+    function hasMultiProviderConfig() {
+        const provider = deps.settings.get("AGENT_PROVIDER");
+        if (provider && provider !== "openai-compatible" && providerNames().includes(provider)) {
+            return true;
+        }
+        const realStore = typeof deps.settings.definitionOf === "function";
+        const roles = deps.settings.get("PROVIDER_ROLES");
+        if (roles && String(roles).trim() !== "" && (realStore || String(roles).trim().startsWith("{"))) {
+            return true;
+        }
+        const fallbacks = deps.settings.get("PROVIDER_FALLBACKS");
+        if (fallbacks && String(fallbacks).trim() !== "" && (realStore || String(fallbacks).trim().startsWith("["))) {
+            return true;
+        }
+        return false;
+    }
+
+    function applyRoleProfileOverrides(spec, profile, primaryProvider) {
+        const out = { ...spec, maxRetries: 0 };
+        const roleName = profile.role || "MAIN";
+        const hasRoleBase = Boolean(deps.settings.get(`ENDPOINT_${roleName}_BASE_URL`));
+        const hasRoleKey = Boolean(deps.settings.get(`ENDPOINT_${roleName}_API_KEY`));
+        const hasRoleModel = Boolean(deps.settings.get(`ENDPOINT_${roleName}_MODEL`));
+        const hasRoleTemp = Number(deps.settings.get(`ENDPOINT_${roleName}_TEMPERATURE`)) >= 0;
+
+        if (out.provider === primaryProvider) {
+            if (hasRoleBase) out.baseUrl = profile.base_url;
+            if (hasRoleKey) out.apiKey = profile.api_key;
+            if (hasRoleModel && !spec.origin) out.model = profile.model;
+            if (out.origin === "primary" || out.origin === "role") {
+                if (hasRoleModel) out.model = profile.model;
+                if (hasRoleTemp) out.temperature = profile.temperature;
+            }
+        }
+        if (Array.isArray(out.fallbacks)) {
+            out.fallbacks = out.fallbacks.map(fb => ({ ...fb, maxRetries: 0 }));
+        }
+        return out;
+    }
+
     async function sendAgentRequest(options) {
         const { agentDefinition, responseFormat, role } = options;
         const profile = deps.endpointFor(role, agentDefinition);
@@ -65,6 +109,110 @@ function createAgentRequestExecutor(deps) {
 
             return performAgentRequest(options, profile, key);
         }
+    }
+
+    async function performRoutedRequest({
+        request,
+        profile,
+        role,
+        agent,
+        waitingSince,
+        requestSignal,
+        finishWaiting,
+        failureContext
+    }) {
+        const baseConfig = fromSettings(deps.settings);
+        const primaryProvider = baseConfig.primary.provider;
+        const roles = {};
+        for (const [k, v] of Object.entries(baseConfig.roles || {})) {
+            roles[k] = applyRoleProfileOverrides(v, profile, primaryProvider);
+        }
+        const config = {
+            ...baseConfig,
+            primary: applyRoleProfileOverrides(baseConfig.primary, profile, primaryProvider),
+            roles,
+            fallbacks: (baseConfig.fallbacks || []).map(fb =>
+                applyRoleProfileOverrides(
+                    fb.origin ? fb : inherit(fb, baseConfig.primary, "fallback"),
+                    profile,
+                    primaryProvider
+                )
+            ),
+            retry: { ...baseConfig.retry, maxRetries: 0 }
+        };
+
+        const router = new ProviderRouter({ config, transport });
+        const roleKey = role || "MAIN";
+        let data;
+
+        try {
+            data = await router.complete(
+                {
+                    model: request.model,
+                    messages: request.messages,
+                    tools: request.tools,
+                    toolChoice: request.tool_choice,
+                    parallelToolCalls: request.parallel_tool_calls,
+                    responseFormat: request.response_format,
+                    maxTokens: request.max_tokens || request.max_completion_tokens,
+                    temperature: request.temperature,
+                    stream: false
+                },
+                {
+                    role: roleKey,
+                    signal: requestSignal.signal
+                }
+            );
+        } catch (caught) {
+            const err = asProviderError(caught, primaryProvider);
+            if (err.code === "aborted" || err.name === "AbortError") {
+                const aborted = new Error(`Model request aborted: ${requestSignal.reason || err.message || "unknown reason"}`);
+                aborted.retryable = !deps.isRunCancelled();
+                finishWaiting("aborted");
+                logs.record(
+                    deps.isRunCancelled() ? "info" : "warn",
+                    "ai",
+                    `AI request aborted (${profile.model}): ${requestSignal.reason || "unknown reason"}`,
+                    failureContext({ provider: err.provider || primaryProvider, retryable: aborted.retryable })
+                );
+                throw aborted;
+            }
+
+            finishWaiting(err.status ? `http ${err.status}` : "failed");
+            const failure = new Error(
+                err.status
+                    ? `API Error ${err.status}: ${String(err.message || "").slice(0, 300)}`
+                    : String(err.message || "Model request failed")
+            );
+            if (err.status) failure.status = err.status;
+            failure.retryable = err.retryable === true || (err.status ? deps.isRetryableStatus(err.status) : true);
+            if (Number.isFinite(err.retryAfterMs)) {
+                failure.retryAfter = String(err.retryAfterMs / 1000);
+            }
+            failure.schema_rejected = Boolean(request.response_format) && mentionsSchemaRejection(err.message);
+            logs.error(
+                "ai",
+                `AI request failed${err.status ? `: HTTP ${err.status}` : ""} (${err.provider || primaryProvider}, ${profile.model})`,
+                failureContext({
+                    provider: err.provider || primaryProvider,
+                    status: err.status,
+                    code: err.code,
+                    retryable: failure.retryable,
+                    retry_after: failure.retryAfter || undefined,
+                    schema_rejected: failure.schema_rejected || undefined,
+                    response: clip(err.message || "", 4000)
+                })
+            );
+            throw failure;
+        } finally {
+            requestSignal.release();
+        }
+
+        finishWaiting("answered");
+        if (typeof deps.recordUsage === "function" && data && data.usage) {
+            deps.recordUsage({ model: data.model || profile.model, usage: data.usage, agent, role: roleKey });
+        }
+        return data;
     }
 
     async function performAgentRequest({
@@ -112,6 +260,20 @@ function createAgentRequestExecutor(deps) {
         });
 
         const requestSignal = deps.createRequestSignal(timeoutMs);
+
+        if (hasMultiProviderConfig()) {
+            return performRoutedRequest({
+                request,
+                profile,
+                role,
+                agent,
+                waitingSince,
+                requestSignal,
+                finishWaiting,
+                failureContext
+            });
+        }
+
         let response;
         let text;
 

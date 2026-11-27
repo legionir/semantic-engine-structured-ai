@@ -186,6 +186,10 @@ async function main() {
         assert.equal(scoped.status, 403);
         assert.match(scoped.body.error, /admin token/);
 
+        const invalidRole = await call("GET", "/api/models?role=invalid");
+        assert.equal(invalidRole.status, 400);
+        assert.match(invalidRole.body.error, /role must be MAIN/);
+
         await models.close();
         runtime.settings.set("AGENT_BASE_URL", "http://127.0.0.1:1/v1");
         try {
@@ -197,6 +201,32 @@ async function main() {
         } finally {
             runtime.settings.reset("AGENT_BASE_URL");
         }
+    });
+
+    await test("auth/status reports real token authentication and auth/login exchanges tokens for a cookie", async () => {
+
+        const unauthStatus = await fetch(`${baseUrl}/auth/status`);
+        assert.equal(unauthStatus.status, 200);
+        assert.deepEqual(await unauthStatus.json(), { passwordRequired: false, authenticated: false });
+
+        const badToken = await fetch(`${baseUrl}/auth/login`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ token: "wrong-token" })
+        });
+        assert.equal(badToken.status, 401);
+
+        const goodToken = await fetch(`${baseUrl}/auth/login`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ token: server.token })
+        });
+        assert.equal(goodToken.status, 200);
+        const cookie = goodToken.headers.get("set-cookie").split(";")[0];
+        assert.match(cookie, /^structured_ai_console=/);
+
+        const authedStatus = await fetch(`${baseUrl}/auth/status`, { headers: { cookie } });
+        assert.deepEqual(await authedStatus.json(), { passwordRequired: false, authenticated: true });
     });
 
     await test("a project can be renamed but never re-rooted, and unknown projects are 404", async () => {
@@ -278,6 +308,34 @@ async function main() {
         assert.equal(refused.status, 403);
     });
 
+    await test("GET /api/sessions aggregates project sessions with project and workspace metadata", async () => {
+
+        const ctxA = runtime.resolveRunProjectContext({ projectId: "prj-a" });
+        const prjSession = runtime.sessions.emptySession("s-prj-a-1");
+        prjSession.project_id = "prj-a";
+        prjSession.project_name = "Project A";
+        prjSession.workspace = ctxA.workspaceRoot;
+        prjSession.title = "Project A History Entry";
+        runtime.sessions.saveSession(prjSession, ctxA.dataRoot);
+
+        const listed = await call("GET", "/api/sessions");
+        assert.equal(listed.status, 200);
+        const found = listed.body.sessions.find(item => item.id === "s-prj-a-1");
+        assert.ok(found, "project session appears in aggregated /api/sessions list");
+        assert.equal(found.project_id, "prj-a");
+        assert.equal(found.project_name, "Project A");
+        assert.equal(found.workspace, ctxA.workspaceRoot);
+
+        const fetched = await call("GET", "/api/sessions/s-prj-a-1?projectId=prj-a");
+        assert.equal(fetched.status, 200);
+        assert.equal(fetched.body.session.title, "Project A History Entry");
+
+        const removed = await call("DELETE", "/api/sessions/s-prj-a-1?projectId=prj-a");
+        assert.deepEqual([removed.status, removed.body], [200, { deleted: "s-prj-a-1" }]);
+        const after = await call("GET", "/api/sessions");
+        assert.equal(after.body.sessions.some(item => item.id === "s-prj-a-1"), false);
+    });
+
     await test("the page carries a strict CSP that admits exactly its own inline script; every file is nosniff", async () => {
 
         const crypto = require("crypto");
@@ -311,6 +369,147 @@ async function main() {
         await script.text();
         assert.equal(script.headers.get("x-content-type-options"), "nosniff");
         assert.equal(script.headers.get("content-security-policy"), null, "the policy belongs to the page");
+    });
+
+    await test("scoped tokens are blocked from /api/stats and receive project-isolated metrics and health", async () => {
+
+        const statsBlocked = await call("GET", "/api/stats", null, SCOPED);
+        assert.equal(statsBlocked.status, 403);
+
+        const metrics = await call("GET", "/api/metrics", null, SCOPED);
+        assert.equal(metrics.status, 200);
+        assert.equal("gateway" in metrics.body, false, "scoped metrics must omit gateway");
+        assert.equal("uptime_ms" in metrics.body, false, "scoped metrics must omit uptime_ms");
+        assert.equal("cpu_percent" in metrics.body, false, "scoped metrics must omit cpu_percent");
+        assert.ok(Object.keys(metrics.body.projects || {}).every(id => id === "prj-a"));
+
+        const health = await call("GET", "/api/health", null, SCOPED);
+        assert.equal(health.status, 200);
+        assert.equal("gateway" in health.body, false, "scoped health must omit gateway");
+        assert.ok(Object.keys(health.body.projects || {}).every(id => id === "prj-a"));
+    });
+
+    await test("HEAD static routes return headers without body and DELETE /api/mcp/ returns 404", async () => {
+
+        const headRes = await fetch(`${baseUrl}/app/main.js`, { method: "HEAD" });
+        assert.equal(headRes.status, 200);
+        assert.match(headRes.headers.get("content-type"), /javascript/);
+        assert.equal(await headRes.text(), "");
+
+        const missingMcp = await call("DELETE", "/api/mcp/", null, server.token);
+        assert.equal(missingMcp.status, 405);
+    });
+
+    await test("scoped tokens cannot inspect unscoped foreground state, workspace_root, or unscoped approvals", async () => {
+
+        const consoleAuth = require(path.join(REPO, "agent", "config", "ConsoleAuth"));
+        const createSnapshot = require(path.join(REPO, "web", "server", "console", "snapshot"));
+
+        const scopedState = await call("GET", "/api/state", null, SCOPED);
+        assert.equal(scopedState.status, 200);
+        assert.equal(scopedState.body.status, "idle");
+        assert.equal(scopedState.body.task, null);
+        assert.equal(scopedState.body.answer, null);
+        assert.deepEqual(scopedState.body.messages, []);
+        assert.equal(scopedState.body.workspace, null);
+        assert.equal(scopedState.body.limits.workspace_root, null);
+
+        const abort = new AbortController();
+        const stream = await fetch(`${baseUrl}/api/events?projectId=prj-a`, {
+            headers: { authorization: `Bearer ${SCOPED}` },
+            signal: abort.signal
+        });
+        try {
+            const reader = stream.body.getReader();
+            let text = "";
+            while (!text.includes("\n\n")) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                text += Buffer.from(value).toString("utf8");
+            }
+            const first = JSON.parse(text.slice(text.indexOf("data: ") + 6, text.indexOf("\n\n")));
+            assert.equal(first.snapshot.project_id, "prj-a");
+            assert.equal(first.snapshot.workspace, PROJECT_ROOT);
+            assert.equal(first.snapshot.limits.workspace_root, PROJECT_ROOT);
+        } finally {
+            abort.abort();
+        }
+
+        const mockState = {
+            status: "running",
+            projectId: null,
+            task: "secret foreground task",
+            answer: "secret foreground answer",
+            error: "secret error",
+            startedAt: 1000,
+            finishedAt: null,
+            cycles: 3,
+            history: [{ role: "user", content: "secret prompt" }],
+            discussion: { id: "disc-default", status: "running" },
+            events: [],
+            session: { id: "s-fg", messages: [{ role: "user", content: "secret prompt" }] }
+        };
+        const snapApi = createSnapshot({
+            approvalStore: {
+                pendingValues: () => [
+                    { id: "ap-global", agent: "a", tool: "t", reason: "r", arguments: {}, project_id: null },
+                    { id: "ap-b", agent: "a", tool: "t", reason: "r", arguments: {}, project_id: "prj-b" },
+                    { id: "ap-a", agent: "a", tool: "t", reason: "r", arguments: {}, project_id: "prj-a" }
+                ]
+            },
+            conversations: {
+                list: () => [],
+                get: id => id === "prj-a" ? {
+                    background: true,
+                    status: "idle",
+                    task: null,
+                    answer: null,
+                    error: null,
+                    startedAt: null,
+                    finishedAt: null,
+                    cycles: 0,
+                    messages: [],
+                    events: [],
+                    session: null
+                } : null
+            },
+            projectQueue: { view: () => ({ paused: false, items: [] }) },
+            runtime,
+            sessions: {
+                summarise: s => ({ id: s.id }),
+                listSessions: () => [
+                    { id: "s-global", project_id: null },
+                    { id: "s-b", project_id: "prj-b" },
+                    { id: "s-a", project_id: "prj-a" }
+                ]
+            },
+            sessionsEnabled: () => true,
+            state: mockState
+        });
+
+        const claims = consoleAuth.resolve(SCOPED, server.token);
+        const scopedSnap = snapApi.snapshotFor(claims);
+        assert.equal(scopedSnap.status, "idle");
+        assert.equal(scopedSnap.task, null);
+        assert.equal(scopedSnap.answer, null);
+        assert.equal(scopedSnap.error, null);
+        assert.equal(scopedSnap.discussion, null);
+        assert.equal(scopedSnap.session, null);
+        assert.deepEqual(scopedSnap.messages, []);
+        assert.equal(scopedSnap.workspace, null);
+        assert.equal(scopedSnap.limits.workspace_root, null);
+        assert.deepEqual(scopedSnap.pending_approvals.map(a => a.id), ["ap-a"]);
+        assert.deepEqual(scopedSnap.sessions.map(s => s.id), ["s-a"]);
+
+        mockState.projectId = "prj-b";
+        const projA = snapApi.projectSnapshot("prj-a", claims);
+        assert.equal(projA.project_id, "prj-a");
+        assert.equal(projA.workspace, PROJECT_ROOT);
+        assert.equal(projA.limits.workspace_root, PROJECT_ROOT);
+        assert.ok(projA.project && typeof projA.project === "object");
+        assert.equal(projA.discussion, null);
+        assert.equal(projA.session, null);
+        assert.deepEqual(projA.pending_approvals.map(a => a.id), ["ap-a"]);
     });
 
     await server.close();

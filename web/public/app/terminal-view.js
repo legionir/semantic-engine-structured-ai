@@ -12,12 +12,14 @@
 */
 
 import { html } from "./dom.js";
+import { SkeletonTerminal } from "./skeleton-view.js";
 
 
 export function createTerminalState() {
 
     return {
         info: null,
+        loading: false,
         sessions: [],
         activeId: null,
         error: null,
@@ -29,11 +31,33 @@ export function createTerminalState() {
 
 export function terminalSubtitle(terminal) {
 
-    if (!terminal.info) return "";
+    if (!terminal.info && terminal.loading) return "Connecting…";
 
-    const live = terminal.sessions.filter(session => !session.exited).length;
+    return "";
+}
 
-    return `${live} open · ${terminal.info.mode === "pty" ? "PTY" : terminal.info.mode}`;
+
+function modeLabel(mode) {
+
+    if (mode === "pty") return "PTY";
+    if (mode === "script") return "PTY via script(1)";
+    return "pipes (no PTY: full-screen programs will not work)";
+}
+
+
+export function TerminalStatus({ terminal }) {
+
+    const info = terminal.info;
+    const active = terminal.sessions.find(session => session.id === terminal.activeId) || null;
+
+    if (!info) return null;
+
+    return html`<div class="terminal-status muted">
+        <span class="terminal-mode">${modeLabel(info.mode)}</span>
+        ${active ? html`<span class="terminal-pid">${`pid ${active.pid ?? "?"}`}</span>` : null}
+        <span class="terminal-cwd">${info.cwd}</span>
+        <span class=${`terminal-connection ${terminal.connection}`}>${terminal.connection}</span>
+    </div>`;
 }
 
 
@@ -49,7 +73,6 @@ export function TerminalToolbar({ terminal, actions }) {
 
     const info = terminal.info;
     const atLimit = info && terminal.sessions.filter(session => !session.exited).length >= info.max_sessions;
-    const active = terminal.sessions.find(session => session.id === terminal.activeId) || null;
 
     return html`<div class="terminal-toolbar">
         <div class="terminal-tabs" role="tablist" aria-label="Open terminals">
@@ -81,12 +104,7 @@ export function TerminalToolbar({ terminal, actions }) {
             >+ New terminal</button>
         </div>
         ${terminal.error ? html`<p class="terminal-error" role="alert">${terminal.error}</p>` : null}
-        ${info ? html`<p class="terminal-status muted">
-            <span>${info.mode === "pty" ? "PTY" : info.mode === "script" ? "PTY via script(1)" : "pipes (no PTY: full-screen programs will not work)"}</span>
-            <span>${active ? `pid ${active.pid ?? "?"}` : ""}</span>
-            <span>${info.cwd}</span>
-            <span class=${`terminal-connection ${terminal.connection}`}>${terminal.connection}</span>
-        </p>` : null}
+        ${terminal.loading && !info ? html`<${SkeletonTerminal} label="Connecting terminal…" />` : null}
         ${info && terminal.sessions.length === 0 && !terminal.busy
             ? html`<p class="empty">No terminal is open. Use “New terminal” to start a shell.</p>`
             : null}

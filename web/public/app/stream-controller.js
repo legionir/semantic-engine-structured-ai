@@ -16,6 +16,7 @@ import { projectRunSettled } from "./queue-controller.js";
 import { refreshSystemWarnings } from "./system-view.js";
 import { refreshInterrupted } from "./interrupted-controller.js";
 import { onMcpEvent } from "./mcp-controller.js";
+import { authenticatedUrl } from "./auth-transport.js";
 
 
 /*
@@ -121,7 +122,7 @@ export function connect() {
     }
 
     const source =
-        new EventSource(eventsUrl());
+        new EventSource(authenticatedUrl(eventsUrl()));
 
     state.eventSource = source;
 

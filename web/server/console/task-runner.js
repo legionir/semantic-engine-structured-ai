@@ -76,7 +76,12 @@ module.exports = function createTaskRunner(shared) {
     function scheduleNext(task, runOptions) {
 
         setTimeout(
-            () => startTask(task, runOptions).catch(() => {}),
+            () => startTask(task, runOptions).catch(error => {
+                shared.logs?.error("task", error?.message || "scheduled next turn failed", {
+                    project_id: runOptions?.projectId || null,
+                    status: error?.status || 500
+                });
+            }),
             50
         );
     }
@@ -166,6 +171,15 @@ module.exports = function createTaskRunner(shared) {
         /* P1-06: saved now and while it runs, so a restart can continue it */
         state.session.project_id = projectId;
         state.session.task = task;
+        if (projectId && typeof runtime.resolveRunProjectContext === "function") {
+            try {
+                const projectCtx = runtime.resolveRunProjectContext({ projectId });
+                if (projectCtx?.workspaceRoot) state.session.workspace = projectCtx.workspaceRoot;
+                if (projectCtx?.project?.name) state.session.project_name = projectCtx.project.name;
+            } catch {
+                /* project context optional */
+            }
+        }
 
         const stopCheckpoint =
             startCheckpoint(

@@ -19,6 +19,7 @@ import { html } from "./dom.js";
 import { Catalog, Secrets } from "./mcp-catalog-view.js";
 import { createMcpExtrasState } from "./mcp-extras.js";
 import { ImportPanel, RegistryPanel, ServerControls } from "./mcp-extras-view.js";
+import { SkeletonCards, SkeletonLines } from "./skeleton-view.js";
 
 
 const DEFAULT_CONFIG = '{\n  "mcpServers": {}\n}\n';
@@ -26,21 +27,29 @@ const DEFAULT_CONFIG = '{\n  "mcpServers": {}\n}\n';
 const ENV_PLACEHOLDER =
     '{"GITHUB_TOKEN":"${env:GITHUB_TOKEN}"} or\\nGITHUB_TOKEN=ghp_xxx\\nNODE_ENV=production';
 
+const HEADERS_PLACEHOLDER =
+    '{"X-API-Key":"xxx","Authorization":"Bearer xxx"} or\\nX-API-Key: xxx\\nAuthorization: Bearer xxx';
+
+
 
 export function createMcpState() {
 
     return {
         payload: null,
+        loading: false,
+        error: null,
         tab: "servers",
         transport: "stdio",
         formKey: 0,
         formMessage: "",
         connecting: false,
+        customHeaders: [{ id: 1, name: "", value: "" }],
         rowErrors: new Map(),
         pending: new Set(),
         configText: DEFAULT_CONFIG,
         configPath: "",
         configKey: 0,
+        configLoading: false,
         configError: null,
         configNotice: "",
         configTarget: "workspace",
@@ -152,11 +161,58 @@ export function parseEnvInput(raw) {
 }
 
 
+/* headers accepts a JSON object or Header: Value / Header=Value lines (# comments allowed) */
+export function parseHeadersInput(raw) {
+
+    const trimmed = String(raw ?? "").trim();
+
+    if (!trimmed) return undefined;
+
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const result = {};
+            for (const [k, v] of Object.entries(parsed)) {
+                const key = String(k ?? "").trim();
+                if (key) result[key] = String(v ?? "").trim();
+            }
+            return Object.keys(result).length ? result : undefined;
+        }
+    } catch {
+        /* not JSON: Header: Value lines */
+    }
+
+    const headers = {};
+
+    for (const line of trimmed.split(/\n/)) {
+        const entry = line.trim();
+        if (!entry || entry.startsWith("#")) continue;
+        let sep = entry.indexOf(":");
+        if (sep === -1) sep = entry.indexOf("=");
+        if (sep === -1) continue;
+        const key = entry.slice(0, sep).trim();
+        const val = entry.slice(sep + 1).trim();
+        if (key) headers[key] = val;
+    }
+
+    return Object.keys(headers).length ? headers : undefined;
+}
+
+
 /* the POST /api/mcp body from the add form's fields */
 export function connectBody(form) {
 
     const value = name => String(form.elements.namedItem(name)?.value ?? "").trim();
     const args = value("command_args") ? value("command_args").split(/\s+/) : undefined;
+    const mergedHeaders = { ...(parseHeadersInput(form.elements.namedItem("headers")?.value) || {}) };
+
+    if (typeof form.querySelectorAll === "function") {
+        for (const row of form.querySelectorAll(".mcp-header-row")) {
+            const key = String(row.querySelector("input[data-header-key]")?.value ?? "").trim();
+            const val = String(row.querySelector("input[data-header-val]")?.value ?? "").trim();
+            if (key) mergedHeaders[key] = val;
+        }
+    }
 
     return {
         name: value("name"),
@@ -166,6 +222,7 @@ export function connectBody(form) {
         command_args: args,
         url: value("url") || undefined,
         token: value("token") || undefined,
+        headers: Object.keys(mergedHeaders).length ? mergedHeaders : undefined,
         env: parseEnvInput(form.elements.namedItem("env")?.value)
     };
 }
@@ -186,6 +243,10 @@ function serverFacts(server) {
     if (server.stats?.calls) facts.push(`${server.stats.calls} call${server.stats.calls === 1 ? "" : "s"}`);
     if (server.reconnect?.count) facts.push(`reconnected ${server.reconnect.count}×`);
     if (server.catalog) facts.push(`catalogue: ${server.catalog}`);
+    if (server.connection?.headers && typeof server.connection.headers === "object") {
+        const headerNames = Object.keys(server.connection.headers);
+        if (headerNames.length > 0) facts.push(`headers: ${headerNames.join(", ")}`);
+    }
     if (server.scope === "project") facts.push(`projects: ${(server.projects || []).join(", ") || "none"}`);
 
     return facts.join(" · ");
@@ -238,6 +299,7 @@ function Field({ name, label, placeholder, hidden }) {
 function AddForm({ mcp, actions }) {
 
     const local = mcp.transport === "stdio";
+    const rows = Array.isArray(mcp.customHeaders) ? mcp.customHeaders : [];
 
     return html`<form class="mcp-add" key=${mcp.formKey} onSubmit=${event => { event.preventDefault(); actions.connect(event.currentTarget); }}>
         <h3>Connect a server</h3>
@@ -253,6 +315,46 @@ function AddForm({ mcp, actions }) {
         <${Field} name="command_args" label="arguments" placeholder="-y @modelcontextprotocol/server-github" hidden=${!local} />
         <${Field} name="url" label="url" placeholder="https://host/mcp (http, sse, websocket)" hidden=${local} />
         <${Field} name="token" label="token" placeholder="bearer token, optional" hidden=${local} />
+        <div class="mcp-field mcp-headers-field" hidden=${local}>
+            <span class="label">headers</span>
+            <div class="mcp-headers-builder">
+                ${rows.map((row, index) => html`<div class="mcp-header-row" key=${row.id ?? index}>
+                    <input
+                        type="text"
+                        data-header-key=""
+                        aria-label=${`Header name ${index + 1}`}
+                        placeholder="Header name (e.g. X-API-Key)"
+                        value=${row.name}
+                        onInput=${event => actions.updateHeaderRow?.(index, "name", event.currentTarget.value)}
+                    />
+                    <input
+                        type="text"
+                        data-header-val=""
+                        aria-label=${`Header value ${index + 1}`}
+                        placeholder="Header value"
+                        value=${row.value}
+                        onInput=${event => actions.updateHeaderRow?.(index, "value", event.currentTarget.value)}
+                    />
+                    <button
+                        type="button"
+                        class="ghost mcp-header-remove"
+                        aria-label=${`Remove header ${index + 1}`}
+                        title="Remove header"
+                        onClick=${() => actions.removeHeaderRow?.(index)}
+                    >✕</button>
+                </div>`)}
+                <div class="mcp-headers-actions">
+                    <button type="button" class="ghost mcp-header-add" onClick=${() => actions.addHeaderRow?.()}>+ Add header</button>
+                </div>
+                <textarea
+                    name="headers"
+                    rows="2"
+                    class="mcp-env"
+                    aria-label="Headers JSON or lines"
+                    placeholder=${HEADERS_PLACEHOLDER}
+                ></textarea>
+            </div>
+        </div>
         <label class="mcp-field" hidden=${!local}>
             <span class="label">env (JSON or KEY=VALUE lines)</span>
             <textarea
@@ -271,6 +373,21 @@ function AddForm({ mcp, actions }) {
 
 
 function Servers({ mcp, actions }) {
+
+    if (mcp.loading && !mcp.payload) {
+        return html`<div class="mcp">
+            <${SkeletonCards} count=${3} label="Loading MCP servers…" />
+        </div>`;
+    }
+
+    if (mcp.error && !mcp.payload) {
+        return html`<div class="mcp">
+            <div class="modal-error-row">
+                <p class="mcp-error">${mcp.error}</p>
+                ${actions.retry ? html`<button type="button" class="ghost" onClick=${() => actions.retry()}>Retry</button>` : null}
+            </div>
+        </div>`;
+    }
 
     const payload = mcp.payload || {};
 
@@ -317,14 +434,16 @@ function JsonEditor({ mcp, actions }) {
         <p class="muted mcp-config-path">${mcp.configPath
             ? `${user ? "User" : "Workspace"} config: ${mcp.configPath}`
             : "Workspace MCP config (.agent/mcp.json)"}</p>
-        <textarea
-            key=${mcp.configKey}
-            class="mcp-raw-json"
-            spellcheck=${false}
-            aria-label="Raw MCP server JSON"
-            defaultValue=${mcp.configText}
-        ></textarea>
-        <button type="button" disabled=${mcp.saving} onClick=${event =>
+        ${mcp.configLoading && !mcp.configPath
+            ? html`<${SkeletonLines} rows=${6} label="Loading MCP configuration…" />`
+            : html`<textarea
+                key=${mcp.configKey}
+                class="mcp-raw-json"
+                spellcheck=${false}
+                aria-label="Raw MCP server JSON"
+                defaultValue=${mcp.configText}
+            ></textarea>`}
+        <button type="button" disabled=${mcp.saving || mcp.configLoading} onClick=${event =>
             actions.save(event.currentTarget.parentElement.querySelector(".mcp-raw-json").value)}>Save JSON</button>
         <p class=${`mcp-config-message${mcp.configError ? " bad" : ""}`}>${message}</p>
     </section>`;

@@ -12,7 +12,9 @@
 */
 
 import { html } from "./dom.js";
+import { authenticatedUrl } from "./auth-transport.js";
 import { formatBytes, formatStamp, query } from "./operator-api.js";
+import { SkeletonLines, SkeletonRows } from "./skeleton-view.js";
 
 
 export function createFilesState() {
@@ -22,6 +24,7 @@ export function createFilesState() {
         path: ".",
         listing: null,
         loading: false,
+        fileLoading: false,
         error: null,
         filter: "",
         open: null,
@@ -43,8 +46,20 @@ export function filesSubtitle(files) {
 }
 
 
+export function fileEditorTitle(files) {
+
+    return files.open?.name || files.open?.path?.split("/").pop() || "File";
+}
+
+
+export function fileEditorSubtitle(files) {
+
+    return filesSubtitle(files);
+}
+
+
 export function downloadUrl(files, filePath) {
-    return `/api/files/download${query({ path: filePath, projectId: files.projectId || undefined })}`;
+    return authenticatedUrl(`/api/files/download${query({ path: filePath, projectId: files.projectId || undefined })}`);
 }
 
 
@@ -109,9 +124,12 @@ function Browser({ files, projects, actions }) {
             <button type="button" class="ghost" title="New folder" onClick=${() => actions.create("directory")}>+ Folder</button>
             <button type="button" class="ghost" title="Refresh" aria-label="Refresh" onClick=${() => actions.refresh()}>↻</button>
         </div>
-        <nav class="files-crumbs" aria-label="Path">
-            ${crumbs(listing?.path || files.path).map(crumb => html`<button type="button" class="files-crumb" key=${crumb.path} onClick=${() => actions.navigate(crumb.path)}>${crumb.label}</button>`)}
-        </nav>
+        <div class="files-crumbs-row">
+            <nav class="files-crumbs" aria-label="Path">
+                ${crumbs(listing?.path || files.path).map(crumb => html`<button type="button" class="files-crumb" key=${crumb.path} onClick=${() => actions.navigate(crumb.path)}>${crumb.label}</button>`)}
+            </nav>
+            ${files.loading && listing ? html`<span class="muted files-refreshing">Refreshing…</span>` : null}
+        </div>
         <input
             type="search"
             class="files-filter"
@@ -121,17 +139,20 @@ function Browser({ files, projects, actions }) {
             onInput=${event => actions.filter(event.currentTarget.value)}
         />
         ${files.error ? html`<p class="files-error" role="alert">${files.error}</p>` : null}
-        <ul class="file-list">
-            ${listing?.parent !== null && listing?.parent !== undefined
-                ? html`<li class="file-entry"><button type="button" class="file-entry-open" onClick=${() => actions.navigate(listing.parent)}>
-                    <span class="file-icon up" aria-hidden="true"></span><span class="file-name">..</span><span class="file-meta"></span>
-                </button></li>`
-                : null}
-            ${entries.map(entry => html`<${EntryRow} key=${entry.path} entry=${entry} files=${files} actions=${actions} />`)}
-        </ul>
-        ${files.loading ? html`<p class="muted">Loading…</p>` : null}
-        ${listing && entries.length === 0 && !files.loading ? html`<p class="empty">${filter ? "Nothing matches the filter." : "This folder is empty."}</p>` : null}
-        ${listing?.truncated ? html`<p class="muted">Only the first 5000 entries are shown.</p>` : null}
+        ${files.loading && !listing
+            ? html`<div class="files-list-loading"><${SkeletonRows} count=${6} compact=${true} label="Loading…" /></div>`
+            : html`<ul class="file-list">
+                ${listing?.parent !== null && listing?.parent !== undefined
+                    ? html`<li class="file-entry"><button type="button" class="file-entry-open" onClick=${() => actions.navigate(listing.parent)}>
+                        <span class="file-icon up" aria-hidden="true"></span><span class="file-name">..</span><span class="file-meta"></span>
+                    </button></li>`
+                    : null}
+                ${entries.map(entry => html`<${EntryRow} key=${entry.path} entry=${entry} files=${files} actions=${actions} />`)}
+                ${listing && entries.length === 0 && !files.loading
+                    ? html`<li class="file-list-empty"><p class="empty">${filter ? "Nothing matches the filter." : "This folder is empty."}</p></li>`
+                    : null}
+            </ul>`}
+        ${listing?.truncated ? html`<p class="muted files-truncated">Only the first 5000 entries are shown.</p>` : null}
     </section>`;
 }
 
@@ -155,6 +176,12 @@ function onEditorKey(event, actions) {
 
 function Editor({ files, actions }) {
 
+    if (files.fileLoading) {
+        return html`<section class="files-editor" aria-label="Editor">
+            <${SkeletonLines} rows=${8} label="Loading file…" />
+        </section>`;
+    }
+
     const file = files.open;
 
     if (!file) {
@@ -167,14 +194,7 @@ function Editor({ files, actions }) {
     return html`<section class="files-editor" aria-label="Editor">
         <div class="files-editor-head">
             <span class="files-editor-path" title=${file.path}>${dirty ? "● " : ""}${file.path}</span>
-            <span class="muted">${formatBytes(file.size)}${file.mtime_ms ? ` · ${formatStamp(file.mtime_ms)}` : ""}</span>
-        </div>
-        <div class="files-editor-actions">
-            ${editable ? html`<button type="button" disabled=${!dirty || file.saving} onClick=${() => actions.save()}>${file.saving ? "Saving…" : "Save"}</button>
-            <button type="button" class="ghost" disabled=${!dirty || file.saving} onClick=${() => actions.revert()}>Revert</button>` : null}
-            <button type="button" class="ghost" onClick=${() => actions.reload()}>Reload</button>
-            <a class="chip button" href=${downloadUrl(files, file.path)} download>Download</a>
-            <button type="button" class="ghost" onClick=${() => actions.closeFile()}>Close</button>
+            <span class="muted files-editor-meta">${formatBytes(file.size)}${file.mtime_ms ? ` · ${formatStamp(file.mtime_ms)}` : ""}</span>
         </div>
         ${file.error ? html`<p class="files-error" role="alert">${file.error}</p>` : null}
         ${file.message ? html`<p class="files-message">${file.message}</p>` : null}
@@ -193,10 +213,35 @@ function Editor({ files, actions }) {
 }
 
 
+export function FileEditorFooter({ files, actions }) {
+
+    const file = files.open;
+
+    if (files.fileLoading || !file) {
+        return null;
+    }
+
+    const dirty = isDirty(files);
+    const editable = file.content !== null;
+
+    return html`
+        ${editable ? html`<button type="button" class="ghost" disabled=${!dirty || file.saving} onClick=${() => actions.revert()}>Revert</button>` : null}
+        <button type="button" class="ghost" onClick=${() => actions.reload()}>Reload</button>
+        <a class="ghost button" href=${downloadUrl(files, file.path)} download>Download</a>
+        ${editable ? html`<button type="button" disabled=${!dirty || file.saving} onClick=${() => actions.save()}>${file.saving ? "Saving…" : "Save"}</button>` : null}
+    `;
+}
+
+
+export function FileEditorBody({ files, actions }) {
+
+    return html`<${Editor} files=${files} actions=${actions} />`;
+}
+
+
 export function FilesBody({ files, projects, actions }) {
 
     return html`<div class="files-workspace">
         <${Browser} files=${files} projects=${projects || []} actions=${actions} />
-        <${Editor} files=${files} actions=${actions} />
     </div>`;
 }

@@ -166,6 +166,10 @@ async function fileManagerTests() {
             await rejects(files.read("escape.txt"), 400, /symlink/);
             await rejects(files.list("escape-dir"), 400, /symlink/);
             await rejects(files.write("escape-dir/new.txt", "x"), 400);
+            await rejects(files.write("escape.txt", "x"), 400, /symlink/);
+            await rejects(files.write("inside.js", "hacked\n"), 400, /symlink/);
+            assert.equal(fs.lstatSync(path.join(ROOT, "inside.js")).isSymbolicLink(), true, "in-root symlink is not replaced");
+            assert.equal(fs.readFileSync(path.join(ROOT, "src", "app.js"), "utf8"), "console.log(1)\n", "target file is unchanged");
             assert.ok(!fs.existsSync(path.join(OUTSIDE, "new.txt")));
             assert.equal((await files.read("inside.js")).content, "console.log(1)\n");
             await files.remove("escape-dir");

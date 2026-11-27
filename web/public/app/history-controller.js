@@ -13,67 +13,154 @@ import { mountInModal } from "./dom.js";
 import { reduce } from "./runtime-state.js";
 import { resetRun } from "./execution-model.js";
 import { normalizeConversationMessages } from "./conversation-model.js";
-import { historySubtitle, Sessions } from "./history-view.js";
+import { groupSessions, historySubtitle, Sessions } from "./history-view.js";
 import { failureText, notifyError } from "./console-core.js";
+import { confirmDialog } from "./operator-api.js";
+import { apiFetch } from "./auth-transport.js";
 
 
-export async function openHistory() {
+let historyRequest = 0;
+
+function computeSubtitle(sessions) {
+
+    const groups = groupSessions(sessions, {
+        projects: state.projects,
+        defaultWorkspace: state.workspace,
+        currentProjectId: state.currentProjectId,
+        currentSessionId: state.history?.current || state.session?.id || null
+    });
+    return historySubtitle(sessions, groups);
+}
+
+
+function sessionQuery(session) {
+
+    return session?.project_id
+        ? `?projectId=${encodeURIComponent(session.project_id)}`
+        : "";
+}
+
+
+async function fetchHistory(handle) {
+
+    const request = ++historyRequest;
+
+    if (state.history) {
+        state.history.loading = true;
+        state.history.error = null;
+        touch("history");
+    }
+
+    let payload = null;
+
+    try {
+        const requests = [apiFetch("/api/sessions")];
+        const needProjects = !Array.isArray(state.projects) || state.projects.length === 0;
+        if (needProjects) requests.push(apiFetch("/api/projects"));
+        const [response, projResponse] = await Promise.all(requests);
+        payload = response.ok ? await response.json() : null;
+        if (projResponse && projResponse.ok) {
+            const projPayload = await projResponse.json().catch(() => null);
+            if (Array.isArray(projPayload?.projects)) {
+                state.projects = projPayload.projects;
+                touch("projects");
+            }
+        }
+    } catch {
+        payload = null;
+    }
+
+    if (request !== historyRequest || !state.historyModal || state.historyModal !== handle) {
+        return;
+    }
+
+    if (!payload || !Array.isArray(payload.sessions)) {
+        state.history = {
+            ...(state.history || { sessions: [], current: null, pending: null, search: "", scope: "all" }),
+            loading: false,
+            error: "The saved conversations could not be loaded."
+        };
+        handle.setSubtitle("unavailable");
+        touch("history");
+        return;
+    }
+
+    state.sessions = payload.sessions;
+    state.history = {
+        sessions: payload.sessions,
+        current: payload.current,
+        pending: null,
+        error: null,
+        loading: false,
+        search: state.history?.search || "",
+        scope: state.history?.scope || "all"
+    };
+    handle.setSubtitle(computeSubtitle(payload.sessions));
+    touch("history");
+}
+
+
+export function openHistory() {
 
     if (state.historyModal && state.historyModal.isOpen()) {
         return state.historyModal;
     }
 
-    /* Fetching the list is asynchronous. Ignore double clicks while it is
-       in flight; otherwise two orphaned dialogs are pushed onto the modal
-       stack and the visible one no longer matches state.historyModal. */
-    if (state.historyOpening) {
-        return null;
-    }
-
-    state.historyOpening = true;
-
-    let payload = null;
-
-    try {
-        const response = await fetch("/api/sessions");
-        payload = response.ok ? await response.json() : null;
-    } catch {
-        payload = null;
-    }
-
-    if (!payload || !Array.isArray(payload.sessions)) {
-        state.historyOpening = false;
-        notifyError("The saved conversations could not be loaded.");
-        return null;
-    }
-
-    state.sessions = payload.sessions;
-    state.history = { sessions: payload.sessions, current: payload.current, pending: null, error: null };
+    const cached = Array.isArray(state.sessions) ? state.sessions : [];
+    state.history = {
+        sessions: cached,
+        current: state.history?.current || state.session?.id || null,
+        pending: null,
+        error: null,
+        loading: true,
+        search: "",
+        scope: "all"
+    };
 
     let dispose = () => {};
 
     const handle = Modal.open({
         title: "Conversations",
-        subtitle: historySubtitle(payload.sessions),
+        subtitle: cached.length > 0 ? computeSubtitle(cached) : "Loading…",
         size: "medium",
         footer: Modal.row(
             Modal.button("New conversation", "ghost", () => startNewConversation(handle)),
             Modal.button("Close", "", () => handle.close("footer"))
         ),
         onClose: () => {
+            historyRequest++;
             dispose();
             state.historyModal = null;
         }
     });
 
     state.historyModal = handle;
-    state.historyOpening = false;
 
     dispose = mountInModal(
         handle,
-        () => Sessions({ history: state.history, onOpen: loadSession }),
-        ["history"]
+        () => Sessions({
+            history: state.history,
+            projects: state.projects,
+            defaultWorkspace: state.workspace,
+            currentProjectId: state.currentProjectId,
+            onOpen: loadSession,
+            onDelete: deleteSession,
+            onRetry: () => fetchHistory(handle),
+            onSearch: value => {
+                if (!state.history) return;
+                state.history.search = value;
+                touch("history");
+            },
+            onScopeChange: scope => {
+                if (!state.history) return;
+                state.history.scope = scope;
+                touch("history");
+            }
+        }),
+        ["history", "projects"]
     );
+
+    void fetchHistory(handle);
 
     return handle;
 }
@@ -100,7 +187,7 @@ async function startNewConversation(handle) {
     touch("history");
 
     try {
-        const response = await fetch("/api/sessions", { method: "POST" });
+        const response = await apiFetch("/api/sessions", { method: "POST" });
         if (!response.ok) {
             historyFailure(await failureText(response, "A new conversation was not started"));
             return;
@@ -111,6 +198,47 @@ async function startNewConversation(handle) {
     }
 
     handle.close("new");
+}
+
+
+async function deleteSession(session) {
+
+    if (!session || state.history?.pending) return;
+
+    const title = session.title || session.id;
+    const approved = await confirmDialog(`Delete conversation "${title}"?`, {
+        title: "Conversations",
+        confirmLabel: "Delete",
+        confirmClass: "danger"
+    });
+
+    if (!approved || !state.history) return;
+
+    state.history.pending = session.id;
+    state.history.error = null;
+    touch("history");
+
+    try {
+        const response = await apiFetch(
+            `/api/sessions/${encodeURIComponent(session.id)}${sessionQuery(session)}`,
+            { method: "DELETE" }
+        );
+        if (!response.ok) {
+            historyFailure(await failureText(response, "The conversation could not be deleted"));
+            return;
+        }
+    } catch (error) {
+        historyFailure(`The conversation could not be deleted: ${error.message || "network error"}`);
+        return;
+    }
+
+    const remaining = (state.history.sessions || []).filter(item => item.id !== session.id);
+    state.sessions = remaining;
+    state.history.sessions = remaining;
+    state.history.pending = null;
+    state.history.error = null;
+    state.historyModal?.setSubtitle(computeSubtitle(remaining));
+    touch("history");
 }
 
 
@@ -126,7 +254,7 @@ export async function refreshSession(id) {
     const request = ++sessionRequest;
 
     try {
-        const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`);
+        const response = await apiFetch(`/api/sessions/${encodeURIComponent(id)}`);
         if (!response.ok) return;
         const payload = await response.json();
         if (request === sessionRequest && payload?.session) applySession(payload.session);
@@ -136,8 +264,12 @@ export async function refreshSession(id) {
 }
 
 
-async function loadSession(id) {
+async function loadSession(sessionOrId) {
 
+    const session = typeof sessionOrId === "object" && sessionOrId !== null
+        ? sessionOrId
+        : (state.history?.sessions || []).find(item => item.id === sessionOrId) || { id: sessionOrId };
+    const id = session.id;
     const request = ++sessionRequest;
 
     if (state.history) {
@@ -149,7 +281,10 @@ async function loadSession(id) {
     let payload = null;
 
     try {
-        const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "POST" });
+        const response = await apiFetch(
+            `/api/sessions/${encodeURIComponent(id)}${sessionQuery(session)}`,
+            { method: "POST" }
+        );
         if (!response.ok) {
             historyFailure(await failureText(response, "The conversation could not be opened"));
             return;
@@ -167,15 +302,6 @@ async function loadSession(id) {
     applySession(payload.session);
     state.historyModal?.close("loaded");
 }
-
-
-/* ------------------------------------------------------------------ mcp */
-
-/*
-| Every MCP action reports its outcome: a refused toggle or removal is
-| shown on its row, a failed connect in the form, a failed save under the
-| editor. The list only changes when the server says it did.
-*/
 
 
 /*

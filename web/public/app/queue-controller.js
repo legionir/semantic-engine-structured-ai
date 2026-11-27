@@ -11,6 +11,7 @@
 import { state, touch } from "./store.js";
 import { failureText, notifyError, pushMessage, setStatus } from "./console-core.js";
 import { projectById } from "./project-routing.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 export function labelChatForProject(projectId) {
@@ -65,8 +66,11 @@ function finishQueueItem(token) {
 export function stopProjectQueue() {
 
     state.multiQueue = [];
+    state.multiQueueTotal = 0;
+    state.multiQueueActive = false;
     queueCurrent = null;
     queueToken++;
+    touch("run");
 }
 
 
@@ -94,7 +98,7 @@ function watchProjectRun(item) {
 
         try {
 
-            const response = await fetch(`/api/projects/${encodeURIComponent(item.projectId)}/state`);
+            const response = await apiFetch(`/api/projects/${encodeURIComponent(item.projectId)}/state`);
             const snapshot = response.ok ? await response.json() : null;
             const active = Array.isArray(snapshot?.active_runs) ? snapshot.active_runs : null;
 
@@ -119,23 +123,32 @@ function watchProjectRun(item) {
 
 export async function drainProjectTaskQueue() {
 
-    if (queueCurrent || state.multiQueue.length === 0) {
+    if (queueCurrent) {
+        return;
+    }
+
+    if (state.multiQueue.length === 0) {
+        state.multiQueueTotal = 0;
+        state.multiQueueActive = false;
+        touch("run");
         return;
     }
 
     const next = { ...state.multiQueue.shift(), token: ++queueToken };
 
     queueCurrent = next;
+    state.multiQueueActive = true;
     setStatus("running");
     state.activeProjectId = next.projectId;
     labelChatForProject(next.projectId);
+    touch("run");
 
     let failure = null;
 
     try {
 
         const response =
-            await fetch(
+            await apiFetch(
                 `/api/projects/${encodeURIComponent(next.projectId)}/tasks`,
                 {
                     method: "POST",
@@ -193,7 +206,7 @@ async function queueRequest(path, method, body, failureLabel) {
 
     try {
 
-        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}${path}`, {
+        const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}${path}`, {
             method,
             headers: body ? { "content-type": "application/json" } : {},
             ...(body ? { body: JSON.stringify(body) } : {})

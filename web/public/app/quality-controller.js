@@ -24,6 +24,7 @@ import { el } from "./console-core.js";
 import { apiRequest } from "./operator-api.js";
 import { formatCost } from "./run-extras.js";
 import { submitTask } from "./composer-controller.js";
+import { SkeletonCards, SkeletonLines, SkeletonRows } from "./skeleton-view.js";
 
 
 const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
@@ -34,7 +35,7 @@ function quality() {
         state.qualityView = {
             planBusy: false,
             revision: "",
-            snapshots: { runs: [], loading: false, error: null, selected: null, diff: null, conflicts: null, busy: false, notice: null },
+            snapshots: { runs: [], loading: false, diffLoading: false, error: null, selected: null, diff: null, conflicts: null, busy: false, notice: null },
             review: { target: "diff", ref: "", focus: "", loading: false, error: null, result: null, selected: new Set() }
         };
     }
@@ -99,10 +100,12 @@ export const planActions = {
         touch("quality");
 
         /* no plan_mode: this turn may change the project */
-        await submitTask("The plan is approved. Execute it now, step by step, and report what you changed.", null, {});
+        const ok = await submitTask("The plan is approved. Execute it now, step by step, and report what you changed.", null, {});
 
         local.planBusy = false;
-        state.planReady = null;
+        if (ok) {
+            state.planReady = null;
+        }
         touch("quality");
     },
 
@@ -116,11 +119,13 @@ export const planActions = {
         local.planBusy = true;
         touch("quality");
 
-        await submitTask(`Revise the plan: ${text}`, null, { plan_mode: true });
+        const ok = await submitTask(`Revise the plan: ${text}`, null, { plan_mode: true });
 
         local.planBusy = false;
-        local.revision = "";
-        state.planReady = null;
+        if (ok) {
+            local.revision = "";
+            state.planReady = null;
+        }
         touch("quality");
     },
 
@@ -160,7 +165,7 @@ function ChangesBody({ actions }) {
 
     const view = quality().snapshots;
 
-    if (view.loading) return html`<p class="muted">Loading…</p>`;
+    if (view.loading && view.runs.length === 0) return html`<${SkeletonRows} count=${4} label="Loading task changes…" />`;
     if (view.error) return html`<p class="interrupted-error">${view.error}</p>`;
     if (view.runs.length === 0) {
         return html`<p class="muted">No task has been recorded yet. Each task in a git project gets a before and after snapshot (RUN_SNAPSHOTS).</p>`;
@@ -176,6 +181,7 @@ function ChangesBody({ actions }) {
                 </div>
             `)}
         </div>
+        ${view.diffLoading && !view.diff ? html`<${SkeletonLines} rows=${6} label="Loading snapshot diff…" />` : null}
         ${view.diff ? html`
             <div class="snapshot-diff">
                 <ul class="snapshot-files">
@@ -221,12 +227,14 @@ const changesActions = {
 
         view.selected = runId;
         view.diff = null;
+        view.diffLoading = true;
         view.conflicts = null;
         view.notice = null;
         touch("quality");
 
         const result = await apiRequest(`/api/snapshots/${encodeURIComponent(runId)}${projectQuery()}`);
 
+        view.diffLoading = false;
         view.diff = result.ok ? result.payload : null;
         view.error = result.ok ? null : result.error;
         touch("quality");
@@ -320,6 +328,7 @@ function ReviewBody({ actions }) {
                 onInput=${event => { view.focus = event.target.value; }} />
             <button type="submit" disabled=${view.loading}>${view.loading ? "Reviewing…" : "Review"}</button>
         </form>
+        ${view.loading ? html`<${SkeletonCards} count=${3} label="Running review…" />` : null}
         ${view.error ? html`<p class="interrupted-error">${view.error}</p>` : null}
         ${view.result ? html`
             <div class="review-result">
@@ -401,8 +410,10 @@ const reviewActions = {
 
         if (findings.length === 0) return;
 
-        reviewHandle?.close?.();
-        await submitTask(fixTaskFor(findings, view.result.label), null, {});
+        const ok = await submitTask(fixTaskFor(findings, view.result.label), null, {});
+        if (ok) {
+            reviewHandle?.close?.();
+        }
     }
 };
 

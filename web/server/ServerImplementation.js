@@ -21,10 +21,12 @@ const path = require("path");
 
 const {
     CONSOLE_COOKIE,
+    isTrustedProxy,
     newConsoleToken,
-    parseCookies,
+    requestPasswordSession,
     requestToken,
     sameOrigin,
+    tokenMatches,
     RateLimiter
 } = require("./Middleware");
 const {
@@ -94,8 +96,10 @@ function createServer(runtime, options = {}) {
         Boolean(runtime.settings && runtime.settings.get("AGENT_CONSOLE_PASSWORD_REQUIRED"));
     const consolePassword =
         String(runtime.settings && runtime.settings.get("AGENT_CONSOLE_PASSWORD") || "");
-    const passwordSessionToken =
-        consolePasswordRequired ? newConsoleToken() : null;
+    /* read per sign-in, so a settings change applies to the next one */
+    const passwordSessionTtlMs = () => runtime.settings.get("CONSOLE_PASSWORD_SESSION_TTL_MS");
+    const passwordSessionsMax = () => runtime.settings.get("CONSOLE_PASSWORD_SESSIONS_MAX");
+    const passwordSessions = new Map();
 
     if (consolePasswordRequired && consolePassword.length === 0) {
         throw new Error("AGENT_CONSOLE_PASSWORD_REQUIRED is enabled, but AGENT_CONSOLE_PASSWORD is empty.");
@@ -167,10 +171,38 @@ function createServer(runtime, options = {}) {
             : apiRateLimiter.allow(req);
     }
 
-    function passwordSessionMatches(req) {
-        const supplied = parseCookies(req.headers.cookie).structured_ai_console_password;
-        if (typeof supplied !== "string" || supplied.length !== passwordSessionToken?.length) return false;
-        return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(passwordSessionToken));
+    function issuePasswordSession() {
+        const now = Date.now();
+        for (const [token, expiresAt] of passwordSessions.entries()) {
+            if (expiresAt <= now) {
+                passwordSessions.delete(token);
+            }
+        }
+        while (passwordSessions.size >= passwordSessionsMax()) {
+            const oldest = passwordSessions.keys().next().value;
+            if (!oldest) break;
+            passwordSessions.delete(oldest);
+        }
+        const token = newConsoleToken();
+        passwordSessions.set(token, now + passwordSessionTtlMs());
+        return token;
+    }
+
+    function passwordSessionMatches(req, url) {
+        const supplied = requestPasswordSession(req, url);
+        if (typeof supplied !== "string" || supplied.length === 0) return false;
+        const now = Date.now();
+        let matched = false;
+        for (const [token, expiresAt] of passwordSessions.entries()) {
+            if (expiresAt <= now) {
+                passwordSessions.delete(token);
+                continue;
+            }
+            if (tokenMatches(supplied, token)) {
+                matched = true;
+            }
+        }
+        return matched;
     }
 
     function passwordMatches(candidate) {
@@ -244,8 +276,8 @@ function createServer(runtime, options = {}) {
         loginRateLimiter,
         logHub: shared.logHub,
         logs: shared.logs,
+        issuePasswordSession,
         passwordMatches,
-        passwordSessionToken,
         projectQueue: shared.projectQueue,
         projectSlotBusy,
         projectSnapshot: shared.projectSnapshot,
@@ -264,6 +296,10 @@ function createServer(runtime, options = {}) {
         state,
         terminals: shared.terminals,
         toolRuntime,
+        verifyConsoleToken: candidate =>
+            typeof candidate === "string" &&
+            candidate.trim() !== "" &&
+            Boolean(consoleAuth.resolve(candidate.trim(), consoleToken)),
         workspaceRoot: shared.workspaceRoot
     };
 
@@ -298,17 +334,27 @@ function createServer(runtime, options = {}) {
 
             const authStatusRoute = pathname === "/auth/status" && req.method === "GET";
             const authLoginRoute = pathname === "/auth/login" && req.method === "POST";
+            const trustedProxy = isTrustedProxy(
+                req,
+                runtime.settings && typeof runtime.settings.get === "function"
+                    ? runtime.settings.get("TRUSTED_PROXIES")
+                    : ""
+            );
 
             if (
                 (isApiRequest || authLoginRoute) &&
-                !sameOrigin(req.headers.origin, req.headers.host)
+                !sameOrigin(
+                    req.headers.origin,
+                    req.headers.host,
+                    trustedProxy ? req.headers["x-forwarded-host"] : null
+                )
             ) {
                 sendJson(res, 403, { error: "cross-origin console request refused" });
                 return;
             }
 
             const passwordSessionAuthenticated =
-                consolePasswordRequired && passwordSessionMatches(req);
+                consolePasswordRequired && passwordSessionMatches(req, url);
             let suppliedToken;
             let claims;
 
@@ -333,7 +379,7 @@ function createServer(runtime, options = {}) {
             | cookies cannot silently skip the password screen.
             */
             if (!consolePasswordRequired && authenticated && url.searchParams.has("token")) {
-                setConsoleCookie(res, CONSOLE_COOKIE, consoleToken);
+                setConsoleCookie(res, CONSOLE_COOKIE, consoleToken, req, { trustForwarded: trustedProxy });
             }
 
             /*
@@ -381,6 +427,7 @@ function createServer(runtime, options = {}) {
             const request = {
                 authLoginRoute,
                 authStatusRoute,
+                authenticated,
                 claims,
                 passwordSessionAuthenticated,
                 pathname,
@@ -389,6 +436,7 @@ function createServer(runtime, options = {}) {
                 requireAdmin,
                 requireUnscoped,
                 res,
+                trustedProxy,
                 url
             };
 
@@ -403,28 +451,30 @@ function createServer(runtime, options = {}) {
 
                 /* ---------------------------------------------- static */
 
+                const isStaticRead = req.method === "GET" || req.method === "HEAD";
+
                 /* P0-4: static and deep-link paths are not decoded by the
                    router, so a malformed escape must still be a 400. */
-                if (req.method === "GET" && !wellEncodedPath(pathname)) {
+                if (isStaticRead && !wellEncodedPath(pathname)) {
 
                     sendJson(res, 400, { error: "malformed percent-encoding in request path" });
                     return;
                 }
 
                 if (
-                    req.method === "GET" &&
+                    isStaticRead &&
                     (pathname === "/projects" || pathname.startsWith("/projects/"))
                 ) {
 
                     /* Phase 11: the console owns /projects/:id so a
                        dashboard deep-link loads the same page. */
-                    serveStatic(req, res, "/");
+                    await serveStatic(req, res, "/");
                     return;
                 }
 
-                if (req.method === "GET") {
+                if (isStaticRead) {
 
-                    serveStatic(req, res, pathname);
+                    await serveStatic(req, res, pathname);
 
                     return;
                 }

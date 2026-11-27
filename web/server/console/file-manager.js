@@ -22,7 +22,8 @@ const path = require("path");
 const {
     resolvePathInRoot,
     toRelativeInRoot,
-    realpath
+    realpath,
+    assertNotSecretStoreOrAncestor
 } = require("../../../agent/context/WorkspaceBoundary");
 
 
@@ -48,6 +49,7 @@ function translate(error, relative) {
         default: break;
     }
     if (/^Path does not exist: /.test(error.message)) return failure(404, `Not found: ${name}`);
+    if (/secret store/i.test(error.message)) return failure(403, error.message);
     if (/outside workspace|escapes the workspace|Path is required/.test(error.message)) {
         return failure(400, error.message.replace("workspace", "file manager root"));
     }
@@ -159,16 +161,39 @@ class FileManager {
 
     async read(relative) {
         const target = this.resolve(relative, { mustExist: true });
+        let handle = null;
         try {
-            const stats = await fs.promises.stat(target);
+            const limit = this.maxBytes();
+            handle = await fs.promises.open(target, "r");
+            const stats = await handle.stat();
             if (stats.isDirectory()) throw failure(400, `Is a directory: ${this.relative(target)}`);
             const base = { ...this.describe(target, stats), binary: false, too_large: false, content: null };
-            if (stats.size > this.maxBytes()) return { ...base, too_large: true, max_bytes: this.maxBytes() };
-            const buffer = await fs.promises.readFile(target);
+            if (stats.size > limit) return { ...base, too_large: true, max_bytes: limit };
+
+            const chunks = [];
+            let total = 0;
+            const probeSize = Math.min(64 * 1024, limit + 1);
+            const scratch = Buffer.allocUnsafe(Math.max(1, probeSize));
+
+            while (total <= limit) {
+                const { bytesRead } = await handle.read(scratch, 0, Math.min(scratch.length, limit - total + 1), total);
+                if (bytesRead === 0) break;
+                chunks.push(Buffer.from(scratch.subarray(0, bytesRead)));
+                total += bytesRead;
+                if (total > limit) {
+                    return { ...base, size: total, too_large: true, max_bytes: limit };
+                }
+            }
+
+            const buffer = Buffer.concat(chunks, total);
             if (looksBinary(buffer, this.probeBytes())) return { ...base, binary: true };
             return { ...base, content: buffer.toString("utf8") };
         } catch (error) {
             throw translate(error, relative);
+        } finally {
+            if (handle) {
+                await handle.close().catch(() => {});
+            }
         }
     }
 
@@ -179,15 +204,16 @@ class FileManager {
         if (bytes > this.maxBytes()) {
             throw failure(413, `The file is larger than CONSOLE_FILE_MAX_BYTES (${this.maxBytes()} bytes).`);
         }
-        const target = this.resolve(relative);
+        const target = this.resolve(relative, { noFollow: true });
         if (target === this.root) throw failure(400, "Is a directory: .");
         try {
             let mode = 0o644;
-            const existing = await fs.promises.stat(target).catch(error => {
+            const existing = await fs.promises.lstat(target).catch(error => {
                 if (error.code === "ENOENT") return null;
                 throw error;
             });
             if (existing) {
+                if (existing.isSymbolicLink()) throw failure(400, `Refusing to write to symlink: ${this.relative(target)}`);
                 if (existing.isDirectory()) throw failure(400, `Is a directory: ${this.relative(target)}`);
                 if (expectedMtime !== undefined && expectedMtime !== null && Math.trunc(existing.mtimeMs) !== Number(expectedMtime)) {
                     throw failure(409, "The file changed on disk since it was opened. Reload it or save again to overwrite.", {
@@ -199,15 +225,23 @@ class FileManager {
                 await fs.promises.mkdir(path.dirname(target), { recursive: true });
             }
             const temp = path.join(path.dirname(target), `.${path.basename(target)}.${crypto.randomBytes(4).toString("hex")}.tmp`);
+            let handle = null;
             try {
-                await fs.promises.writeFile(temp, content, { mode, flag: "wx" });
+                handle = await fs.promises.open(temp, "wx", mode);
+                await handle.writeFile(content, "utf8");
+                await handle.sync();
+                await handle.close();
+                handle = null;
                 await fs.promises.chmod(temp, mode).catch(() => {});
                 await fs.promises.rename(temp, target);
             } catch (error) {
+                if (handle) {
+                    await handle.close().catch(() => {});
+                }
                 await fs.promises.rm(temp, { force: true }).catch(() => {});
                 throw error;
             }
-            const stats = await fs.promises.stat(target);
+            const stats = await fs.promises.lstat(target);
             return { ...this.describe(target, stats), created: !existing };
         } catch (error) {
             throw translate(error, relative);
@@ -242,6 +276,10 @@ class FileManager {
         if (destination === source) return this.describe(destination, await fs.promises.lstat(destination));
         if (destination.startsWith(source + path.sep)) throw failure(400, "A directory cannot be moved into itself.");
         try {
+            const sourceStats = await fs.promises.lstat(source);
+            if (!sourceStats.isSymbolicLink()) {
+                assertNotSecretStoreOrAncestor(source, from);
+            }
             const exists = await fs.promises.lstat(destination).then(() => true, () => false);
             if (exists) throw failure(409, `Already exists: ${this.relative(destination)}`);
             await fs.promises.mkdir(path.dirname(destination), { recursive: true });
@@ -258,6 +296,9 @@ class FileManager {
         if (target === this.root) throw failure(400, "The root itself cannot be deleted.");
         try {
             const stats = await fs.promises.lstat(target);
+            if (!stats.isSymbolicLink()) {
+                assertNotSecretStoreOrAncestor(target, relative);
+            }
             if (stats.isDirectory()) {
                 if (recursive) await fs.promises.rm(target, { recursive: true, maxRetries: 3 });
                 else await fs.promises.rmdir(target);

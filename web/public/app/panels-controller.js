@@ -15,7 +15,7 @@
 
 import { state, touch } from "./store.js";
 import { bind, html, mount, mountInModal, stickInside, stickToBottom } from "./dom.js";
-import { currentRun, treeSummary } from "./execution-model.js";
+import { currentRun, runProgress, treeSummary } from "./execution-model.js";
 import { ExecutionPanel } from "./execution-view.js";
 import { Plan, planSummary } from "./plan-view.js";
 import { Chat, waitingText } from "./chat.js";
@@ -140,6 +140,14 @@ function clearLogRows() {
 }
 
 
+export function toggleChatRawMode() {
+
+    state.chatRawMode = !state.chatRawMode;
+    touch("chat", "header");
+    return state.chatRawMode;
+}
+
+
 /*
 | The page draws the conversation and the plan. Execution and Events have
 | no page copy: they are drawn only while their modal is open.
@@ -180,11 +188,25 @@ export function mountViews() {
         set("sessionTitle", state.session ? state.session.title || "new conversation" : "");
         set("autoSwitchStatus", `auto-switch · ${state.autoContinue ? "on" : "off"}`);
 
+        const formatToggle = el("chatFormatToggle");
+        if (formatToggle) {
+            const raw = Boolean(state.chatRawMode);
+            formatToggle.textContent = raw ? "Raw · on" : "Raw · off";
+            formatToggle.setAttribute("aria-pressed", raw ? "true" : "false");
+        }
+
         /* the header pair of policy controls (Settings draws its own pair
            from the same state) */
         const approvalMode = el("approvalMode");
-        if (approvalMode && state.approvalMode !== null && state.approvalMode !== undefined) {
-            approvalMode.value = state.approvalMode;
+        if (approvalMode) {
+            approvalMode.value = state.composerPlanMode ? "plan" : (state.approvalMode || "auto");
+        }
+
+        const taskField = el("task");
+        if (taskField) {
+            taskField.placeholder = state.composerPlanMode
+                ? "Describe the plan and completion goal (writes stay blocked until you approve the plan)"
+                : "Describe a task, for example: find the slowest test and explain why. Type @ to point at a file; paste a screenshot to attach it";
         }
 
         const autoContinue = el("autoContinue");
@@ -208,52 +230,70 @@ let waitingTimer = null;
 /* status dot, run/stop buttons and the run timer are derived from the store */
 function bindRunControls() {
 
-    bind(["run", "composer", "discussion"], () => {
+    bind(["run", "composer", "discussion", "plan", "queue", "tree"], () => {
 
         const dot = el("statusDot");
         const text = el("statusText");
         const run = el("runButton");
-        const cancel = el("cancelButton");
-        const discussionRunning = state.discussion?.status === "running";
+        const queue = el("queueButton");
+        const running = state.status === "running";
 
         if (dot) dot.className = `dot ${state.status}`;
-        if (text) text.textContent = state.reconnecting ? "reconnecting" : state.status;
+        if (text) {
+            const label = state.reconnecting ? "reconnecting" : state.status;
+            text.textContent = label;
+            text.className = `status-pill ${label}`;
+        }
 
         /* a running project takes more messages: they wait in its queue
            (P1-04), or reach the running turn with "Correct now" */
         const queueable =
-            state.status === "running" && Boolean(state.currentProjectId) &&
-            !state.discussionMode && (state.taskScopeMode || "current") !== "multiple";
+            running && Boolean(state.currentProjectId) &&
+            (state.taskScopeMode || "current") !== "multiple";
 
         if (run) {
-            run.disabled =
-                (state.status === "running" && !queueable) || state.uploading || state.submitting || discussionRunning;
-            run.textContent =
-                state.uploading && state.status !== "running"
-                    ? "Uploading files…"
-                    : discussionRunning
-                        ? "Discussion running…"
-                        : queueable
-                            ? "Queue message"
-                            : state.discussionMode ? "Start discussion" : "Run task";
+            if (running) {
+                run.type = "button";
+                run.classList.add("is-stop");
+                run.disabled = state.stopPending;
+                run.textContent = state.stopPending ? "Stopping…" : "Stop";
+            } else {
+                run.type = "submit";
+                run.classList.remove("is-stop");
+                run.disabled = state.uploading || state.submitting;
+                run.textContent = state.uploading ? "Uploading files…" : "Run task";
+            }
+
+            const progress = runProgress(state);
+            run.classList.toggle("has-progress", progress.visible);
+            run.classList.toggle("is-indeterminate", progress.visible && progress.indeterminate);
+
+            if (progress.visible) {
+                run.dataset.progress = String(progress.percent);
+                run.title = progress.title;
+            } else {
+                delete run.dataset.progress;
+                run.removeAttribute("title");
+            }
+        }
+
+        if (queue) {
+            queue.hidden = !queueable;
+            queue.disabled = state.uploading || state.submitting;
         }
 
         const correct = el("correctButton");
 
         if (correct) correct.hidden = !queueable;
 
-        if (cancel) {
-            cancel.disabled = state.status !== "running" || state.stopPending;
-            cancel.textContent = state.stopPending ? "Stopping…" : "Stop";
-        }
-
         if (state.status === "running" && !runTimer) {
             runTimer = setInterval(() => {
+                if (typeof document !== "undefined" && document.hidden) return;
                 const timer = el("runTimer");
                 if (timer && state.startedAt) {
                     timer.textContent = `${((Date.now() - state.startedAt) / 1000).toFixed(1)} s`;
                 }
-            }, 100);
+            }, 250);
         } else if (state.status !== "running" && runTimer) {
             clearInterval(runTimer);
             runTimer = null;
@@ -268,9 +308,10 @@ function bindRunControls() {
 
         if (state.waiting && !waitingTimer) {
             waitingTimer = setInterval(() => {
+                if (typeof document !== "undefined" && document.hidden) return;
                 const text = el("chat")?.querySelector(".bubble.pending .text");
                 if (text && state.waiting) text.textContent = waitingText(state.waiting);
-            }, 200);
+            }, 250);
         } else if (!state.waiting && waitingTimer) {
             clearInterval(waitingTimer);
             waitingTimer = null;
