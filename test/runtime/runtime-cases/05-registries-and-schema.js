@@ -357,8 +357,15 @@ module.exports = async function registriesAndSchemaCases(ctx) {
                     0
                 );
 
+        /*
+        | 2026-11-25: the index now also lists the shipped library's
+        | recommended skills (persona, 12 of 218), each by its opening clause.
+        | Its entries are bounded by SKILL_INDEX_MAX_CHARS (past it, names
+        | only); the message adds its wrapper around them.
+        */
+
         assert.ok(
-            sizeOf("available_skills") < 2000,
+            sizeOf("available_skills") < require("../../../agent/config").get("SKILL_INDEX_MAX_CHARS") + 400,
             `the skill index is ${sizeOf("available_skills")} chars; it should be names and descriptions`
         );
 
@@ -385,10 +392,14 @@ module.exports = async function registriesAndSchemaCases(ctx) {
         | so the whole-request ceiling moves to 31,000 and the per-part
         | ceilings above are what actually bind: a new skill, agent or persona
         | is caught there first, while it is still one line, not 1,000.
+        |
+        | 2026-11-25: 31,541 with the library's recommended skills in the
+        | skill index (about 1,400 characters, asked for by the operator and
+        | switchable per skill in the console), so the ceiling moves to 32,000.
         */
 
         assert.ok(
-            total < 31000,
+            total < 32000,
             `the fixed messages are ${total} chars, they used to be 39727`
         );
     });

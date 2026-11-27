@@ -67,6 +67,7 @@ const ROUTE_GROUPS = [
     require("./routes/system"),
     require("./routes/terminal"),
     require("./routes/files"),
+    require("./routes/skills"),
     require("./routes/agent-quality")
 ];
 

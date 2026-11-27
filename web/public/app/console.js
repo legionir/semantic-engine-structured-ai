@@ -47,6 +47,7 @@ import { executeSlashCommand, listCommands, registerCommand, registerCommandProv
 import { listTemplates } from "./task-templates.js";
 import { seedSampleTemplates } from "./task-template-samples.js";
 import { applyTemplateToComposer, closeTemplatesModal, loadTemplateByName, openTemplatesModal } from "./templates-controller.js";
+import { openSkillsModal, skillSlashCommand } from "./skills-controller.js";
 
 
 function clearComposerInput() {
@@ -220,6 +221,7 @@ el("notificationsButton").addEventListener("click", toggleNotifications);
 el("correctButton").addEventListener("click", submitCorrection);
 el("chatFormatToggle")?.addEventListener("click", toggleChatRawMode);
 el("templatesButton")?.addEventListener("click", openTemplatesModal);
+el("skillsButton")?.addEventListener("click", () => void openSkillsModal());
 
 
 el("task").addEventListener("keydown", event => {
@@ -360,6 +362,9 @@ function registerConsoleSlashCommands() {
             }
         }
     ];
+
+    /* /skill <name> [message]: the skill's full text rides with the message */
+    builtins.push(skillSlashCommand({ submit: task => submitTask(task, selectedReasoningEffort()) }));
 
     for (const command of builtins) registerCommand(command);
 

@@ -211,10 +211,17 @@ module.exports = function createCapabilities(host) {
     }
 
 
-    function createMainAgentMessages(task) {
+    function createMainAgentMessages(task, { omitSkillIndex = false } = {}) {
         return promptFacade().mainMessages(task, {
-            project: effectiveProject(currentRun().project)
+            project: effectiveProject(currentRun().project),
+            omitSkillIndex
         });
+    }
+
+
+    /* the available_skills message on its own: a conversation refreshes it per turn */
+    function createSkillIndexMessage(task) {
+        return promptFacade().skillIndexMessage(task);
     }
 
 
@@ -223,6 +230,7 @@ module.exports = function createCapabilities(host) {
         canModifyWorkspace,
         checkPerformedClaim,
         createMainAgentMessages,
+        createSkillIndexMessage,
         describeCapability,
         enforceCrossProjectWrite,
         mainAgentProfile,

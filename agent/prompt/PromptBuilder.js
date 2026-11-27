@@ -39,9 +39,16 @@ class PromptBuilder {
     }
 
 
-    mainMessages(task, { project } = {}) {
+    mainMessages(task, { project, omitSkillIndex } = {}) {
 
-        return this.main.build(task, { project });
+        return this.main.build(task, { project, omitSkillIndex });
+
+    }
+
+
+    skillIndexMessage(task) {
+
+        return this.main.skillIndexMessage(task);
 
     }
 

@@ -228,6 +228,7 @@ node bin/agent.js -i -w /path/to/project
 * `/tools` — مشاهده ابزارهای فعال
 * `/save` — ذخیره آخرین پاسخ در یک فایل
 * `/init` — بررسی پروژه و نوشتن یا به‌روزکردن `AGENTS.md` (معادل `node bin/agent.js init`)
+* `/skill <name> [task]` — فرستادن تسک همراه متن کامل یک skill (هر skill موجود؛ بدون فهرست skillها در آن درخواست)
 
 **دستورالعمل پروژه (`AGENTS.md` / `CLAUDE.md`):** اگر ریشهٔ پروژه `AGENTS.md` یا `CLAUDE.md` داشته باشد، متن آن (حداکثر `PROJECT_INSTRUCTIONS_MAX_CHARS` نویسه) در هر درخواست به ایجنت اصلی و زیرایجنت‌ها می‌رسد؛ `AGENTS.override.md` جای هر دو را می‌گیرد. فایل‌های هم‌نام در زیرپوشه‌ها (تا عمق `PROJECT_INSTRUCTIONS_SCAN_DEPTH`) فقط فهرست می‌شوند تا ایجنت هنگام کار در آن پوشه بخواندشان. symlinkی که به بیرون پروژه اشاره کند خوانده نمی‌شود.
 
@@ -440,6 +441,9 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `MAX_HASH_BYTES` | number | `52428800` | Largest file fs_info will hash. |
 | `WRITE_SHRINK_WARNING` | number | `0.4` | Share of a file an overwrite may remove before the result carries a warning. 1 disables the warning. |
 | `SKILL_RESOURCE_CHARS` | number | `8000` | Cap on one slice of a skill resource, so a house style cannot flood the conversation. |
+| `SKILL_INDEX_MAX_CHARS` | number | `3000` | Budget of the prompt's skill index (the skills sent to the AI). Skills past it are listed by name only. |
+| `SKILL_INDEX_DESCRIPTION_CHARS` | number | `200` | Each description in the prompt's skill index is cut to this many characters. |
+| `SKILL_COMMAND_MAX_CHARS` | number | `60000` | Cap on the skill text `/skill <name>` attaches to a message (the whole SKILL.md body, unlike skill_get's SKILL_RESOURCE_CHARS). |
 | `WRITE_EDIT_HINT_BYTES` | number | `4000` | Overwriting an existing file larger than this suggests fs_edit instead. 0 turns the suggestion off. |
 | `PROCESS_SANDBOX_MODE` | enum | `"deny"` | Process execution mode. deny is fail-closed; bwrap is Linux-only; docker and podman require a running container engine; test is only for the repository test harness. |
 | `PROCESS_SANDBOX_IMAGE` | string | `"node:22-bookworm"` | Container image for Docker/Podman process sandboxes. Repository project files cannot override it. |
@@ -574,7 +578,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
 | `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۶۲ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۶۵ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -699,6 +703,9 @@ method/path کامل در
 | `DELETE` | `/api/interrupted/:id` | کنار گذاشتن؛ وضعیت گفتگو «stopped» (`cancelled`) می‌شود |
 | `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
 | `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
+| `GET` | `/api/skills?projectId=` | همهٔ skillها (registry، داخلی، کاربر، پروژه و کتابخانه‌ها) با `prompt_enabled`، کتابخانه‌ها و اندازهٔ index (دسترسی `project:read`) |
+| `PUT` | `/api/skills/prompt` | `{name, enabled}`: ارسال یا عدم ارسال یک skill به AI در index پرامپت (ادمین) |
+| `POST` | `/api/skills/prompt/reset` | بازگشت به پیش‌فرض: skillهای پیشنهادی کتابخانه‌ها و بقیه روشن (ادمین) |
 
 ### لاگ، ترمینال و مدیریت فایل (فقط token ادمین)
 
@@ -738,11 +745,12 @@ method/path کامل در
 - **منوی بالای پنل** بر اساس کاربرد و اهمیت در چهار گروه چیده شده است. در منوی کشویی موبایل هر گروه یک عنوان کوچک دارد و در دسکتاپ گروه‌ها با خط عمودی جدا می‌شوند:
   - **Work:** Commands، History، Templates، Files، Terminal
   - **Monitor:** Plan، Execution، Events، Logs، System
-  - **Configure:** Settings، LLM settings، MCP، Notify
+  - **Configure:** Settings، LLM settings، MCP، Skills، Notify
   - **Account:** Sign out
 - **پالت فرمان:** با `Ctrl+K` (یا `Cmd+K`) یا از نوار ناوبری باز می‌شود و همهٔ نماها، پنجره‌ها و کارها را جست‌وجو می‌کند.
 - **دستورهای `/` در کادر پیام:**
   - دستورهای داخلی `/raw` (نمایش متن خام یا Markdown) و `/templates`
+  - `/skill <نام> <پیام>`: متن کامل آن skill همراه پیام فرستاده می‌شود (نام‌ها تکمیل خودکار دارند؛ `/skill` تنها پنجرهٔ Skills را باز می‌کند)
   - promptهای سرورهای MCP به شکل `/server:prompt`
   - قالب‌های ذخیره‌شده به شکل `/tpl:<نام>`
   - ماژول‌های دیگر با `registerCommandProvider` دستور اضافه می‌کنند.
@@ -1066,6 +1074,25 @@ integration/e2e اجرا می‌شوند. برای وضعیت جاری، خرو�
   نیست. `` !`command` `` در متن skill هنگام `skill_get` با خروجی دستور جایگزین
   می‌شود، فقط برای دستورهای فقط‌خواندنی و skillهای خود سرور یا workspace
   مورد اعتماد (`SKILL_COMMANDS`).
+- **کتابخانهٔ skill:** هر پوشه در `agent/skill-library/<library>/` یک کتابخانه
+  است (فعلاً `persona`، ۲۱۸ skill از
+  [legionir/persona](https://github.com/legionir/persona) با مجوز Apache-2.0).
+  نام‌ها پایین‌ترین اولویت را دارند: skill پروژه، کاربر، داخلی یا registry با
+  همان نام برنده است. به‌روزرسانی با `node tools/sync-skill-library.js`
+  (جزئیات در `agent/skill-library/README.md`).
+- **skillهای ارسالی به AI:** همهٔ skillها با `skill_get` و `/skill` در دسترس‌اند،
+  اما فقط skillهای «ارسالی به AI» در index پرامپت (`available_skills`) فهرست
+  می‌شوند. پیش‌فرض: از کتابخانه فقط skillهای `recommended` در `manifest.json`
+  (۱۲ مورد)، و بقیهٔ skillها همه. انتخاب ادمین در پنجرهٔ **Skills** کنسول
+  (`PUT /api/skills/prompt`) در `<data home>/skills-prompt.json` ذخیره می‌شود
+  و از درخواست بعدی اثر دارد. هر توضیح به جملهٔ آغازینش (حداکثر
+  `SKILL_INDEX_DESCRIPTION_CHARS`) کوتاه می‌شود و پس از
+  `SKILL_INDEX_MAX_CHARS` بقیه فقط با نام می‌آیند.
+- **`/skill <name> [message]`:** در کنسول، چت پروژه، صف و REPL هر skillی را
+  (ارسالی به AI یا نه) با متن کامل همراه همان پیام می‌فرستد (تا
+  `SKILL_COMMAND_MAX_CHARS`). آن درخواست index skillها را ندارد و پیام عادی
+  بعدی دوباره index تازه را می‌فرستد. نام ناشناخته پیش از هر درخواست به مدل
+  خطا می‌دهد.
 - agent profile در `agent/registry/agents.json` و personaهای discussion در
   `agent/registry/personas.json` ثبت می‌شوند. toolها و policy آن profile باید
   هم‌زمان contract-tested باشند.

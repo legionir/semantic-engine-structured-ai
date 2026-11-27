@@ -488,7 +488,7 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         assert.deepEqual(layout, [
             "— Work", "commandPaletteButton", "historyButton", "templatesButton", "filesButton", "terminalButton",
             "— Monitor", "planButton", "executionButton", "eventsButton", "logsButton", "systemButton",
-            "— Configure", "settingsButton", "llmSettingsButton", "mcpButton", "notificationsButton",
+            "— Configure", "settingsButton", "llmSettingsButton", "mcpButton", "skillsButton", "notificationsButton",
             "— Account", "logoutButton"
         ]);
         for (const sep of nav.querySelectorAll(".bar-nav-sep")) {

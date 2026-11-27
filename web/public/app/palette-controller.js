@@ -35,6 +35,7 @@ export const COMMANDS = [
     { id: "runButton", title: "Run Task / Cancel", subtitle: "Execute current prompt or cancel running turn", category: "Actions", keys: ["run", "execute", "stop", "cancel", "submit"] },
     { id: "attachFilesButton", title: "Attach Files", subtitle: "Attach files or images to next task", category: "Actions", keys: ["attach", "upload", "files", "screenshot"] },
     { id: "templatesButton", title: "Task Templates", subtitle: "Save and load reusable task descriptions", category: "Tools", keys: ["templates", "prompts", "snippets", "saved", "reuse"] },
+    { id: "skillsButton", title: "Skills", subtitle: "Browse every skill and choose which are sent to the AI", category: "Tools", keys: ["skills", "persona", "audit", "skill", "library"] },
     { id: "chatFormatToggle", title: "Toggle Raw / Markdown View", subtitle: "Switch agent responses between rendered Markdown and raw text", category: "Navigation", keys: ["raw", "markdown", "preview", "format", "toggle"] }
 ];
 

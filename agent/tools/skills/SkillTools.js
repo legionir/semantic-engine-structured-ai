@@ -9,6 +9,8 @@ const { isInsideRoot, truncateText } = require("../../context/WorkspaceBoundary"
 
 const { loadMarkdownSkills, renderCommands } = require("./MarkdownSkills");
 
+const { isPromptEnabled } = require("./SkillSelection");
+
 
 /*
 |--------------------------------------------------------------------------
@@ -226,17 +228,65 @@ function activeSkills() {
 | What the prompt carries: enough to choose, never enough to work from.
 */
 
+function shorten(text, limit) {
+
+    const value = String(text || "").replace(/\s+/g, " ").trim();
+
+    if (value.length <= limit) return value;
+
+    /* "Audit of X: a, b, c. Use when …" — the opening clause says what it is */
+    const clause = /^(.{20,}?)(?::\s|\.\s)/.exec(value);
+    if (clause && clause[1].length <= limit) return clause[1];
+
+    const cut = value.slice(0, Math.max(1, limit - 1));
+    const space = cut.lastIndexOf(" ");
+
+    return `${(space > limit * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, "")}…`;
+}
+
+
+/*
+| Only the skills sent to the AI (SkillSelection), each description cut to
+| SKILL_INDEX_DESCRIPTION_CHARS. Once the entries reach SKILL_INDEX_MAX_CHARS
+| the rest are listed by name only: every enabled skill stays choosable,
+| and enabling many of them cannot make every request pay for all of
+| their descriptions.
+*/
 function skillIndex() {
 
-    return activeSkills().map(
-        skill => ({
+    const perSkill = settings.get("SKILL_INDEX_DESCRIPTION_CHARS");
+    const budget = settings.get("SKILL_INDEX_MAX_CHARS");
+    let used = 0;
+
+    return activeSkills().filter(isPromptEnabled).map(skill => {
+
+        const full = {
             name: skill.name,
-            description: skill.description,
+            description: shorten(skill.description, perSkill),
             ...(Array.isArray(skill.triggers) && skill.triggers.length > 0
                 ? { triggers: skill.triggers }
                 : {})
-        })
-    );
+        };
+
+        const size = JSON.stringify(full).length + 1;
+
+        if (used + size <= budget) {
+            used += size;
+            return full;
+        }
+
+        return { name: skill.name };
+    });
+}
+
+
+/* the skills in the index, and how many more exist (a library is large) */
+function availableSentence(skills) {
+
+    const listed = skills.filter(isPromptEnabled).map(skill => skill.name);
+    const more = skills.length - listed.length;
+
+    return `Available skills: ${listed.join(", ")}${more > 0 ? ` (and ${more} more that load by their exact name)` : ""}.`;
 }
 
 
@@ -254,9 +304,7 @@ async function skill_get(args = {}, context) {
     if (requested.length === 0) {
 
         throw new Error(
-            `skill_get needs a name. Available skills: ${
-                skills.map(skill => skill.name).join(", ")
-            }.`
+            `skill_get needs a name. ${availableSentence(skills)}`
         );
     }
 
@@ -281,9 +329,7 @@ async function skill_get(args = {}, context) {
     if (found.length === 0) {
 
         throw new Error(
-            `Unknown skill: ${missing.join(", ")}. Available skills: ${
-                skills.map(item => item.name).join(", ")
-            }.`
+            `Unknown skill: ${missing.join(", ")}. ${availableSentence(skills)}`
         );
     }
 
@@ -440,6 +486,8 @@ module.exports = {
     skill_get,
     skill_read,
 
+    /* not tools: SkillCatalog builds on these */
+    _activeSkills: activeSkills,
     _loadSkills: loadSkills,
     _skillIndex: skillIndex,
     _isActiveSkill: isActiveSkill

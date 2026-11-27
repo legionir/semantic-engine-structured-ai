@@ -12,7 +12,7 @@
 |   3a. project_context (JSON — additive, only when a project is scoped)
 |   3b. project_instructions (JSON — additive, only when the workspace has
 |       AGENTS.md / CLAUDE.md files; see ProjectInstructionsBuilder)
-|   4. available_skills (JSON)
+|   4. available_skills (JSON — left out of a `/skill` turn)
 |   5. available_personas (JSON, only when the agent may delegate)
 |   6. available_agents (JSON)
 |   7. task (user)
@@ -36,7 +36,41 @@ class MainPromptBuilder {
     }
 
 
-    build(task, { project } = {}) {
+    /*
+    | The skills sent to the AI. Built on its own as well, because a
+    | conversation refreshes it every turn (the operator may have changed
+    | the selection) and leaves it out of a turn that attached a skill with
+    | `/skill`, which carries its own complete skill instead.
+    */
+    skillIndexMessage(task) {
+
+        const skills =
+            this.deps.skillIndex();
+
+        /* skills whose trigger words occur in the task (roadmap P3-02) */
+        const suggested =
+            matchTriggers(
+                skills,
+                task && task.trim() !== "" ? task : ""
+            );
+
+        return jsonSystem({
+            type:
+                "available_skills",
+
+            note:
+                "Names and descriptions only. Call skill_get before doing that kind of work to read its procedure and constraints.",
+
+            skills,
+
+            ...(suggested.length > 0
+                ? { suggested_for_this_task: suggested }
+                : {})
+        });
+    }
+
+
+    build(task, { project, omitSkillIndex = false } = {}) {
 
         const deps = this.deps;
 
@@ -47,16 +81,6 @@ class MainPromptBuilder {
             deps.projectInstructionsBuilder
                 ? deps.projectInstructionsBuilder.build()
                 : null;
-
-        const skills =
-            deps.skillIndex();
-
-        /* skills whose trigger words occur in the task (roadmap P3-02) */
-        const suggested =
-            matchTriggers(
-                skills,
-                task && task.trim() !== "" ? task : ""
-            );
 
         return [
 
@@ -84,19 +108,9 @@ class MainPromptBuilder {
 
             instructionsMessage,
 
-            jsonSystem({
-                type:
-                    "available_skills",
-
-                note:
-                    "Names and descriptions only. Call skill_get before doing that kind of work to read its procedure and constraints.",
-
-                skills,
-
-                ...(suggested.length > 0
-                    ? { suggested_for_this_task: suggested }
-                    : {})
-            }),
+            omitSkillIndex
+                ? null
+                : this.skillIndexMessage(task),
 
             /*
             | Personas exist so an ad-hoc agent can be composed. An

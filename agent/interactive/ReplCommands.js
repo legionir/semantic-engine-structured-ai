@@ -16,6 +16,7 @@ Commands
   /tools, /agents, /policy   show the registries
   /save <file>          write the last answer to a file
   /init                 write AGENTS.md: instructions for agents working on this project
+  /skill <name> [task]  send the task with that skill's full text attached
 
 Anything else is sent to the agent as a task.
 Ctrl-C cancels the running task, Ctrl-D leaves the session.
