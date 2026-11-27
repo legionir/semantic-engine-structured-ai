@@ -21,6 +21,7 @@ import {
     matchTemplates
 } from "./task-templates.js";
 import { openTemplateEditorModal as openEditorModal } from "./template-editor-modal.js";
+import { SAMPLE_TASK_TEMPLATES, seedSampleTemplates } from "./task-template-samples.js";
 
 
 let activeListModal = null;
@@ -128,7 +129,13 @@ function renderTemplatesModalBody(container, modalHandle) {
     exportBtn.textContent = "Export";
     exportBtn.title = "Export task templates to a JSON file";
 
-    actionsEl.append(importBtn, exportBtn);
+    const samplesBtn = document.createElement("button");
+    samplesBtn.type = "button";
+    samplesBtn.className = "ghost template-action-btn template-samples-btn";
+    samplesBtn.textContent = "Samples";
+    samplesBtn.title = "Add back any of the built-in sample templates that are missing";
+
+    actionsEl.append(samplesBtn, importBtn, exportBtn);
     meta.append(countEl, actionsEl);
 
     let pendingDeleteId = null;
@@ -278,6 +285,14 @@ function renderTemplatesModalBody(container, modalHandle) {
         }
     });
 
+    samplesBtn.addEventListener("click", () => {
+        const added = seedSampleTemplates({ force: true });
+        showMessage(added
+            ? `Added ${added} sample template${added === 1 ? "" : "s"}.`
+            : `All ${SAMPLE_TASK_TEMPLATES.length} sample templates are already here.`);
+        paintList();
+    });
+
     function paintList() {
         listSearchValue = searchInput.value;
         const all = listTemplates();
@@ -292,7 +307,7 @@ function renderTemplatesModalBody(container, modalHandle) {
 
         if (filtered.length === 0) {
             empty.textContent = all.length === 0
-                ? "No saved templates yet. Click New template to save one."
+                ? "No saved templates yet. Click New template to save one, or Samples for a starter set."
                 : `No templates match "${listSearchValue.trim()}".`;
             empty.hidden = false;
             return;

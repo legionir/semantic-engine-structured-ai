@@ -95,9 +95,6 @@
         <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why. Type @ to point at a file; paste a screenshot to attach it" aria-autocomplete="list" aria-controls="mentionList" aria-expanded="false"></textarea>
         <ul id="mentionList" class="mention-list" role="listbox" aria-label="Files matching the @ mention" hidden></ul>
         <div class="composer-tools" aria-label="Task tools and mode">
-          <button type="button" id="taskChangesButton" class="chip button" title="What each task changed in the workspace; revert a whole task" aria-label="Task changes"><span>Changes</span></button>
-          <button type="button" id="reviewButton" class="chip button" title="Review the current diff, a branch, a commit or a pull request" aria-label="Review"><span>Review</span></button>
-          <button type="button" id="chatFormatToggle" class="chip button" aria-pressed="false" title="Switch between rendered Markdown preview and raw text for agent responses">Raw · off</button>
           <label class="chip select composer-mode" title="Tool approval policy (auto, prompt, or deny) or Plan mode">
             <span>Mode</span>
             <select id="approvalMode" aria-label="Approval or plan mode">
@@ -107,6 +104,8 @@
               <option value="plan">plan</option>
             </select>
           </label>
+          <button type="button" id="taskChangesButton" class="chip button" title="What each task changed in the workspace; revert a whole task" aria-label="Task changes"><span>Changes</span></button>
+          <button type="button" id="reviewButton" class="chip button" title="Review the current diff, a branch, a commit or a pull request" aria-label="Review"><span>Review</span></button>
         </div>
         <div class="composer-advanced" id="composerAdvanced">
           <div class="run-options" id="runOptions">
@@ -124,6 +123,10 @@
               <span>Cap $</span>
               <input type="number" id="taskMaxCost" min="0" step="0.05" placeholder="—" aria-label="Dollar cap for the run">
             </label>
+            <span class="effort-control raw-control">
+              <span>Response</span>
+              <button type="button" id="chatFormatToggle" class="raw-toggle" aria-pressed="false" title="Switch between rendered Markdown preview and raw text for agent responses">Raw · off</button>
+            </span>
           </div>
         </div>
         <div class="actions">

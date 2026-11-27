@@ -6,7 +6,9 @@
 | A two-pane file manager: the directory on the left (breadcrumb, entries,
 | new file / new folder, rename and delete per entry), the open file on
 | the right in a plain-text editor with Save (Ctrl/Cmd+S), Revert and
-| Download. The root is the workspace or a registered project. An edited
+| Download. Files of any type can be uploaded into the current folder
+| with the Upload button or by dropping them on the directory pane. The
+| root is the workspace or a registered project. An edited
 | buffer lives in state.files, so closing the dialog does not lose it.
 |--------------------------------------------------------------------------
 */
@@ -28,7 +30,9 @@ export function createFilesState() {
         error: null,
         filter: "",
         open: null,
-        editorKey: 0
+        editorKey: 0,
+        upload: null,
+        dragging: false
     };
 }
 
@@ -108,13 +112,60 @@ function EntryRow({ entry, files, actions }) {
 }
 
 
+function hasFiles(event) {
+    return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+
+/* lowercase names: Preact then binds exactly "dragenter" etc. in every DOM */
+function dropHandlers(actions) {
+
+    return {
+        ondragenter: event => {
+            if (!hasFiles(event)) return;
+            event.preventDefault();
+            actions.dragging(true);
+        },
+        ondragover: event => {
+            if (!hasFiles(event)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+        },
+        ondragleave: event => {
+            if (event.currentTarget.contains(event.relatedTarget)) return;
+            actions.dragging(false);
+        },
+        ondrop: event => {
+            if (!hasFiles(event)) return;
+            event.preventDefault();
+            actions.dragging(false);
+            actions.upload(Array.from(event.dataTransfer.files || []));
+        }
+    };
+}
+
+
+function UploadStatus({ upload }) {
+
+    if (!upload) return null;
+
+    const failed = upload.failed.length;
+    const text = upload.active
+        ? `Uploading ${upload.current || ""} (${upload.done + 1} of ${upload.total})…`
+        : `Uploaded ${upload.done - failed} of ${upload.total}${failed ? ` · failed: ${upload.failed.join(", ")}` : ""}`;
+
+    return html`<p class=${`files-upload-status${failed ? " has-failures" : ""}`} role="status" aria-live="polite">${text}</p>`;
+}
+
+
 function Browser({ files, projects, actions }) {
 
     const listing = files.listing;
     const filter = files.filter.trim().toLowerCase();
     const entries = (listing?.entries || []).filter(entry => !filter || entry.name.toLowerCase().includes(filter));
+    const busy = Boolean(files.upload?.active);
 
-    return html`<section class="files-browser" aria-label="Directory">
+    return html`<section class=${`files-browser${files.dragging ? " drop-target" : ""}`} aria-label="Directory" ...${dropHandlers(actions)}>
         <div class="files-toolbar">
             <select class="files-root" aria-label="Root" onChange=${event => actions.root(event.currentTarget.value)}>
                 <option value="" selected=${!files.projectId}>Workspace</option>
@@ -122,6 +173,19 @@ function Browser({ files, projects, actions }) {
             </select>
             <button type="button" class="ghost" title="New file" onClick=${() => actions.create("file")}>+ File</button>
             <button type="button" class="ghost" title="New folder" onClick=${() => actions.create("directory")}>+ Folder</button>
+            <button type="button" class="ghost files-upload-button" title="Upload files into this folder (or drop them here)" disabled=${busy} onClick=${event => event.currentTarget.nextElementSibling?.click()}>⇪ Upload</button>
+            <input
+                type="file"
+                multiple
+                hidden
+                class="files-upload-input"
+                aria-label="Upload files"
+                onChange=${event => {
+                    const picked = Array.from(event.currentTarget.files || []);
+                    event.currentTarget.value = "";
+                    actions.upload(picked);
+                }}
+            />
             <button type="button" class="ghost" title="Refresh" aria-label="Refresh" onClick=${() => actions.refresh()}>↻</button>
         </div>
         <div class="files-crumbs-row">
@@ -138,6 +202,8 @@ function Browser({ files, projects, actions }) {
             value=${files.filter}
             onInput=${event => actions.filter(event.currentTarget.value)}
         />
+        <${UploadStatus} upload=${files.upload} />
+        ${files.dragging ? html`<p class="files-drop-hint" aria-hidden="true">Drop to upload into ${listing?.path === "." || !listing ? "root" : listing.path}</p>` : null}
         ${files.error ? html`<p class="files-error" role="alert">${files.error}</p>` : null}
         ${files.loading && !listing
             ? html`<div class="files-list-loading"><${SkeletonRows} count=${6} compact=${true} label="Loading…" /></div>`

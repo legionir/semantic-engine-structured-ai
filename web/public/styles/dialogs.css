@@ -632,7 +632,16 @@ button.ghost.active {
 .system-section-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 
 /* agent quality (roadmap P3-03, P3-05, P3-08, P3-09) */
-.run-options { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px 12px; width: 100%; }
+.run-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%; }
+/* the Raw/Markdown switch for agent replies, sized like the Effort select beside it */
+.run-options .raw-toggle {
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  min-height: 28px; padding: 3px 9px; margin: 0;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--panel-2); color: var(--text);
+  font: inherit; font-size: 11.5px; line-height: 1.2; cursor: pointer;
+}
+.run-options .raw-toggle:hover { border-color: var(--accent); }
 .run-options input[type="number"] { width: 72px; min-height: 28px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 11.5px; }
 .run-cost { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .run-cost .cap-reached { color: var(--bad); }

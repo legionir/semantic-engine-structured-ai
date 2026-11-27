@@ -475,7 +475,8 @@ module.exports = async function Conversation({ test, card, console_ }) {
         const chat = document.getElementById("chat");
         const toggle = document.getElementById("chatFormatToggle");
         assert.ok(toggle, "chat format toggle button exists");
-        assert.ok(document.querySelector(".composer-tools #chatFormatToggle"), "chat format toggle lives below message input in composer-tools");
+        assert.ok(document.querySelector("#composerAdvanced #runOptions #chatFormatToggle"), "the Raw toggle lives in the composer Options, beside Effort and Cap $");
+        assert.equal(document.querySelector(".composer-tools #chatFormatToggle"), null, "the Raw toggle is no longer in the tools row under the input");
         assert.equal(toggle.getAttribute("aria-pressed"), "false");
         assert.equal(toggle.textContent, "Raw · off");
         assert.ok(chat.querySelector("h1.md-heading"), "Markdown heading is rendered by default");

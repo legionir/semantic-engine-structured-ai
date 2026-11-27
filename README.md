@@ -540,6 +540,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `CONSOLE_TERMINAL_SCROLLBACK_CHARS` | number | `262144` | Terminal output the server keeps per terminal, replayed when the console reconnects or reopens it. |
 | `CONSOLE_FILE_MANAGER_ENABLED` | boolean · fixed at startup | `true` | Allow the admin console token to browse, create, edit, rename and delete files inside the workspace. Set through the environment and restart to change it. |
 | `CONSOLE_FILE_MAX_BYTES` | number | `2097152` | Largest file the console file manager opens or saves as text. |
+| `CONSOLE_FILE_UPLOAD_MAX_BYTES` | number | `52428800` | Largest file the console file manager accepts as an upload (any file type). The body is streamed to disk, so this is not held in memory. |
 | `CONSOLE_FILE_LIST_MAX` | number | `5000` | Entries the console file manager lists in one folder; a larger folder is shown truncated. |
 | `AGENT_REASONING_EFFORT` | enum | `"inherit"` | Default reasoning effort inherited by layer models whose effort is set to inherit. |
 | `ENDPOINT_MAIN_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for the root orchestrator. Inherit uses AGENT_REASONING_EFFORT. |
@@ -571,7 +572,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
 | `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۵۹ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۶۰ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -718,6 +719,7 @@ method/path کامل در
 | `GET/PUT` | `/api/files/content` | خواندن / ذخیرهٔ atomic `{path, content, expected_mtime_ms}`؛ اگر فایل در این فاصله تغییر کرده باشد `409` |
 | `POST` | `/api/files/rename` | تغییر نام یا جابه‌جایی `{from, to}` |
 | `GET` | `/api/files/download` | دانلود فایل |
+| `PUT` | `/api/files/upload?path=&overwrite=1` | آپلود مستقیم: بدنهٔ خام درخواست (هر نوع فایل، متنی یا باینری) در `path` ذخیره می‌شود؛ streaming و atomic (فایل موقت + rename). اگر فایل وجود داشته باشد `409` با `exists: true`، مگر با `overwrite=1`. سقف حجم `CONSOLE_FILE_UPLOAD_MAX_BYTES` (پیش‌فرض ۵۰MB)؛ بیشتر از آن `413` و هیچ فایلی باقی نمی‌ماند |
 
 همهٔ مسیرهای `/api/files` پارامتر اختیاری `projectId` را می‌پذیرند (ریشهٔ همان پروژه)؛ هیچ مسیری، حتی از طریق symlink، از ریشه خارج نمی‌شود.
 
@@ -732,8 +734,11 @@ method/path کامل در
   - قالب‌های ذخیره‌شده به شکل `/tpl:<نام>`
   - ماژول‌های دیگر با `registerCommandProvider` دستور اضافه می‌کنند.
 - **قالب‌های تسک:** شرح تسک‌های پرتکرار در `localStorage` همان مرورگر ذخیره می‌شود. جست‌وجو، ویرایش و حذف (با تأیید) دارد و با JSON وارد و صادر می‌شود. در ورود قالبی با نام تکراری، بین بازنویسی و رد کردن انتخاب می‌کنید.
+  - **قالب‌های نمونه:** در اولین بازدید هر مرورگر شش قالب آماده اضافه می‌شود: Fix failing tests، Review changes، Add tests for a module، Explain the codebase، Refactor safely و Security audit. هر کدام mode و effort مناسب خودش را دارد (مثلاً بازبینی و ممیزی امنیتی در `plan` و فقط‌خواندنی). این‌ها قالب معمولی‌اند و ویرایش یا حذف می‌شوند. قالب حذف‌شده دوباره برنمی‌گردد (کلید `structured-ai.taskTemplates.samplesSeeded`). دکمهٔ **Samples** در پنجرهٔ Templates فقط نمونه‌های جاافتاده را اضافه می‌کند و به قالبی با همان نام دست نمی‌زند.
+- **ردیف زیر کادر پیام:** به ترتیب **Mode** (auto / prompt / deny / plan)، **Changes** و **Review**. سوییچ **Raw** (نمایش متن خام یا Markdown پاسخ‌ها) کنار Effort و Cap $ در **Options** است.
 - **Discussion** در یک پنجرهٔ جدا اجرا می‌شود: موضوع، persona و تعداد دورها در همان‌جا انتخاب می‌شود و گفتگوی زنده همان‌جا نمایش داده می‌شود.
 - **ویرایش فایل** در پنجره‌ای جدا از فهرست فایل‌ها انجام می‌شود. ساخت، تغییر نام، حذف و تعارض ذخیره با دیالوگ‌های داخل پنل پرسیده می‌شوند، نه `confirm()` مرورگر.
+- **آپلود در Files:** دکمهٔ **⇪ Upload** در نوار ابزار Files یک یا چند فایل از هر نوعی را در پوشهٔ فعلی آپلود می‌کند. کشیدن و رها کردن فایل روی فهرست هم همین کار را می‌کند. فایل‌ها یکی‌یکی و به‌صورت خام با `PUT /api/files/upload` فرستاده می‌شوند و پیشرفت و خطاها زیر نوار ابزار نمایش داده می‌شوند. اگر نامی از قبل وجود داشته باشد، پیش از جایگزینی تأیید گرفته می‌شود.
 
 ### API پروژه‌ها
 

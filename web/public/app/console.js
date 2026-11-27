@@ -44,6 +44,7 @@ import { initCommandPalette, openCommandPalette } from "./palette-controller.js"
 import { loadPromptCommands, runPromptCommand } from "./mcp-commands.js";
 import { executeSlashCommand, listCommands, registerCommand, registerCommandProvider } from "./slash-commands.js";
 import { listTemplates } from "./task-templates.js";
+import { seedSampleTemplates } from "./task-template-samples.js";
 import { applyTemplateToComposer, closeTemplatesModal, loadTemplateByName, openTemplatesModal } from "./templates-controller.js";
 
 
@@ -373,6 +374,9 @@ function registerConsoleSlashCommands() {
             execute: () => runPromptCommand(prompt)
         }));
     });
+
+    /* first visit only: a starter set of templates (see task-template-samples.js) */
+    seedSampleTemplates();
 
     registerCommandProvider(() => listTemplates().map(template => ({
         name: `tpl:${template.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || template.id}`,

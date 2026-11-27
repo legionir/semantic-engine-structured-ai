@@ -158,7 +158,8 @@
   vertical-align: 0;
 }
 
-.composer-tools .chip.button::before {
+.composer-tools .chip.button::before,
+.run-options .raw-toggle::before {
   width: 12.5px;
   height: 12.5px;
   margin-right: 4px;
@@ -256,7 +257,7 @@
 #reviewButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 11l3 3L22 4'/%3E%3Cpath d='M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'/%3E%3C/svg%3E"); }
 #templatesButton::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='3' width='16' height='18' rx='2'/%3E%3Cpath d='M8 8h8M8 12h8M8 16h5'/%3E%3C/svg%3E"); }
 #chatFormatToggle::before { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14'/%3E%3C/svg%3E"); }
-.composer-tools #chatFormatToggle[aria-pressed="true"] {
+#chatFormatToggle[aria-pressed="true"] {
   color: var(--accent);
   border-color: rgba(109, 155, 255, .5);
   background: var(--accent-soft);

@@ -32,6 +32,7 @@ module.exports = async function AgentQuality({ test, backdrops, console_ }) {
         assert.equal(byId("taskGoal"), null, "separate taskGoal input is removed");
         const runOptions = byId("runOptions");
         assert.ok(runOptions.contains(byId("taskEffort")) && runOptions.contains(byId("taskMaxCost")), "Effort and Cap $ share one row");
+        assert.ok(runOptions.contains(byId("chatFormatToggle")), "the Raw toggle is one of the Options");
 
         const previousMode = byId("approvalMode").value;
         const approvalPostsBefore = posts(/^\/api\/approval-mode$/).length;

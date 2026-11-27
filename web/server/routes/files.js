@@ -12,6 +12,10 @@
 |   PUT    /api/files/content               save {path, content, expected_mtime_ms?}
 |   POST   /api/files/rename                rename / move {from, to}
 |   GET    /api/files/download?path=        the raw file as an attachment
+|   PUT    /api/files/upload?path=&overwrite=1
+|                                           store the raw request body (any
+|                                           bytes) at path; 409 when it exists
+|                                           unless overwrite=1
 |
 | Every route takes an optional `projectId` (query or body) to work in a
 | registered project's root instead of the workspace. Admin token only,
@@ -157,6 +161,45 @@ module.exports = async function FileRoutes(shared, request) {
             return true;
         }
 
+        if (pathname === "/api/files/upload") {
+
+            if (req.method !== "PUT") {
+                sendJson(res, 405, { error: "method not allowed" });
+                return true;
+            }
+
+            const limit = Number(shared.runtime.settings.get("CONSOLE_FILE_UPLOAD_MAX_BYTES"));
+            const declared = Number(req.headers["content-length"]);
+
+            /* refuse before reading a byte when the size is known up front;
+               the stream is still counted for a body sent without a length */
+            if (Number.isFinite(declared) && declared > limit) {
+                res.setHeader("connection", "close");
+                sendJson(res, 413, { error: `The upload is larger than CONSOLE_FILE_UPLOAD_MAX_BYTES (${limit} bytes).` });
+                req.resume();
+                return true;
+            }
+
+            const files = managerFor(shared, query.get("projectId"));
+
+            try {
+                const entry = await files.upload(query.get("path"), req, {
+                    overwrite: query.get("overwrite") === "1",
+                    maxBytes: limit
+                });
+                sendJson(res, entry.created ? 201 : 200, { entry });
+            } catch (error) {
+                if (error.status === 413) {
+                    res.setHeader("connection", "close");
+                    sendJson(res, 413, { error: error.message });
+                    req.resume();
+                    return true;
+                }
+                throw error;
+            }
+            return true;
+        }
+
         if (pathname === "/api/files/download") {
 
             if (req.method !== "GET") {
@@ -194,7 +237,8 @@ module.exports = async function FileRoutes(shared, request) {
         }
         sendJson(res, error.status || 500, {
             error: error.message,
-            ...(error.current_mtime_ms !== undefined ? { current_mtime_ms: error.current_mtime_ms } : {})
+            ...(error.current_mtime_ms !== undefined ? { current_mtime_ms: error.current_mtime_ms } : {}),
+            ...(error.exists ? { exists: true } : {})
         });
         return true;
     }

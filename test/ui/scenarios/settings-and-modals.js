@@ -375,6 +375,13 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
 
         assert.equal(home.children.length, 1, "until done mirror stays in policyHome");
         assert.ok(document.querySelector(".composer-tools #approvalMode"), "approval/plan mode lives next to Changes and Review");
+        const toolsRow = document.querySelector(".composer-tools");
+        assert.ok(toolsRow.children[0].contains(approvalMode), "Mode is the first control in the tools row");
+        assert.deepEqual(
+            [...toolsRow.children].map(child => child.id || (child.classList.contains("composer-mode") ? "mode" : child.tagName)),
+            ["mode", "taskChangesButton", "reviewButton"],
+            "the tools row reads Mode, Changes, Review"
+        );
         assert.deepEqual([...approvalMode.options].map(option => option.value), ["auto", "prompt", "deny", "plan"]);
 
         document.getElementById("settingsButton").dispatch("click");
@@ -742,6 +749,33 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
 
         svc.remove(svc.get("Code Review").id);
 
+        /* sample templates: seeded once per storage, re-added only on request, never duplicated */
+        const { SAMPLE_TASK_TEMPLATES, SAMPLES_SEEDED_KEY, seedSampleTemplates } =
+            await import(pathToFileURL(path.join(harness.PUBLIC_DIR, "app", "task-template-samples.js")).href);
+        assert.ok(SAMPLE_TASK_TEMPLATES.length >= 5, "a useful starter set ships");
+        for (const sample of SAMPLE_TASK_TEMPLATES) {
+            assert.ok(sample.id.startsWith("tpl-sample-") && sample.name && sample.content.trim() && sample.category, `${sample.id} is complete`);
+            assert.ok(["auto", "prompt", "deny", "plan"].includes(sample.mode), `${sample.id} has a valid mode`);
+            assert.ok(["inherit", "low", "medium", "high", "xhigh"].includes(sample.effort), `${sample.id} has a valid effort`);
+        }
+        const seedStore = new Map();
+        const seedAdapter = {
+            getItem: k => (seedStore.has(k) ? seedStore.get(k) : null),
+            setItem: (k, v) => seedStore.set(k, String(v)),
+            removeItem: k => seedStore.delete(k)
+        };
+        const seeded = createTaskTemplateService({ storage: seedAdapter });
+        seeded.save({ name: "Review changes", content: "my own review prompt" });
+        assert.equal(seedSampleTemplates({ service: seeded, storage: seedAdapter }), SAMPLE_TASK_TEMPLATES.length - 1, "first visit seeds, skipping a name the operator already uses");
+        assert.equal(seeded.get("Review changes").content, "my own review prompt", "the operator's template is kept");
+        assert.equal(seedStore.get(SAMPLES_SEEDED_KEY), "1");
+        seeded.remove("tpl-sample-security-audit");
+        assert.equal(seedSampleTemplates({ service: seeded, storage: seedAdapter }), 0, "a deleted sample does not come back on the next load");
+        assert.equal(seeded.get("tpl-sample-security-audit"), null);
+        assert.equal(seedSampleTemplates({ service: seeded, storage: seedAdapter, force: true }), 1, "force re-adds only what is missing");
+        assert.equal(seeded.list().length, SAMPLE_TASK_TEMPLATES.length);
+        assert.equal(seeded.get("tpl-sample-fix-failing-tests").mode, "prompt");
+
         const used = svc.recordUse(created.id);
         assert.equal(used.usageCount, 1);
         assert.equal(svc.remove(created.id), true);
@@ -913,6 +947,36 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         }
         assert.equal(listModal.querySelectorAll(".template-item").length, 0);
         assert.equal(backdrops().length, 1, "deleting templates keeps the Templates modal open");
+        assert.match(listModal.querySelector(".templates-empty").textContent, /Samples/, "the empty list points at the samples");
+
+        /* the Samples button adds the starter set, once */
+        const samplesBtn = listModal.querySelector(".templates-modal-actions .template-samples-btn");
+        assert.ok(samplesBtn, "Samples button sits with Import and Export");
+        samplesBtn.dispatch("click");
+        const sampleCount = listModal.querySelectorAll(".template-item").length;
+        assert.ok(sampleCount >= 5, `samples are listed (${sampleCount})`);
+        assert.match(listModal.querySelector(".templates-modal-msg").textContent, new RegExp(`Added ${sampleCount} sample templates`));
+        assert.match(listModal.textContent, /Fix failing tests/);
+        assert.match(listModal.textContent, /Security audit/);
+        samplesBtn.dispatch("click");
+        assert.equal(listModal.querySelectorAll(".template-item").length, sampleCount, "a second click adds nothing");
+        assert.match(listModal.querySelector(".templates-modal-msg").textContent, /already here/);
+
+        const reviewSample = listModal.querySelector(".templates-search");
+        reviewSample.value = "Review changes";
+        reviewSample.dispatch("input");
+        task.value = "";
+        listModal.querySelector(".template-load-btn").dispatch("click");
+        assert.match(task.value, /Review the uncommitted changes/);
+        assert.equal(document.getElementById("approvalMode").value, "plan", "a sample sets its mode");
+        assert.equal(document.getElementById("taskEffort").value, "high", "a sample sets its effort");
+
+        templatesBtn.dispatch("click");
+        listModal = templatesDialog();
+        while (listModal.querySelector(".template-delete-btn")) {
+            listModal.querySelector(".template-delete-btn").dispatch("click");
+            listModal.querySelector(".template-confirm-delete-btn").dispatch("click");
+        }
         Modal.closeTop("test");
         assert.equal(backdrops().length, 0);
 

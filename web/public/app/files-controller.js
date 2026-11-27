@@ -8,7 +8,9 @@
 | a file the server did not confirm. A save sends the mtime the editor
 | loaded; when the file changed on disk meanwhile the operator chooses
 | between overwriting and reloading. Unsaved edits are never discarded
-| without a confirmation.
+| without a confirmation. Uploads send each file's raw bytes to
+| PUT /api/files/upload one at a time; a name that already exists is
+| replaced only after the operator confirms.
 */
 
 import { state, touch } from "./store.js";
@@ -256,6 +258,60 @@ const actions = {
         await listDirectory(target.path);
         if (type === "file") await actions.openFile(result.payload.entry.path);
         return true;
+    },
+
+    dragging(on) {
+        const target = files();
+        if (target.dragging === Boolean(on)) return;
+        target.dragging = Boolean(on);
+        touch("files");
+    },
+
+    async upload(list) {
+        const target = files();
+        const picked = Array.from(list || []).filter(file => file && typeof file.name === "string" && validName(file.name));
+        if (picked.length === 0 || target.upload?.active) return false;
+        const dir = target.listing?.path || target.path;
+        const upload = { active: true, total: picked.length, done: 0, current: "", failed: [] };
+        target.upload = upload;
+        target.error = null;
+        changed();
+
+        const errors = [];
+
+        for (const file of picked) {
+            upload.current = file.name;
+            touch("files");
+            const filePath = join(dir, file.name);
+            const send = overwrite => apiRequest(`/api/files/upload${query(scoped({ path: filePath, overwrite: overwrite ? "1" : undefined }))}`, {
+                method: "PUT",
+                headers: { "content-type": "application/octet-stream" },
+                body: file
+            });
+            let result = await send(false);
+            if (result.status === 409 && result.payload?.exists) {
+                result = (await confirmed(`${filePath} already exists. Replace it with the uploaded file?`, "Replace", "danger"))
+                    ? await send(true)
+                    : { ok: false, error: "skipped" };
+            }
+            if (!result.ok) {
+                upload.failed.push(file.name);
+                if (result.error !== "skipped") errors.push(`${file.name}: ${result.error}`);
+            }
+            upload.done++;
+        }
+
+        upload.active = false;
+        upload.current = "";
+        changed();
+        await listDirectory(target.path);
+        /* after the refresh, which clears the error of the listing */
+        if (errors.length) {
+            target.error = errors.join(" · ");
+            changed();
+        }
+
+        return upload.failed.length === 0;
     },
 
     async rename(entry) {

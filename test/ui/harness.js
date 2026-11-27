@@ -324,6 +324,11 @@ async function bootConsole({ Modal, defaults }) {
 
     const { store, storage } = createStorage();
 
+    /* a returning operator: the starter templates were seeded on an earlier
+       visit, so the scenarios start from an empty template list (seeding
+       itself is tested in settings-and-modals.js) */
+    store["structured-ai.taskTemplates.samplesSeeded"] = "1";
+
     global.localStorage = storage;
 
     window.innerWidth = 1280;
