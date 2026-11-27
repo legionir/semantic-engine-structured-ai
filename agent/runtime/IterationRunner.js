@@ -183,24 +183,14 @@ async function runSubAgentLoop({
                 throw error;
             }
 
-            if (progress.malformedCode !== error.code) {
-                progress.malformed = 0;
-                progress.malformedCode = error.code;
-            }
-
-            progress.malformed = (progress.malformed || 0) + 1;
-
-            const limit =
-                h.settings.get("MAX_MALFORMED_RESPONSES");
-
-            const maximumAttempts =
-                limit + 1;
+            const note =
+                require("./RetryController").noteMalformed(progress, error);
 
             h.logLine(
                 scope,
                 `Unreadable answer (${error.message}) [${
-                    progress.malformed
-                }/${maximumAttempts}]`
+                    note.attempt
+                }/${note.maximumAttempts}]`
             );
 
             h.events.emit("run:malformed", {
@@ -216,26 +206,25 @@ async function runSubAgentLoop({
                     error.details?.completion_tokens ?? null,
                 output_chars:
                     error.details?.output_chars ?? null,
-                attempt: progress.malformed,
-                limit,
-                max_attempts: maximumAttempts,
-                retries_left:
-                    Math.max(0, maximumAttempts - progress.malformed),
+                attempt: note.attempt,
+                limit: note.limit,
+                max_attempts: note.maximumAttempts,
+                retries_left: note.retriesLeft,
                 outcome:
-                    progress.malformed > limit
+                    note.stopped
                         ? "stopped"
                         : "retry"
             });
 
-            if (progress.malformed > limit) {
+            if (note.stopped) {
                 throw error;
             }
 
             messages.push(
                 h.malformedNoticeMessage(
                     error,
-                    progress.malformed,
-                    limit
+                    note.attempt,
+                    note.limit
                 )
             );
 
@@ -458,24 +447,14 @@ async function runMainLoop({
                 throw error;
             }
 
-            if (progress.malformedCode !== error.code) {
-                progress.malformed = 0;
-                progress.malformedCode = error.code;
-            }
-
-            progress.malformed = (progress.malformed || 0) + 1;
-
-            const limit =
-                h.settings.get("MAX_MALFORMED_RESPONSES");
-
-            const maximumAttempts =
-                limit + 1;
+            const note =
+                require("./RetryController").noteMalformed(progress, error);
 
             h.logLine(
                 "main_agent",
                 `Unreadable answer (${error.message}) [${
-                    progress.malformed
-                }/${maximumAttempts}]`
+                    note.attempt
+                }/${note.maximumAttempts}]`
             );
 
             h.events.emit("run:malformed", {
@@ -491,26 +470,25 @@ async function runMainLoop({
                     error.details?.completion_tokens ?? null,
                 output_chars:
                     error.details?.output_chars ?? null,
-                attempt: progress.malformed,
-                limit,
-                max_attempts: maximumAttempts,
-                retries_left:
-                    Math.max(0, maximumAttempts - progress.malformed),
+                attempt: note.attempt,
+                limit: note.limit,
+                max_attempts: note.maximumAttempts,
+                retries_left: note.retriesLeft,
                 outcome:
-                    progress.malformed > limit
+                    note.stopped
                         ? "stopped"
                         : "retry"
             });
 
-            if (progress.malformed > limit) {
+            if (note.stopped) {
                 throw error;
             }
 
             messages.push(
                 h.malformedNoticeMessage(
                     error,
-                    progress.malformed,
-                    limit
+                    note.attempt,
+                    note.limit
                 )
             );
 

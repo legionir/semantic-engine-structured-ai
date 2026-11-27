@@ -25,7 +25,7 @@ const { parseArguments: parseCliArguments } = require("./ArgParser");
 const { CommandRegistry } = require("./CommandRegistry");
 const { HelpCommand } = require("./HelpCommand");
 const { ServeCommand } = require("./ServeCommand");
-const { resolveWebServerOptions } = require("./WebServerOptions");
+const { resolveWebServerOptions, hasExplicitNonWebCommand, hasConfiguredPort } = require("./WebServerOptions");
 const { InteractiveCommand } = require("./InteractiveCommand");
 const { actionError } = require("./OutputFormatter");
 const { createCliWorkflows } = require("./CliWorkflows");
@@ -221,6 +221,67 @@ function readStdin() {
 }
 
 
+async function peekPipedStdin(timeoutMs = 30) {
+
+    if (process.stdin.isTTY) {
+        return { text: "", ended: true };
+    }
+
+    let stat = null;
+
+    try {
+        stat = fs.fstatSync(0);
+    } catch {
+        return { text: "", ended: true };
+    }
+
+    if (!stat || stat.isCharacterDevice()) {
+        return { text: "", ended: true };
+    }
+
+    if (stat.isFile() && stat.size === 0) {
+        return { text: "", ended: true };
+    }
+
+    if (!stat.isFIFO() && !stat.isFile()) {
+        return { text: "", ended: true };
+    }
+
+    return await new Promise(resolve => {
+
+        let text = "";
+        let settled = false;
+
+        const finish = ended => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            process.stdin.removeListener("data", onData);
+            process.stdin.removeListener("end", onEnd);
+            process.stdin.removeListener("error", onErr);
+            if (!ended) {
+                process.stdin.pause();
+            }
+            resolve({ text, ended });
+        };
+
+        const onData = chunk => {
+            text += chunk;
+        };
+
+        const onEnd = () => finish(true);
+        const onErr = () => finish(true);
+        const timer = setTimeout(() => finish(false), timeoutMs);
+
+        process.stdin.setEncoding("utf8");
+        process.stdin.on("data", onData);
+        process.stdin.on("end", onEnd);
+        process.stdin.on("error", onErr);
+        process.stdin.resume();
+    });
+}
+
+
 function parseArguments(argv) {
 
     return parseCliArguments(argv, { fail });
@@ -314,8 +375,21 @@ async function main() {
         process.exit(report.ok && server.ok ? EXIT.SUCCESS : EXIT.FAILED);
     }
 
+    let preloadedStdin = null;
+
     try {
-        resolveWebServerOptions(options);
+        const shouldCheckStdin =
+            !options.serve &&
+            !hasExplicitNonWebCommand(options, process.env) &&
+            hasConfiguredPort(process.env);
+
+        if (shouldCheckStdin) {
+            preloadedStdin = await peekPipedStdin();
+        }
+
+        resolveWebServerOptions(options, process.env, {
+            pipedStdin: Boolean(preloadedStdin && preloadedStdin.text.trim())
+        });
     } catch (error) {
         fail(error.message);
     }
@@ -541,8 +615,13 @@ async function main() {
 
     if (!task) {
 
+        const remainder =
+            preloadedStdin && preloadedStdin.ended
+                ? ""
+                : await readStdin();
+
         const piped =
-            (await readStdin()).trim();
+            (`${preloadedStdin ? preloadedStdin.text : ""}${remainder}`).trim();
 
         if (piped) {
             task = piped;

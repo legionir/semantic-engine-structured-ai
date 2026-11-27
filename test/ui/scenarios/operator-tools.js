@@ -72,6 +72,7 @@ function fakeXterm() {
         write(text) { this.text += text; }
         reset() { this.resets++; this.text = ""; }
         focus() { this.focused = true; }
+        scrollLines(lines) { this.scrolledLines = (this.scrolledLines || 0) + lines; }
         dispose() { this.disposed = true; }
         type(text) { this.listeners.data.forEach(fn => fn(text)); }
     }
@@ -118,6 +119,14 @@ module.exports = async function OperatorTools({ test, backdrops, console_ }) {
         const messages = () => [...modal.querySelectorAll(".log-entry .log-message")].map(node => node.textContent);
         assert.deepEqual(messages(), ["Retrying AI request in 600 ms (attempt 1/3)", "AI request failed: HTTP 401 from api.example (gpt)", "Run started: hi"]);
         assert.match(modal.querySelector(".logs-file").textContent, /structured-ai\.jsonl/);
+        const toolbar = modal.querySelector(".logs-toolbar");
+        assert.equal(toolbar.querySelectorAll(".logs-filter").length, 2);
+        assert.ok(toolbar.querySelector(".logs-search"));
+        assert.equal(toolbar.querySelector(".logs-actions"), null, "actions moved to modal footer");
+        const foot = modal.querySelector(".modal-foot");
+        assert.ok([...foot.querySelectorAll("button")].find(button => button.textContent === "Refresh"));
+        assert.ok(foot.querySelector('a[href="/api/logs/download"]'));
+        assert.ok([...foot.querySelectorAll("button")].find(button => button.textContent === "Clear"));
 
         const level = modal.querySelector("select[aria-label='Minimum level']");
         level.value = "error";
@@ -149,14 +158,21 @@ module.exports = async function OperatorTools({ test, backdrops, console_ }) {
         deliver(stream, { type: "entry", entry: logEntries.at(-1) });
         assert.equal(modal.querySelector(".log-entry .log-message").textContent, "Tool write_file failed: EACCES");
 
-        const confirms = [];
-        window.confirm = message => { confirms.push(message); return confirms.length > 1; };
         server.on("DELETE", "/api/logs", () => ({ ok: true, summary: { ...summary(), total: 0 } }));
-        const clear = [...modal.querySelectorAll(".logs-actions button")].find(button => button.textContent === "Clear");
+        const clear = [...modal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Clear");
         clear.dispatch("click");
         await settle();
+        const declineModal = document.querySelector(".modal.confirm-modal");
+        assert.ok(declineModal, "confirmation modal opened before clearing logs");
+        [...declineModal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Cancel").dispatch("click");
+        await settle();
         assert.equal(modal.querySelectorAll(".log-entry").length, 4, "declined: nothing cleared");
+
         clear.dispatch("click");
+        await settle();
+        const acceptModal = document.querySelector(".modal.confirm-modal");
+        assert.ok(acceptModal);
+        [...acceptModal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Clear").dispatch("click");
         await settle();
         assert.equal(modal.querySelectorAll(".log-entry").length, 0);
         assert.ok(server.calls.some(call => call.method === "DELETE" && call.url === "/api/logs"));
@@ -225,14 +241,23 @@ module.exports = async function OperatorTools({ test, backdrops, console_ }) {
         assert.ok(modal);
         assert.equal(terminals.length, 1, "no live shell existed, so one was opened");
         const term = xterm.made.at(-1);
-        assert.ok(modal.querySelector(".terminal-host .xterm"), "xterm drew into the host");
+        assert.ok(modal.querySelector(".terminal-host .terminal-screen .xterm"), "xterm drew inside zero-padding terminal-screen");
         assert.equal(term.focused, true);
+        assert.equal(term.options.scrollSensitivity, 3);
+        assert.ok(term.options.theme.scrollbarSliderBackground);
+
+        const screenNode = modal.querySelector(".terminal-screen");
+        screenNode.dispatchEvent(Object.assign(new window.Event("touchstart", { bubbles: true }), { touches: [{ clientY: 100 }] }));
+        screenNode.dispatchEvent(Object.assign(new window.Event("touchmove", { bubbles: true, cancelable: true }), { touches: [{ clientY: 160 }] }));
+        screenNode.dispatchEvent(Object.assign(new window.Event("touchend", { bubbles: true }), { touches: [] }));
+        assert.ok(term.scrolledLines < 0, "dragging down scrolls up into scrollback history");
 
         const stream = console_.streams.at(-1);
         deliver(stream, { type: "snapshot", session: terminals[0], data: "$ previous\r\n" });
         deliver(stream, { type: "output", data: "$ " });
         assert.equal(term.text, "$ previous\r\n$ ");
-        assert.match(modal.querySelector(".terminal-status").textContent, /connected/);
+        assert.match(modal.querySelector(".modal-head .terminal-status").textContent, /connected/);
+        assert.equal(modal.querySelector(".terminal-toolbar .terminal-status"), null, "status moved from toolbar body into modal header");
 
         term.type("l");
         term.type("s\r");
@@ -303,43 +328,73 @@ module.exports = async function OperatorTools({ test, backdrops, console_ }) {
         return { entry: { name: body.path, path: body.path, type: "file", size: body.content.length, mtime_ms: file.mtime_ms + 1 } };
     });
 
-    await test("the Files dialog opens a file, edits and saves it with Ctrl+S, and resolves a conflict", async () => {
+    await test("the Files dialog opens a file in a separate editor modal, edits and saves it with Ctrl+S, and resolves a conflict", async () => {
         document.getElementById("filesButton").dispatch("click");
         await settle(10);
         const modal = dialog("files");
         const open = name => [...modal.querySelectorAll(".file-entry-open")].find(button => button.querySelector(".file-name").textContent === name);
         assert.deepEqual([...modal.querySelectorAll(".file-name")].map(node => node.textContent), ["src", "README.md"]);
+        assert.equal(modal.querySelector(".files-textarea"), null, "file browser modal no longer renders inline editor");
 
         open("README.md").dispatch("click");
         await settle(10);
-        const editor = modal.querySelector(".files-textarea");
+        const editorModal = dialog("file-editor");
+        assert.ok(editorModal, "opening a file opens the separate file editor modal");
+        assert.equal(modal.isConnected, true, "the Files modal stays open underneath");
+        assert.ok(editorModal.querySelector(".modal-foot .files-editor-actions"), "editor actions live in the modal footer");
+        assert.equal(editorModal.querySelector(".modal-body .files-editor-actions"), null, "no editor actions in modal body");
+        assert.ok(editorModal.querySelector(".files-editor-head .files-editor-path"));
+        assert.ok(editorModal.querySelector(".files-editor-head .files-editor-meta"));
+        const editor = editorModal.querySelector(".files-textarea");
         assert.equal(editor.value, "# Demo\n");
 
         editor.value = "# Demo\nmore\n";
         editor.dispatch("input");
-        assert.match(modal.querySelector(".files-editor-path").textContent, /●/, "unsaved changes are marked");
+        assert.match(editorModal.querySelector(".files-editor-path").textContent, /●/, "unsaved changes are marked");
         editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
         await settle(10);
         assert.equal(disk["README.md"].content, "# Demo\nmore\n");
-        assert.match(modal.querySelector(".files-message").textContent, /Saved/);
+        assert.match(editorModal.querySelector(".files-message").textContent, /Saved/);
 
         disk["README.md"].mtime_ms = 5000;
-        const editor2 = modal.querySelector(".files-textarea");
+        const editor2 = editorModal.querySelector(".files-textarea");
         editor2.value = "mine\n";
         editor2.dispatch("input");
-        const answers = [false];
-        window.confirm = () => answers.shift();
-        modal.querySelector(".files-editor-actions button").dispatch("click");
+        const saveButton = () => [...editorModal.querySelectorAll(".files-editor-actions button")].find(button => button.textContent === "Save");
+        saveButton().dispatch("click");
         await settle(10);
-        assert.match(modal.querySelector(".files-editor .files-error").textContent, /changed on disk/);
+        const cancelOverwrite = document.querySelector(".modal.confirm-modal");
+        assert.ok(cancelOverwrite, "conflict opened a confirmation modal");
+        [...cancelOverwrite.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Cancel").dispatch("click");
+        await settle(10);
+        assert.match(editorModal.querySelector(".files-editor .files-error").textContent, /changed on disk/);
         assert.equal(disk["README.md"].content, "# Demo\nmore\n", "declined: the newer file is kept");
 
-        answers.push(true);
-        modal.querySelector(".files-editor-actions button").dispatch("click");
+        saveButton().dispatch("click");
+        await settle(10);
+        const confirmOverwrite = document.querySelector(".modal.confirm-modal");
+        assert.ok(confirmOverwrite);
+        [...confirmOverwrite.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Overwrite").dispatch("click");
         await settle(10);
         assert.equal(disk["README.md"].content, "mine\n", "confirmed: overwritten");
         const puts = server.calls.filter(call => call.method === "PUT");
         assert.equal(puts.at(-1).body.expected_mtime_ms, undefined, "the overwrite does not send the stale mtime");
+
+        const footerButtons = [...editorModal.querySelectorAll(".files-editor-actions button, .files-editor-actions a")];
+        assert.equal(footerButtons.find(button => button.textContent === "Close"), undefined, "Close button was removed from footer");
+        assert.equal(footerButtons.at(-1)?.textContent, "Save", "Save is the first button from the right");
+
+        editorModal.querySelector(".modal-close").dispatch("click");
+        await settle(10);
+        assert.equal(dialog("file-editor"), null, "editor modal closed");
+        assert.equal(dialog("files"), modal, "Files browser modal remains open");
+
+        modal.querySelector('button[aria-label="Rename README.md"]').dispatch("click");
+        await settle(10);
+        const promptModal = document.querySelector(".modal.prompt-modal");
+        assert.ok(promptModal?.querySelector(".modal-prompt-input"), "Rename modal renders styled prompt input");
+        [...promptModal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Cancel").dispatch("click");
+        await settle(10);
 
         close("files");
         assert.equal(backdrops().length, 0);

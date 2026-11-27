@@ -178,4 +178,125 @@ module.exports = async function AuthGate({ test }) {
         await offline.settle();
         assert.equal(offline.byId("consoleLoginError").textContent, "Console startup failed. Refresh to try again.");
     });
+
+    await test("unauthenticated token mode prompts for console token and falls back to in-memory auth when cookies are blocked", async () => {
+
+        const p = page({
+            "/auth/status": { body: { passwordRequired: false, authenticated: false } },
+            "/auth/login": ({ body }) => JSON.parse(body).token === "tok-ok"
+                ? { status: 200, body: { ok: true } }
+                : { status: 401, body: { error: "invalid console token" } }
+        });
+        await p.run();
+        await p.settle();
+
+        assert.equal(p.state.imported, 0);
+        assert.ok(p.loginShown());
+
+        await p.submit("bad");
+        assert.equal(p.byId("consoleLoginError").textContent, "invalid console token");
+        assert.equal(p.state.imported, 0);
+
+        await p.submit("tok-ok");
+        assert.equal(p.state.imported, 1);
+        assert.equal(p.byId("consoleLogin").hidden, true);
+    });
+
+    await test("auth-transport tolerates getter-only fetch/EventSource and authenticates via apiFetch and createEventSource", async () => {
+
+        const transport = await import("../../../web/public/app/auth-transport.js");
+        const origWindow = globalThis.window;
+        const origFetchDesc = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+        const origEsDesc = Object.getOwnPropertyDescriptor(globalThis, "EventSource");
+        const seenFetch = [];
+        const seenEs = [];
+
+        const getterFetch = async (url, options) => {
+            seenFetch.push({ url, options });
+            return { ok: true, status: 200, json: async () => ({}) };
+        };
+        class GetterEventSource {
+            constructor(url) {
+                seenEs.push(url);
+            }
+        }
+
+        try {
+            globalThis.window = { __structuredAiConsoleToken: "tok-getter" };
+            Object.defineProperty(globalThis, "fetch", {
+                configurable: true,
+                get: () => getterFetch
+            });
+            Object.defineProperty(globalThis, "EventSource", {
+                configurable: true,
+                get: () => GetterEventSource
+            });
+
+            assert.doesNotThrow(() => transport.installConsoleAuthTransport());
+            await transport.apiFetch("/api/state");
+            transport.createEventSource("/api/events");
+
+            assert.equal(seenFetch.length, 1);
+            assert.equal(seenFetch[0].url, "/api/state");
+            assert.equal(seenFetch[0].options.headers.get("authorization"), "Bearer tok-getter");
+            assert.deepEqual(seenEs, ["/api/events?token=tok-getter"]);
+        } finally {
+            if (origWindow === undefined) delete globalThis.window;
+            else globalThis.window = origWindow;
+            if (origFetchDesc) Object.defineProperty(globalThis, "fetch", origFetchDesc);
+            else delete globalThis.fetch;
+            if (origEsDesc) Object.defineProperty(globalThis, "EventSource", origEsDesc);
+            else delete globalThis.EventSource;
+        }
+    });
+
+    await test("password mode falls back to in-memory sessionToken when cookies are blocked", async () => {
+
+        const p = page({
+            "/auth/status": { body: { passwordRequired: true, authenticated: false } },
+            "/auth/login": { status: 200, body: { ok: true, sessionToken: "sess-mem-1" } }
+        });
+        const transport = await import("../../../web/public/app/auth-transport.js");
+        const origWindow = globalThis.window;
+        const origFetchDesc = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+        const origEsDesc = Object.getOwnPropertyDescriptor(globalThis, "EventSource");
+        const seenFetch = [];
+        const seenEs = [];
+
+        const getterFetch = async (url, options) => {
+            seenFetch.push({ url, options });
+            return { ok: true, status: 200, json: async () => ({}) };
+        };
+        class GetterEventSource {
+            constructor(url) {
+                seenEs.push(url);
+            }
+        }
+
+        try {
+            await p.run();
+            await p.settle();
+            await p.submit("correct-pw");
+
+            assert.equal(p.state.reloaded, 0, "loads console in place when cookie check fails and sessionToken is present");
+            assert.equal(p.state.imported, 1);
+
+            globalThis.window = { __structuredAiConsoleSession: "sess-mem-1" };
+            Object.defineProperty(globalThis, "fetch", { configurable: true, get: () => getterFetch });
+            Object.defineProperty(globalThis, "EventSource", { configurable: true, get: () => GetterEventSource });
+
+            await transport.apiFetch("/api/state");
+            transport.createEventSource("/api/events");
+
+            assert.equal(seenFetch[0].options.headers.get("x-console-session"), "sess-mem-1");
+            assert.deepEqual(seenEs, ["/api/events?session=sess-mem-1"]);
+        } finally {
+            if (origWindow === undefined) delete globalThis.window;
+            else globalThis.window = origWindow;
+            if (origFetchDesc) Object.defineProperty(globalThis, "fetch", origFetchDesc);
+            else delete globalThis.fetch;
+            if (origEsDesc) Object.defineProperty(globalThis, "EventSource", origEsDesc);
+            else delete globalThis.EventSource;
+        }
+    });
 };

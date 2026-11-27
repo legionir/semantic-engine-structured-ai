@@ -195,6 +195,40 @@ module.exports = function createSnapshot(shared) {
             return snap;
         }
 
+        const foregroundAllowed =
+            Boolean(state.projectId && consoleAuth.allowsProject(claims, state.projectId));
+
+        if (!foregroundAllowed) {
+            snap.status = "idle";
+            snap.task = null;
+            snap.answer = null;
+            snap.error = null;
+            snap.started_at = null;
+            snap.finished_at = null;
+            snap.workspace = null;
+            snap.limits = snap.limits ? { ...snap.limits, workspace_root: null } : snap.limits;
+            snap.cycles = 0;
+            snap.turns = 0;
+            snap.plan = null;
+            snap.discussion = null;
+            snap.session = null;
+            snap.messages = [];
+            snap.project = null;
+        } else if (
+            snap.discussion &&
+            snap.discussion.project_id &&
+            !consoleAuth.allowsProject(claims, snap.discussion.project_id)
+        ) {
+            snap.discussion = null;
+        }
+
+        snap.sessions =
+            snap.sessions.filter(
+                item =>
+                    item.project_id !== null &&
+                    consoleAuth.allowsProject(claims, item.project_id)
+            );
+
         snap.events =
             snap.events
                 .map(event => eventForClient(event, { claims }))
@@ -203,8 +237,7 @@ module.exports = function createSnapshot(shared) {
         snap.pending_approvals =
             snap.pending_approvals.filter(
                 item =>
-                    !item.project_id ||
-                    consoleAuth.allowsProject(claims, item.project_id)
+                    Boolean(item.project_id && consoleAuth.allowsProject(claims, item.project_id))
             );
 
         snap.conversations = conversationsFor(claims, snap.conversations);
@@ -301,12 +334,32 @@ module.exports = function createSnapshot(shared) {
 
         snap.pending_approvals =
             snap.pending_approvals.filter(
-                item => !item.project_id || item.project_id === projectId
+                item => item.project_id === projectId
             );
 
         snap.plan = planFor(projectId);
 
         snap.queue = projectQueue.view(projectId);
+
+        if (state.projectId !== projectId) {
+
+            let projectWorkspace = null;
+            let projectRecord = null;
+
+            try {
+                const projectCtx = runtime.resolveRunProjectContext({ projectId });
+                projectWorkspace = projectCtx ? projectCtx.workspaceRoot : null;
+                projectRecord = runtime.runWithProject(projectCtx, () => runtime.project.loadProject());
+            } catch {
+                projectWorkspace = null;
+                projectRecord = null;
+            }
+
+            snap.workspace = projectWorkspace;
+            snap.project = projectRecord;
+            snap.limits = snap.limits ? { ...snap.limits, workspace_root: projectWorkspace } : snap.limits;
+            snap.discussion = null;
+        }
 
         const own =
             conv && (conv.background || state.projectId !== projectId);
@@ -321,6 +374,21 @@ module.exports = function createSnapshot(shared) {
         if (conv && !own) {
 
             snap.messages = conv.messages;
+        } else if (!conv && state.projectId !== projectId) {
+
+            Object.assign(snap, {
+                status: "idle",
+                task: null,
+                answer: null,
+                error: null,
+                started_at: null,
+                finished_at: null,
+                cycles: 0,
+                turns: 0,
+                discussion: null,
+                messages: [],
+                session: null
+            });
         }
 
         if (own) {
@@ -335,7 +403,10 @@ module.exports = function createSnapshot(shared) {
                 cycles: conv.cycles,
                 turns: conv.messages.filter(message => message.role === "user").length,
                 messages: conv.messages,
-                session: conv.session ? sessions.summarise(conv.session) : snap.session
+                session:
+                    conv.session
+                        ? sessions.summarise(conv.session)
+                        : (state.projectId === projectId ? snap.session : null)
             });
         }
 

@@ -15,12 +15,15 @@
 */
 
 
+import { noticeDialog } from "./operator-api.js";
+import { apiFetch } from "./auth-transport.js";
+
 export async function request(url, options = {}) {
 
     let response;
 
     try {
-        response = await fetch(url, {
+        response = await apiFetch(url, {
             ...options,
             headers: options.body ? { "content-type": "application/json", ...(options.headers || {}) } : options.headers
         });
@@ -106,7 +109,11 @@ export async function runPromptCommand(prompt) {
     const args = prompt.arguments || [];
 
     if (args.length === 0 || typeof Modal === "undefined") {
-        try { await render({}); } catch (error) { window.alert(error.message); }
+        try {
+            await render({});
+        } catch (error) {
+            await noticeDialog(error.message, { title: "MCP prompt failed" });
+        }
         return;
     }
 

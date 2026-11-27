@@ -255,10 +255,12 @@ module.exports = async function McpRoutes(shared, request) {
             return true;
         }
 
-        const name =
-            decodeURIComponent(
-                pathname.slice("/api/mcp/".length)
-            );
+        const rawName = pathname.slice("/api/mcp/".length);
+        if (!rawName || rawName.includes("/")) {
+            return false;
+        }
+
+        const name = decodeURIComponent(rawName);
 
         if (runtime.settings.get("MCP_ALLOW_RUNTIME_ADD") === false) {
             sendJson(res, 403, {

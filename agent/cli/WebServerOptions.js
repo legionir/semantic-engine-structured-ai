@@ -1,13 +1,23 @@
 "use strict";
 
 /* Resolve the conventional PORT variable before runtime startup. */
-function hasExplicitNonWebCommand(options, env) {
+function hasExplicitNonWebCommand(options, env, { pipedStdin = false } = {}) {
     return Boolean(
         options.interactive ||
         options.untilDone ||
         options.discussion ||
         options.file ||
         options.positional?.length ||
+        options.resume ||
+        options.review ||
+        options.help ||
+        options.version ||
+        options.planMode ||
+        options.goal ||
+        options.jsonSchema ||
+        options.quiet ||
+        options.json ||
+        options.dryRun ||
         options.listTools ||
         options.listAgents ||
         options.listPolicy ||
@@ -16,17 +26,24 @@ function hasExplicitNonWebCommand(options, env) {
         options.untrust ||
         options.listTrusted ||
         options.migrate ||
-        env.AGENT_TASK
+        env.AGENT_TASK ||
+        pipedStdin
     );
 }
 
 
-function resolveWebServerOptions(options, env = process.env) {
+function hasConfiguredPort(env = process.env) {
     const configuredPort = env.PORT;
-    const hasPort = configuredPort !== undefined && String(configuredPort).trim() !== "";
+    return configuredPort !== undefined && String(configuredPort).trim() !== "";
+}
+
+
+function resolveWebServerOptions(options, env = process.env, context = {}) {
+    const configuredPort = env.PORT;
+    const hasPort = hasConfiguredPort(env);
 
     if (options.serve && options.port !== undefined) return options;
-    if (!options.serve && hasExplicitNonWebCommand(options, env)) return options;
+    if (!options.serve && hasExplicitNonWebCommand(options, env, context)) return options;
     if (!hasPort) return options;
 
     const port = Number(String(configuredPort).trim());
@@ -42,7 +59,7 @@ function resolveWebServerOptions(options, env = process.env) {
         return options;
     }
 
-    if (!hasExplicitNonWebCommand(options, env)) {
+    if (!hasExplicitNonWebCommand(options, env, context)) {
         options.serve = true;
         options.port = port;
         options.host ||= "0.0.0.0";
@@ -53,4 +70,4 @@ function resolveWebServerOptions(options, env = process.env) {
 }
 
 
-module.exports = { resolveWebServerOptions, hasExplicitNonWebCommand };
+module.exports = { resolveWebServerOptions, hasExplicitNonWebCommand, hasConfiguredPort };

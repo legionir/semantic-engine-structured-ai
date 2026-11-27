@@ -14,6 +14,7 @@ import { DashboardBody, dashboardHeading, dashboardTab, DashboardTabs } from "./
 import { el, failureText, resetProjectView } from "./console-core.js";
 import { connect } from "./stream-controller.js";
 import { navigateConsole, parseProjectRoute, projectById, readStoredProjectId, writeStoredProjectId } from "./project-routing.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 function projectLabel() {
@@ -40,7 +41,7 @@ function paintGatewayHealth() {
     const status = health.status || health.gateway?.status || "unknown";
     const tone = status === "ok" ? "health-ok" : status === "down" ? "health-down" : "health-degraded";
 
-    chip.textContent = `health · ${status}`;
+    chip.textContent = status;
     chip.classList.remove("health-ok", "health-degraded", "health-down");
     chip.classList.add(tone);
     chip.href = state.currentProjectId
@@ -68,9 +69,14 @@ export function bindProjectHeader() {
 
 export async function loadProjects() {
 
+    if (state.projects.length === 0) {
+        state.projectsLoading = true;
+        touch("projects");
+    }
+
     try {
 
-        const response = await fetch("/api/projects");
+        const response = await apiFetch("/api/projects");
 
         if (!response.ok) {
             return;
@@ -80,7 +86,9 @@ export async function loadProjects() {
         state.projects = payload.projects || [];
 
     } catch {
-        state.projects = [];
+        /* keep existing projects list when offline or during transient errors */
+    } finally {
+        state.projectsLoading = false;
     }
 
     touch("projects");
@@ -126,7 +134,7 @@ export async function loadGatewayHealth() {
 
     try {
 
-        const response = await fetch("/api/health");
+        const response = await apiFetch("/api/health");
 
         if (!response.ok) {
             return;
@@ -166,7 +174,7 @@ async function loadDashboard() {
 
     const read = async url => {
         try {
-            const response = await fetch(url);
+            const response = await apiFetch(url);
             return response.ok ? await response.json() : null;
         } catch {
             return null;
@@ -210,7 +218,7 @@ async function saveDashboardSettings(changes) {
     let failure = null;
 
     try {
-        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+        const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}`, {
             method: "PATCH",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ name: String(changes.name || "").trim(), enabled: Boolean(changes.enabled) })
@@ -245,9 +253,6 @@ export function openProjectDashboard(projectId, tab) {
 
     const sameProject = state.dashboard.projectId === projectId;
 
-    state.taskScopeMode = "current";
-    state.taskProjectIds = [];
-    touch("projects");
     Object.assign(state.dashboard, {
         open: true,
         projectId,

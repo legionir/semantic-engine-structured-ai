@@ -12,6 +12,7 @@
 
 import { html } from "./dom.js";
 import { touch } from "./store.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 export function suggestedFolder(url) {
@@ -136,7 +137,7 @@ export async function startClone(form, refs, done) {
     let response;
 
     try {
-        response = await fetch("/api/project-clones", {
+        response = await apiFetch("/api/project-clones", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(body)
@@ -174,7 +175,7 @@ async function followClone(form, done) {
 
         try {
 
-            const response = await fetch(`/api/project-clones/${encodeURIComponent(form.job.id)}`);
+            const response = await apiFetch(`/api/project-clones/${encodeURIComponent(form.job.id)}`);
             const payload = await response.json().catch(() => ({}));
 
             if (response.ok && payload.job) {
@@ -201,7 +202,7 @@ export async function loadCloneContext(form) {
 
     try {
 
-        const response = await fetch("/api/project-clones");
+        const response = await apiFetch("/api/project-clones");
 
         if (response.ok) {
             const payload = await response.json();
@@ -214,7 +215,7 @@ export async function loadCloneContext(form) {
 
     try {
 
-        const response = await fetch("/api/secrets");
+        const response = await apiFetch("/api/secrets");
 
         if (response.ok) {
             const payload = await response.json();

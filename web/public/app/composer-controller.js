@@ -11,6 +11,67 @@ import { state, touch } from "./store.js";
 import { el, failureText, notifyError, setStatus } from "./console-core.js";
 import { projectById } from "./project-routing.js";
 import { drainProjectTaskQueue, labelChatForProject, sendCorrection } from "./queue-controller.js";
+import { apiFetch } from "./auth-transport.js";
+
+
+const TASK_DRAFT_KEY = "structured-ai.taskDraft";
+
+
+function draftStorage() {
+
+    try {
+        if (typeof globalThis !== "undefined" && globalThis.localStorage) {
+            return globalThis.localStorage;
+        }
+    } catch {
+        /* private mode */
+    }
+
+    return null;
+}
+
+
+export function readTaskDraft() {
+
+    const storage = draftStorage();
+    if (!storage) return "";
+
+    try {
+        return storage.getItem(TASK_DRAFT_KEY) || "";
+    } catch {
+        return "";
+    }
+}
+
+
+export function writeTaskDraft(text) {
+
+    const storage = draftStorage();
+    if (!storage) return;
+
+    const value = String(text ?? "");
+
+    try {
+        if (value === "") storage.removeItem(TASK_DRAFT_KEY);
+        else storage.setItem(TASK_DRAFT_KEY, value);
+    } catch {
+        /* storage quota or private mode */
+    }
+}
+
+
+export function initTaskDraft() {
+
+    const field = el("task");
+    if (!field) return;
+
+    const saved = readTaskDraft();
+    if (saved !== "" && field.value === "") {
+        field.value = saved;
+    }
+
+    field.addEventListener("input", () => writeTaskDraft(field.value));
+}
 
 
 function selectedTaskScope() {
@@ -55,7 +116,7 @@ async function uploadAttachmentsForProject(projectId, attachments = state.attach
         }
 
         const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-        const response = await fetch(`/api/uploads${query}`, {
+        const response = await apiFetch(`/api/uploads${query}`, {
             method: "POST",
             body: form
         });
@@ -91,8 +152,22 @@ function setUploadingState(uploading) {
 }
 
 
+function setSubmittingState(submitting) {
+
+    state.submitting = Boolean(submitting);
+    const locked = Boolean(state.uploading || state.submitting);
+    const run = el("runButton");
+    const queue = el("queueButton");
+    if (run && state.status !== "running") run.disabled = locked;
+    if (queue) queue.disabled = locked;
+    touch("composer");
+}
+
+
 function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = new Map(), reasoningEffort = null, runFlags = {}) {
 
+    state.multiQueueTotal = projectIds.length;
+    state.multiQueueActive = true;
     state.multiQueue = projectIds.map(id => ({
         projectId: id,
         task: taskWithAttachments(
@@ -108,18 +183,15 @@ function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = n
 
 
 /*
-| Plan first / goal / dollar cap of the next task (roadmap P3-03, P3-05),
+| Plan first / dollar cap of the next task (roadmap P3-03, P3-05),
 | as the request fields the server reads. Empty fields send nothing.
 */
 export function selectedRunFlags() {
 
     const flags = {};
-    const plan = el("taskPlanMode");
-    const goal = (el("taskGoal")?.value || "").trim();
     const cap = (el("taskMaxCost")?.value || "").trim();
 
-    if (plan && plan.checked) flags.plan_mode = true;
-    if (goal !== "") flags.goal = goal;
+    if (state.composerPlanMode) flags.plan_mode = true;
     if (cap !== "" && Number.isFinite(Number(cap)) && Number(cap) >= 0) flags.max_cost_usd = Number(cap);
 
     return flags;
@@ -139,13 +211,13 @@ export function clearComposer() {
     const task = el("task");
 
     if (task) task.value = "";
+    writeTaskDraft("");
 
-    /* plan first and the goal belong to one task; the dollar cap stays */
-    const plan = el("taskPlanMode");
-    const goal = el("taskGoal");
-
-    if (plan) plan.checked = false;
-    if (goal) goal.value = "";
+    /* plan mode belongs to one task; the dollar cap stays */
+    if (state.composerPlanMode) {
+        state.composerPlanMode = false;
+        touch("header");
+    }
 
     state.attachments = [];
     state.attachmentError = null;
@@ -183,93 +255,119 @@ export async function submitCorrection() {
     const field = el("task");
     const text = field ? field.value.trim() : "";
 
-    if (text === "" || !state.currentProjectId) {
-        return;
+    if (text === "" || !state.currentProjectId || state.submitting || state.uploading) {
+        return false;
     }
 
-    if (await sendCorrection(text)) {
-        clearComposer();
+    setSubmittingState(true);
+
+    try {
+        if (await sendCorrection(text)) {
+            clearComposer();
+            return true;
+        }
+        return false;
+    } finally {
+        setSubmittingState(false);
     }
 }
 
 
 export async function submitTask(task, reasoningEffort, runFlags = selectedRunFlags()) {
 
-    const targets = selectedTaskProjectIds();
-    const projectIds = targets.length > 0 ? targets : [null];
-    const files = new Map();
-
-    if (!(await uploadFor(projectIds, files))) {
-        return;
+    if (state.submitting || state.uploading) {
+        return false;
     }
 
-    if (targets.length > 1) {
-        startLabeledProjectQueue(task, targets, files, reasoningEffort, runFlags);
-        clearComposer();
-        return;
-    }
-
-    const projectId = targets[0] || null;
-
-    if (state.attachments.length > 0) {
-        task = taskWithAttachments(task, files.get(projectId || "__default__"));
-    }
-
-    /* a busy project queues the message for its next turn (P1-04) */
-    const busy = state.status === "running";
-
-    state.activeProjectId = projectId;
-    setStatus("running");
-
-    const url =
-        projectId
-            ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
-            : "/api/tasks";
-
-    let response;
+    setSubmittingState(true);
 
     try {
-        response = await fetch(url, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                task,
-                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-                ...runFlags
-            })
-        });
-    } catch (error) {
-        setStatus("idle");
-        notifyError(`The task could not be sent: ${error.message || "network error"}`);
-        return;
-    }
+        const goal = runFlags?.plan_mode && !runFlags.goal
+            ? String(task || "").trim().slice(0, 2000)
+            : "";
+        const effectiveFlags = goal ? { ...runFlags, goal } : runFlags;
 
-    if (!response.ok) {
-        if (!busy) setStatus("idle");
-        notifyError(await failureText(response, "The task was not started"));
-        return;
-    }
+        const targets = selectedTaskProjectIds();
+        const projectIds = targets.length > 0 ? targets : [null];
+        const files = new Map();
 
-    const accepted = typeof response.json === "function" ? await response.json().catch(() => ({})) : {};
-
-    clearComposer();
-
-    if (accepted && accepted.queued === true) {
-        /* the queue panel shows it; the run on screen goes on */
-        return;
-    }
-
-    if (projectId) {
-        labelChatForProject(projectId);
-    }
-
-    try {
-        const snapshot = await (await fetch("/api/state")).json();
-        if (snapshot && snapshot.turns !== undefined) {
-            state.turnsText = `${snapshot.turns} turns`;
-            touch("header");
+        if (!(await uploadFor(projectIds, files))) {
+            return false;
         }
-    } catch {
-        /* the next snapshot carries the count */
+
+        if (targets.length > 1) {
+            startLabeledProjectQueue(task, targets, files, reasoningEffort, effectiveFlags);
+            clearComposer();
+            return true;
+        }
+
+        const projectId = targets[0] || null;
+
+        if (state.attachments.length > 0) {
+            task = taskWithAttachments(task, files.get(projectId || "__default__"));
+        }
+
+        /* a busy project queues the message for its next turn (P1-04) */
+        const statusBefore = state.status;
+        const busy = statusBefore === "running";
+
+        const url =
+            projectId
+                ? `/api/projects/${encodeURIComponent(projectId)}/tasks`
+                : "/api/tasks";
+
+        let response;
+
+        try {
+            response = await apiFetch(url, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    task,
+                    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+                    ...effectiveFlags
+                })
+            });
+        } catch (error) {
+            notifyError(`The task could not be sent: ${error.message || "network error"}`);
+            return false;
+        }
+
+        if (!response.ok) {
+            notifyError(await failureText(response, "The task was not started"));
+            return false;
+        }
+
+        const accepted = typeof response.json === "function" ? await response.json().catch(() => ({})) : {};
+
+        clearComposer();
+
+        if (accepted && accepted.queued === true) {
+            /* the queue panel shows it; the run on screen goes on */
+            return true;
+        }
+
+        state.activeProjectId = projectId;
+        if (!busy && state.status === statusBefore) {
+            setStatus("running");
+        }
+
+        if (projectId) {
+            labelChatForProject(projectId);
+        }
+
+        try {
+            const snapshot = await (await apiFetch("/api/state")).json();
+            if (snapshot && snapshot.turns !== undefined) {
+                state.turnsText = `${snapshot.turns} turns`;
+                touch("header");
+            }
+        } catch {
+            /* the next snapshot carries the count */
+        }
+
+        return true;
+    } finally {
+        setSubmittingState(false);
     }
 }

@@ -21,8 +21,10 @@
 
 import { state } from "./store.js";
 import { el } from "./console-core.js";
-import { renderAttachments } from "./composer-controller.js";
-import { loadPromptCommands, runPromptCommand } from "./mcp-commands.js";
+import { renderAttachments, writeTaskDraft } from "./composer-controller.js";
+import { runPromptCommand } from "./mcp-commands.js";
+import { executeSlashCommand, matchCommands } from "./slash-commands.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 const ui = { items: [], active: 0, start: -1, request: 0, timer: null };
@@ -62,11 +64,11 @@ export function matchPromptCommands(prompts, query) {
 async function lookupCommands(query, start) {
 
     const ticket = ++ui.request;
-    const prompts = await loadPromptCommands();
+    const items = await matchCommands(query);
 
     if (ticket !== ui.request) return;
 
-    ui.items = matchPromptCommands(prompts, query);
+    ui.items = items;
     ui.active = 0;
     ui.start = start;
     draw();
@@ -108,7 +110,10 @@ function draw() {
         option.setAttribute("role", "option");
         option.setAttribute("aria-selected", String(index === ui.active));
         option.className = `mention-option${index === ui.active ? " active" : ""}`;
-        option.textContent = item.type === "prompt" && item.description ? `${item.path} — ${item.description}` : item.path;
+        const label = (item.type === "prompt" || item.type === "command") && item.description
+            ? `${item.path} — ${item.description}`
+            : item.path;
+        option.textContent = label;
         option.dataset.type = item.type;
         option.addEventListener("mousedown", event => {
             event.preventDefault();
@@ -132,7 +137,7 @@ async function lookup(query, start) {
     if (projectId) params.set("projectId", projectId);
 
     try {
-        const response = await fetch(`/api/mentions?${params}`);
+        const response = await apiFetch(`/api/mentions?${params}`);
         const payload = response.ok ? await response.json() : { entries: [] };
         if (ticket !== ui.request) return;
         ui.items = Array.isArray(payload.entries) ? payload.entries : [];
@@ -161,8 +166,27 @@ function choose() {
     if (item.type === "prompt") {
         textarea.value = textarea.value.slice(caret);
         textarea.setSelectionRange(0, 0);
+        writeTaskDraft(textarea.value);
         close();
-        void runPromptCommand(item);
+        void runPromptCommand(item.prompt || item);
+        return;
+    }
+
+    if (item.type === "command") {
+        if (item.acceptsArgs) {
+            const next = `${item.path} ${textarea.value.slice(caret).replace(/^\s+/, "")}`;
+            textarea.value = next;
+            const pos = item.path.length + 1;
+            textarea.setSelectionRange(pos, pos);
+            writeTaskDraft(textarea.value);
+            close();
+            return;
+        }
+        textarea.value = textarea.value.slice(caret).replace(/^\s+/, "");
+        textarea.setSelectionRange(0, 0);
+        writeTaskDraft(textarea.value);
+        close();
+        void executeSlashCommand(item.path, { source: "autocomplete" });
         return;
     }
 
@@ -170,6 +194,7 @@ function choose() {
     textarea.value = `${textarea.value.slice(0, ui.start)}${item.path}${suffix}${textarea.value.slice(caret)}`;
     const position = ui.start + item.path.length + suffix.length;
     textarea.setSelectionRange(position, position);
+    writeTaskDraft(textarea.value);
     close();
 
     /* a folder keeps completing inside itself */

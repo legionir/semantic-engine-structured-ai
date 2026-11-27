@@ -115,8 +115,10 @@ function resolve(supplied, masterToken) {
 
     const extra = scopedTokens();
 
-    if (Object.prototype.hasOwnProperty.call(extra, supplied)) {
-        return normalizeEntry(extra[supplied]);
+    for (const [key, entry] of Object.entries(extra)) {
+        if (tokenMatches(supplied, key)) {
+            return normalizeEntry(entry);
+        }
     }
 
     return null;
@@ -272,6 +274,9 @@ function visibleProjects(claims, all) {
 | Logs must never echo a bearer token or obviously-secret fields.
 | "source content" here is the raw token/source blob, not tool output.
 */
+const NON_SECRET_TOKEN_KEYS = /^(?:max_tokens|prompt_tokens|completion_tokens|input_tokens|output_tokens|total_tokens|cached_tokens|reasoning_tokens|token_count|tokenCount|tokens_used|tokensUsed)$/i;
+const SECRET_KEY_PATTERN = /(?:^|[_-])(authorization|api[_-]?key|secret|password|passphrase|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|console[_-]?token|token)(?:$|[_-])/i;
+
 function redact(value) {
 
     if (value === null || value === undefined) {
@@ -283,7 +288,7 @@ function redact(value) {
         return value
             .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer ****")
             .replace(
-                /(authorization|api[_-]?key|token|AGENT_CONSOLE_TOKEN)\s*[:=]\s*["']?[^"' \n]+/gi,
+                /(authorization|api[_-]?key|password|secret|token|AGENT_CONSOLE_TOKEN)\s*[:=]\s*(?:"[^"\n]*"|'[^'\n]*'|[^"'\s]+)/gi,
                 "$1=****"
             );
     }
@@ -298,7 +303,10 @@ function redact(value) {
 
         for (const [key, item] of Object.entries(value)) {
 
-            if (/token|authorization|api[_-]?key|secret/i.test(key)) {
+            if (
+                !NON_SECRET_TOKEN_KEYS.test(key) &&
+                (SECRET_KEY_PATTERN.test(key) || /authorization|api[_-]?key|secret|password/i.test(key))
+            ) {
                 output[key] = "****";
             } else {
                 output[key] = redact(item);

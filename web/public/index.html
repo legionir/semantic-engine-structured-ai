@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0e17">
+<meta name="description" content="Autonomous coding agent runtime with multi-layer delegation, sandboxed tool execution, MCP integration, and real-time web console.">
+<meta property="og:title" content="Structured-ai v5">
+<meta property="og:description" content="Autonomous coding agent runtime with multi-layer delegation, sandboxed tool execution, MCP integration, and real-time web console.">
 <script>document.documentElement.classList.add("auth-pending");</script>
 <title>structured-ai console</title>
 <link rel="stylesheet" href="/app.css">
@@ -22,13 +25,12 @@
   <div class="brand">
     <span class="dot" id="statusDot" title="runtime status"></span>
     <strong>structured-ai</strong>
+    <span class="status-pill" id="statusText">connecting</span>
+    <a class="chip button status-chip" id="gatewayHealth" href="/api/health" title="Gateway health">—</a>
     <button type="button" id="mobileMenuToggle" class="mobile-menu-toggle" aria-label="Open console menu" aria-expanded="false">☰</button>
   </div>
 
   <div class="status-strip" aria-label="Runtime status">
-    <span class="status-pill" id="statusText">connecting</span>
-    <a class="chip button status-chip" id="gatewayHealth" href="/api/health" title="Gateway health">health · —</a>
-    <span class="chip status-chip" id="workspace" title="workspace"></span>
     <span class="chip status-chip" id="model" title="model"></span>
     <span class="chip status-chip" id="autoSwitchStatus" title="automatic continuation">auto-switch · off</span>
     <span class="chip status-chip" id="turns" title="turns in this session">0 turns</span>
@@ -39,6 +41,7 @@
       approvals <span id="approvalsCount">0</span>
     </button>
     <nav class="bar-nav" aria-label="Console views">
+      <button type="button" id="commandPaletteButton" class="chip button" title="search commands and views (Ctrl+K)">Commands</button>
       <button type="button" id="historyButton" class="chip button" title="open saved conversations">History</button>
       <button type="button" id="executionButton" class="chip button" title="open the agent execution tree">Execution</button>
       <button type="button" id="eventsButton" class="chip button" title="open the event log">Events</button>
@@ -49,21 +52,14 @@
       <button type="button" id="systemButton" class="chip button" title="CPU, memory, disk, runs and background processes">System</button>
       <button type="button" id="terminalButton" class="chip button" title="open a system terminal in the workspace">Terminal</button>
       <button type="button" id="filesButton" class="chip button" title="browse and edit workspace files">Files</button>
+      <button type="button" id="templatesButton" class="chip button" title="save and load reusable task templates" aria-label="Task templates">Templates</button>
       <button type="button" id="notificationsButton" class="chip button" title="browser notifications when a conversation in the background finishes, fails or needs an approval" aria-pressed="false">Notify · off</button>
       <button type="button" id="settingsButton" class="chip button" title="open runtime settings">Settings</button>
     </nav>
   </div>
 
-  <!-- The header pair of runtime policy controls; the Settings modal draws its own pair from the same state. -->
+  <!-- Hidden mirror for until done; approval/plan mode lives in the composer toolbar. -->
   <div class="policy-home" id="policyHome">
-    <label class="chip select" title="tool approval policy">
-      approval
-      <select id="approvalMode">
-        <option value="auto">auto</option>
-        <option value="prompt">prompt</option>
-        <option value="deny">deny</option>
-      </select>
-    </label>
     <label class="chip checkbox" title="keep starting cycles while the plan has open steps">
       <input type="checkbox" id="autoContinue"> until done
     </label>
@@ -78,12 +74,7 @@
       <div class="panel-head">
         <h2>Conversation</h2>
         <div class="head-tools">
-          <div class="attachment-list" id="attachmentList" aria-live="polite"></div>
           <span class="muted" id="sessionTitle"></span>
-          <button type="button" id="taskChangesButton" class="chip button" title="What each task changed in the workspace; revert a whole task" aria-label="Task changes"><span>Changes</span></button>
-          <button type="button" id="reviewButton" class="chip button" title="Review the current diff, a branch, a commit or a pull request" aria-label="Review"><span>Review</span></button>
-          <button type="button" id="attachFilesButton" class="chip button" title="Attach files to the next task" aria-label="Attach files"><span>Attach</span></button>
-          <input type="file" id="attachmentInput" multiple hidden>
         </div>
       </div>
 
@@ -100,40 +91,51 @@
       <div id="messageQueue" class="message-queue-host"></div>
 
       <form id="taskForm" class="composer">
+        <div class="attachment-list" id="attachmentList" aria-live="polite"></div>
         <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why. Type @ to point at a file; paste a screenshot to attach it" aria-autocomplete="list" aria-controls="mentionList" aria-expanded="false"></textarea>
         <ul id="mentionList" class="mention-list" role="listbox" aria-label="Files matching the @ mention" hidden></ul>
-        <label class="effort-control" for="taskEffort">
-          <span>Effort</span>
-          <select id="taskEffort" aria-label="Reasoning effort for all agent layers">
-            <option value="inherit" selected>inherit</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-            <option value="xhigh">extra high</option>
-          </select>
-          <span class="effort-hint">applies to all layers when changed</span>
-        </label>
-        <div class="run-options" id="runOptions">
-          <label class="effort-control" title="The agent only investigates and writes a plan; nothing changes until you approve it">
-            <input type="checkbox" id="taskPlanMode"> Plan first
-          </label>
-          <label class="effort-control run-goal" for="taskGoal">
-            <span>Goal</span>
-            <input type="text" id="taskGoal" maxlength="2000" placeholder="optional: the condition that ends the run" aria-label="Goal of the run">
-          </label>
-          <label class="effort-control" for="taskMaxCost" title="Stop the run when it has cost this many dollars (empty: the server setting)">
-            <span>Cap $</span>
-            <input type="number" id="taskMaxCost" min="0" step="0.05" placeholder="—" aria-label="Dollar cap for the run">
+        <div class="composer-tools" aria-label="Task tools and mode">
+          <button type="button" id="taskChangesButton" class="chip button" title="What each task changed in the workspace; revert a whole task" aria-label="Task changes"><span>Changes</span></button>
+          <button type="button" id="reviewButton" class="chip button" title="Review the current diff, a branch, a commit or a pull request" aria-label="Review"><span>Review</span></button>
+          <button type="button" id="chatFormatToggle" class="chip button" aria-pressed="false" title="Switch between rendered Markdown preview and raw text for agent responses">Raw · off</button>
+          <label class="chip select composer-mode" title="Tool approval policy (auto, prompt, or deny) or Plan mode">
+            <span>Mode</span>
+            <select id="approvalMode" aria-label="Approval or plan mode">
+              <option value="auto">auto</option>
+              <option value="prompt">prompt</option>
+              <option value="deny">deny</option>
+              <option value="plan">plan</option>
+            </select>
           </label>
         </div>
-        <div id="discussionOptions" class="discussion-options-row" hidden></div>
+        <div class="composer-advanced" id="composerAdvanced">
+          <div class="run-options" id="runOptions">
+            <label class="effort-control" for="taskEffort">
+              <span>Effort</span>
+              <select id="taskEffort" aria-label="Reasoning effort for all agent layers">
+                <option value="inherit" selected>inherit</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">extra high</option>
+              </select>
+            </label>
+            <label class="effort-control" for="taskMaxCost" title="Stop the run when it has cost this many dollars (empty: the server setting)">
+              <span>Cap $</span>
+              <input type="number" id="taskMaxCost" min="0" step="0.05" placeholder="—" aria-label="Dollar cap for the run">
+            </label>
+          </div>
+        </div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
+          <button type="button" id="queueButton" class="ghost" title="Add this message to the project's queue for the next turn" hidden>Queue message</button>
           <button type="button" id="correctButton" class="ghost" title="Send the text to the running turn: the agent reads it before its next step" hidden>Correct now</button>
-          <button type="button" id="cancelButton" class="ghost" disabled>Stop</button>
           <button type="button" id="discussionButton" class="ghost" title="Multi-agent discussion: specialist personas deliberate in rounds and an observer writes the synthesis">
             Discussion
           </button>
+          <button type="button" id="composerOptionsToggle" class="ghost composer-options-toggle" aria-expanded="false" aria-controls="composerAdvanced">Options</button>
+          <button type="button" id="attachFilesButton" class="ghost icon-only" title="Attach files to the next task" aria-label="Attach files"></button>
+          <input type="file" id="attachmentInput" multiple hidden>
           <span class="muted grow-right" id="runTimer"></span>
           <span class="run-cost" id="runCost" aria-live="polite"></span>
         </div>
@@ -159,7 +161,10 @@
     <button type="button" id="projectsButton" class="chip button" title="manage projects" aria-label="Projects"><span>Projects</span></button>
     <button type="button" id="newProjectButton" class="chip button" title="register a project" aria-label="New project"><span>New Project</span></button>
   </div>
-  <div class="project-active-label" id="activeProjectName" aria-live="polite">Default Workspace</div>
+  <div class="project-bar-info">
+    <div class="project-active-label" id="activeProjectName" aria-live="polite">Default Workspace</div>
+    <span class="project-workspace-path" id="workspace" title="workspace"></span>
+  </div>
 </footer>
 
 <section id="consoleLogin" class="console-login" hidden>

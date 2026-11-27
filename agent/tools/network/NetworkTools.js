@@ -87,35 +87,103 @@ function classifyIpv4(address) {
 }
 
 
+function expandIpv6(address) {
+
+    const zoneFree = String(address || "").toLowerCase().split("%")[0];
+    if (!zoneFree) return null;
+
+    const doubleColonParts = zoneFree.split("::");
+    if (doubleColonParts.length > 2) return null;
+
+    const parseSide = side => {
+        if (!side) return [];
+        const raw = side.split(":");
+        const out = [];
+        for (let i = 0; i < raw.length; i++) {
+            const seg = raw[i];
+            if (seg.includes(".")) {
+                if (i !== raw.length - 1 || net.isIPv4(seg) !== true) return null;
+                const octets = seg.split(".").map(Number);
+                out.push((octets[0] << 8) | octets[1]);
+                out.push((octets[2] << 8) | octets[3]);
+            } else {
+                if (!/^[0-9a-f]{1,4}$/.test(seg)) return null;
+                out.push(parseInt(seg, 16));
+            }
+        }
+        return out;
+    };
+
+    const head = parseSide(doubleColonParts[0]);
+    if (!head) return null;
+
+    if (doubleColonParts.length === 1) {
+        return head.length === 8 ? head : null;
+    }
+
+    const tail = parseSide(doubleColonParts[1]);
+    if (!tail) return null;
+
+    const missing = 8 - head.length - tail.length;
+    if (missing < 1) return null;
+
+    return [
+        ...head,
+        ...new Array(missing).fill(0),
+        ...tail
+    ];
+}
+
+
+function ipv4FromHextets(hi, lo) {
+    return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
+
 function classifyIpv6(address) {
 
-    const normalised =
-        address.toLowerCase().split("%")[0];
+    const groups = expandIpv6(address);
 
-    if (
-        normalised === "::1" ||
-        normalised === "::"
-    ) {
+    if (!groups) {
+        return "invalid address";
+    }
+
+    const allZeroPrefix6 =
+        groups[0] === 0 &&
+        groups[1] === 0 &&
+        groups[2] === 0 &&
+        groups[3] === 0 &&
+        groups[4] === 0;
+
+    if (allZeroPrefix6 && groups[5] === 0 && groups[6] === 0 && (groups[7] === 0 || groups[7] === 1)) {
         return "loopback";
     }
 
-    /*
-    | IPv4-mapped addresses such as ::ffff:127.0.0.1 must be judged by
-    | their IPv4 value, not by their textual form.
-    */
-
-    const mapped =
-        /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalised);
-
-    if (mapped) {
-        return classifyIpv4(mapped[1]);
+    /* IPv4-mapped IPv6 ::ffff:0:0/96 (both dotted and hex forms) */
+    if (allZeroPrefix6 && groups[5] === 0xffff) {
+        return classifyIpv4(ipv4FromHextets(groups[6], groups[7])) || "IPv4-mapped address";
     }
 
-    const firstGroup =
-        parseInt(
-            normalised.split(":")[0] || "0",
-            16
-        );
+    /* Deprecated IPv4-compatible IPv6 ::/96 */
+    if (allZeroPrefix6 && groups[5] === 0) {
+        return classifyIpv4(ipv4FromHextets(groups[6], groups[7])) || "IPv4-compatible address";
+    }
+
+    /* NAT64 well-known prefix 64:ff9b::/96 and local-use 64:ff9b:1::/48 */
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0) {
+        return classifyIpv4(ipv4FromHextets(groups[6], groups[7])) || "NAT64 address";
+    }
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups[2] === 1) {
+        return "NAT64 local-use network";
+    }
+
+    /* 6to4 2002::/16 */
+    if (groups[0] === 0x2002) {
+        const embedded = classifyIpv4(ipv4FromHextets(groups[1], groups[2]));
+        if (embedded) return embedded;
+    }
+
+    const firstGroup = groups[0];
 
     if ((firstGroup & 0xfe00) === 0xfc00) {
         return "unique local";
@@ -123,6 +191,14 @@ function classifyIpv6(address) {
 
     if ((firstGroup & 0xffc0) === 0xfe80) {
         return "link-local";
+    }
+
+    if ((firstGroup & 0xffc0) === 0xfec0) {
+        return "site-local";
+    }
+
+    if ((firstGroup & 0xff00) === 0xff00) {
+        return "multicast";
     }
 
     return null;
@@ -223,6 +299,25 @@ function readNodeResponse(response, limit) {
 }
 
 
+function stripHeaders(headers, names) {
+
+    if (!headers || typeof headers !== "object") {
+        return {};
+    }
+
+    const drop = new Set(names.map(name => name.toLowerCase()));
+    const out = {};
+
+    for (const [key, value] of Object.entries(headers)) {
+        if (!drop.has(key.toLowerCase())) {
+            out[key] = value;
+        }
+    }
+
+    return out;
+}
+
+
 function requestPinned(url, args, address, controller) {
 
     return new Promise((resolve, reject) => {
@@ -241,18 +336,33 @@ function requestPinned(url, args, address, controller) {
             ...(url.protocol === "https:" ? { servername: url.hostname } : {}),
         };
 
-        const request = transport.request(options, response => resolve(response));
+        let request;
+        const cleanup = () => {
+            if (controller && controller.signal && typeof controller.signal.removeEventListener === "function") {
+                controller.signal.removeEventListener("abort", abort);
+            }
+        };
         const abort = () => {
             const error = new Error("request aborted");
             error.name = "AbortError";
-            request.destroy(error);
+            if (request) request.destroy(error);
         };
+
+        request = transport.request(options, response => {
+            cleanup();
+            resolve(response);
+        });
+
         if (controller.signal.aborted) {
             abort();
         } else {
             controller.signal.addEventListener("abort", abort, { once: true });
         }
-        request.on("error", error => reject(error));
+        request.on("error", error => {
+            cleanup();
+            reject(error);
+        });
+        request.on("close", cleanup);
         if (options.method === "POST" && args.body !== undefined) {
             request.write(args.body);
         }
@@ -327,6 +437,9 @@ async function netFetch(args) {
     try {
 
         let current = url;
+        let currentMethod = method;
+        let currentBody = args.body;
+        let currentHeaders = args.headers && typeof args.headers === "object" ? { ...args.headers } : undefined;
 
         for (;;) {
 
@@ -343,7 +456,7 @@ async function netFetch(args) {
             const response =
                 await requestPinned(
                     current,
-                    { ...args, method },
+                    { ...args, method: currentMethod, body: currentBody, headers: currentHeaders },
                     reachable.addresses[0],
                     controller
                 );
@@ -360,6 +473,8 @@ async function netFetch(args) {
                 response.statusCode < 400 &&
                 location
             ) {
+                if (typeof response.resume === "function") response.resume();
+                if (typeof response.destroy === "function") response.destroy();
 
                 if (redirects.length >= redirectLimit()) {
 
@@ -370,6 +485,26 @@ async function netFetch(args) {
 
                 const next =
                     new URL(location, current);
+
+                if (next.origin !== current.origin && currentHeaders) {
+                    currentHeaders = stripHeaders(currentHeaders, [
+                        "authorization",
+                        "proxy-authorization",
+                        "cookie",
+                        "cookie2",
+                        "x-api-key"
+                    ]);
+                }
+
+                if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 303) {
+                    if (currentMethod !== "GET") {
+                        currentMethod = "GET";
+                        currentBody = undefined;
+                        if (currentHeaders) {
+                            currentHeaders = stripHeaders(currentHeaders, ["content-length", "content-type"]);
+                        }
+                    }
+                }
 
                 redirects.push({
                     from:

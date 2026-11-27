@@ -48,6 +48,23 @@ function normalizeEndpoint(rawUrl) {
 }
 
 
+function hasHeader(headers, targetLower) {
+
+    return Object.keys(headers).some(key => key.toLowerCase() === targetLower);
+}
+
+
+function maskedHeaders(headers) {
+
+    if (!headers || typeof headers !== "object") return undefined;
+
+    const keys = Object.keys(headers);
+    if (keys.length === 0) return undefined;
+
+    return Object.fromEntries(keys.map(key => [key, "****"]));
+}
+
+
 class HttpTransport {
 
     static get kind() {
@@ -140,6 +157,8 @@ class HttpTransport {
 
     describe() {
 
+        const headers = maskedHeaders(this.config.headers);
+
         return {
             kind: HttpTransport.kind,
 
@@ -147,7 +166,9 @@ class HttpTransport {
 
             connected: this.connected,
 
-            session_id: this.sessionId
+            session_id: this.sessionId,
+
+            ...(headers ? { headers } : {})
         };
     }
 
@@ -162,14 +183,19 @@ class HttpTransport {
 
     headers(extra = {}) {
 
-        const headers = {
-            "content-type": "application/json",
-            "accept": "application/json, text/event-stream",
-            ...(this.config.headers || {}),
-            ...extra
-        };
+        const configured = this.config.headers || {};
+        const headers = {};
 
-        if (this.config.token) {
+        if (!hasHeader(configured, "content-type") && !hasHeader(extra, "content-type")) {
+            headers["content-type"] = "application/json";
+        }
+        if (!hasHeader(configured, "accept") && !hasHeader(extra, "accept")) {
+            headers.accept = "application/json, text/event-stream";
+        }
+
+        Object.assign(headers, configured, extra);
+
+        if (this.config.token && !hasHeader(headers, "authorization")) {
             headers.authorization = `Bearer ${this.config.token}`;
         }
 
@@ -177,11 +203,11 @@ class HttpTransport {
             headers.authorization = `Bearer ${this.accessToken}`;
         }
 
-        if (this.sessionId) {
+        if (this.sessionId && !hasHeader(headers, "mcp-session-id")) {
             headers["mcp-session-id"] = this.sessionId;
         }
 
-        if (this.negotiatedVersion) {
+        if (this.negotiatedVersion && !hasHeader(headers, "mcp-protocol-version")) {
             headers["mcp-protocol-version"] = this.negotiatedVersion;
         }
 

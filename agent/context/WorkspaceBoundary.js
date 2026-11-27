@@ -149,10 +149,11 @@ function isInsideRoot(
 
     const left = normalise(root);
     const right = normalise(target);
+    const prefix = left === separator ? left : left + separator;
 
     return (
         right === left ||
-        right.startsWith(left + separator)
+        right.startsWith(prefix)
     );
 }
 
@@ -319,12 +320,43 @@ function isSecretStoreFile(target) {
 }
 
 
+function isSecretStoreOrAncestor(target) {
+
+    let files;
+
+    try {
+        const store = require("../secrets/SecretStore");
+        files = [store.storeFile(), store.keyFile()];
+    } catch {
+        return false;
+    }
+
+    const realTarget = canonicalPath(path.resolve(String(target)));
+
+    return files.some(file => {
+        const realFile = canonicalPath(path.resolve(file));
+        return isInsideRoot(realTarget, realFile);
+    });
+}
+
+
 function assertNotSecretStore(target, inputPath) {
 
     if (isSecretStoreFile(target)) {
 
         throw new Error(
             `Path is the secret store and cannot be used by file tools: ${inputPath}`
+        );
+    }
+}
+
+
+function assertNotSecretStoreOrAncestor(target, inputPath) {
+
+    if (isSecretStoreOrAncestor(target)) {
+
+        throw new Error(
+            `Path contains the secret store and cannot be modified by file tools: ${inputPath}`
         );
     }
 }
@@ -738,6 +770,9 @@ module.exports = {
     WORKSPACE_ROOT,
     ignoredDirectories,
     isSecretStoreFile,
+    isSecretStoreOrAncestor,
+    assertNotSecretStore,
+    assertNotSecretStoreOrAncestor,
     capTotalSize,
     resolveWorkspacePath,
     assertWorkspacePathSafe,

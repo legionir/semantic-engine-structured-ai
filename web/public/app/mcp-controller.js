@@ -11,10 +11,10 @@
 import { state, touch } from "./store.js";
 import { mountInModal } from "./dom.js";
 import { connectBody, createMcpState, McpBody, mcpSubtitle } from "./mcp-view.js";
-import { notifyError } from "./console-core.js";
 import { createCatalogActions } from "./mcp-catalog-controller.js";
 import { createExtrasActions } from "./mcp-extras.js";
 import { handleMcpEvent } from "./mcp-commands.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 async function mcpRequest(url, options = {}) {
@@ -22,7 +22,7 @@ async function mcpRequest(url, options = {}) {
     let response;
 
     try {
-        response = await fetch(url, options);
+        response = await apiFetch(url, options);
     } catch (error) {
         return { ok: false, error: error.message || "network error" };
     }
@@ -37,18 +37,33 @@ async function mcpRequest(url, options = {}) {
 
 async function refreshMcp(force = false) {
 
+    const mcp = state.mcp;
+    if (mcp && !mcp.payload) {
+        mcp.loading = true;
+        mcp.error = null;
+        touch("mcp");
+    }
+
     const result = await mcpRequest(`/api/mcp${force ? "?refresh=1" : ""}`);
 
+    if (state.mcp !== mcp) return false;
+
+    mcp.loading = false;
+
     if (!result.ok || !result.payload || typeof result.payload !== "object") {
+        mcp.error = result.error || "The MCP servers could not be loaded.";
+        state.mcpModal?.setSubtitle(mcp.payload ? mcpSubtitle(mcp.payload) : "unavailable");
+        touch("mcp");
         return false;
     }
 
-    state.mcp.payload = {
+    mcp.error = null;
+    mcp.payload = {
         ...result.payload,
         servers: Array.isArray(result.payload.servers) ? result.payload.servers : []
     };
 
-    state.mcpModal?.setSubtitle(mcpSubtitle(state.mcp.payload));
+    state.mcpModal?.setSubtitle(mcpSubtitle(mcp.payload));
     touch("mcp");
 
     return true;
@@ -58,8 +73,16 @@ async function refreshMcp(force = false) {
 async function loadMcpConfig() {
 
     const mcp = state.mcp;
+    if (mcp) {
+        mcp.configLoading = true;
+        touch("mcp");
+    }
+
     const result = await mcpRequest(mcp.configTarget === "user" ? "/api/mcp/config?target=user" : "/api/mcp/config");
 
+    if (state.mcp !== mcp) return;
+
+    mcp.configLoading = false;
     mcp.configNotice = "";
 
     if (result.ok) {
@@ -148,6 +171,10 @@ const mcpActions = {
         if (tab === "secrets") void loadSecrets();
     },
 
+    retry() {
+        return Promise.all([refreshMcp(false), loadMcpConfig()]);
+    },
+
     reconnect(server) {
         return mcpServerAction(server, `/api/mcp/${encodeURIComponent(server.name)}/reconnect`, { method: "POST" });
     },
@@ -164,6 +191,25 @@ const mcpActions = {
 
     transport(value) {
         state.mcp.transport = value;
+        touch("mcp");
+    },
+
+    addHeaderRow() {
+        const rows = Array.isArray(state.mcp.customHeaders) ? state.mcp.customHeaders : [];
+        const nextId = rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1;
+        state.mcp.customHeaders = [...rows, { id: nextId, name: "", value: "" }];
+        touch("mcp");
+    },
+
+    updateHeaderRow(index, field, value) {
+        const rows = Array.isArray(state.mcp.customHeaders) ? state.mcp.customHeaders : [];
+        if (!rows[index]) return;
+        rows[index] = { ...rows[index], [field]: value };
+    },
+
+    removeHeaderRow(index) {
+        const rows = Array.isArray(state.mcp.customHeaders) ? state.mcp.customHeaders : [];
+        state.mcp.customHeaders = rows.filter((_, i) => i !== index);
         touch("mcp");
     },
 
@@ -210,6 +256,7 @@ const mcpActions = {
 
         /* a new form: the fields are empty again, the transport stays */
         mcp.formMessage = "";
+        mcp.customHeaders = [{ id: 1, name: "", value: "" }];
         mcp.formKey++;
         touch("mcp");
 
@@ -266,36 +313,26 @@ const mcpActions = {
 };
 
 
-export async function openMcp() {
+export function openMcp() {
 
     if (state.mcpModal && state.mcpModal.isOpen()) {
         return state.mcpModal;
     }
 
-    if (state.mcpOpening) {
-        return null;
-    }
-
-    state.mcpOpening = true;
-
-    /* each opening starts from what the server says now */
-    state.mcp = { ...createMcpState(), tab: state.mcp?.tab || "servers", progress: state.mcp?.progress || new Map() };
-
-    const loaded = await refreshMcp(false);
-
-    if (!loaded) {
-        state.mcpOpening = false;
-        notifyError("The MCP servers could not be loaded.");
-        return null;
-    }
-
-    await loadMcpConfig();
+    /* each opening starts from what the server says now, but the modal opens immediately */
+    state.mcp = {
+        ...createMcpState(),
+        loading: true,
+        configLoading: true,
+        tab: state.mcp?.tab || "servers",
+        progress: state.mcp?.progress || new Map()
+    };
 
     let dispose = () => {};
 
     const handle = Modal.open({
         title: "MCP servers",
-        subtitle: mcpSubtitle(state.mcp.payload),
+        subtitle: "Loading…",
         size: "medium",
         footer: Modal.row(
             Modal.button("Reconnect all", "ghost", () => refreshMcp(true)),
@@ -310,12 +347,12 @@ export async function openMcp() {
     });
 
     state.mcpModal = handle;
-    state.mcpOpening = false;
 
     dispose = mountInModal(handle, () => McpBody({ mcp: state.mcp, actions: mcpActions, project: currentProject() }), ["mcp"]);
 
     watchReconnects();
 
+    void Promise.all([refreshMcp(false), loadMcpConfig()]);
     if (state.mcp.tab === "catalog") void loadCatalog();
     if (state.mcp.tab === "secrets") void loadSecrets();
 

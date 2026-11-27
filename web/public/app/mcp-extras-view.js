@@ -16,6 +16,7 @@
 
 import { html } from "./dom.js";
 import { approvalLabel, createMcpExtrasState, importSummary, progressLabel, registryInputs } from "./mcp-extras.js";
+import { SkeletonCards, SkeletonRows } from "./skeleton-view.js";
 
 
 function ToolSwitches({ server, actions, busy }) {
@@ -61,7 +62,7 @@ function ApprovalSelect({ server, kind, actions, busy }) {
 function Browser({ browsing, actions }) {
 
     if (browsing.error) return html`<div class="mcp-error">${browsing.error}</div>`;
-    if (!browsing.items) return html`<p class="muted">loading…</p>`;
+    if (!browsing.items) return html`<${SkeletonRows} count=${4} compact=${true} label="Loading…" />`;
 
     if (browsing.kind === "resources") {
         return html`<div class="mcp-browser">
@@ -192,7 +193,8 @@ export function RegistryPanel({ mcp, actions }) {
         </form>
         ${box.error ? html`<p class="mcp-config-message bad">${box.error}</p>` : null}
         ${box.notice ? html`<p class="mcp-config-message">${box.notice}</p>` : null}
-        ${box.results && box.results.length === 0 ? html`<p class="empty">Nothing found.</p>` : null}
+        ${box.busy && (!box.results || box.results.length === 0) ? html`<${SkeletonCards} count=${3} label="Searching registry…" />` : null}
+        ${!box.busy && box.results && box.results.length === 0 ? html`<p class="empty">Nothing found.</p>` : null}
         ${(box.results || []).map(server => html`<div class="mcp-server" key=${server.name}>
             <div class="mcp-head">
                 <span class="name">${server.title || server.name}</span>

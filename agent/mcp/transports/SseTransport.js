@@ -30,6 +30,23 @@ function agentFor(url) {
 }
 
 
+function hasHeader(headers, targetLower) {
+
+    return Object.keys(headers).some(key => key.toLowerCase() === targetLower);
+}
+
+
+function maskedHeaders(headers) {
+
+    if (!headers || typeof headers !== "object") return undefined;
+
+    const keys = Object.keys(headers);
+    if (keys.length === 0) return undefined;
+
+    return Object.fromEntries(keys.map(key => [key, "****"]));
+}
+
+
 class SseTransport {
 
     static get kind() {
@@ -116,6 +133,8 @@ class SseTransport {
 
     describe() {
 
+        const headers = maskedHeaders(this.config.headers);
+
         return {
             kind: SseTransport.kind,
 
@@ -124,7 +143,9 @@ class SseTransport {
             post_url:
                 this.postUrl ? this.postUrl.toString() : null,
 
-            connected: this.isConnected()
+            connected: this.isConnected(),
+
+            ...(headers ? { headers } : {})
         };
     }
 
@@ -135,18 +156,24 @@ class SseTransport {
     }
 
 
-    headers(extra = {}) {
+    headers(extra = {}, defaults = {}) {
 
-        const headers = {
-            ...(this.config.headers || {}),
-            ...extra
-        };
+        const configured = this.config.headers || {};
+        const headers = {};
 
-        if (this.config.token) {
+        for (const [key, value] of Object.entries(defaults)) {
+            if (!hasHeader(configured, key.toLowerCase()) && !hasHeader(extra, key.toLowerCase())) {
+                headers[key] = value;
+            }
+        }
+
+        Object.assign(headers, configured, extra);
+
+        if (this.config.token && !hasHeader(headers, "authorization")) {
             headers.authorization = `Bearer ${this.config.token}`;
         }
 
-        if (this.negotiatedVersion) {
+        if (this.negotiatedVersion && !hasHeader(headers, "mcp-protocol-version")) {
             headers["mcp-protocol-version"] = this.negotiatedVersion;
         }
 
@@ -233,7 +260,7 @@ class SseTransport {
                         {
                             method: "GET",
 
-                            headers: this.headers({
+                            headers: this.headers({}, {
                                 accept: "text/event-stream",
                                 "cache-control": "no-cache"
                             })
@@ -403,10 +430,10 @@ class SseTransport {
                     {
                         method: "POST",
 
-                        headers: this.headers({
-                            "content-type": "application/json",
-                            "content-length": Buffer.byteLength(body)
-                        }),
+                        headers: this.headers(
+                            { "content-length": Buffer.byteLength(body) },
+                            { "content-type": "application/json" }
+                        ),
 
                         timeout: timeoutMs
                     },

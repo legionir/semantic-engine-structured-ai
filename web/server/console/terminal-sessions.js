@@ -63,6 +63,14 @@ function findScript(platform = process.platform) {
 }
 
 
+function quotePosixShellArg(value) {
+    const text = String(value || "");
+    if (!text) return "''";
+    if (!/[^A-Za-z0-9_./:-]/.test(text)) return text;
+    return `'${text.replace(/'/g, "'\\''")}'`;
+}
+
+
 class TerminalSessions {
 
     constructor(options = {}) {
@@ -187,7 +195,7 @@ class TerminalSessions {
         const args = mode === "script"
             ? (this.platform === "darwin"
                 ? ["-q", "/dev/null", this.shell, "-i"]
-                : ["-q", "-f", "-e", "-c", `${this.shell} -i`, "/dev/null"])
+                : ["-q", "-f", "-e", "-c", `${quotePosixShellArg(this.shell)} -i`, "/dev/null"])
             : (this.platform === "win32" ? [] : ["-i"]);
 
         return this.spawnImpl(mode === "script" ? this.scriptPath : this.shell, args, {
@@ -313,6 +321,19 @@ class TerminalSessions {
                     process.kill(session.pid, name);
                 } catch {
                     session.child.kill(name);
+                }
+            } else if (this.platform === "win32" && session.pid && name === "SIGKILL") {
+                try {
+                    const killer = spawn("taskkill", ["/pid", String(session.pid), "/T", "/F"], {
+                        windowsHide: true,
+                        stdio: "ignore"
+                    });
+                    killer.on("error", () => {
+                        try { session.child.kill(); } catch { /* already gone */ }
+                    });
+                    killer.unref?.();
+                } catch {
+                    session.child.kill();
                 }
             } else {
                 session.child.kill();

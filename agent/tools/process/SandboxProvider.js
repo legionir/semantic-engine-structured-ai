@@ -294,7 +294,11 @@ function buildLaunchSpec(options = {}) {
 }
 
 
-function cleanupContainer(spec, spawnImpl) {
+function cleanupContainer(spec, spawnImpl = spawn) {
+
+    if (!spec || !spec.containerName || typeof spawnImpl !== "function") {
+        return;
+    }
 
     let cleanup;
 
@@ -305,7 +309,7 @@ function cleanupContainer(spec, spawnImpl) {
             {
                 stdio: "ignore",
                 windowsHide: true,
-                env: spec.options.env
+                env: spec.options && spec.options.env
             }
         );
     } catch {

@@ -27,6 +27,7 @@
 | token allowed on every project. Every answer is masked by value.
 */
 
+const { isTrustedProxy } = require("../Middleware");
 const { sendJson } = require("../Response");
 const { readBody } = require("../RequestBody");
 const { maskDeep } = require("../../../agent/events/EventRedactor");
@@ -48,19 +49,27 @@ function serverSegment(pathname, suffix) {
 
     if (!middle || middle.includes("/")) return null;
 
-    try {
-        return decodeURIComponent(middle);
-    } catch {
-        return null;
-    }
+    return decodeURIComponent(middle);
 }
 
 
-function requestBase(req) {
+function requestBase(req, trustedProxies = "") {
 
-    const forwarded = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-    const proto = forwarded || (req.socket && req.socket.encrypted ? "https" : "http");
-    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    const trusted = isTrustedProxy(req, trustedProxies);
+    const forwardedProto = trusted
+        ? String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase()
+        : "";
+    const proto =
+        forwardedProto === "http" || forwardedProto === "https"
+            ? forwardedProto
+            : (req.socket && req.socket.encrypted ? "https" : "http");
+    const forwardedHost = trusted
+        ? String(req.headers["x-forwarded-host"] || "").split(",")[0].trim()
+        : "";
+    const rawHost = forwardedHost || req.headers.host;
+    const host = rawHost && /^(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::\d{1,5})?$/i.test(String(rawHost).trim())
+        ? String(rawHost).trim()
+        : null;
 
     return host ? `${proto}://${host}` : null;
 }
@@ -282,7 +291,14 @@ module.exports = async function McpCompletionRoutes(shared, request) {
             if (!client) throw Object.assign(new Error(`unknown MCP server: ${signingIn}`), { status: 404 });
 
             const config = client.config.oauth ? client.config : { ...client.config, oauth: {} };
-            const started = await oauth.start(config, { requestBase: requestBase(req) });
+            const started = await oauth.start(config, {
+                requestBase: requestBase(
+                    req,
+                    runtime.settings && typeof runtime.settings.get === "function"
+                        ? runtime.settings.get("TRUSTED_PROXIES")
+                        : ""
+                )
+            });
 
             sendJson(res, 200, { ok: true, ...started, state: undefined });
 

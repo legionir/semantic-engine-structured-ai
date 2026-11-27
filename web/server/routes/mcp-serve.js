@@ -169,7 +169,7 @@ module.exports = async function McpServeRoutes(shared, request) {
         return true;
     }
 
-    if (!sameOrigin(req.headers.origin, req.headers.host)) {
+    if (!sameOrigin(req.headers.origin, req.headers.host, req.headers["x-forwarded-host"])) {
         sendJson(res, 403, { error: "cross-origin MCP request refused" });
         return true;
     }

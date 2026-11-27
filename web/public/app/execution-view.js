@@ -6,6 +6,7 @@
 import { html, mountInModal } from "./dom.js";
 import { shorten, singleLine, statusIcon, SHAPE_LABEL } from "./formatters.js";
 import { ranAlongside } from "./execution-model.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 function loopText(loop) {
@@ -227,11 +228,11 @@ function CallDetail({ call, graph, run }) {
             />
         </dl>
         <div class="detail-block">
-            <h3>Arguments</h3>
+            <h3>Arguments ${call.loadingFull && !full ? html`<span class="skeleton-inline" role="status" aria-busy="true"><span class="sr-only">Loading full call…</span></span>` : null}</h3>
             <pre>${argumentsText}</pre>
         </div>
         <div class="detail-block">
-            <h3>${call.status === "failed" ? "Error" : "Result"}</h3>
+            <h3>${call.status === "failed" ? "Error" : "Result"} ${call.loadingFull && !full ? html`<span class="skeleton-inline" role="status" aria-busy="true"><span class="sr-only">Loading full result…</span></span>` : null}</h3>
             <pre class=${call.status === "failed" ? "bad" : undefined}>${resultText}</pre>
         </div>
     `;
@@ -261,6 +262,10 @@ export async function openCallDetail({ Modal, call, graph, run, touchTree }) {
         onClose: () => dispose()
     });
 
+    if (call.key && !call.full) {
+        call.loadingFull = true;
+    }
+
     dispose = mountInModal(handle, CallDetail, ["tree"], { call, graph, run }, "detail");
 
     if (!call.key) {
@@ -269,7 +274,7 @@ export async function openCallDetail({ Modal, call, graph, run, touchTree }) {
 
     try {
 
-        const response = await fetch(`/api/calls/${encodeURIComponent(call.key)}`);
+        const response = await apiFetch(`/api/calls/${encodeURIComponent(call.key)}`);
 
         if (response.ok) {
 
@@ -277,12 +282,14 @@ export async function openCallDetail({ Modal, call, graph, run, touchTree }) {
 
             if (payload && payload.call) {
                 call.full = payload.call;
-                touchTree();
             }
         }
 
     } catch {
         /* the preview stays on screen */
+    } finally {
+        call.loadingFull = false;
+        touchTree();
     }
 
     return handle;

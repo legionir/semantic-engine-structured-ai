@@ -84,6 +84,42 @@ function clearMalformed(progress) {
 }
 
 
+function abortableSleep(delay, runHost) {
+
+    const run = typeof runHost.currentRun === "function" ? runHost.currentRun() : null;
+    const signal = run && run.controller ? run.controller.signal : null;
+
+    if ((typeof runHost.isRunCancelled === "function" && runHost.isRunCancelled()) || (signal && signal.aborted)) {
+        const aborted = new Error("Model request aborted: run cancelled");
+        aborted.retryable = false;
+        return Promise.reject(aborted);
+    }
+
+    return new Promise((resolve, reject) => {
+
+        let timer = null;
+
+        const onAbort = () => {
+            if (timer !== null) clearTimeout(timer);
+            const aborted = new Error("Model request aborted: run cancelled");
+            aborted.retryable = false;
+            reject(aborted);
+        };
+
+        if (signal && typeof signal.addEventListener === "function") {
+            signal.addEventListener("abort", onAbort, { once: true });
+        }
+
+        timer = setTimeout(() => {
+            if (signal && typeof signal.removeEventListener === "function") {
+                signal.removeEventListener("abort", onAbort);
+            }
+            resolve();
+        }, delay);
+    });
+}
+
+
 async function callAI(options) {
 
     const h = host();
@@ -156,10 +192,7 @@ async function callAI(options) {
                 status: error.status
             });
 
-            await new Promise(
-                resolve =>
-                    setTimeout(resolve, delay)
-            );
+            await abortableSleep(delay, h);
         }
     }
 

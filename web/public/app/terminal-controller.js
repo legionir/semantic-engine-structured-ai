@@ -13,9 +13,10 @@
 
 import { state, touch } from "./store.js";
 import { mount } from "./dom.js";
-import { createTerminalState, TerminalToolbar, terminalSubtitle } from "./terminal-view.js";
+import { createTerminalState, TerminalStatus, TerminalToolbar, terminalSubtitle } from "./terminal-view.js";
 import { apiRequest } from "./operator-api.js";
 import { installCspStyleBridge } from "./csp-style-bridge.js";
+import { createEventSource } from "./auth-transport.js";
 
 
 const THEME = Object.freeze({
@@ -23,7 +24,10 @@ const THEME = Object.freeze({
     foreground: "#e9edf7",
     cursor: "#6d9bff",
     cursorAccent: "#0a0e17",
-    selectionBackground: "rgba(109, 155, 255, 0.35)"
+    selectionBackground: "rgba(109, 155, 255, 0.35)",
+    scrollbarSliderBackground: "rgba(148, 163, 184, 0.45)",
+    scrollbarSliderHoverBackground: "rgba(148, 163, 184, 0.72)",
+    scrollbarSliderActiveBackground: "rgba(148, 163, 184, 0.92)"
 });
 
 let loader = async () => {
@@ -60,8 +64,14 @@ function changed() {
 
 async function refreshSessions() {
 
-    const result = await apiRequest("/api/terminal");
     const target = terminal();
+    if (!target.info) {
+        target.loading = true;
+        changed();
+    }
+
+    const result = await apiRequest("/api/terminal");
+    target.loading = false;
 
     if (!result.ok) {
         target.error = result.error;
@@ -90,6 +100,76 @@ function monoFont() {
 }
 
 
+function installTouchScroll(element, term) {
+
+    if (typeof term.scrollLines !== "function") return () => {};
+
+    let tracking = false;
+    let scrolling = false;
+    let startY = 0;
+    let lastY = 0;
+    let carry = 0;
+
+    const lineHeight = () => {
+        const rows = Math.max(1, Number(term.rows) || 24);
+        const height = element.clientHeight || (element.getBoundingClientRect ? element.getBoundingClientRect().height : 0);
+        return Math.max(12, height > 0 ? height / rows : 18);
+    };
+
+    const onStart = event => {
+        if (!event.touches || event.touches.length !== 1) {
+            tracking = false;
+            scrolling = false;
+            return;
+        }
+        if (event.target && typeof event.target.closest === "function" && event.target.closest(".scrollbar")) {
+            tracking = false;
+            return;
+        }
+        tracking = true;
+        scrolling = false;
+        startY = event.touches[0].clientY;
+        lastY = startY;
+        carry = 0;
+    };
+
+    const onMove = event => {
+        if (!tracking || !event.touches || event.touches.length !== 1) return;
+        const y = event.touches[0].clientY;
+        if (!scrolling && Math.abs(y - startY) < 4) return;
+        scrolling = true;
+        if (event.cancelable) event.preventDefault();
+        const deltaY = y - lastY;
+        lastY = y;
+        carry += deltaY;
+        const step = lineHeight();
+        const lines = Math.trunc(carry / step);
+        if (lines !== 0) {
+            carry -= lines * step;
+            term.scrollLines(-lines);
+        }
+    };
+
+    const onEnd = () => {
+        tracking = false;
+        scrolling = false;
+        carry = 0;
+    };
+
+    element.addEventListener("touchstart", onStart, { passive: true });
+    element.addEventListener("touchmove", onMove, { passive: false });
+    element.addEventListener("touchend", onEnd, { passive: true });
+    element.addEventListener("touchcancel", onEnd, { passive: true });
+
+    return () => {
+        element.removeEventListener("touchstart", onStart);
+        element.removeEventListener("touchmove", onMove);
+        element.removeEventListener("touchend", onEnd);
+        element.removeEventListener("touchcancel", onEnd);
+    };
+}
+
+
 function detach() {
 
     if (!screen) return;
@@ -101,6 +181,7 @@ function detach() {
     clearTimeout(current.resizeTimer);
     current.stream?.close();
     current.observer?.disconnect();
+    current.removeTouch?.();
     current.host.removeEventListener("keydown", current.keepEscape);
     try {
         current.term.dispose();
@@ -124,7 +205,7 @@ function sendInput(current) {
 
     /* one request at a time keeps the keystrokes in order */
     current.sending = current.sending.then(async () => {
-        const result = await apiRequest(`/api/terminal/${current.id}/input`, { json: { data } });
+        const result = await apiRequest(`/api/terminal/${encodeURIComponent(current.id)}/input`, { json: { data } });
         if (!result.ok && screen === current) {
             terminal().error = result.error;
             changed();
@@ -150,7 +231,7 @@ function queueResize(current, cols, rows) {
 
     clearTimeout(current.resizeTimer);
     current.resizeTimer = setTimeout(() => {
-        apiRequest(`/api/terminal/${current.id}/resize`, { json: { cols, rows } });
+        apiRequest(`/api/terminal/${encodeURIComponent(current.id)}/resize`, { json: { cols, rows } });
     }, state.terminalResizeDebounceMs);
 }
 
@@ -171,7 +252,7 @@ function connect(current) {
     target.connection = "connecting";
     changed();
 
-    const stream = new EventSource(`/api/terminal/${current.id}/stream`);
+    const stream = createEventSource(`/api/terminal/${encodeURIComponent(current.id)}/stream`);
     current.stream = stream;
 
     stream.onmessage = message => {
@@ -239,22 +320,31 @@ async function attach(id, host) {
         fontFamily: monoFont(),
         fontSize: 13,
         scrollback: 5000,
+        scrollSensitivity: 3,
+        fastScrollSensitivity: 6,
+        overviewRuler: { width: 16 },
         theme: THEME
     });
     const fitAddon = new modules.FitAddon();
     term.loadAddon(fitAddon);
+
+    const screenEl = document.createElement("div");
+    screenEl.className = "terminal-screen";
+    host.replaceChildren(screenEl);
 
     const current = {
         id,
         term,
         fit: fitAddon,
         host,
+        screenEl,
         pending: "",
         flushTimer: null,
         resizeTimer: null,
         sending: Promise.resolve(),
         stream: null,
         observer: null,
+        removeTouch: null,
         /* Escape belongs to the shell, not to the dialog around it */
         keepEscape: event => {
             if (event.key === "Escape") event.stopPropagation();
@@ -264,15 +354,27 @@ async function attach(id, host) {
     screen = current;
 
     host.addEventListener("keydown", current.keepEscape);
-    term.open(host);
+    term.open(screenEl);
+    current.removeTouch = installTouchScroll(screenEl, term);
     fit(current);
+
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+            if (screen === current) fit(current);
+        });
+    }
+    if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
+        void document.fonts.ready.then(() => {
+            if (screen === current) fit(current);
+        });
+    }
 
     term.onData(data => queueInput(current, data));
     term.onResize(({ cols, rows }) => queueResize(current, cols, rows));
 
     if (typeof ResizeObserver === "function") {
         current.observer = new ResizeObserver(() => fit(current));
-        current.observer.observe(host);
+        current.observer.observe(screenEl);
     }
 
     connect(current);
@@ -314,7 +416,7 @@ function actionsFor(host) {
 
         async kill(id) {
             const target = terminal();
-            const result = await apiRequest(`/api/terminal/${id}`, { method: "DELETE" });
+            const result = await apiRequest(`/api/terminal/${encodeURIComponent(id)}`, { method: "DELETE" });
             if (!result.ok && result.status !== 404) {
                 target.error = result.error;
                 changed();
@@ -349,7 +451,8 @@ export async function openTerminal() {
     container.append(toolbar, host);
 
     const actions = actionsFor(host);
-    let dispose = () => {};
+    let disposeToolbar = () => {};
+    let disposeStatus = () => {};
 
     const handle = Modal.open({
         title: "Terminal",
@@ -357,7 +460,8 @@ export async function openTerminal() {
         size: "large",
         className: "terminal-modal",
         onClose: () => {
-            dispose();
+            disposeToolbar();
+            disposeStatus();
             detach();
             state.terminalModal = null;
         }
@@ -365,7 +469,16 @@ export async function openTerminal() {
 
     state.terminalModal = handle;
     handle.setBody(container);
-    dispose = mount(toolbar, () => TerminalToolbar({ terminal: state.terminal, actions }), ["terminal"]);
+
+    const titleSlot = handle.element.querySelector(".modal-head .modal-title");
+    if (titleSlot) {
+        const statusHost = document.createElement("div");
+        statusHost.className = "terminal-head-status";
+        titleSlot.append(statusHost);
+        disposeStatus = mount(statusHost, () => TerminalStatus({ terminal: state.terminal }), ["terminal"]);
+    }
+
+    disposeToolbar = mount(toolbar, () => TerminalToolbar({ terminal: state.terminal, actions }), ["terminal"]);
 
     if (!(await refreshSessions()) || state.terminalModal !== handle) return handle;
 

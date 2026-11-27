@@ -35,8 +35,11 @@ const fs = require("fs");
 const path = require("path");
 
 const settings = require("../config");
+const { httpTransport } = require("../providers/HttpTransport");
 
 const CLIENT_NAME = "structured-ai";
+const oauthTimeoutMs = () => Math.max(1000, Math.min(Number(settings.get("MAX_REQUEST_MS")) || 15000, 15000));
+const maxResponseBytes = () => 262144;
 const expiryMarginMs = () => settings.get("MCP_OAUTH_REFRESH_MARGIN_MS");
 const flowTtlMs = () => settings.get("MCP_OAUTH_FLOW_TTL_MS");
 
@@ -130,20 +133,63 @@ function writeSecret(server, kind, value) {
 
 /* --------------------------------------------------------------- http */
 
-async function getJson(url) {
+function assertHttpUrl(rawUrl, label = "OAuth endpoint") {
 
-    let response;
+    let parsed;
 
     try {
-        response = await fetch(url, { headers: { accept: "application/json", "mcp-protocol-version": "2025-06-18" } });
+        parsed = new URL(String(rawUrl));
+    } catch {
+        throw Object.assign(new Error(`${label} is not a valid URL`), { status: 400 });
+    }
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw Object.assign(new Error(`${label} must use http or https`), { status: 400 });
+    }
+
+    return parsed.href;
+}
+
+
+function parseBoundedJson(text, label = "OAuth response") {
+
+    const raw = String(text || "");
+
+    if (Buffer.byteLength(raw, "utf8") > maxResponseBytes()) {
+        throw Object.assign(new Error(`${label} exceeded maximum allowed size`), { status: 502 });
+    }
+
+    return JSON.parse(raw);
+}
+
+
+async function getJson(url) {
+
+    let safeUrl;
+
+    try {
+        safeUrl = assertHttpUrl(url, "OAuth metadata endpoint");
     } catch {
         return null;
     }
 
-    if (!response.ok) return null;
+    let response;
 
     try {
-        return await response.json();
+        response = await httpTransport.request({
+            url: safeUrl,
+            method: "GET",
+            headers: { accept: "application/json", "mcp-protocol-version": "2025-06-18" },
+            timeoutMs: oauthTimeoutMs()
+        });
+    } catch {
+        return null;
+    }
+
+    if (response.status < 200 || response.status >= 300) return null;
+
+    try {
+        return parseBoundedJson(await response.text(), "OAuth metadata");
     } catch {
         return null;
     }
@@ -152,6 +198,7 @@ async function getJson(url) {
 
 async function postForm(url, fields, { clientId, clientSecret, authMethod } = {}) {
 
+    const safeUrl = assertHttpUrl(url, "token endpoint");
     const body = new URLSearchParams();
     const headers = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
 
@@ -166,17 +213,23 @@ async function postForm(url, fields, { clientId, clientSecret, authMethod } = {}
         if (clientSecret) body.set("client_secret", clientSecret);
     }
 
-    const response = await fetch(url, { method: "POST", headers, body: body.toString() });
+    const response = await httpTransport.request({
+        url: safeUrl,
+        method: "POST",
+        headers,
+        body: body.toString(),
+        timeoutMs: oauthTimeoutMs()
+    });
     const text = await response.text();
     let payload = null;
 
     try {
-        payload = JSON.parse(text);
+        payload = parseBoundedJson(text, "token response");
     } catch {
         payload = null;
     }
 
-    if (!response.ok || !payload || !payload.access_token) {
+    if (response.status < 200 || response.status >= 300 || !payload || !payload.access_token) {
         const reason = payload && (payload.error_description || payload.error) ? `${payload.error}${payload.error_description ? `: ${payload.error_description}` : ""}` : `HTTP ${response.status}`;
         throw Object.assign(new Error(`the token endpoint refused the request (${reason})`), { status: 502, oauthError: payload && payload.error });
     }
@@ -269,9 +322,9 @@ async function discover(serverUrl, { wwwAuthenticate = null, authorizationServer
         resource: (resourceMetadata && resourceMetadata.resource) || canonicalResource(serverUrl),
         scopes_supported: (resourceMetadata && resourceMetadata.scopes_supported) || metadata.scopes_supported || null,
         issuer: metadata.issuer || issuer,
-        authorization_endpoint: metadata.authorization_endpoint,
-        token_endpoint: metadata.token_endpoint,
-        registration_endpoint: metadata.registration_endpoint || null,
+        authorization_endpoint: assertHttpUrl(metadata.authorization_endpoint, "authorization_endpoint"),
+        token_endpoint: assertHttpUrl(metadata.token_endpoint, "token_endpoint"),
+        registration_endpoint: metadata.registration_endpoint ? assertHttpUrl(metadata.registration_endpoint, "registration_endpoint") : null,
         token_endpoint_auth_methods: metadata.token_endpoint_auth_methods_supported || null
     };
 }
@@ -289,7 +342,8 @@ async function register(endpoints, redirectUri, scopes) {
     let response;
 
     try {
-        response = await fetch(endpoints.registration_endpoint, {
+        response = await httpTransport.request({
+            url: assertHttpUrl(endpoints.registration_endpoint, "registration endpoint"),
             method: "POST",
             headers: { "content-type": "application/json", accept: "application/json" },
             body: JSON.stringify({
@@ -299,15 +353,21 @@ async function register(endpoints, redirectUri, scopes) {
                 response_types: ["code"],
                 token_endpoint_auth_method: "none",
                 ...(scopes && scopes.length ? { scope: scopes.join(" ") } : {})
-            })
+            }),
+            timeoutMs: oauthTimeoutMs()
         });
     } catch (error) {
         throw Object.assign(new Error(`client registration failed: ${error.message}`), { status: 502 });
     }
 
-    const payload = await response.json().catch(() => null);
+    let payload = null;
+    try {
+        payload = parseBoundedJson(await response.text(), "registration response");
+    } catch {
+        payload = null;
+    }
 
-    if (!response.ok || !payload || !payload.client_id) {
+    if (response.status < 200 || response.status >= 300 || !payload || !payload.client_id) {
         throw Object.assign(
             new Error(`client registration was refused (${payload && (payload.error_description || payload.error) || `HTTP ${response.status}`})`),
             { status: 502 }

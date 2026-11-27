@@ -324,6 +324,8 @@ module.exports = function createConversations(shared) {
             conv.session.history = withoutImages(conv.history);
             conv.session.status = conv.status;
             conv.session.project_id = conv.projectId;
+            if (context && context.workspaceRoot) conv.session.workspace = context.workspaceRoot;
+            if (context && context.project && context.project.name) conv.session.project_name = context.project.name;
             conv.session.task = conv.task;
             conv.session.turns =
                 conv.messages.filter(message => message.role === "user").length;

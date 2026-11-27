@@ -158,6 +158,14 @@ module.exports = [
         "description": "Longest message or detail text (such as a model's error response) kept in one log entry before it is clipped."
     },
     {
+        "key": "TRUSTED_PROXIES",
+        "group": "console",
+        "type": "string",
+        "default": "",
+        "fixed": true,
+        "description": "Comma-separated list of trusted reverse proxy IP addresses (for example 127.0.0.1,::1). Empty ignores X-Forwarded-Host and X-Forwarded-Proto headers."
+    },
+    {
         "key": "CONSOLE_TERMINAL_ENABLED",
         "group": "console",
         "type": "boolean",

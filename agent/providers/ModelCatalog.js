@@ -85,7 +85,10 @@ function requestFor({ provider, baseUrl, apiKey, store }) {
             headers.authorization = `Bearer ${apiKey}`;
         } else {
             if (!accessKeyId || !secretAccessKey) {
-                throw new Error("Bedrock model discovery requires AGENT_API_KEY or BEDROCK_ACCESS_KEY_ID and BEDROCK_SECRET_ACCESS_KEY.");
+                throw Object.assign(
+                    new Error("Bedrock model discovery requires AGENT_API_KEY or BEDROCK_ACCESS_KEY_ID and BEDROCK_SECRET_ACCESS_KEY."),
+                    { status: 400 }
+                );
             }
             Object.assign(headers, signRequest({
                 method: "GET",
@@ -99,7 +102,10 @@ function requestFor({ provider, baseUrl, apiKey, store }) {
             }));
         }
     } else {
-        throw new Error(`Model discovery is not supported for provider "${provider}".`);
+        throw Object.assign(
+            new Error(`Model discovery is not supported for provider "${provider}".`),
+            { status: 400 }
+        );
     }
 
     return { url: url.href, headers };
@@ -196,7 +202,12 @@ function endpointForRole(role, settingsStore) {
         ? configuredBase
         : DEFAULT_BASE_URLS[provider]);
 
-    if (!baseUrl) throw new Error(`Set ENDPOINT_${role}_BASE_URL or AGENT_BASE_URL before loading models.`);
+    if (!baseUrl) {
+        throw Object.assign(
+            new Error(`Set ENDPOINT_${role}_BASE_URL or AGENT_BASE_URL before loading models.`),
+            { status: 400 }
+        );
+    }
 
     const apiKey = settingsStore.get(`ENDPOINT_${role}_API_KEY`) || settingsStore.get("AGENT_API_KEY");
     return { provider, request: requestFor({ provider, baseUrl, apiKey, store: settingsStore }) };
@@ -205,7 +216,9 @@ function endpointForRole(role, settingsStore) {
 
 async function listModels({ role = "MAIN", settingsStore = settings, transport = httpTransport } = {}) {
     const roleName = String(role).toUpperCase();
-    if (!ROLES.has(roleName)) throw new Error("role must be MAIN, L1, L2, L3 or SUMMARY.");
+    if (!ROLES.has(roleName)) {
+        throw Object.assign(new Error("role must be MAIN, L1, L2, L3 or SUMMARY."), { status: 400 });
+    }
 
     const endpoint = endpointForRole(roleName, settingsStore);
     return fetchModelsForRequest({ ...endpoint, settingsStore, transport });
@@ -216,6 +229,7 @@ async function listModelCatalog({ settingsStore = settings, transport = httpTran
 
     const byRole = Object.create(null);
     const errors = Object.create(null);
+    const statuses = Object.create(null);
     let mainModels = [];
 
     try {
@@ -223,6 +237,7 @@ async function listModelCatalog({ settingsStore = settings, transport = httpTran
         byRole.MAIN = mainModels;
     } catch (error) {
         errors.MAIN = error.message;
+        statuses.MAIN = error.status || 502;
         byRole.MAIN = [];
     }
 
@@ -243,12 +258,18 @@ async function listModelCatalog({ settingsStore = settings, transport = httpTran
             byRole[role] = await listModels({ role, settingsStore, transport });
         } catch (error) {
             errors[role] = error.message;
+            statuses[role] = error.status || 502;
             byRole[role] = mainModels;
         }
     }));
 
     if (Object.values(byRole).every(models => models.length === 0)) {
-        throw new Error(errors.MAIN || Object.values(errors)[0] || "No model catalog is available.");
+        const allStatuses = Object.values(statuses);
+        const status = allStatuses.length > 0 && allStatuses.every(code => code === 400) ? 400 : 502;
+        throw Object.assign(
+            new Error(errors.MAIN || Object.values(errors)[0] || "No model catalog is available."),
+            { status }
+        );
     }
 
     return { models: mainModels, byRole, errors };

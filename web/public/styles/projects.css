@@ -61,7 +61,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  margin: 16px 18px 18px;
+  margin: 8px;
   background: linear-gradient(180deg, rgba(255, 255, 255, .02), transparent 46%), var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -72,24 +72,31 @@
 .project-dashboard[hidden] { display: none; }
 
 
-.dashboard-head { padding: 14px 18px; }
+.dashboard-head { padding: 12px 14px; }
 .dashboard-head h2 { font-weight: 700; letter-spacing: -.01em; }
 
 .dashboard-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   gap: 6px;
-  padding: 9px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line-soft);
   background: rgba(255, 255, 255, .015);
 }
+.dashboard-tabs::-webkit-scrollbar { display: none; }
 
 .dashboard-tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 40px;
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  padding: 5px 12px;
+  padding: 6px 12px;
   font-size: 12px;
   font-weight: 550;
   box-shadow: none;
@@ -103,7 +110,7 @@
 }
 
 .dashboard-body {
-  padding: 16px 18px;
+  padding: 12px 14px;
   overflow: auto;
   flex: 1;
 }
@@ -138,16 +145,18 @@
 
 .project-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  padding: 9px 6px;
+  padding: 10px 6px;
   border-radius: 6px;
   border-bottom: 1px solid rgba(255, 255, 255, .04);
 }
+.project-row button { min-height: 40px; }
 .project-row:hover { background: rgba(255, 255, 255, .025); }
 .project-row input[type="checkbox"],
 .project-choice-row input[type="radio"] { accent-color: var(--accent); flex: 0 0 auto; }
-.project-row .name { flex: 1; font-weight: 600; }
+.project-row .name { flex: 1 1 140px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .project-choice-row {
   display: flex;
   align-items: center;
@@ -161,6 +170,19 @@
 .project-choice-row .name { flex: 1; font-weight: 650; }
 .project-choice-row .muted { font-size: 12px; }
 .modal-foot button:disabled { opacity: .45; cursor: not-allowed; }
+
+@media (min-width: 640px) {
+  .project-row { flex-wrap: nowrap; padding: 9px 6px; }
+  .project-row button { min-height: 0; }
+}
+
+@media (min-width: 900px) {
+  .project-dashboard { margin: 16px 18px 18px; }
+  .dashboard-head { padding: 14px 18px; }
+  .dashboard-tabs { flex-wrap: wrap; overflow-x: visible; padding: 9px 14px; }
+  .dashboard-tabs button { min-height: 0; padding: 5px 12px; }
+  .dashboard-body { padding: 16px 18px; }
+}
 
 .labeled-run {
   border-left: 3px solid var(--accent);

@@ -189,6 +189,22 @@ async function main() {
         }
     });
 
+    await test("WorkspaceBoundary handles filesystem root containment cleanly", () => {
+        const WorkspaceBoundary = require(path.join(REPO, "agent", "context", "WorkspaceBoundary.js"));
+        assert.strictEqual(WorkspaceBoundary.isInsideRoot(path.sep, path.join(path.sep, "tmp")), true);
+    });
+
+    await test("CommandRisk ignores $(...) inside single quotes and detects unquoted nested substitution", () => {
+        const CommandRisk = require(path.join(REPO, "agent", "policy", "CommandRisk.js"));
+        const ShellCommandLexer = require(path.join(REPO, "agent", "policy", "ShellCommandLexer.js"));
+        const doubleQuoted = CommandRisk.classify('echo "\'$(rm -rf /)\'"');
+        assert.strictEqual(doubleQuoted.risk, "high", "double quotes allow command substitution");
+        const pureSingle = CommandRisk.classify("echo '$(rm -rf /)'");
+        assert.strictEqual(pureSingle.risk, "low", "single quotes prevent command substitution");
+        assert.strictEqual(ShellCommandLexer.guessDialect("FOO=bar sudo Remove-Item -Recurse C:\\tmp"), "powershell");
+        assert.strictEqual(ShellCommandLexer.guessDialect("find / -path /tmp -delete"), "posix");
+    });
+
     const passed = results.filter(Boolean).length;
     console.log(`\n${passed}/${results.length} passed`);
     try { fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* ignore */ }

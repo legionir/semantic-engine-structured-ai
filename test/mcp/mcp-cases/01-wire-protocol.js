@@ -402,4 +402,111 @@ module.exports = async function wireProtocolCases(ctx) {
 
         fs.rmSync(path.join(WORKSPACE, ".mcp.json"), { force: true });
     });
+
+    await test("http, sse and websocket transports preserve arbitrary custom headers and mask them in describe()", async () => {
+
+        const validator = require("../../../agent/mcp/McpConfigValidator");
+        const { HttpTransport } = require("../../../agent/mcp/transports/HttpTransport");
+        const { SseTransport } = require("../../../agent/mcp/transports/SseTransport");
+        const { WebSocketTransport } = require("../../../agent/mcp/transports/WebSocketTransport");
+
+        const normalized = validator.normalizeOne("custom", {
+            transport: "http",
+            url: "https://example.com/mcp",
+            headers: {
+                "X-Custom-Header": "abc",
+                Authorization: "CustomScheme xyz",
+                "   ": "ignored"
+            }
+        }, WORKSPACE);
+        assert.deepEqual(normalized.headers, {
+            "X-Custom-Header": "abc",
+            Authorization: "CustomScheme xyz"
+        });
+
+        const httpTransport = new HttpTransport({
+            name: "http-hdrs",
+            url: "https://example.com/mcp",
+            token: "fallback-token",
+            headers: {
+                "X-Tenant": "t-1",
+                Authorization: "ApiKey custom",
+                Accept: "application/json"
+            }
+        });
+        const httpHeaders = httpTransport.headers();
+        assert.equal(httpHeaders["X-Tenant"], "t-1");
+        assert.equal(httpHeaders.Authorization, "ApiKey custom");
+        assert.equal(httpHeaders.authorization, undefined);
+        assert.equal(httpHeaders.Accept, "application/json");
+        assert.deepEqual(httpTransport.describe().headers, {
+            "X-Tenant": "****",
+            Authorization: "****",
+            Accept: "****"
+        });
+
+        const sseTransport = new SseTransport({
+            name: "sse-hdrs",
+            url: "https://example.com/sse",
+            token: "fallback-token",
+            headers: {
+                "X-Org": "org-7",
+                Authorization: "Custom sse-secret",
+                Accept: "text/event-stream; charset=utf-8"
+            }
+        });
+        const sseHeaders = sseTransport.headers({}, { accept: "text/event-stream", "cache-control": "no-cache" });
+        assert.equal(sseHeaders["X-Org"], "org-7");
+        assert.equal(sseHeaders.Authorization, "Custom sse-secret");
+        assert.equal(sseHeaders.Accept, "text/event-stream; charset=utf-8");
+        assert.equal(sseHeaders["cache-control"], "no-cache");
+        assert.deepEqual(sseTransport.describe().headers, {
+            "X-Org": "****",
+            Authorization: "****",
+            Accept: "****"
+        });
+
+        const http = require("http");
+        let captured = null;
+        const wsServer = http.createServer((_req, res) => {
+            res.writeHead(404).end();
+        });
+        wsServer.on("upgrade", (req, socket) => {
+            captured = req.headers;
+            const key = req.headers["sec-websocket-key"];
+            socket.write(
+                "HTTP/1.1 101 Switching Protocols\r\n" +
+                "Upgrade: websocket\r\n" +
+                "Connection: Upgrade\r\n" +
+                `Sec-WebSocket-Accept: ${websocket.acceptValue(key)}\r\n\r\n`
+            );
+        });
+        await new Promise(resolve => wsServer.listen(0, "127.0.0.1", resolve));
+        const wsPort = wsServer.address().port;
+        try {
+            const wsTransport = new WebSocketTransport({
+                name: "ws-hdrs",
+                url: `ws://127.0.0.1:${wsPort}/ws`,
+                token: "fallback-token",
+                headers: {
+                    "X-WS-Trace": "trace-9",
+                    Authorization: "Custom ws-secret",
+                    "Sec-WebSocket-Protocol": "custom-subproto"
+                }
+            });
+            assert.deepEqual(wsTransport.describe().headers, {
+                "X-WS-Trace": "****",
+                Authorization: "****",
+                "Sec-WebSocket-Protocol": "****"
+            });
+            await wsTransport.connect();
+            assert.equal(captured["x-ws-trace"], "trace-9");
+            assert.equal(captured.authorization, "Custom ws-secret");
+            assert.equal(captured["sec-websocket-protocol"], "custom-subproto");
+            await wsTransport.close();
+        } finally {
+            wsServer.closeAllConnections?.();
+            await new Promise(resolve => wsServer.close(resolve));
+        }
+    });
 };

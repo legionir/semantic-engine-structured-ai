@@ -70,14 +70,105 @@ function requestToken(req, url) {
 }
 
 
-function sameOrigin(origin, host) {
+function requestPasswordSession(req, url) {
+
+    const cookie = parseCookies(req?.headers?.cookie).structured_ai_console_password;
+
+    if (typeof cookie === "string" && cookie.length > 0) {
+        return cookie;
+    }
+
+    const header =
+        typeof req?.headers?.["x-console-session"] === "string"
+            ? req.headers["x-console-session"].trim()
+            : "";
+
+    if (header) {
+        return header;
+    }
+
+    const query = url?.searchParams?.get?.("session");
+
+    return typeof query === "string" && query.length > 0 ? query : null;
+}
+
+
+function normalizeIp(value) {
+
+    const trimmed = String(value || "").trim().toLowerCase();
+
+    if (!trimmed) {
+        return "";
+    }
+
+    return trimmed.startsWith("::ffff:") ? trimmed.slice(7) : trimmed;
+}
+
+
+function parseTrustedProxies(setting) {
+
+    return new Set(
+        String(setting || "")
+            .split(/[\s,]+/)
+            .map(normalizeIp)
+            .filter(Boolean)
+    );
+}
+
+
+function isTrustedProxy(req, trustedProxiesSetting) {
+
+    const trusted = parseTrustedProxies(trustedProxiesSetting);
+
+    if (trusted.size === 0) {
+        return false;
+    }
+
+    const remote = normalizeIp(req?.socket?.remoteAddress);
+
+    return remote !== "" && trusted.has(remote);
+}
+
+
+function isValidHostHeader(value) {
+
+    const trimmed = String(value || "").trim();
+
+    if (!trimmed) {
+        return false;
+    }
+
+    return /^(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::\d{1,5})?$/i.test(trimmed);
+}
+
+
+function sameOrigin(origin, host, forwardedHost = null) {
 
     if (!origin) {
         return true;
     }
 
     try {
-        return new URL(origin).host === host;
+        const parsed = new URL(origin);
+
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            return false;
+        }
+
+        const candidates = [];
+
+        if (isValidHostHeader(host)) {
+            candidates.push(String(host).trim().toLowerCase());
+        }
+
+        for (const part of String(forwardedHost || "").split(",")) {
+            const candidate = part.trim().toLowerCase();
+            if (isValidHostHeader(candidate)) {
+                candidates.push(candidate);
+            }
+        }
+
+        return candidates.includes(parsed.host.toLowerCase());
     } catch {
         return false;
     }
@@ -139,6 +230,9 @@ module.exports = {
     parseCookies,
     tokenMatches,
     requestToken,
+    requestPasswordSession,
+    parseTrustedProxies,
+    isTrustedProxy,
     sameOrigin,
     RateLimiter,
     authenticate

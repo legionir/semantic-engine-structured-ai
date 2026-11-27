@@ -9,6 +9,7 @@
 import { html } from "./dom.js";
 import { markdownParagraph } from "./markdown.js";
 import { composerDiscussionText, discussionStatusLine, discussionTimeline } from "./discussion-model.js";
+import { SkeletonRows } from "./skeleton-view.js";
 
 
 function Report({ report }) {
@@ -60,12 +61,10 @@ function Observer({ decision }) {
 }
 
 
-export function Discussion({ state }) {
-
-    const discussion = state.discussion;
+function DiscussionTranscript({ discussion }) {
 
     if (!discussion) {
-        return html`<p class="muted">No discussion yet. Enable Discussion under the task box, pick your personas, and send the task.</p>`;
+        return html`<p class="muted">No discussion yet. Configure a topic and personas to start a multi-agent deliberation.</p>`;
     }
 
     const items = discussionTimeline(discussion);
@@ -94,7 +93,7 @@ export function Discussion({ state }) {
 
 
 /* an error stays on the line until the operator submits again */
-function ComposerStatus({ state, onView }) {
+function SetupStatus({ state }) {
 
     if (state.discussionError) {
         return html`<span class="bad" id="discussionStatusLine">${state.discussionError}</span>`;
@@ -104,9 +103,6 @@ function ComposerStatus({ state, onView }) {
 
     return html`<span class="muted discussion-status-line" id="discussionStatusLine">
         ${text ? html`<span>${text}</span>` : null}
-        ${text && state.discussion.status !== "failed"
-            ? html`<button type="button" class="link" onClick=${onView}>view</button>`
-            : null}
     </span>`;
 }
 
@@ -114,38 +110,116 @@ function ComposerStatus({ state, onView }) {
 export function DiscussionOptions({ state, actions }) {
 
     const selected = new Set(state.discussionSelection || []);
+    const running = state.discussion?.status === "running";
+    const busy = running || state.submitting || state.uploading;
 
     return html`
-        <div class="discussion-persona-head">
-            <span>personas</span>
-            <button type="button" class="link" onClick=${() => actions.selectAll(true)}>all</button>
-            <button type="button" class="link" onClick=${() => actions.selectAll(false)}>none</button>
+        <form class="discussion-setup" onSubmit=${event => { event.preventDefault(); actions.submit?.(); }}>
+            <div class="discussion-field">
+                <label class="discussion-field-label" for="discussionTask">Topic or task</label>
+                <textarea
+                    id="discussionTask"
+                    class="discussion-task-input"
+                    rows="3"
+                    placeholder="What should the specialist personas deliberate on?"
+                    disabled=${busy}
+                    value=${state.discussionDraft ?? ""}
+                    onInput=${event => actions.draft?.(event.currentTarget.value)}
+                ></textarea>
+            </div>
+            <div class="discussion-persona-head">
+                <span>personas</span>
+                <button type="button" class="link" onClick=${() => actions.selectAll(true)}>all</button>
+                <button type="button" class="link" onClick=${() => actions.selectAll(false)}>none</button>
+            </div>
+            <div class="discussion-personas">
+                ${state.discussionPersonasLoading && state.discussionPersonas.length === 0
+                    ? html`<${SkeletonRows} count=${3} compact=${true} label="Loading personas…" />`
+                    : null}
+                ${state.discussionPersonas.map(persona => html`<label class="discussion-persona" key=${persona.id} title=${persona.description}>
+                    <input
+                        type="checkbox"
+                        class="persona-box"
+                        value=${persona.id}
+                        checked=${selected.has(persona.id)}
+                        onChange=${event => actions.toggle(persona.id, event.currentTarget.checked)}
+                    />
+                    <span>${persona.id}</span>
+                </label>`)}
+            </div>
+        </form>
+    `;
+}
+
+
+export function DiscussionFooter({ state, actions, onClose }) {
+
+    const discussion = state.discussion;
+    const running = discussion?.status === "running";
+    const busy = running || state.submitting || state.uploading;
+    const showSetup = !discussion || (state.discussionShowSetup && !running);
+
+    return html`
+        ${showSetup ? html`
+            <div class="discussion-footer-meta">
+                <label class="discussion-rounds-label" for="discussionRounds">
+                    <span>Rounds</span>
+                    <input
+                        class="filter"
+                        id="discussionRounds"
+                        type="number"
+                        min="1"
+                        max="10"
+                        title="Rounds (1-10)"
+                        value=${state.discussionRounds}
+                        onInput=${event => actions.rounds(event.currentTarget.value)}
+                    />
+                </label>
+                <${SetupStatus} state=${state} />
+            </div>
+        ` : html`<span class="discussion-footer-spacer"></span>`}
+        <div class="discussion-footer-actions">
+            <button type="button" class="ghost" onClick=${onClose}>Close</button>
+            ${showSetup ? html`
+                <button type="button" id="startDiscussionButton" disabled=${busy} onClick=${() => actions.submit?.()}>
+                    ${state.uploading ? "Uploading files…" : state.submitting ? "Starting…" : running ? "Discussion running…" : "Start"}
+                </button>
+            ` : null}
         </div>
-        <div class="discussion-personas">
-            ${state.discussionPersonas.map(persona => html`<label class="discussion-persona" key=${persona.id} title=${persona.description}>
-                <input
-                    type="checkbox"
-                    class="persona-box"
-                    value=${persona.id}
-                    checked=${selected.has(persona.id)}
-                    onChange=${event => actions.toggle(persona.id, event.currentTarget.checked)}
-                />
-                <span>${persona.id}</span>
-            </label>`)}
-        </div>
-        <div class="discussion-meta">
-            <span>max rounds</span>
-            <input
-                class="filter"
-                id="discussionRounds"
-                type="number"
-                min="1"
-                max="10"
-                title="maximum rounds (1-10)"
-                value=${state.discussionRounds}
-                onInput=${event => actions.rounds(event.currentTarget.value)}
-            />
-            <${ComposerStatus} state=${state} onView=${actions.view} />
-        </div>
+    `;
+}
+
+
+export function Discussion({ state, actions }) {
+
+    const discussion = state.discussion;
+
+    if (!actions) {
+        return html`<${DiscussionTranscript} discussion=${discussion} />`;
+    }
+
+    const showSetup = !discussion || (state.discussionShowSetup && discussion.status !== "running");
+
+    return html`
+        ${discussion ? html`
+            <div class="mcp-tabs discussion-modal-tabs" role="tablist">
+                <button
+                    type="button"
+                    class=${`mcp-tab${!showSetup ? " active" : ""}`}
+                    aria-selected=${!showSetup ? "true" : "false"}
+                    onClick=${() => actions.setView(false)}
+                >Transcript</button>
+                <button
+                    type="button"
+                    class=${`mcp-tab${showSetup ? " active" : ""}`}
+                    aria-selected=${showSetup ? "true" : "false"}
+                    disabled=${discussion.status === "running"}
+                    onClick=${() => actions.setView(true)}
+                >New discussion</button>
+            </div>
+        ` : null}
+        ${showSetup
+            ? html`<${DiscussionOptions} state=${state} actions=${actions} />`
+            : html`<${DiscussionTranscript} discussion=${discussion} />`}
     `;
 }

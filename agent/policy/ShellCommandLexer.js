@@ -21,10 +21,14 @@ function splitCommands(line, dialect) {
         inWord = false;
     };
 
-    const endCommand = separator => {
+    const endCommand = (separator, trailingQuote = null) => {
         endWord();
         if (words.length) {
-            commands.push({ words, pipedFrom });
+            const entry = { words, pipedFrom };
+            if (trailingQuote) {
+                entry.unclosedQuote = trailingQuote;
+            }
+            commands.push(entry);
         }
         pipedFrom = separator === "|" && words.length ? words : null;
         words = [];
@@ -133,7 +137,17 @@ function splitCommands(line, dialect) {
         inWord = true;
     }
 
-    endCommand(";");
+    const unclosedQuote = quote || null;
+    endCommand(";", unclosedQuote);
+
+    const warnings = unclosedQuote
+        ? [`unclosed ${unclosedQuote === "'" ? "single" : "double"} quote`]
+        : [];
+
+    Object.defineProperties(commands, {
+        unclosedQuote: { value: unclosedQuote, enumerable: false },
+        warnings: { value: warnings, enumerable: false }
+    });
 
     return commands;
 }
@@ -152,21 +166,40 @@ const CMD_BUILTINS = new Set([
 ]);
 
 
+const POSIX_WRAPPERS = new Set(["sudo", "doas", "env", "nohup", "nice", "ionice", "time", "timeout", "command", "builtin", "exec"]);
+
 function guessDialect(line) {
 
     const text = String(line || "").trim();
-    const first = (text.split(/\s+/)[0] || "").replace(/^["']|["']$/g, "");
+    const tokens = text.split(/\s+/).map(token => token.replace(/^["']|["']$/g, ""));
+
+    let index = 0;
+    while (index < tokens.length) {
+        const current = tokens[index];
+        if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(current)) {
+            index += 1;
+            continue;
+        }
+        const candidateBase = commandName(current);
+        if (POSIX_WRAPPERS.has(candidateBase)) {
+            index += 1;
+            continue;
+        }
+        break;
+    }
+
+    const first = tokens[index] || tokens[0] || "";
     const base = commandName(first);
 
     if (/^(powershell|pwsh)$/.test(base) || POWERSHELL_VERB.test(base)) {
         return "powershell";
     }
 
-    if (base === "cmd" || /\s\/[a-z](\s|$)/i.test(text) && CMD_BUILTINS.has(base)) {
+    if (base === "cmd" || (/\s\/[a-z](\s|$)/i.test(text) && CMD_BUILTINS.has(base))) {
         return "cmd";
     }
 
-    if (/(^|\s)-(recurse|force|path|literalpath|command|encodedcommand)\b/i.test(text) && !/(^|\s)--/.test(text)) {
+    if (base !== "find" && /(^|\s)-(recurse|force|path|literalpath|command|encodedcommand)\b/i.test(text) && !/(^|\s)--/.test(text)) {
         return "powershell";
     }
 

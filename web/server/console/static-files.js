@@ -34,7 +34,16 @@ const MIME = {
     ".mjs": "application/javascript; charset=utf-8",
     ".json": "application/json; charset=utf-8",
     ".svg": "image/svg+xml",
-    ".ico": "image/x-icon"
+    ".ico": "image/x-icon",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".txt": "text/plain; charset=utf-8",
+    ".map": "application/json; charset=utf-8"
 };
 
 
@@ -76,47 +85,72 @@ function wellEncodedPath(pathname) {
     }
 }
 
-function serveStatic(req, res, pathname) {
+async function serveStatic(req, res, pathname) {
 
-    const relative =
-        pathname === "/"
-            ? "index.html"
-            : pathname.replace(/^\/+/, "");
+    let decoded;
 
-    const target =
-        path.join(PUBLIC_DIR, relative);
-
-    if (
-        !target.startsWith(PUBLIC_DIR + path.sep) ||
-        !fs.existsSync(target) ||
-        !fs.statSync(target).isFile()
-    ) {
-
-        sendJson(res, 404, { error: "not found" });
-
+    try {
+        decoded = decodeURIComponent(pathname);
+    } catch {
+        sendJson(res, 400, { error: "malformed percent-encoding in request path" });
         return;
     }
 
+    const relative =
+        decoded === "/"
+            ? "index.html"
+            : decoded.replace(/^\/+/, "");
+
+    const target =
+        path.resolve(PUBLIC_DIR, relative);
+
+    if (!target.startsWith(PUBLIC_DIR + path.sep)) {
+        sendJson(res, 404, { error: "not found" });
+        return;
+    }
+
+    let stats;
+
+    try {
+        stats = await fs.promises.stat(target);
+    } catch {
+        sendJson(res, 404, { error: "not found" });
+        return;
+    }
+
+    if (!stats.isFile()) {
+        sendJson(res, 404, { error: "not found" });
+        return;
+    }
+
+    const ext = path.extname(target).toLowerCase();
     const body =
-        fs.readFileSync(target);
+        ext === ".html" || req.method !== "HEAD"
+            ? await fs.promises.readFile(target)
+            : null;
 
     const headers = {
         "content-type":
-            MIME[path.extname(target)] ||
+            MIME[ext] ||
             "application/octet-stream",
 
         "cache-control": "no-store",
 
         "x-content-type-options": "nosniff",
 
-        "content-length": body.length
+        "content-length": body ? body.length : stats.size
     };
 
-    if (path.extname(target) === ".html") {
+    if (ext === ".html") {
         headers["content-security-policy"] = contentSecurityPolicy(body.toString("utf8"));
     }
 
     res.writeHead(200, headers);
+
+    if (req.method === "HEAD") {
+        res.end();
+        return;
+    }
 
     res.end(body);
 }

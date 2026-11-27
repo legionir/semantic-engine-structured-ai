@@ -34,7 +34,20 @@ function writeFile(filePath, content, encoding) {
 
     try {
 
-        fs.writeFileSync(tempPath, content, encodingName);
+        const data = Buffer.isBuffer(content)
+            ? content
+            : Buffer.from(String(content), encodingName);
+        const fd = fs.openSync(tempPath, "wx");
+
+        try {
+            let offset = 0;
+            while (offset < data.length) {
+                offset += fs.writeSync(fd, data, offset, data.length - offset);
+            }
+            fs.fsyncSync(fd);
+        } finally {
+            fs.closeSync(fd);
+        }
 
         fs.renameSync(tempPath, filePath);
 

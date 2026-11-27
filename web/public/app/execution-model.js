@@ -227,3 +227,103 @@ export function resetRun(state, clearArchive = false) {
         state.archive = [];
     }
 }
+
+
+/* percentage of the agent's active/queued task work for #runButton's progress ring */
+export function runProgress(state) {
+
+    const running = state?.status === "running";
+    const plan = state?.plan;
+    const hasPlanSteps = Boolean(plan && plan.exists && Number(plan.steps) > 0);
+    const planSteps = hasPlanSteps ? Number(plan.steps) : 0;
+    const planDone = hasPlanSteps ? Math.max(0, Math.min(planSteps, Number(plan.done) || 0)) : 0;
+
+    let totalCalls = 0;
+    let doneCalls = 0;
+
+    if (state?.graphs instanceof Map) {
+        for (const graph of state.graphs.values()) {
+            for (const call of graph.calls.values()) {
+                totalCalls++;
+                if (call.status !== "running") doneCalls++;
+            }
+        }
+    }
+
+    const callRatio = totalCalls > 0 ? doneCalls / totalCalls : null;
+
+    if (Number(state?.multiQueueTotal) > 1 && (state.multiQueueActive || (state.multiQueue?.length || 0) > 0)) {
+        const total = Number(state.multiQueueTotal);
+        const remaining = (state.multiQueue?.length || 0) + (running || state.multiQueueActive ? 1 : 0);
+        const completed = Math.max(0, total - remaining);
+        const sub = running ? (hasPlanSteps ? planDone / planSteps : (callRatio ?? 0)) : 0;
+        const pct = Math.max(0, Math.min(100, Math.round(((completed + sub) / total) * 100)));
+
+        return {
+            visible: true,
+            percent: pct,
+            indeterminate: running && pct === 0 && totalCalls === 0 && !hasPlanSteps,
+            title: `Task queue progress: ${pct}% (${completed}/${total} projects)`
+        };
+    }
+
+    if (hasPlanSteps && (running || (planDone > 0 && planDone < planSteps))) {
+        let progressSteps = planDone;
+        if (running && planDone < planSteps && callRatio !== null) {
+            progressSteps += callRatio * 0.9;
+        }
+        const pct = Math.max(0, Math.min(100, Math.round((progressSteps / planSteps) * 100)));
+
+        return {
+            visible: true,
+            percent: pct,
+            indeterminate: running && pct === 0,
+            title: `Task queue progress: ${pct}% (${planDone}/${planSteps} steps)`
+        };
+    }
+
+    const queueItems = state?.queue && state.queue.project_id === state.currentProjectId
+        ? (state.queue.items || [])
+        : [];
+
+    if (queueItems.length > 0) {
+        const remaining = queueItems.length + (running ? 1 : 0);
+        const peak = Math.max(Number(state?.queuePeakTotal) || 0, remaining);
+        const completed = Math.max(0, peak - remaining);
+        const sub = running && callRatio !== null ? callRatio : 0;
+        const pct = Math.max(0, Math.min(100, Math.round(((completed + sub) / peak) * 100)));
+
+        return {
+            visible: true,
+            percent: pct,
+            indeterminate: running && pct === 0 && callRatio === null,
+            title: `Task queue progress: ${pct}% (${queueItems.length} queued)`
+        };
+    }
+
+    if (running) {
+        if (callRatio !== null) {
+            const pct = Math.max(0, Math.min(100, Math.round(callRatio * 100)));
+            return {
+                visible: true,
+                percent: pct,
+                indeterminate: pct === 0 && doneCalls === 0,
+                title: `Task progress: ${pct}% (${doneCalls}/${totalCalls} calls)`
+            };
+        }
+
+        return {
+            visible: true,
+            percent: 0,
+            indeterminate: true,
+            title: "Task in progress"
+        };
+    }
+
+    return {
+        visible: false,
+        percent: 0,
+        indeterminate: false,
+        title: ""
+    };
+}

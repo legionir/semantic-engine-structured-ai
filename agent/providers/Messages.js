@@ -187,7 +187,7 @@ function argumentsObject(value) {
 }
 
 
-/* [{ id, name, arguments (string) }] from an assistant message. */
+/* [{ id, name, arguments (string), thoughtSignature? }] from an assistant message. */
 function toolCallsOf(message) {
 
     const calls = Array.isArray(message && message.tool_calls) ? message.tool_calls : [];
@@ -196,7 +196,8 @@ function toolCallsOf(message) {
         .map((call, index) => ({
             id: call.id || `call_${index + 1}`,
             name: (call.function && call.function.name) || call.name || "",
-            arguments: argumentsText(call.function ? call.function.arguments : call.arguments)
+            arguments: argumentsText(call.function ? call.function.arguments : call.arguments),
+            ...(call.thoughtSignature ? { thoughtSignature: call.thoughtSignature } : {})
         }))
         .filter(call => call.name !== "");
 }
@@ -277,7 +278,8 @@ function chatResponse({ id, model, provider, text, toolCalls, finishReason, usag
                 function: {
                     name: call.name,
                     arguments: argumentsText(call.arguments)
-                }
+                },
+                ...(call.thoughtSignature ? { thoughtSignature: call.thoughtSignature } : {})
             }));
 
     const content = typeof text === "string" ? text : "";

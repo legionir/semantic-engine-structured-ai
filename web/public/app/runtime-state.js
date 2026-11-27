@@ -49,6 +49,21 @@ function setRunStatus(state, status) {
 export { setRunStatus };
 
 
+function syncQueuePeak(state) {
+
+    const items = state.queue && state.queue.project_id === state.currentProjectId
+        ? (state.queue.items || [])
+        : [];
+
+    if (items.length > 0) {
+        const total = items.length + (state.status === "running" ? 1 : 0);
+        state.queuePeakTotal = Math.max(state.queuePeakTotal || 0, total);
+    } else if (state.status !== "running") {
+        state.queuePeakTotal = 0;
+    }
+}
+
+
 function appendLogRow(state, event) {
 
     state.logSeq += 1;
@@ -97,7 +112,7 @@ export function reduce(state, event) {
 
     if (event.plan) {
         state.plan = event.plan;
-        regions.add("plan");
+        regions.add("plan").add("run");
     }
 
     /* every event is kept so a turn's execution block can be redrawn */
@@ -342,6 +357,7 @@ export function reduce(state, event) {
         case "run:status":
             setRunStatus(state, event.status);
             state.waiting = null;
+            syncQueuePeak(state);
             regions.add("run").add("chat");
             /* a multi-project composer run is a sequence of labelled tasks */
             if (event.status !== "running") effects.push({ type: "runSettled", projectId: event.project_id || null });
@@ -389,16 +405,19 @@ export function reduce(state, event) {
         case "queue:changed":
             if (event.project_id && event.project_id === state.currentProjectId) {
                 state.queue = { project_id: event.project_id, paused: Boolean(event.paused), items: event.items || [] };
+                syncQueuePeak(state);
                 regions.add("queue").add("run");
             }
             break;
 
         case "session:cleared":
             resetRun(state, true);
+            state.plan = null;
+            state.queuePeakTotal = 0;
             state.messages = [];
             state.logRows = [];
             setRunStatus(state, "idle");
-            regions.add("chat").add("tree").add("approvals").add("run");
+            regions.add("chat").add("tree").add("approvals").add("plan").add("run");
             break;
 
         case "discussion:start":
@@ -473,5 +492,6 @@ export function applySnapshot(state, snapshot) {
     }
 
     setRunStatus(state, snapshot.status);
+    syncQueuePeak(state);
     state.reconnecting = false;
 }

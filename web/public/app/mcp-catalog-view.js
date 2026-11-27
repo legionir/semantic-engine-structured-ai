@@ -13,6 +13,7 @@
 */
 
 import { html } from "./dom.js";
+import { SkeletonCards, SkeletonRows } from "./skeleton-view.js";
 
 
 /*
@@ -115,7 +116,7 @@ function CatalogCard({ entry, mcp, actions, project, categories }) {
                 <button type="button" disabled=${missing.length > 0} title=${missing.length ? `missing: ${missing.map(item => item.label).join(", ")}` : ""} onClick=${() => actions.openEntry(entry)}>
                     ${entry.installed.length ? "Activate again" : "Activate"}
                 </button>
-                ${entry.homepage ? html`<a class="mcp-token-link" href=${entry.homepage} target="_blank" rel="noopener noreferrer">About</a>` : null}
+                ${entry.homepage ? html`<a class="ghost mcp-token-link mcp-about-link" href=${entry.homepage} target="_blank" rel="noopener noreferrer">About</a>` : null}
             </div>`}
     </div>`;
 }
@@ -128,7 +129,7 @@ export function Catalog({ mcp, actions, project }) {
     }
 
     if (!mcp.catalog) {
-        return html`<p class="empty">Loading the catalogue…</p>`;
+        return html`<${SkeletonCards} count=${4} label="Loading the catalogue…" />`;
     }
 
     const filter = mcp.catalogFilter.trim().toLowerCase();
@@ -164,7 +165,7 @@ export function Secrets({ mcp, actions }) {
 
     return html`<div class="mcp-secrets">
         <p class="muted">Values are stored encrypted in the data home and are never shown again. Refer to one in an MCP config as \${secret:NAME}.</p>
-        ${mcp.secrets === null ? html`<p class="empty">Loading…</p>` : null}
+        ${mcp.secrets === null ? html`<${SkeletonRows} count=${3} label="Loading secrets…" />` : null}
         ${mcp.secrets && secrets.length === 0 ? html`<p class="empty">No secrets are stored.</p>` : null}
         ${secrets.map(secret => html`<div class="mcp-secret" key=${secret.name}>
             <span class="name">${secret.name}</span>

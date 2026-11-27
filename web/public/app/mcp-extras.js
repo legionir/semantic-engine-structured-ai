@@ -129,7 +129,13 @@ export function createExtrasActions({ state, touch, refreshMcp }) {
             rowError(server, null);
 
             /* opened first, so the browser does not treat it as a pop-up */
-            const popup = window.open("about:blank", "mcp-oauth", "width=520,height=720");
+            let popup = null;
+            try {
+                popup = window.open("about:blank", "mcp-oauth", "width=520,height=720");
+            } catch {
+                popup = null;
+            }
+
             const result = await request(`/api/mcp/${encodeURIComponent(server)}/oauth/start`, { method: "POST", body: "{}" });
 
             if (!result.ok) {
@@ -138,8 +144,13 @@ export function createExtrasActions({ state, touch, refreshMcp }) {
                 return;
             }
 
-            if (popup) popup.location.href = result.payload.authorization_url;
-            else window.location.assign(result.payload.authorization_url);
+            if (popup) {
+                popup.location.href = result.payload.authorization_url;
+            } else if (typeof window !== "undefined" && window.self === window.top) {
+                window.location.assign(result.payload.authorization_url);
+            } else {
+                rowError(server, "Pop-up blocked in embedded frame. Allow pop-ups for this site to sign in.");
+            }
         },
 
         async signOut(server) {

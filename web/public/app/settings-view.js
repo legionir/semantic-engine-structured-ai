@@ -19,6 +19,7 @@
 */
 
 import { html } from "./dom.js";
+import { SkeletonRows } from "./skeleton-view.js";
 
 
 export const GROUP_ORDER = [
@@ -101,7 +102,7 @@ function modelOptions(setting, catalog) {
 }
 
 
-function hintText(setting, status, catalog) {
+function hintText(setting, status, catalog, catalogLoading = false) {
 
     if (status?.kind === "rejected" && status.message) {
         return status.message;
@@ -111,6 +112,7 @@ function hintText(setting, status, catalog) {
         if (catalog?.error) return `Could not load models: ${catalog.error}`;
         const roleError = catalog?.catalog?.errors?.[modelRole(setting.key)];
         if (roleError) return `Using the main model list: ${roleError}`;
+        if (catalogLoading && !catalog) return "Loading available models…";
     }
 
     return `${setting.description || ""}${setting.fixed ? " (fixed at startup)" : ""}`;
@@ -152,7 +154,7 @@ function Control({ setting, catalog, onSave }) {
 }
 
 
-function Row({ setting, status, catalog, term, onSave, onReset }) {
+function Row({ setting, status, catalog, catalogLoading, term, onSave, onReset }) {
 
     const catalogTrouble =
         isModelSetting(setting) &&
@@ -173,16 +175,17 @@ function Row({ setting, status, catalog, term, onSave, onReset }) {
         hidden=${!settingMatches(setting, term)}
     >
         <div>
-            <div class="label">${setting.key}</div>
-            <div class="hint">${hintText(setting, status, catalog)}</div>
+            <div class="setting-title">
+                <span class="label">${setting.key}</span>
+                <span
+                    class=${`src ${setting.source}${resettable ? " resettable" : ""}`}
+                    title=${setting.source === "override" ? "changed here, click to restore" : setting.source}
+                    onClick=${resettable ? () => onReset(setting) : undefined}
+                >${setting.source}</span>
+            </div>
+            <div class="hint">${hintText(setting, status, catalog, catalogLoading)}</div>
         </div>
         <${Control} setting=${setting} catalog=${catalog} onSave=${onSave} />
-        <span
-            class=${`src ${setting.source}`}
-            title=${setting.source === "override" ? "changed here, click to restore" : setting.source}
-            style=${resettable ? "cursor: pointer" : undefined}
-            onClick=${resettable ? () => onReset(setting) : undefined}
-        >${setting.source}</span>
     </div>`;
 }
 
@@ -190,35 +193,37 @@ function Row({ setting, status, catalog, term, onSave, onReset }) {
 export const APPROVAL_MODES = ["auto", "prompt", "deny"];
 
 /* what the settings filter matches the runtime policy row against */
-const POLICY_TEXT = `runtime policy approval ${APPROVAL_MODES.join(" ")} until done auto continue`;
+const UNTIL_DONE_POLICY_TEXT = `runtime policy until done until_done auto continue true false keep starting cycles`;
 
 
 /*
-| The runtime policy controls, drawn from the store. The header keeps its
-| own pair (ids approvalMode / autoContinue); both pairs show the same
-| state and change it through the same action, so nothing is moved
-| between the page and the modal.
+| The runtime policy control (UNTIL_DONE), drawn from the store using the
+| same .group > .setting row structure as all other settings. Approval mode
+| (and plan mode) lives in the composer toolbar.
 */
-function PolicyRow({ policy, hidden }) {
+function PolicyRow({ policy, term }) {
 
-    return html`<div class="policy-row" hidden=${hidden}>
-        <span class="policy-title">runtime policy</span>
-        <label class="chip select" title="tool approval policy">
-            approval
+    const showUntilDone = term === "" || UNTIL_DONE_POLICY_TEXT.includes(term);
+
+    return html`<div class="group runtime-policy-settings" hidden=${!policy || !showUntilDone}>
+        <h3>runtime policy</h3>
+        <div class="setting policy-row" data-key="UNTIL_DONE" hidden=${!showUntilDone}>
+            <div>
+                <div class="setting-title">
+                    <span class="label">UNTIL_DONE</span>
+                    <span class="src" title="runtime policy">runtime</span>
+                </div>
+                <div class="hint">Keep starting cycles automatically while the plan has open steps.</div>
+            </div>
             <select
-                value=${policy.approvalMode ?? ""}
-                onChange=${event => policy.onApprovalMode(event.currentTarget.value)}
+                aria-label="until done"
+                value=${policy.autoContinue ? "true" : "false"}
+                onChange=${event => policy.onAutoContinue(event.currentTarget.value === "true")}
             >
-                ${APPROVAL_MODES.map(mode => html`<option key=${mode} value=${mode}>${mode}</option>`)}
+                <option value="true">true</option>
+                <option value="false">false</option>
             </select>
-        </label>
-        <label class="chip checkbox" title="keep starting cycles while the plan has open steps">
-            <input
-                type="checkbox"
-                checked=${Boolean(policy.autoContinue)}
-                onChange=${event => policy.onAutoContinue(event.currentTarget.checked)}
-            /> until done
-        </label>
+        </div>
     </div>`;
 }
 
@@ -226,13 +231,12 @@ function PolicyRow({ policy, hidden }) {
 /*
 | props: list, ui {filter}, status Map(key → {kind, message}), catalog
 | ({catalog} | {error} | null), policy ({approvalMode, autoContinue,
-| onApprovalMode, onAutoContinue} draws the runtime policy row; null
-| leaves it out).
+| onApprovalMode, onAutoContinue} draws the runtime policy rows; null
+| leaves them out).
 */
-export function SettingsBody({ list, ui, status, catalog, policy, onFilter, onSave, onReset }) {
+export function SettingsBody({ list, ui, status, catalog, loading = false, catalogLoading = false, policy, onFilter, onSave, onReset }) {
 
     const term = ui.filter;
-    const policyHidden = term !== "" && !POLICY_TEXT.includes(term);
 
     return html`
         <input
@@ -241,10 +245,8 @@ export function SettingsBody({ list, ui, status, catalog, policy, onFilter, onSa
             placeholder="filter settings and policy"
             onInput=${event => onFilter(event.currentTarget.value.trim().toLowerCase())}
         />
-        <section class="runtime-policy-settings" hidden=${!policy || policyHidden}>
-            <h3>runtime policy</h3>
-            ${policy ? html`<${PolicyRow} policy=${policy} hidden=${policyHidden} />` : null}
-        </section>
+        ${policy ? html`<${PolicyRow} policy=${policy} term=${term} />` : null}
+        ${loading && list.length === 0 ? html`<${SkeletonRows} count=${6} label="Loading settings…" />` : null}
         ${groupSettings(list).map(([name, settings]) => html`<div
             class="group"
             key=${name}
@@ -256,6 +258,7 @@ export function SettingsBody({ list, ui, status, catalog, policy, onFilter, onSa
                 setting=${setting}
                 status=${status.get(setting.key)}
                 catalog=${catalog}
+                catalogLoading=${catalogLoading}
                 term=${term}
                 onSave=${onSave}
                 onReset=${onReset}

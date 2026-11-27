@@ -13,15 +13,15 @@ const assert = require("assert");
 module.exports = async function Projects({ test, Modal, backdrops, card, console_ }) {
 
     /*
-    | Discussion lives in the composer: the toggle reveals the persona
-    | picker under the task box, renames Run task to Start discussion,
-    | posts to /api/discussion, and hands the button back when the
-    | panel finishes.
+    | Discussion opens as a modal: the button opens the Discussion modal
+    | with the topic box and persona picker, posts to /api/discussion,
+    | switches the modal to the live transcript, and lets you start a new
+    | discussion once it finishes.
     */
 
     const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
-    await test("discussion mode lives in the composer and renames the run button", async () => {
+    await test("discussion opens in a modal, starts a run, and shows the live transcript", async () => {
 
         console_.reply("/api/discussion/personas", {
             personas: [
@@ -33,37 +33,43 @@ module.exports = async function Projects({ test, Modal, backdrops, card, console
         /* earlier tests leave a run marked running; the composer is idle here */
         console_.send({ type: "run:status", status: "idle" });
 
-        const toggle =
-            document.getElementById("discussionButton");
-        const options =
-            document.getElementById("discussionOptions");
-        const run =
-            document.getElementById("runButton");
+        const toggle = document.getElementById("discussionButton");
+        const run = document.getElementById("runButton");
 
-        assert.equal(options.hidden, true);
+        assert.equal(document.getElementById("discussionOptions"), null);
         assert.equal(run.textContent, "Run task");
 
         toggle.dispatch("click");
 
         await tick();
 
-        assert.equal(options.hidden, false, "the options row appears");
-        assert.equal(run.textContent, "Start discussion");
+        const dialog = backdrops().at(-1);
+        assert.ok(dialog, "the Discussion modal opens");
+        assert.equal(run.textContent, "Run task", "composer Run task button is unchanged");
+        const foot = dialog.querySelector(".modal-foot");
+        assert.ok(foot.querySelector("#discussionRounds"), "Rounds input is in modal footer");
+        assert.match(foot.textContent, /Rounds/);
+        assert.equal(foot.querySelector("#startDiscussionButton").textContent.trim(), "Start");
+        assert.ok(document.querySelector(".brand #statusText"), "statusText sits in .brand");
+        assert.ok(document.querySelector(".brand #gatewayHealth"), "gatewayHealth sits in .brand");
+        assert.ok(document.querySelector("#projectBar #workspace"), "workspace sits in #projectBar");
         assert.equal(
-            [...options.querySelectorAll(".persona-box")].length,
+            [...dialog.querySelectorAll(".persona-box")].length,
             2,
             "every persona is selectable"
         );
 
         /* nothing selected, nothing sent */
 
-        for (const box of [...options.querySelectorAll(".persona-box")]) {
+        for (const box of [...dialog.querySelectorAll(".persona-box")]) {
             box.checked = false;
             box.dispatch("change");
         }
 
-        document.getElementById("task").value = "design auth";
-        document.getElementById("taskForm").dispatch("submit");
+        const taskInput = dialog.querySelector("#discussionTask");
+        taskInput.value = "design auth";
+        taskInput.dispatch("input");
+        dialog.querySelector(".discussion-setup").dispatch("submit");
 
         await tick();
 
@@ -75,11 +81,11 @@ module.exports = async function Projects({ test, Modal, backdrops, card, console
 
         /* a selection goes to the discussion endpoint, not /api/tasks */
 
-        const first = [...options.querySelectorAll(".persona-box")][0];
+        const first = [...dialog.querySelectorAll(".persona-box")][0];
         first.checked = true;
         first.dispatch("change");
 
-        document.getElementById("taskForm").dispatch("submit");
+        dialog.querySelector(".discussion-setup").dispatch("submit");
 
         await tick();
 
@@ -90,15 +96,9 @@ module.exports = async function Projects({ test, Modal, backdrops, card, console
         assert.equal(posts[0].body.task, "design auth");
         assert.deepEqual(posts[0].body.personas, ["security"]);
         assert.equal(posts[0].body.max_rounds, 5);
-        assert.equal(run.disabled, true, "the button is busy while it runs");
+        assert.ok(dialog.querySelector("#discussionStatus"), "switches to the live transcript view");
 
-        /* the modal opened for the live view, so the test closes it */
-
-        if (Modal.openCount > 0) {
-            Modal.closeTop("test");
-        }
-
-        /* finishing hands the button back, still in discussion mode */
+        /* finishing enables the New discussion tab inside the modal */
 
         console_.send({
             type: "discussion:finish",
@@ -116,17 +116,17 @@ module.exports = async function Projects({ test, Modal, backdrops, card, console
 
         await tick();
 
-        assert.equal(run.disabled, false);
-        assert.equal(run.textContent, "Start discussion");
-
-        /* and toggling off restores the ordinary task flow */
-
-        toggle.dispatch("click");
-
+        assert.match(dialog.querySelector("#discussionStatus").textContent, /2 round/);
+        const newTab = [...dialog.querySelectorAll(".discussion-modal-tabs button")]
+            .find(btn => btn.textContent.trim() === "New discussion");
+        assert.ok(newTab && !newTab.disabled, "New discussion tab becomes available");
+        newTab.dispatch("click");
         await tick();
+        assert.ok(dialog.querySelector("#startDiscussionButton"), "setup form returns on New discussion tab");
 
-        assert.equal(options.hidden, true);
-        assert.equal(run.textContent, "Run task");
+        if (Modal.openCount > 0) {
+            Modal.closeTop("test");
+        }
     });
 
     await test("Projects modal selects multiple projects and updates the active label", async () => {

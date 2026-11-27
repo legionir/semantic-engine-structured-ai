@@ -65,17 +65,26 @@ function writePrivate(file, data) {
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
 
-    const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
-
-    fs.writeFileSync(temp, data, { mode: 0o600 });
+    const temp = `${file}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
 
     try {
-        fs.chmodSync(temp, 0o600);
-    } catch {
-        /* platforms without POSIX modes keep the default */
-    }
+        fs.writeFileSync(temp, data, { mode: 0o600, flag: "wx" });
 
-    fs.renameSync(temp, file);
+        try {
+            fs.chmodSync(temp, 0o600);
+        } catch {
+            /* platforms without POSIX modes keep the default */
+        }
+
+        fs.renameSync(temp, file);
+    } catch (error) {
+        try {
+            fs.rmSync(temp, { force: true });
+        } catch {
+            /* best effort */
+        }
+        throw error;
+    }
 }
 
 

@@ -84,7 +84,12 @@ module.exports = async function ProjectConversationRoutes(shared, request, proje
             reasoningEffort: next.reasoningEffort,
             runFlags: next.runFlags,
             kind: next.kind
-        }).catch(() => {});
+        }).catch(error => {
+            shared.logs?.error("task", error?.message || "queued project task failed", {
+                project_id: projectId,
+                status: error?.status || 500
+            });
+        });
 
         return true;
     };
@@ -242,7 +247,12 @@ module.exports = async function ProjectConversationRoutes(shared, request, proje
 
         if (!offered) {
 
-            startTask(text, { projectId: record.id, kind: "correction" }).catch(() => {});
+            startTask(text, { projectId: record.id, kind: "correction" }).catch(error => {
+                shared.logs?.error("task", error?.message || "correction task failed", {
+                    project_id: record.id,
+                    status: error?.status || 500
+                });
+            });
 
             sendJson(res, 202, { accepted: true, project_id: record.id, injected: false, started: true });
             return true;

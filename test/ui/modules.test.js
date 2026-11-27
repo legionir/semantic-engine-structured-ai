@@ -73,7 +73,9 @@ async function main() {
     "console-core.js", "history-controller.js", "mcp-controller.js",
     "discussion-controller.js", "panels-controller.js", "settings-controller.js",
     "stream-controller.js", "queue-controller.js", "composer-controller.js",
-    "projects-controller.js", "project-routing.js", "project-manager.js"
+    "projects-controller.js", "project-routing.js", "project-manager.js",
+    "palette-controller.js", "slash-commands.js",
+    "task-templates.js", "template-editor-modal.js", "templates-controller.js"
   ];
   const controllerSource = () => ["console.js", ...controllers].map(source).join("\n");
 

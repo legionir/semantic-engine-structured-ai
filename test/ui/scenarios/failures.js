@@ -38,12 +38,117 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         const before = errorBubbles().length;
         console_.reply("/api/tasks", new Error("connection refused"));
         byId("task").value = "offline";
+        byId("task").dispatch("input");
+        assert.equal(console_.storage["structured-ai.taskDraft"], "offline", "draft auto-saves to localStorage");
         byId("taskForm").dispatch("submit");
         await settle();
         assert.equal(errorBubbles().length, before + 1);
         assert.match(errorBubbles().at(-1).textContent, /connection refused/);
         assert.equal(byId("runButton").disabled, false);
+        assert.equal(console_.storage["structured-ai.taskDraft"], "offline", "draft remains saved after failure");
+        byId("task").value = "";
+        byId("task").dispatch("input");
+        assert.equal(console_.storage["structured-ai.taskDraft"], undefined, "clearing input removes stored draft");
         console_.reply("/api/tasks", { accepted: true });
+    });
+
+    await test("saved task draft restores on boot and clears when a task is accepted", async () => {
+        const { initTaskDraft } = await import("../../../web/public/app/composer-controller.js");
+        byId("task").value = "";
+        console_.storage["structured-ai.taskDraft"] = "persisted draft task";
+        initTaskDraft();
+        assert.equal(byId("task").value, "persisted draft task", "draft restores from localStorage");
+        byId("taskForm").dispatch("submit");
+        await settle();
+        assert.equal(byId("task").value, "");
+        assert.equal(console_.storage["structured-ai.taskDraft"], undefined, "draft clears after successful submit");
+    });
+
+    await test("Run task and Queue message lock while submitting and failed Queue keeps running status", async () => {
+        const { state } = await import("../../../web/public/app/store.js");
+        const realFetch = global.fetch;
+
+        console_.reply("/api/projects", { projects: [{ id: "prj-q", name: "QueueProj", rootPath: "/tmp/q" }] });
+        console_.send({ type: "run:status", status: "idle" });
+        await settle();
+
+        let release = null;
+        let inFlightPosts = 0;
+        global.fetch = (url, options) => {
+            if (url === "/api/tasks" && options?.method === "POST") {
+                inFlightPosts++;
+                return new Promise(resolve => {
+                    release = () => resolve({ ok: true, status: 202, json: async () => ({ accepted: true }) });
+                });
+            }
+            return realFetch(url, options);
+        };
+
+        try {
+            byId("task").value = "first submit";
+            byId("taskForm").dispatch("submit");
+            await settle(2);
+            assert.equal(state.submitting, true);
+            assert.equal(byId("runButton").disabled, true, "Run task is locked while submitting");
+            assert.equal(state.status, "idle", "status stays idle until server confirms acceptance");
+            assert.equal(byId("runButton").textContent, "Run task");
+
+            byId("taskForm").dispatch("submit");
+            await settle(2);
+            assert.equal(inFlightPosts, 1, "duplicate Run task submission is ignored");
+
+            release();
+            await settle();
+            assert.equal(state.submitting, false);
+            assert.equal(state.status, "running");
+            assert.equal(byId("runButton").textContent, "Stop");
+        } finally {
+            global.fetch = realFetch;
+        }
+
+        const prevProject = state.currentProjectId;
+        state.currentProjectId = "prj-q";
+        console_.send({ type: "run:status", status: "running", project_id: "prj-q" });
+        await settle();
+        assert.equal(byId("queueButton").hidden, false);
+
+        let releaseQueueFail = null;
+        let queuedPosts = 0;
+        global.fetch = (url, options) => {
+            if (url === "/api/projects/prj-q/tasks" && options?.method === "POST") {
+                queuedPosts++;
+                return new Promise(resolve => {
+                    releaseQueueFail = () => resolve({
+                        ok: false,
+                        status: 500,
+                        json: async () => ({ error: "queue full" })
+                    });
+                });
+            }
+            return realFetch(url, options);
+        };
+
+        try {
+            byId("task").value = "follow up";
+            byId("queueButton").dispatch("click");
+            await settle(2);
+            assert.equal(byId("queueButton").disabled, true, "Queue message is locked while submitting");
+            byId("queueButton").dispatch("click");
+            await settle(2);
+            assert.equal(queuedPosts, 1, "duplicate Queue message submission is ignored");
+
+            releaseQueueFail();
+            await settle();
+            assert.equal(state.status, "running", "failed Queue request does not revert active run to idle");
+            assert.equal(byId("runButton").textContent, "Stop");
+            assert.equal(byId("queueButton").disabled, false);
+        } finally {
+            global.fetch = realFetch;
+            state.currentProjectId = prevProject;
+            byId("task").value = "";
+            console_.send({ type: "run:status", status: "idle" });
+            await settle();
+        }
     });
 
     await test("approval mode goes back when the server refuses the change", async () => {
@@ -95,6 +200,50 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         [...dialog.querySelectorAll("button")].find(button => button.textContent === "New conversation").dispatch("click");
         await settle();
         assert.equal(backdrops().length, 0, "a started conversation closes it");
+    });
+
+    await test("conversations can be deleted from the history modal with confirmation and error reporting", async () => {
+        console_.reply("GET /api/sessions", {
+            current: "s-1",
+            sessions: [
+                { id: "s-1", title: "active session", turns: 2 },
+                { id: "s-0", title: "older session", turns: 1 }
+            ]
+        });
+        byId("historyButton").dispatch("click");
+        await settle();
+        const dialog = backdrops().at(-1);
+        const delActive = dialog.querySelector('button[aria-label="Delete active session"]');
+        const delOld = dialog.querySelector('button[aria-label="Delete older session"]');
+        assert.equal(delActive.disabled, true, "cannot delete the open conversation");
+        assert.equal(delOld.disabled, false);
+
+        delOld.dispatch("click");
+        await settle();
+        const cancelModal = document.querySelector(".modal.confirm-modal");
+        assert.ok(cancelModal, "confirmation modal opened before deleting conversation");
+        [...cancelModal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Cancel").dispatch("click");
+        await settle();
+        assert.equal(dialog.querySelectorAll(".session-row").length, 2, "declined keeps both conversations");
+
+        console_.reply("DELETE /api/sessions/s-0", { __status: 409, body: { error: "session locked" } });
+        delOld.dispatch("click");
+        await settle();
+        let confirmModal = document.querySelector(".modal.confirm-modal");
+        [...confirmModal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Delete").dispatch("click");
+        await settle();
+        assert.match(dialog.textContent, /session locked/);
+        assert.equal(dialog.querySelectorAll(".session-row").length, 2);
+
+        console_.reply("DELETE /api/sessions/s-0", { ok: true, id: "s-0" });
+        delOld.dispatch("click");
+        await settle();
+        confirmModal = document.querySelector(".modal.confirm-modal");
+        [...confirmModal.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Delete").dispatch("click");
+        await settle();
+        assert.equal(dialog.querySelectorAll(".session-row").length, 1);
+        assert.doesNotMatch(dialog.textContent, /older session/);
+        Modal.closeTop("test");
     });
 
     await test("a closed approval modal reopens only for a new request", async () => {
@@ -162,7 +311,8 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         console_.reply("POST /api/settings", { ok: true });
         console_.reply("/api/settings", { settings });
         Modal.closeTop("test");
-        assert.equal(byId("policyHome").children.length, 2, "the policy controls go home");
+        assert.equal(byId("policyHome").children.length, 1, "the until done control stays home");
+        assert.ok(byId("approvalMode").isConnected, "approval mode stays in the composer toolbar");
     });
 
     await test("an MCP refresh keeps a half-filled form, and every action reports its outcome", async () => {
@@ -226,7 +376,7 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
 
         const github = {
             id: "github", title: "GitHub", category: "code", description: "Issues and PRs", transport: "http",
-            pinned: "https://api.githubcopilot.com/mcp/", trust: "default",
+            pinned: "https://api.githubcopilot.com/mcp/", homepage: "https://github.com/modelcontextprotocol", trust: "default",
             inputs: [{ id: "token", label: "GitHub personal access token", required: true, secret_name: "GITHUB_PAT", secret_stored: false, link: "https://github.com/settings/personal-access-tokens/new", placeholder: "github_pat_…", default: null }],
             prerequisites: [], installed: []
         };
@@ -245,6 +395,9 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
 
         const cards = () => [...dialog.querySelectorAll(".mcp-card")];
         assert.equal(cards().length, 2);
+        const aboutLink = cards()[0].querySelector(".mcp-actions a");
+        assert.ok(aboutLink && aboutLink.classList.contains("ghost") && aboutLink.classList.contains("mcp-about-link"), "Catalogue About link uses ghost button styling");
+        assert.ok(dialog.querySelector('.mcp-catalog-tools input[type="search"]'), "Catalogue filter search input renders");
         const activateOf = item => [...item.querySelectorAll("button")].find(button => /^Activate/.test(button.textContent.trim()));
         assert.equal(activateOf(cards()[1]).disabled, true, "a missing prerequisite blocks activation");
         assert.match(cards()[1].textContent, /Install the Chromium build/);
@@ -321,22 +474,26 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
 
     await test("the persona picker follows the store and keeps the operator's choices", async () => {
         console_.send({ type: "run:status", status: "idle" });
+        const { state } = await import("../../../web/public/app/store.js");
+        state.discussion = null;
+        state.discussionPersonas = [];
+        state.discussionSelection = null;
+        state.discussionDraft = "";
         const toggle = byId("discussionButton");
-        const options = byId("discussionOptions");
-        const boxes = () => [...options.querySelectorAll(".persona-box")];
+        const dialog = () => backdrops().at(-1);
+        const boxes = () => [...(dialog()?.querySelectorAll(".persona-box") || [])];
         const checked = () => boxes().filter(box => box.checked).map(box => box.value);
-        const link = label => [...options.querySelectorAll("button")].find(item => item.textContent === label);
+        const link = label => [...dialog().querySelectorAll(".discussion-persona-head button")].find(item => item.textContent === label);
         const posts = () => console_.posted.filter(item => item.url === "/api/discussion");
         const line = () => byId("discussionStatusLine");
 
         console_.reply("/api/discussion/personas", new Error("offline"));
         toggle.dispatch("click");
         await settle();
-        assert.equal(options.hidden, false);
+        assert.ok(dialog(), "the modal opens");
         assert.equal(boxes().length, 0, "nothing to pick yet");
-        toggle.dispatch("click");
+        Modal.closeTop("test");
         await settle();
-        assert.equal(options.hidden, true);
         assert.equal(toggle.classList.contains("active"), false);
 
         console_.reply("/api/discussion/personas", { personas: [
@@ -357,18 +514,20 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         qa.checked = false;
         qa.dispatch("change");
 
-        toggle.dispatch("click");
+        Modal.closeTop("test");
         await settle();
         toggle.dispatch("click");
         await settle();
-        assert.deepEqual(checked(), ["security", "backend"], "turning the mode off and on keeps the choice");
+        assert.deepEqual(checked(), ["security", "backend"], "closing and reopening the modal keeps the choice");
 
         const rounds = byId("discussionRounds");
         rounds.value = "3";
         rounds.dispatch("input");
         console_.reply("/api/discussion", { __status: 400, body: { error: "too many personas" } });
-        byId("task").value = "debate";
-        byId("taskForm").dispatch("submit");
+        const taskInput = byId("discussionTask");
+        taskInput.value = "debate";
+        taskInput.dispatch("input");
+        dialog().querySelector(".discussion-setup").dispatch("submit");
         await settle();
         assert.equal(line().textContent, "too many personas");
         assert.equal(line().className, "bad");
@@ -378,11 +537,10 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         assert.equal(posts().at(-1).body.max_rounds, 3);
 
         console_.reply("/api/discussion", {});
-        byId("taskForm").dispatch("submit");
+        dialog().querySelector(".discussion-setup").dispatch("submit");
         await settle();
-        assert.equal(line().className, "muted discussion-status-line", "a new attempt clears the error");
-        assert.equal(line().textContent, "round starting ·view");
-        if (Modal.openCount > 0) Modal.closeTop("test");
+        assert.ok(byId("discussionStatus"), "switches to the live transcript view");
+        assert.equal(byId("discussionStatus").textContent, "starting · 2 personas");
 
         console_.send({
             type: "discussion:finish",
@@ -393,32 +551,36 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
             final_report: { summary: "s", agreed_points: [], unresolved: [], next_steps: [] }
         });
         await settle();
-        assert.equal(line().textContent, "done in 2 round(s) ·view");
-        [...line().querySelectorAll("button")].find(item => item.textContent === "view").dispatch("click");
-        await settle();
-        assert.equal(Modal.openCount, 1, "view opens the transcript");
+        assert.equal(byId("discussionStatus").textContent, "done · 2 round(s)");
+        assert.equal(Modal.openCount, 1, "the transcript stays open in the modal");
         Modal.closeTop("test");
-
-        toggle.dispatch("click");
         await settle();
-        assert.equal(options.hidden, true);
+        assert.equal(toggle.classList.contains("active"), false);
     });
 
     await test("a discussion that cannot start says why", async () => {
+        const { state } = await import("../../../web/public/app/store.js");
+        state.discussion = null;
+        state.discussionPersonas = [];
+        state.discussionSelection = null;
+        state.discussionDraft = "";
         console_.reply("/api/discussion/personas", { personas: [{ id: "security", name: "Security Agent" }] });
         console_.send({ type: "run:status", status: "idle" });
         byId("discussionButton").dispatch("click");
         await settle();
-        const box = byId("discussionOptions").querySelector(".persona-box");
+        const dialog = backdrops().at(-1);
+        const box = dialog.querySelector(".persona-box");
         box.checked = true;
         box.dispatch("change");
         console_.reply("/api/discussion", new Error("socket hang up"));
-        byId("task").value = "debate";
-        byId("taskForm").dispatch("submit");
+        const taskInput = byId("discussionTask");
+        taskInput.value = "debate";
+        taskInput.dispatch("input");
+        dialog.querySelector(".discussion-setup").dispatch("submit");
         await settle();
-        assert.match(byId("discussionOptions").textContent, /socket hang up/);
-        assert.equal(byId("runButton").disabled, false);
-        byId("discussionButton").dispatch("click");
+        assert.match(dialog.textContent, /socket hang up/);
+        assert.equal(byId("startDiscussionButton").disabled, false);
+        Modal.closeTop("test");
     });
 
     /* last: it makes prj-a the current project */
@@ -504,15 +666,17 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         console_.send({ type: "run:status", status: "done", project_id: "prj-a" });
         await settle();
         assert.equal(tasks().at(-1).url, "/api/projects/prj-b/tasks", "the next project starts");
-        assert.equal(byId("runButton").disabled, true, "the composer waits for it");
+        assert.equal(byId("runButton").textContent, "Stop", "the composer waits in Stop state");
+        assert.equal(byId("runButton").disabled, false);
 
         /* prj-b is not on this stream: its end is learned by polling */
         await new Promise(resolve => setTimeout(resolve, 1700));
-        assert.equal(byId("runButton").disabled, true, "still running while prj-b has an active run");
+        assert.equal(byId("runButton").textContent, "Stop", "still running while prj-b has an active run");
         console_.reply("/api/projects/prj-b/state", { active_runs: [] });
         await new Promise(resolve => setTimeout(resolve, 1700));
         await settle();
-        assert.equal(byId("runButton").disabled, false, "the composer is free once prj-b is done");
+        assert.equal(byId("runButton").textContent, "Run task", "the composer returns to Run task once prj-b is done");
+        assert.equal(byId("runButton").disabled, false);
         assert.equal(tasks().length, before + 2, "and nothing else was posted");
     });
 };

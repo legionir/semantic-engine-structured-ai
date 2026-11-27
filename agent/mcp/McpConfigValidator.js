@@ -546,11 +546,11 @@ function normalize(name, rawDefinition, context) {
         config.url = url;
 
         config.headers =
-            definition.headers && typeof definition.headers === "object"
+            definition.headers && typeof definition.headers === "object" && !Array.isArray(definition.headers)
                 ? Object.fromEntries(
-                    Object.entries(definition.headers).map(
-                        ([key, value]) => [String(key).toLowerCase(), String(value)]
-                    )
+                    Object.entries(definition.headers)
+                        .map(([key, value]) => [String(key).trim(), String(value ?? "")])
+                        .filter(([key]) => key !== "")
                 )
                 : {};
 

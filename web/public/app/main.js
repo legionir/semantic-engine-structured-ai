@@ -7,6 +7,7 @@
  * build step: every import below is a relative URL the server serves as-is.
  */
 
+import "./auth-transport.js";
 import * as store from "./store.js";
 import * as runtimeState from "./runtime-state.js";
 import * as executionModel from "./execution-model.js";
@@ -30,6 +31,7 @@ import * as markdown from "./markdown.js";
 import * as logs from "./logs-view.js";
 import * as terminal from "./terminal-view.js";
 import * as files from "./files-view.js";
+import * as skeletonView from "./skeleton-view.js";
 
 /* The controller owns the browser wiring and mounts every view. */
 import "./console.js";
@@ -58,7 +60,8 @@ export const modules = Object.freeze({
   markdown,
   logs,
   terminal,
-  files
+  files,
+  skeletonView
 });
 
 if (typeof globalThis !== "undefined") {

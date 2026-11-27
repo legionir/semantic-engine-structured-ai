@@ -15,6 +15,7 @@ import { state, touch } from "./store.js";
 import { html, mountInModal } from "./dom.js";
 import { el } from "./console-core.js";
 import { apiRequest, formatBytes } from "./operator-api.js";
+import { SkeletonCards, SkeletonRows } from "./skeleton-view.js";
 
 
 let timer = null;
@@ -57,7 +58,12 @@ export function SystemBody({ view, actions }) {
 
     if (view.error && !view.data) return html`<p class="mcp-error">${view.error}</p>`;
 
-    if (!view.data) return html`<p class="empty">Loading…</p>`;
+    if (!view.data) {
+        return html`<div class="system-view">
+            <${SkeletonCards} count=${4} label="Loading…" />
+            <${SkeletonRows} count=${3} compact=${true} label="Loading processes…" />
+        </div>`;
+    }
 
     const data = view.data;
     const memoryWarning = data.warnings.some(item => item.kind === "memory");
@@ -107,27 +113,29 @@ export function SystemBody({ view, actions }) {
                 ${data.processes.length === 0
                     ? html`<p class="empty">No background process is running.</p>`
                     : html`
-                        <table class="system-processes">
-                            <thead><tr><th>process</th><th>command</th><th>project</th><th>running for</th><th></th></tr></thead>
-                            <tbody>
-                                ${data.processes.map(item => html`
-                                    <tr key=${item.id}>
-                                        <td>${item.id}<br /><span class="muted">pid ${item.pid}</span></td>
-                                        <td class="command">${item.command}</td>
-                                        <td>${item.project_id || "workspace"}${item.run_id && !item.run_active ? html`<br /><span class="muted">its run ended</span>` : null}</td>
-                                        <td>${item.started_at ? duration(Date.now() - Date.parse(item.started_at)) : ""}</td>
-                                        <td>
-                                            <button
-                                                type="button"
-                                                class="ghost danger"
-                                                disabled=${view.stopping.has(item.id)}
-                                                onClick=${() => actions.stop(item.id)}
-                                            >${view.stopping.has(item.id) ? "Stopping…" : "Stop"}</button>
-                                        </td>
-                                    </tr>
-                                `)}
-                            </tbody>
-                        </table>
+                        <div class="table-scroll">
+                            <table class="system-processes">
+                                <thead><tr><th>process</th><th>command</th><th>project</th><th>running for</th><th></th></tr></thead>
+                                <tbody>
+                                    ${data.processes.map(item => html`
+                                        <tr key=${item.id}>
+                                            <td>${item.id}<br /><span class="muted">pid ${item.pid}</span></td>
+                                            <td class="command">${item.command}</td>
+                                            <td>${item.project_id || "workspace"}${item.run_id && !item.run_active ? html`<br /><span class="muted">its run ended</span>` : null}</td>
+                                            <td>${item.started_at ? duration(Date.now() - Date.parse(item.started_at)) : ""}</td>
+                                            <td>
+                                                <button
+                                                    type="button"
+                                                    class="ghost danger"
+                                                    disabled=${view.stopping.has(item.id)}
+                                                    onClick=${() => actions.stop(item.id)}
+                                                >${view.stopping.has(item.id) ? "Stopping…" : "Stop"}</button>
+                                            </td>
+                                        </tr>
+                                    `)}
+                                </tbody>
+                            </table>
+                        </div>
                     `}
             </section>
             <p class="muted">${data.platform} · Node.js ${data.node} · up ${duration(data.uptime_ms)}${view.error ? ` · ${view.error}` : ""}</p>

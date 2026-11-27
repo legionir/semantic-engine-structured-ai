@@ -49,6 +49,11 @@ module.exports = async function ProjectManager({ test, backdrops, console_ }) {
         byId("newProjectButton").dispatch("click");
         await settle();
         const form = modal();
+        assert.ok(form.querySelector(".new-project-body"), "uses clean new-project container without mcp-add top rule");
+        assert.equal(form.querySelector(".mcp-add"), null);
+        const folderTab = button(form, "Folder");
+        assert.equal(folderTab.classList.contains("active"), true, "Folder tab is active by default");
+        assert.equal(folderTab.getAttribute("aria-selected"), "true");
         const [name, root] = form.querySelectorAll("input");
         const message = form.querySelector(".mcp-message");
         const create = button(form, "Create");
@@ -262,7 +267,8 @@ module.exports = async function ProjectManager({ test, backdrops, console_ }) {
     await test("the health chip links to the visible project's overview", async () => {
 
         const chip = byId("gatewayHealth");
-        assert.match(chip.textContent, /^health · /);
+        assert.match(chip.textContent, /^(ok|degraded|down|unknown|—)$/);
+        assert.doesNotMatch(chip.textContent, /health · /);
         assert.equal(chip.getAttribute("href"), "/api/health");
 
         const manager = await openManager();
@@ -301,6 +307,8 @@ module.exports = async function ProjectManager({ test, backdrops, console_ }) {
 
         attach(["notes.txt", "data.csv", "extra.log"]);
         await settle();
+        assert.equal(byId("taskForm").contains(byId("attachmentList")), true, "attachmentList sits inside the composer form");
+        assert.equal(byId("attachmentList").nextElementSibling, byId("task"), "attachmentList sits right above #task");
         assert.deepEqual(chips(), ["notes.txt", "data.csv", "extra.log"]);
         assert.deepEqual(assigned, [""], "the picker is reset so the same file can be picked again");
 

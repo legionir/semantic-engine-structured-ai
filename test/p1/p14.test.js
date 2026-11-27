@@ -439,6 +439,21 @@ async function main() {
         const words = CommandRisk.splitCommands("echo 'a; b' \"c && d\" e\\ f; ls", "posix");
 
         assert.deepEqual(words.map(command => command.words), [["echo", "a; b", "c && d", "e f"], ["ls"]]);
+        assert.equal(words.unclosedQuote, null);
+        assert.deepEqual(words.warnings, []);
+
+        const unclosedSingle = CommandRisk.splitCommands("echo 'hello; rm -rf /", "posix");
+        assert.equal(unclosedSingle.unclosedQuote, "'");
+        assert.deepEqual(unclosedSingle.warnings, ["unclosed single quote"]);
+        assert.equal(unclosedSingle[0].unclosedQuote, "'");
+
+        const unclosedDouble = CommandRisk.splitCommands("echo \"unterminated", "posix");
+        assert.equal(unclosedDouble.unclosedQuote, "\"");
+        assert.deepEqual(unclosedDouble.warnings, ["unclosed double quote"]);
+
+        const classifiedUnclosed = CommandRisk.classify("echo 'hello; rm -rf /", { dialect: "posix" });
+        assert.notEqual(classifiedUnclosed.risk, "low", "unclosed quote is never rated low risk");
+        assert.deepEqual(classifiedUnclosed.warnings, ["unclosed single quote"]);
     });
 
     await test("process_write input is rated line by line", () => {

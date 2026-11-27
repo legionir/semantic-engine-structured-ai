@@ -3,16 +3,17 @@
 | Discussion
 |--------------------------------------------------------------------------
 |
-| The composer's discussion mode: the persona options row, its status line,
-| starting a discussion and the live Discussion modal. While it runs, the
-| event stream paints the rounds into the modal as they happen.
+| The Discussion modal: configuring a multi-agent deliberation (topic,
+| personas, round limit), starting it, and streaming the live rounds and
+| observer synthesis inside the modal.
 */
 
 import { state, touch } from "./store.js";
 import { bind, mount, mountInModal } from "./dom.js";
-import { Discussion, DiscussionOptions } from "./discussion-view.js";
+import { Discussion, DiscussionFooter } from "./discussion-view.js";
 import { el } from "./console-core.js";
-import { clearComposer, taskWithAttachments, uploadFor } from "./composer-controller.js";
+import { selectedReasoningEffort, taskWithAttachments, uploadFor } from "./composer-controller.js";
+import { apiFetch } from "./auth-transport.js";
 
 
 /* the spec's example panel, so a first run already shows a disagreement
@@ -21,19 +22,19 @@ const PRESELECT =
     new Set(["security", "backend", "frontend", "architect", "performance"]);
 
 
-const optionActions = {
+const modalActions = {
 
     toggle(id, checked) {
         const selection = new Set(state.discussionSelection || []);
         if (checked) selection.add(id);
         else selection.delete(id);
         state.discussionSelection = [...selection];
-        touch("composer");
+        touch("discussion");
     },
 
     selectAll(checked) {
         state.discussionSelection = checked ? state.discussionPersonas.map(persona => persona.id) : [];
-        touch("composer");
+        touch("discussion");
     },
 
     /* the field is drawn from this value, so a redraw keeps what was typed */
@@ -41,24 +42,33 @@ const optionActions = {
         state.discussionRounds = value;
     },
 
-    view: () => openDiscussion()
+    draft(value) {
+        state.discussionDraft = value;
+    },
+
+    setView(showSetup) {
+        state.discussionShowSetup = Boolean(showSetup);
+        state.discussionError = null;
+        touch("discussion");
+    },
+
+    submit() {
+        void submitDiscussion(state.discussionDraft, selectedReasoningEffort());
+    }
 };
 
 
 /*
-| The options row under the task box and the Discussion button's state are
-| drawn from the store: the row while discussion mode is on, the button's
-| highlight whenever the mode flips.
+| Highlight the composer's Discussion button while a discussion is running
+| or its modal is open.
 */
 export function mountDiscussionComposer() {
 
-    const options = el("discussionOptions");
-
-    mount(options, DiscussionOptions, ["discussion", "composer"], { state, actions: optionActions });
-
     bind(["discussion", "composer"], () => {
-        if (options) options.hidden = !state.discussionMode;
-        el("discussionButton")?.classList.toggle("active", state.discussionMode);
+        const active =
+            state.discussion?.status === "running" ||
+            Boolean(state.discussionModal && state.discussionModal.isOpen());
+        el("discussionButton")?.classList.toggle("active", active);
     });
 }
 
@@ -76,18 +86,23 @@ function selectedDiscussionPersonas() {
 function showDiscussionError(message) {
 
     state.discussionError = message;
-    touch("composer");
+    touch("discussion", "composer");
 }
 
 
 async function loadPersonas() {
 
+    state.discussionPersonasLoading = true;
+    touch("discussion");
+
     try {
-        const response = await fetch("/api/discussion/personas");
+        const response = await apiFetch("/api/discussion/personas");
         const payload = await response.json();
         state.discussionPersonas = response.ok ? payload.personas || [] : [];
     } catch {
         state.discussionPersonas = [];
+    } finally {
+        state.discussionPersonasLoading = false;
     }
 
     /* the first list that arrives gets the default panel; a failed load
@@ -96,73 +111,95 @@ async function loadPersonas() {
         state.discussionSelection =
             state.discussionPersonas.filter(persona => PRESELECT.has(persona.id)).map(persona => persona.id);
     }
+
+    touch("discussion", "composer");
 }
 
 
-export async function toggleDiscussionMode() {
+export function toggleDiscussionMode() {
 
-    /* while a discussion is going, the button opens the live view
-       instead of flipping the form */
-
-    if (state.discussion?.status === "running") {
-        openDiscussion();
-        return;
-    }
-
-    state.discussionMode = !state.discussionMode;
-
-    if (state.discussionMode && state.discussionPersonas.length === 0) {
-        await loadPersonas();
-    }
-
-    touch("composer");
+    return openDiscussion();
 }
 
 
-function openDiscussion() {
+export function openDiscussion() {
+
+    if (state.discussionPersonas.length === 0 && !state.discussionPersonasLoading) {
+        void loadPersonas();
+    }
 
     if (state.discussionModal && state.discussionModal.isOpen()) {
         return state.discussionModal;
     }
 
-    let dispose = () => {};
+    state.discussionModal = null;
+    state.discussionError = null;
+
+    if (!state.discussion) {
+        state.discussionShowSetup = true;
+        const composerDraft = el("task")?.value?.trim();
+        if (!state.discussionDraft && composerDraft) {
+            state.discussionDraft = composerDraft;
+        }
+    } else {
+        state.discussionShowSetup = false;
+    }
+
+    let disposeBody = () => {};
+    let disposeFooter = () => {};
+
+    const footerHost = document.createElement("div");
+    footerHost.className = "discussion-modal-footer";
 
     const handle =
         Modal.open({
             title: "Discussion",
             subtitle: "specialist personas deliberate in rounds; an observer decides when to finish",
             size: "large",
-            footer: Modal.row(Modal.button("Close", "", () => handle.close("footer"))),
+            footer: footerHost,
             onClose: () => {
-                dispose();
+                disposeBody();
+                disposeFooter();
                 state.discussionModal = null;
+                touch("discussion");
             }
         });
 
-    dispose = mountInModal(handle, Discussion, ["discussion"], { state }, "discussion");
+    disposeBody = mountInModal(handle, Discussion, ["discussion", "composer"], { state, actions: modalActions }, "discussion");
+    disposeFooter = mount(
+        footerHost,
+        DiscussionFooter,
+        ["discussion", "composer"],
+        { state, actions: modalActions, onClose: () => handle.close("footer") }
+    );
 
     state.discussionModal = handle;
+    touch("discussion");
 
     return handle;
 }
 
-/*
-| Execution and Events live in a hidden row and open as header modals.
-| A modal draws its own copy of the view from the store (class names
-| only, so every id stays unique on the page); nothing is moved between
-| the page and the dialog, so closing one can never strand a node.
-*/
-
 
 /*
-| Discussion mode sends the same task box to the panel instead of the
-| delegation tree: the personas and the round limit come from the options
-| row, and the live view opens as it runs.
+| Starts a discussion from the Discussion modal: validates the topic and
+| personas, posts to the discussion endpoint, and switches the modal to the
+| live transcript.
 */
-export async function submitDiscussion(task, reasoningEffort) {
+export async function submitDiscussion(taskInput, reasoningEffort) {
 
     state.discussionError = null;
-    touch("composer");
+    touch("discussion");
+
+    let task = String(taskInput ?? "").trim();
+
+    if (task === "" && state.attachments.length === 0) {
+        showDiscussionError("enter a topic or task");
+        return;
+    }
+
+    if (task === "") {
+        task = "Inspect the attached file(s) and determine the appropriate next step.";
+    }
 
     const personas = selectedDiscussionPersonas();
 
@@ -191,11 +228,11 @@ export async function submitDiscussion(task, reasoningEffort) {
             : "/api/discussion";
 
     state.submitting = true;
-    touch("composer");
+    touch("discussion", "composer");
 
     try {
 
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -214,10 +251,13 @@ export async function submitDiscussion(task, reasoningEffort) {
 
         const payload = await response.json().catch(() => ({}));
 
-        clearComposer();
+        state.discussionDraft = "";
+        state.discussionShowSetup = false;
+        state.attachments = [];
+        state.attachmentError = null;
 
         /* the stream confirms with discussion:start; this keeps the
-           composer honest in the meantime */
+           modal honest in the meantime */
         state.discussion = {
             id: payload.id || null,
             status: "running",
@@ -229,13 +269,13 @@ export async function submitDiscussion(task, reasoningEffort) {
             final_report: null
         };
 
-        touch("discussion", "composer");
+        touch("discussion", "composer", "attachments");
         openDiscussion();
 
     } catch (error) {
         showDiscussionError(`the discussion could not be started (${error.message || "network error"})`);
     } finally {
         state.submitting = false;
-        touch("composer");
+        touch("discussion", "composer");
     }
 }

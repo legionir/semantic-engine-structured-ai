@@ -14,7 +14,8 @@ import { state, touch } from "./store.js";
 import { bind, mountInModal } from "./dom.js";
 import { el } from "./console-core.js";
 import { createLogsState, LogsBody, logsSubtitle } from "./logs-view.js";
-import { apiRequest, query } from "./operator-api.js";
+import { apiRequest, confirmDialog, query } from "./operator-api.js";
+import { createEventSource } from "./auth-transport.js";
 
 
 let stream = null;
@@ -108,7 +109,7 @@ function openStream() {
     const target = logs();
     let first = true;
 
-    stream = new EventSource("/api/logs/stream");
+    stream = createEventSource("/api/logs/stream");
 
     stream.onmessage = message => {
 
@@ -184,8 +185,12 @@ const actions = {
     },
 
     async clear() {
-        if (typeof window !== "undefined" && typeof window.confirm === "function" &&
-            !window.confirm("Clear the application log? The current log file is rotated, not deleted.")) {
+        const approved = await confirmDialog("Clear the application log? The current log file is rotated, not deleted.", {
+            title: "Clear logs",
+            confirmLabel: "Clear",
+            confirmClass: "danger"
+        });
+        if (!approved) {
             return;
         }
         const result = await apiRequest("/api/logs", { method: "DELETE" });
@@ -219,11 +224,22 @@ export async function openLogs() {
     const target = logs();
     let dispose = () => {};
 
+    const downloadLink = document.createElement("a");
+    downloadLink.className = "ghost button logs-download";
+    downloadLink.href = "/api/logs/download";
+    downloadLink.setAttribute("download", "");
+    downloadLink.textContent = "Download";
+
     const handle = Modal.open({
         title: "Logs",
         subtitle: logsSubtitle(target),
         size: "large",
         className: "logs-modal",
+        footer: Modal.row(
+            Modal.button("Refresh", "ghost", () => actions.refresh()),
+            downloadLink,
+            Modal.button("Clear", "ghost danger", () => actions.clear())
+        ),
         onClose: () => {
             dispose();
             closeStream();

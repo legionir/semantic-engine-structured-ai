@@ -76,8 +76,79 @@ export function inlineMarkdown(value, depth = 0) {
     };
 
     const findClosing = (delimiter, from) => {
-        const closing = text.indexOf(delimiter, from);
-        return closing > from ? closing : -1;
+        if (delimiter === "`") {
+            const closing = text.indexOf("`", from);
+            return closing > from ? closing : -1;
+        }
+        const doubleDelim = delimiter.length === 1 ? delimiter + delimiter : null;
+        let pos = from;
+        let noMoreBacktick = false;
+        let noMoreDouble = false;
+        let noMoreLink = false;
+
+        const findCodeEnd = start => {
+            if (noMoreBacktick) return -1;
+            const codeClose = text.indexOf("`", start + 1);
+            if (codeClose === -1) {
+                noMoreBacktick = true;
+                return -1;
+            }
+            return codeClose + 1;
+        };
+
+        const findDoubleEnd = start => {
+            if (noMoreDouble) return -1;
+            let scan = start + 2;
+            while (scan < text.length) {
+                if (text[scan] === "`" && !noMoreBacktick) {
+                    const nextScan = findCodeEnd(scan);
+                    if (nextScan !== -1) {
+                        scan = nextScan;
+                        continue;
+                    }
+                }
+                if (text.startsWith(doubleDelim, scan)) {
+                    return scan + 2;
+                }
+                scan++;
+            }
+            noMoreDouble = true;
+            return -1;
+        };
+
+        while (pos < text.length) {
+            if (text[pos] === "`" && !noMoreBacktick) {
+                const nextPos = findCodeEnd(pos);
+                if (nextPos !== -1) {
+                    pos = nextPos;
+                    continue;
+                }
+            }
+            if (text[pos] === "[" && !noMoreLink) {
+                const labelEnd = text.indexOf("](", pos + 1);
+                const urlEnd = labelEnd === -1 ? -1 : text.indexOf(")", labelEnd + 2);
+                if (labelEnd > pos && urlEnd > labelEnd) {
+                    if (safeMarkdownHref(text.slice(labelEnd + 2, urlEnd)) !== null) {
+                        pos = urlEnd + 1;
+                        continue;
+                    }
+                } else {
+                    noMoreLink = true;
+                }
+            }
+            if (doubleDelim && text.startsWith(doubleDelim, pos)) {
+                const nextPos = findDoubleEnd(pos);
+                if (nextPos !== -1) {
+                    pos = nextPos;
+                    continue;
+                }
+            }
+            if (text.startsWith(delimiter, pos)) {
+                return pos > from ? pos : -1;
+            }
+            pos++;
+        }
+        return -1;
     };
 
     while (index < text.length) {
@@ -165,7 +236,7 @@ export function inlineMarkdown(value, depth = 0) {
 function isBlockStart(line) {
     return (
         /^\s{0,3}#{1,6}\s+/.test(line) ||
-        /^\s{0,3}(```|~~~)/.test(line) ||
+        /^\s{0,3}(?:`{3,}[^`\n]*|~{3,})/.test(line) ||
         /^\s{0,3}>/.test(line) ||
         /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line) ||
         /^\s*(?:[-+*]|\d+[.)])\s+/.test(line)
@@ -267,16 +338,18 @@ export function markdownBlocks(value) {
             continue;
         }
 
-        const fence = /^\s{0,3}(```|~~~)\s*([^\s]*)\s*$/.exec(line);
+        const fence = /^\s{0,3}(?:(`{3,})\s*([^`\n]*?)|(~{3,})\s*([^\n]*?))\s*$/.exec(line);
 
         if (fence) {
 
-            const marker = fence[1];
-            const language = fence[2] || "";
+            const marker = fence[1] || fence[3];
+            const info = (fence[1] ? fence[2] : fence[4]) || "";
+            const language = info.trim().split(/\s+/)[0] || "";
+            const closeFence = new RegExp(`^\\s{0,3}${marker[0]}{${marker.length},}\\s*$`);
             const code = [];
             index++;
 
-            while (index < lines.length && !new RegExp(`^\\s{0,3}${marker}`).test(lines[index])) {
+            while (index < lines.length && !closeFence.test(lines[index])) {
                 code.push(lines[index]);
                 index++;
             }

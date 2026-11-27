@@ -311,6 +311,25 @@ async function main() {
         assert.equal(result.authenticated, true);
         assert.equal(middleware.sameOrigin(req.headers.origin, req.headers.host), true);
         assert.equal(middleware.sameOrigin("https://other.test", req.headers.host), false);
+        assert.equal(middleware.sameOrigin("https://proxy.example", "127.0.0.1:3000", "proxy.example"), true);
+        assert.equal(middleware.sameOrigin("https://evil.example", "127.0.0.1:3000", "proxy.example"), false);
+        assert.equal(middleware.sameOrigin("https://evil.example/path", "127.0.0.1:3000", "evil.example/path"), false);
+
+        const responseHeaders = {};
+        const mockRes = { setHeader: (k, v) => { responseHeaders[k] = v; } };
+        const { setConsoleCookie } = require(path.join(REPO, "web", "server", "Response"));
+        setConsoleCookie(mockRes, "structured_ai_console", "tok", { headers: {} });
+        assert.match(responseHeaders["set-cookie"], /SameSite=Strict/);
+        setConsoleCookie(mockRes, "structured_ai_console", "tok", { headers: { "x-forwarded-proto": "https" } }, { trustForwarded: false });
+        assert.match(responseHeaders["set-cookie"], /SameSite=Strict/);
+        setConsoleCookie(mockRes, "structured_ai_console", "tok", { headers: { "x-forwarded-proto": "https" } });
+        assert.match(responseHeaders["set-cookie"], /SameSite=None/);
+        assert.match(responseHeaders["set-cookie"], /Secure/);
+        assert.match(responseHeaders["set-cookie"], /Partitioned/);
+
+        assert.equal(middleware.isTrustedProxy({ socket: { remoteAddress: "127.0.0.1" } }, ""), false);
+        assert.equal(middleware.isTrustedProxy({ socket: { remoteAddress: "::ffff:127.0.0.1" } }, "127.0.0.1"), true);
+        assert.equal(middleware.isTrustedProxy({ socket: { remoteAddress: "10.0.0.5" } }, "127.0.0.1"), false);
 
         const limiter = new middleware.RateLimiter({ limit: 1, windowMs: 60_000 });
         assert.equal(limiter.allow(req), true);

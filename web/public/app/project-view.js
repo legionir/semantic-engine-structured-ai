@@ -20,6 +20,7 @@
 import { html } from "./dom.js";
 import { Plan } from "./plan-view.js";
 import { describeEvent } from "./event-view.js";
+import { SkeletonCards, SkeletonRows } from "./skeleton-view.js";
 
 
 export const DASHBOARD_TABS = [
@@ -165,7 +166,7 @@ function TabBody({ dashboard, plan, currentProjectId, onSave }) {
 export function DashboardBody({ dashboard, plan, currentProjectId, onSave }) {
 
     if (dashboard.loading && !dashboard.data) {
-        return empty("Loading…");
+        return html`<${SkeletonCards} count=${4} label="Loading…" />`;
     }
 
     return html`<${TabBody}
@@ -222,7 +223,11 @@ export function ProjectsManager({ state, picker, actions }) {
             <span class="name">Default Workspace</span>
             <span class="muted">Use the default workspace</span>
         </label>
-        ${state.projects.length === 0 ? html`<p class="empty">No registered projects yet.</p>` : null}
+        ${state.projectsLoading && state.projects.length === 0
+            ? html`<${SkeletonRows} count=${3} label="Loading projects…" />`
+            : state.projects.length === 0
+                ? html`<p class="empty">No registered projects yet.</p>`
+                : null}
         ${state.projects.map(project => {
             const name = project.name || project.id;
             return html`<div class="project-row" key=${project.id}>
