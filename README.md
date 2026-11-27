@@ -450,6 +450,8 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROCESS_SANDBOX_TMP_MB` | number | `512` | Size of the writable /tmp tmpfs inside a Docker/Podman sandbox, in MiB. |
 | `PROCESS_ORPHAN_SWEEP` | boolean | `true` | When the console starts, stop the background processes a previous runtime started and could not stop because it was killed (recorded in `<data home>/processes.json`; on Linux a process is stopped only when its start time still matches). |
 | `TERMINAL_TIMEOUT_MS` | number | `30000` | Default timeout for terminal_exec when the call does not set one. |
+| `TERMINAL_CANCEL_GRACE_MS` | number | `2000` | When a run is stopped, a running terminal_exec command gets SIGTERM and, after this many milliseconds, SIGKILL. |
+| `TOOL_CANCEL_WAIT_MS` | number | `3000` | When a run is stopped, how long the runtime waits for a running tool to stop on its own before it abandons the call and ends the run. |
 | `GIT_TIMEOUT_MS` | number | `30000` | Timeout for a single git command. |
 | `HOOKS_ENABLED` | boolean | `false` | Run declarative before_task and after_task hooks. Off by default; projects opt in through .agent/project.json. |
 | `HOOK_TIMEOUT_MS` | number | `300000` | Independent wall-clock budget for each hook phase, including after_task when the main run deadline was spent. |
@@ -572,7 +574,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
 | `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۶۰ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۶۲ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|

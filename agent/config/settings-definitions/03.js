@@ -307,6 +307,24 @@ module.exports = [
         "description": "Default timeout for terminal_exec when the call does not set one."
     },
     {
+        "key": "TERMINAL_CANCEL_GRACE_MS",
+        "group": "tools",
+        "type": "number",
+        "default": 2000,
+        "min": 0,
+        "max": 60000,
+        "description": "When a run is stopped, a running terminal_exec command gets SIGTERM and, after this many milliseconds, SIGKILL."
+    },
+    {
+        "key": "TOOL_CANCEL_WAIT_MS",
+        "group": "tools",
+        "type": "number",
+        "default": 3000,
+        "min": 0,
+        "max": 60000,
+        "description": "When a run is stopped, how long the runtime waits for a running tool to stop on its own before it abandons the call and ends the run."
+    },
+    {
         "key": "GIT_TIMEOUT_MS",
         "group": "tools",
         "type": "number",

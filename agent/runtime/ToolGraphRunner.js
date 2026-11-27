@@ -4,6 +4,7 @@
 
 const ScopedRules = require("../prompt/ScopedRules");
 const { WORKSPACE_ROOT } = require("../context/WorkspaceBoundary");
+const { raceRunSignal } = require("./RunSignalRace");
 
 function createToolGraphRunner({ host, assertToolAllowed, normalizeToolCalls, describeGraph, executeDependencyGraph, resolveArgumentReferences, appendToolConversation }) {
 let GRAPH_SEQUENCE = 0;
@@ -21,6 +22,33 @@ function noteTouchedPaths(name, args) {
     } catch {
         /* rule scoping is advisory; it never fails a tool call */
     }
+}
+
+
+/* the AbortSignal of the run this graph belongs to (Stop, deadline) */
+function currentRunSignal() {
+
+    const run = host().currentRun();
+    const signal = run && run.controller ? run.controller.signal : null;
+
+    return signal && typeof signal.addEventListener === "function" ? signal : null;
+}
+
+
+/* a tool that ignores the run's signal is abandoned once Stop fires */
+function untilRunStops(promise, signal, toolName) {
+
+    return raceRunSignal(promise, signal, {
+        waitMs: host().settings.get("TOOL_CANCEL_WAIT_MS"),
+        stopError: () => {
+            try {
+                host().assertRunActive(`tool ${toolName}`);
+            } catch (error) {
+                return error;
+            }
+            return new Error(`Run cancelled: tool ${toolName}`);
+        }
+    });
 }
 
 
@@ -244,8 +272,10 @@ async function executeToolGraph(
 
                     try {
 
+                        const runSignal = currentRunSignal();
+
                         const result =
-                            await host().toolRuntime.executeTool(
+                            await untilRunStops(host().toolRuntime.executeTool(
                                 call.name,
                                 resolvedArguments,
 
@@ -270,15 +300,17 @@ async function executeToolGraph(
                                                       host().currentRun().projectId ??
                                                       undefined,
                                                   projectContext:
-                                                      project ?? undefined
+                                                      project ?? undefined,
+                                                  ...(runSignal ? { signal: runSignal } : {})
                                               };
 
                                           })()
                                         : {
-                                              agent: scope || "main_agent"
+                                              agent: scope || "main_agent",
+                                              ...(runSignal ? { signal: runSignal } : {})
                                           }
                                 )
-                            );
+                            ), runSignal, call.name);
 
                         /*
                         | Loading a skill is a decision, not plumbing,

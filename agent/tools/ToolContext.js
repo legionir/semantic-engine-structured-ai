@@ -4,8 +4,8 @@
 |--------------------------------------------------------------------------
 |
 | What a tool needs to act on the right project: the agent on whose
-| behalf it runs, the run it belongs to, and the ProjectContext that
-| supplies the filesystem boundary.
+| behalf it runs, the run it belongs to, the ProjectContext that
+| supplies the filesystem boundary, and the run's AbortSignal (Stop).
 |
 | The context is BUILT BY THE RUNTIME from its own run state and handed
 | to executeTool as the third argument — a tool call's arguments never
@@ -37,11 +37,16 @@ const {
 
 class ToolContext {
 
-    constructor({ agent, runId, project }) {
+    constructor({ agent, runId, project, signal }) {
 
         this.agent = agent;
 
         this.runId = runId || null;
+
+        /* The run's AbortSignal: Stop (or the run deadline) aborts it, and a
+           tool that holds a process or a connection must let go when it
+           fires. Null for a direct call outside a run. */
+        this.signal = isAbortSignal(signal) ? signal : null;
 
         this.project = project || null;
 
@@ -121,6 +126,17 @@ class ToolContext {
 
     }
 
+}
+
+
+function isAbortSignal(value) {
+
+    return Boolean(
+        value &&
+        typeof value === "object" &&
+        typeof value.aborted === "boolean" &&
+        typeof value.addEventListener === "function"
+    );
 }
 
 
@@ -224,7 +240,8 @@ function from(raw) {
     return new ToolContext({
         agent: raw.agent,
         runId: raw.runId ?? raw.run_id ?? null,
-        project
+        project,
+        signal: raw.signal ?? null
     });
 
 }
