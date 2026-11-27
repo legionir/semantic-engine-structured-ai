@@ -102,6 +102,7 @@ async function main() {
     }), /BEDROCK_ACCESS_KEY_ID/);
 
     console.log("  ok   model catalog normalizes provider responses and fetches layer models over the configured transport");
+    console.log("\n1/1 passed");
 }
 
 main().catch(error => {

@@ -38,8 +38,13 @@ const settings = require("../config");
 const { httpTransport } = require("../providers/HttpTransport");
 
 const CLIENT_NAME = "structured-ai";
-const oauthTimeoutMs = () => Math.max(1000, Math.min(Number(settings.get("MAX_REQUEST_MS")) || 15000, 15000));
-const maxResponseBytes = () => 262144;
+/* one OAuth round trip: MCP_OAUTH_TIMEOUT_MS, or MAX_REQUEST_MS when smaller */
+const oauthTimeoutMs = () => {
+    const own = settings.get("MCP_OAUTH_TIMEOUT_MS");
+    const request = Number(settings.get("MAX_REQUEST_MS"));
+    return request > 0 ? Math.min(own, request) : own;
+};
+const maxResponseBytes = () => settings.get("MCP_OAUTH_MAX_RESPONSE_BYTES");
 const expiryMarginMs = () => settings.get("MCP_OAUTH_REFRESH_MARGIN_MS");
 const flowTtlMs = () => settings.get("MCP_OAUTH_FLOW_TTL_MS");
 

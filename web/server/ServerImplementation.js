@@ -96,8 +96,9 @@ function createServer(runtime, options = {}) {
         Boolean(runtime.settings && runtime.settings.get("AGENT_CONSOLE_PASSWORD_REQUIRED"));
     const consolePassword =
         String(runtime.settings && runtime.settings.get("AGENT_CONSOLE_PASSWORD") || "");
-    const PASSWORD_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-    const MAX_PASSWORD_SESSIONS = 500;
+    /* read per sign-in, so a settings change applies to the next one */
+    const passwordSessionTtlMs = () => runtime.settings.get("CONSOLE_PASSWORD_SESSION_TTL_MS");
+    const passwordSessionsMax = () => runtime.settings.get("CONSOLE_PASSWORD_SESSIONS_MAX");
     const passwordSessions = new Map();
 
     if (consolePasswordRequired && consolePassword.length === 0) {
@@ -177,13 +178,13 @@ function createServer(runtime, options = {}) {
                 passwordSessions.delete(token);
             }
         }
-        while (passwordSessions.size >= MAX_PASSWORD_SESSIONS) {
+        while (passwordSessions.size >= passwordSessionsMax()) {
             const oldest = passwordSessions.keys().next().value;
             if (!oldest) break;
             passwordSessions.delete(oldest);
         }
         const token = newConsoleToken();
-        passwordSessions.set(token, now + PASSWORD_SESSION_TTL_MS);
+        passwordSessions.set(token, now + passwordSessionTtlMs());
         return token;
     }
 

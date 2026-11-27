@@ -114,5 +114,23 @@ module.exports = [
         "min": 40,
         "max": 400,
         "description": "Length of the one-line description each deferred MCP tool gets in the model's index when tool definitions are loaded lazily (roadmap P4-06)."
+    },
+    {
+        "key": "MCP_OAUTH_TIMEOUT_MS",
+        "group": "mcp",
+        "type": "number",
+        "default": 15000,
+        "min": 1000,
+        "max": 120000,
+        "description": "Time limit for one OAuth request to an MCP authorization server (metadata discovery, client registration, token exchange and refresh), in milliseconds. MAX_REQUEST_MS caps it when smaller."
+    },
+    {
+        "key": "MCP_OAUTH_MAX_RESPONSE_BYTES",
+        "group": "mcp",
+        "type": "number",
+        "default": 262144,
+        "min": 4096,
+        "max": 10485760,
+        "description": "Largest OAuth metadata or token response, in bytes, read from an MCP authorization server; a bigger one is refused."
     }
 ];

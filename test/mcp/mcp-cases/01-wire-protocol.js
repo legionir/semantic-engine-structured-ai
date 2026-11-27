@@ -468,11 +468,14 @@ module.exports = async function wireProtocolCases(ctx) {
 
         const http = require("http");
         let captured = null;
+        const upgraded = new Set();
         const wsServer = http.createServer((_req, res) => {
             res.writeHead(404).end();
         });
         wsServer.on("upgrade", (req, socket) => {
             captured = req.headers;
+            upgraded.add(socket);
+            socket.on("close", () => upgraded.delete(socket));
             const key = req.headers["sec-websocket-key"];
             socket.write(
                 "HTTP/1.1 101 Switching Protocols\r\n" +
@@ -505,6 +508,10 @@ module.exports = async function wireProtocolCases(ctx) {
             assert.equal(captured["sec-websocket-protocol"], "custom-subproto");
             await wsTransport.close();
         } finally {
+            /* an upgraded socket is no longer tracked by the HTTP server, so
+               closeAllConnections() misses it and close() would never call
+               back, which let the test process exit early with code 0 */
+            for (const socket of upgraded) socket.destroy();
             wsServer.closeAllConnections?.();
             await new Promise(resolve => wsServer.close(resolve));
         }

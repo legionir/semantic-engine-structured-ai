@@ -156,7 +156,7 @@ function createAdapter(shared, claims) {
 
 module.exports = async function McpServeRoutes(shared, request) {
 
-    const { pathname, req, res, claims } = request;
+    const { pathname, req, res, claims, trustedProxy } = request;
 
     if (pathname !== "/mcp" && pathname !== "/mcp/") {
         return false;
@@ -169,7 +169,9 @@ module.exports = async function McpServeRoutes(shared, request) {
         return true;
     }
 
-    if (!sameOrigin(req.headers.origin, req.headers.host, req.headers["x-forwarded-host"])) {
+    /* X-Forwarded-Host counts only from a proxy listed in TRUSTED_PROXIES,
+       exactly as for the console API; anyone else could forge it */
+    if (!sameOrigin(req.headers.origin, req.headers.host, trustedProxy ? req.headers["x-forwarded-host"] : null)) {
         sendJson(res, 403, { error: "cross-origin MCP request refused" });
         return true;
     }

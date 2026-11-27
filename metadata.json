@@ -1,8 +1,0 @@
-{
-  "name": "Structured-ai v5",
-  "description": "Hierarchical multi-agent runtime and web console with structured actions, project isolation, and workspace tooling.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

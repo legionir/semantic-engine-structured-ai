@@ -25,6 +25,12 @@
 | (C:\Users\RUNNER~1\...). The code under test resolves real paths, so
 | a test comparing against os.tmpdir() must see the same spelling.
 |
+| Exit code 0 is not enough on its own: a file must also end with its
+| "N/N passed" summary. A test awaiting a promise that never settles lets
+| Node run out of work and exit with code 0 in the middle of the file, so
+| every later test is skipped without a failure; the missing summary is
+| what gives that away.
+|
 | The --out report lists failures first and keeps, per failing file, the
 | FAIL lines with what follows them (or the tail when there are none), so
 | a size-limited CI comment still shows why each file failed.
@@ -185,6 +191,27 @@ function junit(results, seconds) {
 }
 
 
+/*
+| The last "N/M ... passed" line a test file printed, or null. A file that
+| exits 0 must have printed one with N === M > 0 (see the header).
+*/
+function summaryOf(text) {
+
+    const lines = String(text || "").split(/\r?\n/);
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+
+        const match = /\b(\d+)\/(\d+)\b[^\n]*\bpassed\b/i.exec(lines[index]);
+
+        if (match) {
+            return { passed: Number(match[1]), total: Number(match[2]), line: lines[index].trim() };
+        }
+    }
+
+    return null;
+}
+
+
 function runOne(entry, options) {
 
     const started = Date.now();
@@ -215,9 +242,24 @@ function runOne(entry, options) {
         status = `exit ${child.status}`;
     }
 
+    let ok = !child.error && !child.signal && child.status === 0;
+
+    if (ok) {
+
+        const summary = summaryOf(child.stdout);
+
+        if (!summary) {
+            ok = false;
+            status = "exit 0 without a \"N/N passed\" summary (did it stop early?)";
+        } else if (summary.total === 0 || summary.passed !== summary.total) {
+            ok = false;
+            status = `exit 0 but its summary says ${summary.line}`;
+        }
+    }
+
     return {
         file: entry.file,
-        ok: !child.error && !child.signal && child.status === 0,
+        ok,
         status,
         seconds,
         output
@@ -327,4 +369,4 @@ if (require.main === module) {
 }
 
 
-module.exports = { testFiles, parseArguments, junit, runOne, digest, canonicalTemp, childEnvironment };
+module.exports = { testFiles, parseArguments, junit, runOne, summaryOf, digest, canonicalTemp, childEnvironment };

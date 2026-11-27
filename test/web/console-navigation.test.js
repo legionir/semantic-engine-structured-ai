@@ -53,3 +53,4 @@ assert.strictEqual(JSON.stringify(calls[1]), JSON.stringify({
 }));
 
 console.log("console navigation tests passed");
+console.log("\n1/1 passed");

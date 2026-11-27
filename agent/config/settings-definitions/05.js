@@ -166,6 +166,24 @@ module.exports = [
         "description": "Comma-separated list of trusted reverse proxy IP addresses (for example 127.0.0.1,::1). Empty ignores X-Forwarded-Host and X-Forwarded-Proto headers."
     },
     {
+        "key": "CONSOLE_PASSWORD_SESSION_TTL_MS",
+        "group": "console",
+        "type": "number",
+        "default": 86400000,
+        "min": 60000,
+        "max": 2592000000,
+        "description": "How long one password sign-in stays valid when AGENT_CONSOLE_PASSWORD_REQUIRED is on, in milliseconds. Each sign-in gets its own session; a restart ends all of them."
+    },
+    {
+        "key": "CONSOLE_PASSWORD_SESSIONS_MAX",
+        "group": "console",
+        "type": "number",
+        "default": 500,
+        "min": 1,
+        "max": 100000,
+        "description": "Most password sign-in sessions kept at once. Expired sessions go first, then the oldest is dropped to make room for a new sign-in."
+    },
+    {
         "key": "CONSOLE_TERMINAL_ENABLED",
         "group": "console",
         "type": "boolean",

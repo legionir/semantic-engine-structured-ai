@@ -87,6 +87,15 @@ function requestPasswordSession(req, url) {
         return header;
     }
 
+    /* EventSource and download links cannot send a header, so a GET may
+       carry the session in the address; a write never does, so an address
+       that ends up in a log cannot be replayed to change anything */
+    const method = String(req?.method || "GET").toUpperCase();
+
+    if (method !== "GET" && method !== "HEAD") {
+        return null;
+    }
+
     const query = url?.searchParams?.get?.("session");
 
     return typeof query === "string" && query.length > 0 ? query : null;

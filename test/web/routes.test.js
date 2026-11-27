@@ -331,6 +331,11 @@ async function main() {
         assert.equal(middleware.isTrustedProxy({ socket: { remoteAddress: "::ffff:127.0.0.1" } }, "127.0.0.1"), true);
         assert.equal(middleware.isTrustedProxy({ socket: { remoteAddress: "10.0.0.5" } }, "127.0.0.1"), false);
 
+        const sessionUrl = new URL("http://127.0.0.1/api/events?session=abc");
+        assert.equal(middleware.requestPasswordSession({ method: "GET", headers: {} }, sessionUrl), "abc", "a stream or download may carry the session in its address");
+        assert.equal(middleware.requestPasswordSession({ method: "POST", headers: {} }, sessionUrl), null, "a write never takes the session from the address");
+        assert.equal(middleware.requestPasswordSession({ method: "POST", headers: { "x-console-session": "abc" } }, sessionUrl), "abc", "a write sends it as a header");
+
         const limiter = new middleware.RateLimiter({ limit: 1, windowMs: 60_000 });
         assert.equal(limiter.allow(req), true);
         assert.equal(limiter.allow(req), false);

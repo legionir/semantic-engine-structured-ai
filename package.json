@@ -5,7 +5,6 @@
   "description": "Hierarchical multi-agent runtime with a structured action contract over an OpenAI-compatible endpoint.",
   "main": "agent/agent.js",
   "scripts": {
-    "dev": "node bin/agent.js --serve 3000 --host 0.0.0.0",
     "build": "node ci/check-syntax.js",
     "lint": "node ci/check-syntax.js",
     "start": "node bin/agent.js",
