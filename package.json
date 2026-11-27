@@ -56,6 +56,6 @@
     "socks-proxy-agent": "^8.0.5"
   },
   "devDependencies": {
-    "happy-dom": "^20.14.6"
+    "happy-dom": "^21.0.4"
   }
 }

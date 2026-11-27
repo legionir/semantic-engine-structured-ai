@@ -117,11 +117,14 @@ function createWindow() {
         url: "http://localhost/",
         width: 1280,
         height: 900,
+        /* nothing is fetched or run from the page: no scripts, stylesheets
+           or iframes (happy-dom >= 21 also defaults the last two to off;
+           they stay explicit so a downgrade cannot turn them back on) */
         settings: {
             disableJavaScriptEvaluation: true,
             disableJavaScriptFileLoading: true,
-            disableCSSFileLoading: true,
-            disableIframePageLoading: true,
+            enableCSSFileLoading: false,
+            enableIframePageLoading: false,
             disableComputedStyleRendering: true
         }
     });
