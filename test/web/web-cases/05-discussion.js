@@ -264,6 +264,23 @@ module.exports = async function discussionCases(ctx) {
             assert.equal((await fetch(`${protectedUrl}/api/state`, {
                 headers: { authorization: `Bearer ${protectedServer.token}` }
             })).status, 200, "programmatic bearer-token authentication remains available");
+
+            /* sign-out revokes the session itself, not just the browser's cookie */
+            const crossOrigin = await fetch(`${protectedUrl}/auth/logout`, { method: "POST", headers: { cookie, origin: "https://evil.example" } });
+            assert.equal(crossOrigin.status, 403, "a cross-origin page cannot sign the operator out");
+            assert.equal((await fetch(`${protectedUrl}/api/state`, { headers: { cookie } })).status, 200, "the refused sign-out changed nothing");
+            const logout = await fetch(`${protectedUrl}/auth/logout`, { method: "POST", headers: { cookie } });
+            assert.equal(logout.status, 200);
+            assert.deepEqual(await logout.json(), { ok: true, revoked: true });
+            const cleared = logout.headers.getSetCookie();
+            assert.ok(cleared.some(line => /^structured_ai_console_password=;.*Max-Age=0.*HttpOnly/.test(line)), "the session cookie is expired");
+            assert.ok(cleared.some(line => /^structured_ai_console=;.*Max-Age=0/.test(line)), "the token cookie is expired too");
+            assert.equal(logout.headers.get("cache-control"), "no-store");
+            assert.equal((await fetch(`${protectedUrl}/api/state`, { headers: { cookie } })).status, 401, "a copy of the old cookie no longer works");
+            assert.deepEqual(await fetch(`${protectedUrl}/auth/status`, { headers: { cookie } }).then(response => response.json()), { passwordRequired: true, authenticated: false });
+            const again = await fetch(`${protectedUrl}/auth/logout`, { method: "POST", headers: { cookie } });
+            assert.deepEqual([again.status, (await again.json()).revoked], [200, false], "signing out twice is harmless");
+            assert.equal((await fetch(`${protectedUrl}/auth/logout`)).status !== 200, true, "GET does not sign out");
         } finally {
             await protectedServer.close();
             if (previousRequired === undefined) delete process.env.AGENT_CONSOLE_PASSWORD_REQUIRED;

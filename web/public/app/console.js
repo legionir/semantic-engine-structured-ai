@@ -39,6 +39,7 @@ import { initProjects } from "./project-manager.js";
 import { installPanelErrorReporting, openLogs, startLogBadge } from "./logs-controller.js";
 import { openTerminal } from "./terminal-controller.js";
 import { openFiles } from "./files-controller.js";
+import { initLogout } from "./logout-controller.js";
 import { initMentions } from "./mention-controller.js";
 import { initCommandPalette, openCommandPalette } from "./palette-controller.js";
 import { loadPromptCommands, runPromptCommand } from "./mcp-commands.js";
@@ -169,6 +170,7 @@ el("approvalMode").addEventListener("change", event => {
 el("settingsButton").addEventListener("click", openSettings);
 el("llmSettingsButton").addEventListener("click", openLlmSettings);
 el("planButton").addEventListener("click", openPlanModal);
+initLogout(el("logoutButton"));
 
 const closeMobileMenu = () => {
     const header = el("consoleHeader");

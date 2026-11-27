@@ -40,21 +40,28 @@
     <button type="button" id="approvalsButton" class="chip alert" hidden>
       approvals <span id="approvalsCount">0</span>
     </button>
+    <!-- ordered by how often each is used: everyday work, watching a run,
+         configuration, then the account (sign out is always last) -->
     <nav class="bar-nav" aria-label="Console views">
+      <span class="bar-nav-sep first" role="separator" aria-label="Work" data-label="Work"></span>
       <button type="button" id="commandPaletteButton" class="chip button" title="search commands and views (Ctrl+K)">Commands</button>
       <button type="button" id="historyButton" class="chip button" title="open saved conversations">History</button>
+      <button type="button" id="templatesButton" class="chip button" title="save and load reusable task templates" aria-label="Task templates">Templates</button>
+      <button type="button" id="filesButton" class="chip button" title="browse and edit workspace files">Files</button>
+      <button type="button" id="terminalButton" class="chip button" title="open a system terminal in the workspace">Terminal</button>
+      <span class="bar-nav-sep" role="separator" aria-label="Monitor" data-label="Monitor"></span>
+      <button type="button" id="planButton" class="chip button" title="open the plan">Plan</button>
       <button type="button" id="executionButton" class="chip button" title="open the agent execution tree">Execution</button>
       <button type="button" id="eventsButton" class="chip button" title="open the event log">Events</button>
-      <button type="button" id="planButton" class="chip button" title="open the plan">Plan</button>
-      <button type="button" id="llmSettingsButton" class="chip button" title="LLM providers, layers, and proxy">LLM settings</button>
-      <button type="button" id="mcpButton" class="chip button" title="connect and inspect MCP servers">MCP</button>
       <button type="button" id="logsButton" class="chip button" title="application log: AI request errors, failures, crashes">Logs <span id="logsBadge" class="logs-badge" hidden>0</span></button>
       <button type="button" id="systemButton" class="chip button" title="CPU, memory, disk, runs and background processes">System</button>
-      <button type="button" id="terminalButton" class="chip button" title="open a system terminal in the workspace">Terminal</button>
-      <button type="button" id="filesButton" class="chip button" title="browse and edit workspace files">Files</button>
-      <button type="button" id="templatesButton" class="chip button" title="save and load reusable task templates" aria-label="Task templates">Templates</button>
-      <button type="button" id="notificationsButton" class="chip button" title="browser notifications when a conversation in the background finishes, fails or needs an approval" aria-pressed="false">Notify · off</button>
+      <span class="bar-nav-sep" role="separator" aria-label="Configure" data-label="Configure"></span>
       <button type="button" id="settingsButton" class="chip button" title="open runtime settings">Settings</button>
+      <button type="button" id="llmSettingsButton" class="chip button" title="LLM providers, layers, and proxy">LLM settings</button>
+      <button type="button" id="mcpButton" class="chip button" title="connect and inspect MCP servers">MCP</button>
+      <button type="button" id="notificationsButton" class="chip button" title="browser notifications when a conversation in the background finishes, fails or needs an approval" aria-pressed="false">Notify · off</button>
+      <span class="bar-nav-sep" role="separator" aria-label="Account" data-label="Account"></span>
+      <button type="button" id="logoutButton" class="chip button logout-button" title="sign out of the console on this browser">Sign out</button>
     </nav>
   </div>
 

@@ -9,6 +9,7 @@
 const ROUTES = Object.freeze([
     ["GET", "/auth/status"],
     ["POST", "/auth/login"],
+    ["POST", "/auth/logout"],
     ["GET", "/api/events"],
     ["GET", "/api/state"],
     ["GET", "/api/mcp"],

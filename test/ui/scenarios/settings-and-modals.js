@@ -481,6 +481,74 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         Modal.closeTop("test");
     });
 
+    await test("the header menu is grouped by use (work, monitor, configure, account) and ends with Sign out", async () => {
+
+        const nav = document.querySelector("#consoleMenu .bar-nav");
+        const layout = [...nav.children].map(child => child.classList.contains("bar-nav-sep") ? `— ${child.dataset.label}` : child.id);
+        assert.deepEqual(layout, [
+            "— Work", "commandPaletteButton", "historyButton", "templatesButton", "filesButton", "terminalButton",
+            "— Monitor", "planButton", "executionButton", "eventsButton", "logsButton", "systemButton",
+            "— Configure", "settingsButton", "llmSettingsButton", "mcpButton", "notificationsButton",
+            "— Account", "logoutButton"
+        ]);
+        for (const sep of nav.querySelectorAll(".bar-nav-sep")) {
+            assert.equal(sep.getAttribute("role"), "separator");
+            assert.equal(sep.getAttribute("aria-label"), sep.dataset.label, "a screen reader hears the group name");
+        }
+        assert.ok(nav.querySelector(".bar-nav-sep").classList.contains("first"), "the first group has no rule above it");
+        assert.equal(document.getElementById("logoutButton").textContent.trim(), "Sign out");
+    });
+
+    await test("Sign out asks first, revokes the session on the server, forgets in-memory credentials and reloads", async () => {
+
+        const button = document.getElementById("logoutButton");
+        const logoutPosts = () => console_.posted.filter(call => call.url === "/auth/logout");
+        const reloads = [];
+        location.replace = target => reloads.push(target);
+        try {
+            /* cancel keeps everything */
+            button.dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            let confirm = document.querySelector(".modal.confirm-modal");
+            assert.ok(confirm, "Sign out opens a confirmation");
+            assert.match(confirm.textContent, /keep running on the server/);
+            [...confirm.querySelectorAll(".modal-foot button")].find(b => b.textContent === "Cancel").dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            assert.deepEqual([logoutPosts().length, reloads.length], [0, 0], "cancelled: nothing sent, no reload");
+
+            /* a failed request keeps the operator signed in and says so */
+            console_.reply("POST /auth/logout", { __status: 500, body: { error: "boom" } });
+            button.dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            confirm = document.querySelector(".modal.confirm-modal");
+            [...confirm.querySelectorAll(".modal-foot button")].find(b => b.textContent === "Sign out").dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 20));
+            assert.equal(logoutPosts().length, 1);
+            assert.equal(reloads.length, 0, "no reload when the server did not sign out");
+            assert.match(document.getElementById("chat").textContent, /Sign out failed: request failed \(500\)/);
+
+            /* confirmed: POST /auth/logout, credentials forgotten, page reloaded without its query */
+            console_.reply("POST /auth/logout", { ok: true, revoked: true });
+            window.__structuredAiConsoleSession = "in-memory-session";
+            location.pathname = "/projects/demo";
+            button.dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            confirm = document.querySelector(".modal.confirm-modal");
+            assert.ok(confirm.querySelector(".modal-foot button.danger"), "the confirm button is marked as a danger action");
+            [...confirm.querySelectorAll(".modal-foot button")].find(b => b.textContent === "Sign out").dispatch("click");
+            await new Promise(resolve => setTimeout(resolve, 20));
+            assert.equal(logoutPosts().length, 2);
+            assert.equal(logoutPosts().at(-1).method, "POST");
+            assert.equal(window.__structuredAiConsoleSession, undefined, "the in-memory session is forgotten");
+            assert.deepEqual(reloads, ["/projects/demo"], "reloads the same page without ?token=");
+            assert.equal(backdrops().length, 0);
+        } finally {
+            delete location.replace;
+            location.pathname = "/";
+            delete window.__structuredAiConsoleSession;
+        }
+    });
+
     await test("command palette opens via button and keyboard, filters commands, and executes action", async () => {
 
         const paletteBtn = document.getElementById("commandPaletteButton");

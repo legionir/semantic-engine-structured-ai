@@ -5,7 +5,7 @@
 | Auth, event stream and state
 |--------------------------------------------------------------------------
 |
-| Password login and its status, the SSE event stream (with its snapshot)
+| Login, logout and the auth status, the SSE event stream (with its snapshot)
 | and the console state.
 |
 | Called in order by the console's request handler (ServerImplementation).
@@ -15,7 +15,7 @@
 
 const consoleAuth = require("../../../agent/config/ConsoleAuth");
 const { CONSOLE_COOKIE } = require("../Middleware");
-const { sendJson, setConsoleCookie } = require("../Response");
+const { clearConsoleCookies, sendJson, setConsoleCookie } = require("../Response");
 const { readBody } = require("../RequestBody");
 
 
@@ -28,6 +28,7 @@ module.exports = async function AuthAndStateRoutes(shared, request) {
         loginRateLimiter,
         passwordMatches,
         projectSnapshot,
+        revokePasswordSession,
         snapshot,
         snapshotFor,
         sseHub,
@@ -36,6 +37,7 @@ module.exports = async function AuthAndStateRoutes(shared, request) {
 
     const {
         authLoginRoute,
+        authLogoutRoute,
         authStatusRoute,
         authenticated,
         claims,
@@ -86,6 +88,20 @@ module.exports = async function AuthAndStateRoutes(shared, request) {
         const sessionToken = issuePasswordSession();
         setConsoleCookie(res, "structured_ai_console_password", sessionToken, req, { trustForwarded: trustedProxy });
         sendJson(res, 200, { ok: true, sessionToken });
+        return true;
+    }
+
+    /*
+    | Sign out: revoke the password session this browser carries and expire
+    | both console cookies. It needs no valid credential (an expired session
+    | can still sign out), is same-origin only, and is safe to repeat. A
+    | console token itself stays valid: it is configuration, not a session.
+    */
+    if (authLogoutRoute) {
+        const revoked = consolePasswordRequired ? revokePasswordSession(req, url) : false;
+        clearConsoleCookies(res, [CONSOLE_COOKIE, "structured_ai_console_password"], req, { trustForwarded: trustedProxy });
+        res.setHeader("cache-control", "no-store");
+        sendJson(res, 200, { ok: true, revoked });
         return true;
     }
 

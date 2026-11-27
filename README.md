@@ -620,8 +620,8 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 ## ۶. مستندات کامل اندپوینت‌های سرور وب کنسول (Web Server & REST / SSE API)
 
 سرور canonical با `node bin/agent.js --serve <port> -w <path>` اجرا می‌شود.
-APIهای runtime token-protected هستند؛ مسیرهای `/auth/status` و `/auth/login`
-برای ورود به پنل استثنا هستند. برای فعال‌کردن رمز ورود، پیش از اجرا تنظیم کنید:
+APIهای runtime token-protected هستند؛ مسیرهای `/auth/status`، `/auth/login` و `/auth/logout`
+برای ورود به پنل و خروج از آن استثنا هستند. برای فعال‌کردن رمز ورود، پیش از اجرا تنظیم کنید:
 
 ```bash
 AGENT_CONSOLE_PASSWORD_REQUIRED=true AGENT_CONSOLE_PASSWORD='choose-a-long-password' node bin/agent.js --serve 7777
@@ -637,6 +637,12 @@ AGENT_CONSOLE_PASSWORD_REQUIRED=true AGENT_CONSOLE_PASSWORD='choose-a-long-passw
   ورود را برمی‌گرداند.
 - با رمز، هر ورود یک نشست جدا با عمر `CONSOLE_PASSWORD_SESSION_TTL_MS` می‌سازد
   (حداکثر `CONSOLE_PASSWORD_SESSIONS_MAX` نشست هم‌زمان).
+- **خروج:** دکمهٔ **Sign out** آخرین گزینهٔ منوی بالای پنل است و در پالت فرمان هم هست. بعد از تأیید، `POST /auth/logout` فرستاده می‌شود:
+  - نشست رمزدار همان مرورگر در سرور باطل می‌شود، پس کپی cookie هم دیگر کار نمی‌کند.
+  - هر دو cookie کنسول با `Max-Age=0` منقضی می‌شوند.
+  - token یا نشستی که در حافظهٔ تب بوده پاک می‌شود و صفحه بدون query دوباره بارگذاری می‌شود تا صفحهٔ ورود بیاید.
+  - این مسیر فقط از همان origin پذیرفته می‌شود و بدون اعتبار معتبر هم پاسخ `200 {ok, revoked}` می‌دهد، پس تکرارش بی‌خطر است. اگر سرور خروج را تأیید نکند، کاربر وارد می‌ماند و خطا نمایش داده می‌شود.
+  - تسک‌های در حال اجرا متوقف نمی‌شوند. token کنسول هم باطل نمی‌شود، چون جزو تنظیمات است نه نشست.
 - روی HTTPS cookie با `Secure; SameSite=None; Partitioned` صادر می‌شود تا پنل
   داخل iframe هم کار کند. روی HTTP همان `SameSite=Strict` می‌ماند.
 - اگر مرورگر cookie را در iframe مسدود کند، صفحه token یا نشست را فقط در
@@ -727,6 +733,11 @@ method/path کامل در
 
 این بخش‌ها فقط در مرورگر کار می‌کنند و API تازه‌ای ندارند:
 
+- **منوی بالای پنل** بر اساس کاربرد و اهمیت در چهار گروه چیده شده است. در منوی کشویی موبایل هر گروه یک عنوان کوچک دارد و در دسکتاپ گروه‌ها با خط عمودی جدا می‌شوند:
+  - **Work:** Commands، History، Templates، Files، Terminal
+  - **Monitor:** Plan، Execution، Events، Logs، System
+  - **Configure:** Settings، LLM settings، MCP، Notify
+  - **Account:** Sign out
 - **پالت فرمان:** با `Ctrl+K` (یا `Cmd+K`) یا از نوار ناوبری باز می‌شود و همهٔ نماها، پنجره‌ها و کارها را جست‌وجو می‌کند.
 - **دستورهای `/` در کادر پیام:**
   - دستورهای داخلی `/raw` (نمایش متن خام یا Markdown) و `/templates`
