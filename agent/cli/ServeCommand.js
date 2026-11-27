@@ -17,6 +17,17 @@ class ServeCommand {
             throw error;
         }
 
+        /* the served console keeps a persistent application log and
+           records crashes; plain CLI runs and tests do not write it */
+        const { logs } = require("../runtime/LogStore");
+        const { resolveDataHome } = require("../projects/ProjectStore");
+        try {
+            logs.persistTo(path.join(resolveDataHome(), "logs"));
+        } catch (error) {
+            process.stderr.write(`agent: application log file disabled (${error.message})\n`);
+        }
+        logs.installProcessHooks();
+
         const { createServer } = require(path.join(this.repoRoot, "web", "server.js"));
         const console_ = createServer(runtime, {
             ...options,
@@ -33,8 +44,10 @@ class ServeCommand {
             `  url       : ${consoleUrl}\n` +
             (passwordRequired ? "  auth      : password required\n" : `  token     : ${console_.token}\n`) +
             `  workspace : ${runtime.createRuntimeContext().runtime.workspace_root}\n` +
-            `  approval  : ${runtime.getApprovalMode()}\n`
+            `  approval  : ${runtime.getApprovalMode()}\n` +
+            (logs.file() ? `  log file  : ${logs.file()}\n` : "")
         );
+        logs.info("server", `Console listening on ${host}:${address.port}`);
 
         return console_;
     }

@@ -69,14 +69,17 @@ module.exports = function createCapabilities(host) {
         "fs_edit",
         "fs_mkdir",
         "fs_move",
-        "fs_delete"
+        "fs_delete",
+        "mcp_build"
     ];
 
     const REPOSITORY_MUTATING_TOOLS = [
         "git_add",
         "git_commit",
         "git_checkout",
-        "git_branch"
+        "git_branch",
+        "git_push",
+        "git_worktree"
     ];
 
     const COMMAND_TOOLS = [

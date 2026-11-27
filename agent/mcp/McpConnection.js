@@ -41,9 +41,45 @@ const STATE = {
     IDLE: "idle",
     CONNECTING: "connecting",
     READY: "ready",
+    /* P4-04: lost, waiting for the next automatic attempt */
+    RECONNECTING: "reconnecting",
     FAILED: "failed",
     CLOSED: "closed"
 };
+
+
+function setting(key, fallback) {
+    try {
+        const value = require("../config").get(key);
+        return value === undefined || value === null ? fallback : value;
+    } catch {
+        return fallback;
+    }
+}
+
+
+function emit(type, payload) {
+    try {
+        require("../events").emit(type, payload);
+    } catch {
+        /* events are best effort: a client works without the bus */
+    }
+}
+
+
+/*
+| P4-04: the wait before reconnect attempt n (1-based): the base doubled
+| per attempt, capped, with ±20% jitter so servers that died together do
+| not all come back in the same millisecond.
+*/
+function reconnectDelay(attempt, random = Math.random) {
+
+    const base = Math.max(1, Number(setting("MCP_RECONNECT_BASE_MS", 1000)) || 1000);
+    const cap = Math.max(base, Number(setting("MCP_RECONNECT_MAX_MS", 60000)) || 60000);
+    const raw = Math.min(cap, base * 2 ** Math.max(0, attempt - 1));
+
+    return Math.round(raw * (0.8 + 0.4 * random()));
+}
 
 
 function createTransport(config) {
@@ -100,6 +136,17 @@ class McpClient {
 
         this.readyPromise = null;
 
+        /* P4-04: automatic reconnects after the server went away */
+        this.reconnect = {
+            attempt: 0,
+            timer: null,
+            next_at: null,
+            count: 0,
+            last_error: null,
+            last_error_at: null,
+            disconnected_at: null
+        };
+
         this.transport.onDiagnostic(text => this.record(text));
 
         this.transport.onNotification(
@@ -119,19 +166,204 @@ class McpClient {
             );
         }
 
-        this.transport.onClose(() => {
+        this.transport.onClose(info => {
 
             /*
             | A server that goes away invalidates the handshake, not the
-            | configuration: the next call starts it again.
+            | configuration: the next call starts it again, and (P4-04) so
+            | does a reconnect scheduled here, so a crashed sidecar is back
+            | before anyone needs it.
             */
 
-            if (this.state === STATE.READY) {
+            const wasReady = this.state === STATE.READY;
+
+            if (wasReady) {
                 this.state = STATE.IDLE;
             }
 
             this.readyPromise = null;
+
+            if (this.state === STATE.CLOSED || !wasReady) {
+                return;
+            }
+
+            const reason =
+                info && info.error
+                    ? `the connection failed (${info.error})`
+                    : `the process exited (code: ${info?.code ?? null}, signal: ${info?.signal ?? null})`;
+
+            this.noteError(`MCP server "${this.name}" disconnected: ${reason}`);
+            this.reconnect.disconnected_at = Date.now();
+
+            const retrying = this.scheduleReconnect();
+
+            emit("mcp:disconnected", {
+                server: this.name,
+                transport: this.config.transport,
+                code: info?.code ?? null,
+                signal: info?.signal ?? null,
+                error: this.error,
+                retrying,
+                attempt: this.reconnect.attempt,
+                retry_in_ms: retrying ? Math.max(0, this.reconnect.next_at - Date.now()) : null
+            });
         });
+    }
+
+
+    noteError(message) {
+
+        this.error = message;
+        this.reconnect.last_error = message;
+        this.reconnect.last_error_at = Date.now();
+    }
+
+
+    reconnectEnabled() {
+
+        return setting("MCP_RECONNECT_ENABLED", true) !== false &&
+            this.config.enabled !== false &&
+            this.state !== STATE.CLOSED;
+    }
+
+
+    /*
+    | Schedules the next attempt; false when reconnecting is off or the
+    | attempts are used up, in which case the server is left FAILED and the
+    | next tool call (or Reconnect in the console) starts over.
+    */
+    scheduleReconnect() {
+
+        if (!this.reconnectEnabled()) {
+            return false;
+        }
+
+        if (this.reconnect.timer) {
+            return true;
+        }
+
+        const limit = Math.max(1, Number(setting("MCP_RECONNECT_MAX_ATTEMPTS", 10)) || 10);
+
+        if (this.reconnect.attempt >= limit) {
+
+            this.state = STATE.FAILED;
+            this.reconnect.next_at = null;
+            this.noteError(
+                `MCP server "${this.name}" did not come back after ${this.reconnect.attempt} reconnect attempt(s): ${this.reconnect.last_error || "unknown error"}`
+            );
+
+            emit("mcp:unavailable", {
+                server: this.name,
+                transport: this.config.transport,
+                error: this.error
+            });
+
+            return false;
+        }
+
+        this.reconnect.attempt += 1;
+
+        const delay = reconnectDelay(this.reconnect.attempt);
+
+        this.state = STATE.RECONNECTING;
+        this.reconnect.next_at = Date.now() + delay;
+
+        const timer = setTimeout(() => {
+            this.reconnect.timer = null;
+            void this.attemptReconnect();
+        }, delay);
+
+        if (typeof timer.unref === "function") {
+            timer.unref();
+        }
+
+        this.reconnect.timer = timer;
+
+        return true;
+    }
+
+
+    async attemptReconnect() {
+
+        if (this.state === STATE.CLOSED) {
+            return false;
+        }
+
+        this.reconnect.next_at = null;
+
+        try {
+
+            await this.ensureReady();
+            await this.listTools({ force: true });
+
+        } catch (error) {
+
+            if (this.state === STATE.CLOSED) {
+                return false;
+            }
+
+            this.noteError(`MCP server "${this.name}" reconnect attempt ${this.reconnect.attempt} failed: ${error.message}`);
+
+            const retrying = this.scheduleReconnect();
+
+            if (retrying) {
+                emit("mcp:disconnected", {
+                    server: this.name,
+                    transport: this.config.transport,
+                    error: this.error,
+                    retrying,
+                    attempt: this.reconnect.attempt,
+                    retry_in_ms: Math.max(0, this.reconnect.next_at - Date.now())
+                });
+            }
+
+            return false;
+        }
+
+        const attempts = this.reconnect.attempt;
+
+        this.reconnect.attempt = 0;
+        this.reconnect.count += 1;
+
+        emit("mcp:reconnected", {
+            server: this.name,
+            transport: this.config.transport,
+            attempts,
+            tools: this.tools.length,
+            down_ms: this.reconnect.disconnected_at ? Date.now() - this.reconnect.disconnected_at : null
+        });
+
+        return true;
+    }
+
+
+    /* the console's Reconnect: start over now, with a fresh attempt budget */
+    async reconnectNow() {
+
+        this.cancelReconnect();
+        this.reconnect.attempt = 0;
+
+        if (this.state === STATE.FAILED || this.state === STATE.RECONNECTING) {
+            this.state = STATE.IDLE;
+        }
+
+        this.readyPromise = null;
+
+        await this.ensureReady();
+        await this.listTools({ force: true });
+
+        return this;
+    }
+
+
+    cancelReconnect() {
+
+        if (this.reconnect.timer) {
+            clearTimeout(this.reconnect.timer);
+        }
+
+        this.reconnect.timer = null;
+        this.reconnect.next_at = null;
     }
 
 
@@ -165,6 +397,14 @@ class McpClient {
             return;
         }
 
+        /* P4-10: a long tool reports how far it got */
+        if (message.method === "notifications/progress") {
+
+            require("./McpInteractions").progress(this.name, message.params || {});
+
+            return;
+        }
+
         if (message.method === "notifications/message") {
 
             const data = message.params || {};
@@ -188,6 +428,24 @@ class McpClient {
 
         if (message.method === "roots/list") {
             return { roots: this.roots() };
+        }
+
+        /*
+        | P4-10: a question for the user, shown in the console, and a
+        | completion from this runtime's model, within its budget.
+        */
+        if (message.method === "elicitation/create") {
+
+            this.record("server asked the user a question (elicitation)");
+
+            return require("./McpInteractions").elicit(this.name, message.params || {});
+        }
+
+        if (message.method === "sampling/createMessage") {
+
+            this.record("server asked for a completion (sampling)");
+
+            return require("./McpInteractions").sample(this.name, this.config, message.params || {});
         }
 
         this.record(
@@ -269,11 +527,20 @@ class McpClient {
 
                     /*
                     | Only what is implemented is advertised: roots/list
-                    | is answered (handleRequest); sampling is not.
+                    | and elicitation are answered (handleRequest);
+                    | sampling only when this server may use it.
                     */
 
                     capabilities: {
-                        roots: { listChanged: false }
+                        roots: { listChanged: false },
+
+                        /* P4-10: questions go to the console */
+                        elicitation: {},
+
+                        /* P4-10: only for a server allowed to sample */
+                        ...(require("./McpInteractions").samplingAllowed(this.config)
+                            ? { sampling: {} }
+                            : {})
                     },
 
                     clientInfo:
@@ -347,9 +614,11 @@ class McpClient {
                 })
                 .catch(error => {
 
-                    this.state = STATE.FAILED;
+                    if (this.state !== STATE.CLOSED) {
+                        this.state = STATE.FAILED;
+                    }
 
-                    this.error = error.message;
+                    this.noteError(error.message);
 
                     this.readyPromise = null;
 
@@ -421,11 +690,15 @@ class McpClient {
 
         try {
 
+            /* P4-10: progress notifications name this call */
+            this.progressCounter = (this.progressCounter || 0) + 1;
+
             const result =
                 await this.transport.request(
                     protocol.request("tools/call", {
                         name: toolName,
-                        arguments: args || {}
+                        arguments: args || {},
+                        _meta: { progressToken: `${this.name}:${toolName}:${this.progressCounter}` }
                     }),
                     { timeoutMs: options.timeoutMs || this.timeout("call") }
                 );
@@ -485,6 +758,33 @@ class McpClient {
             );
 
         return (result && result.resources) || [];
+    }
+
+
+    /* P4-10: parameterised resources (uri templates), offered the same way */
+    async listResourceTemplates() {
+
+        await this.ensureReady();
+
+        if (!this.capabilities.resources) {
+            return [];
+        }
+
+        try {
+
+            const result =
+                await this.transport.request(
+                    protocol.request("resources/templates/list", {}),
+                    { timeoutMs: this.timeout("list") }
+                );
+
+            return (result && result.resourceTemplates) || [];
+
+        } catch {
+
+            /* optional even for a server that offers resources */
+            return [];
+        }
     }
 
 
@@ -559,6 +859,28 @@ class McpClient {
 
             error: this.error,
 
+            catalog:
+                this.config.catalog || null,
+
+            scope:
+                this.config.scope || "global",
+
+            projects:
+                this.config.projects || null,
+
+            source:
+                this.config.source || null,
+
+            /* P4-04: what the status indicator shows */
+            reconnect: {
+                attempt: this.reconnect.attempt,
+                next_at: this.reconnect.next_at,
+                count: this.reconnect.count,
+                last_error: this.reconnect.last_error,
+                last_error_at: this.reconnect.last_error_at,
+                disconnected_at: this.reconnect.disconnected_at
+            },
+
             enabled:
                 this.config.enabled !== false,
 
@@ -581,7 +903,32 @@ class McpClient {
                 this.transport.describe(),
 
             stats:
-                { ...this.stats }
+                { ...this.stats },
+
+            /* P4-07: the per-tool switches, limits and approval rules */
+            tools:
+                this.tools.map(tool => ({
+                    name: tool.name,
+                    description: String(tool.description || "").slice(0, 300),
+                    read_only: Boolean(tool.annotations && tool.annotations.readOnlyHint === true),
+                    destructive: Boolean(tool.annotations && tool.annotations.destructiveHint === true),
+                    enabled: require("./McpCatalogue").matchesFilter(tool.name, this.config.include, this.config.exclude)
+                })),
+
+            agents:
+                this.config.agents || null,
+
+            approval:
+                this.config.approval || { read: "inherit", write: "inherit" },
+
+            sampling:
+                this.config.sampling === true,
+
+            /* P4-08: whether a sign-in is needed, never the token */
+            oauth:
+                this.config.oauth
+                    ? require("./McpOAuth").status(this.name)
+                    : null
         };
     }
 
@@ -596,9 +943,13 @@ class McpClient {
 
         this.state = STATE.CLOSED;
 
+        this.cancelReconnect();
+
         this.readyPromise = null;
 
         this.toolsLoadedAt = null;
+
+        require("./McpInteractions").cancelFor(this.name);
 
         await this.transport.close();
     }
@@ -606,6 +957,7 @@ class McpClient {
 
 
 module.exports = {
+    reconnectDelay,
     McpClient,
     McpConnection: McpClient,
     STATE,

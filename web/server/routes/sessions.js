@@ -84,6 +84,9 @@ module.exports = async function SessionsRoutes(shared, request) {
 
         calls.clear();
 
+        /* the project the foreground holds starts afresh with it */
+        shared.conversations.syncForeground();
+
         runtime.events.emit("session:switched", {
             session: sessions.summarise(state.session)
         });

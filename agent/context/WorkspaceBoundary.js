@@ -265,6 +265,8 @@ function resolvePathInRoot(
         );
     }
 
+    assertNotSecretStore(target, inputPath);
+
     if (
         options.mustExist &&
         !lexists(target)
@@ -276,6 +278,55 @@ function resolvePathInRoot(
     }
 
     return target;
+}
+
+
+/*
+| The encrypted secret store and its key (P4-01) live in the data home,
+| which an operator may well keep inside a workspace. No file tool may
+| read, overwrite, move or delete them, wherever they are.
+*/
+
+function isSecretStoreFile(target) {
+
+    /* cheap first: a search walk asks this for every file */
+    const name = path.basename(String(target)).toLowerCase();
+
+    if (name !== "secrets.enc" && name !== "secrets.key") {
+        return false;
+    }
+
+    let files;
+
+    try {
+
+        const store = require("../secrets/SecretStore");
+        files = [store.storeFile(), store.keyFile()];
+
+    } catch {
+        return false;
+    }
+
+    const wanted = canonicalPath(path.resolve(target));
+
+    return files.some(file => {
+
+        const real = canonicalPath(path.resolve(file));
+
+        /* inside each other both ways: the same path, case rules included */
+        return isInsideRoot(real, wanted) && isInsideRoot(wanted, real);
+    });
+}
+
+
+function assertNotSecretStore(target, inputPath) {
+
+    if (isSecretStoreFile(target)) {
+
+        throw new Error(
+            `Path is the secret store and cannot be used by file tools: ${inputPath}`
+        );
+    }
 }
 
 
@@ -686,6 +737,7 @@ module.exports = {
     canonicalPath,
     WORKSPACE_ROOT,
     ignoredDirectories,
+    isSecretStoreFile,
     capTotalSize,
     resolveWorkspacePath,
     assertWorkspacePathSafe,

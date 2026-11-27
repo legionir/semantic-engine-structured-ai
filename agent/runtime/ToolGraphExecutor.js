@@ -5,6 +5,7 @@ const { findDependencyCycle, validateDependencyGraph, describeGraph } = require(
 const { executeDependencyGraph } = require("./ToolGraphScheduler");
 const { readReferencePath, resolveReference, resolveArgumentReferences } = require("./ToolReferences");
 const { createToolGraphRunner } = require("./ToolGraphRunner");
+const { channel: imageChannel } = require("./ImageChannel");
 
 
 function assertToolAllowed(
@@ -243,6 +244,14 @@ function appendToolConversation(
             } exchanges dropped)`
         );
     }
+
+    /*
+    | Pictures a tool returned (an MCP screenshot) follow as one user
+    | message with image parts; an earlier one is reduced to a note
+    | (roadmap P3-01).
+    */
+
+    imageChannel.appendFor(messages, results);
 }
 
 

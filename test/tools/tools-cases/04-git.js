@@ -92,6 +92,18 @@ module.exports = async function gitCases(ctx) {
         );
     });
 
+    await test("git pathspecs stay inside the workspace (roadmap P2-01)", async () => {
+
+        await rejects(run("git_diff", { cwd: ".", path: "../elsewhere.txt" }), /outside workspace/);
+        await rejects(run("git_add", { cwd: ".", paths: [":/"] }), /pathspec magic/);
+        await rejects(run("git_commit", { cwd: ".", message: "x", paths: ["src/../../x"] }), /outside workspace/);
+
+        fs.writeFileSync(path.join(WORKSPACE, "staged.txt"), "staged\n");
+        await run("git_add", { cwd: ".", paths: ["staged.txt"] });
+        const status = await run("git_status", { cwd: "." });
+        assert.match(status.stdout, /A {2}staged\.txt/);
+    });
+
     /* ---------------------------------------------------------------- */
     console.log("\nruntime");
 

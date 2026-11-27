@@ -140,6 +140,25 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
             case "--max-agents":
                 options.maxAgents = requireNumber(argument, argv[++index]);
                 break;
+            case "--json-schema":
+                options.jsonSchema = requireValue(argument, argv[++index]);
+                break;
+            case "--plan":
+                options.planMode = true;
+                break;
+            case "--goal":
+                options.goal = requireValue(argument, argv[++index]);
+                break;
+            case "--max-cost":
+                options.maxCost = requireNumber(argument, argv[++index]);
+                if (options.maxCost < 0) fail("--max-cost expects 0 or more dollars");
+                break;
+            case "--base":
+                options.base = requireValue(argument, argv[++index]);
+                break;
+            case "--post":
+                options.post = true;
+                break;
             case "--list-tools":
                 options.listTools = true;
                 break;
@@ -167,9 +186,51 @@ function parseArguments(argv, { fail = defaultFail } = {}) {
         }
     }
 
+    /* `agent init` is the CLI spelling of the /init task (roadmap P1-01) */
+    if (options.positional.length === 1 && options.positional[0] === "init") {
+        options.positional[0] = "/init";
+    }
+
     if (!options.doctor && options.positional[0] === "doctor") {
         options.doctor = true;
         options.positional.shift();
+    }
+
+    /*
+    | `agent review [diff|staged|commit <ref>|branch <ref>|pr <n>]` reviews
+    | one change set and prints the findings (roadmap P3-08).
+    */
+    if (options.positional[0] === "review") {
+
+        options.review = true;
+        options.positional.shift();
+
+        const target = options.positional.shift() || "diff";
+
+        if (!["diff", "staged", "commit", "branch", "pr"].includes(target)) {
+            fail(`review target must be diff, staged, commit, branch or pr, not ${target}`);
+        }
+
+        options.reviewTarget = target;
+        options.reviewRef = options.positional.shift();
+
+        if (target === "pr" && !/^\d+$/.test(options.reviewRef || "")) {
+            fail("review pr needs the pull request number");
+        }
+    }
+
+    /*
+    | `agent resume [session-id] [message]` continues the latest (or the
+    | named) conversation of the workspace or --project (roadmap P1-06).
+    */
+    if (options.positional[0] === "resume") {
+
+        options.resume = true;
+        options.positional.shift();
+
+        if (/^s-\d{4}-\d{2}-\d{2}T[\w-]+$/.test(options.positional[0] || "")) {
+            options.resumeId = options.positional.shift();
+        }
     }
 
     return options;

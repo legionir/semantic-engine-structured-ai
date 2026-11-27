@@ -78,7 +78,7 @@ function createExecutionRules({
             );
         }
 
-        const toolNames = resolveTools(agentDefinition.tools)
+        const toolNames = resolveTools(agentDefinition.tools, agentDefinition.name)
             .map(tool => tool.function.name);
         const policy = getPolicyEngine();
         const hasGatedTool = toolNames.some(name =>

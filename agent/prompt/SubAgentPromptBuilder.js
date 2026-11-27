@@ -12,6 +12,7 @@
 |   1. runtime_context (JSON)
 |   2. agent_profile (JSON)
 |   2a. project_context (JSON — additive, inherited from the parent run)
+|   2b. project_instructions (JSON — additive, AGENTS.md / CLAUDE.md)
 |   3. available_tools (JSON — names only; schemas ride the request)
 |   4. task + parent context (user JSON)
 |
@@ -129,6 +130,11 @@ class SubAgentPromptBuilder {
         const projectMessage =
             this.deps.projectContextBuilder.build(project);
 
+        const instructionsMessage =
+            this.deps.projectInstructionsBuilder
+                ? this.deps.projectInstructionsBuilder.build()
+                : null;
+
         return [
 
             {
@@ -169,6 +175,8 @@ class SubAgentPromptBuilder {
             }),
 
             projectMessage,
+
+            instructionsMessage,
 
             jsonSystem({
                 type:

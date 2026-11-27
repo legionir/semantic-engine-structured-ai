@@ -218,7 +218,10 @@ async function mcpCall(args = {}) {
                     timeoutMs:
                         Number(args.timeout_ms) > 0
                             ? Number(args.timeout_ms)
-                            : undefined
+                            : undefined,
+
+                    /* P4-07: a server limited to other agents refuses this one */
+                    agent: args._agent
                 }
             );
 
@@ -305,7 +308,8 @@ async function mcpAdd(args = {}) {
                     exclude: args.exclude,
                     trust: trustLevel
                 },
-                { persist: args.persist !== false }
+                /* P4-01: the agent may never point a server at a stored secret */
+                { persist: args.persist !== false, secrets: false, target: "workspace" }
             );
 
         const tools =
@@ -467,8 +471,16 @@ function shutdown() {
 }
 
 
+const protocolTools = require("./McpProtocolTools");
+const buildTools = require("./McpBuildTools");
+
+
 module.exports = {
     mcp_servers: mcpServers,
+    mcp_search_tools: protocolTools.mcp_search_tools,
+    mcp_resources: protocolTools.mcp_resources,
+    mcp_prompts: protocolTools.mcp_prompts,
+    mcp_build: buildTools.mcp_build,
     mcp_tools: mcpTools,
     mcp_call: mcpCall,
     mcp_add: mcpAdd,

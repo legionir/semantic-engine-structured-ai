@@ -1,3 +1,6 @@
 "use strict";
 
-module.exports = require("./GitTools");
+module.exports = {
+    ...require("./GitTools"),
+    ...require("./GitRemoteTools")
+};

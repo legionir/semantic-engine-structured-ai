@@ -50,6 +50,31 @@ module.exports = async function processCases(ctx) {
         assert.equal(result.success, true);
     });
 
+    await test("terminal_exec children see no secrets; CHILD_ENV_PASSTHROUGH adds plain names only (roadmap P2-02)", async () => {
+
+        const settings = require("../../../agent/config");
+        const names = ["OPENAI_API_KEY", "AGENT_CONSOLE_TOKEN", "P202_DB_PASSWORD", "P202_PLAIN"];
+        const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+        const script = path.join(WORKSPACE, "p202-env.js");
+        fs.writeFileSync(script, `console.log(JSON.stringify(Object.keys(process.env).filter(n => ${JSON.stringify(names)}.includes(n.toUpperCase()))))`);
+
+        try {
+            for (const name of names) process.env[name] = "p202-value";
+            const show = async () => JSON.parse((await run("terminal_exec", { command: `"${process.execPath}" p202-env.js` })).stdout.trim()).sort();
+
+            assert.deepEqual(await show(), []);
+            settings.set("CHILD_ENV_PASSTHROUGH", "P202_PLAIN,P202_DB_PASSWORD,OPENAI_API_KEY");
+            assert.deepEqual(await show(), ["P202_PLAIN"]);
+        } finally {
+            settings.reset("CHILD_ENV_PASSTHROUGH");
+            for (const name of names) {
+                if (saved[name] === undefined) delete process.env[name];
+                else process.env[name] = saved[name];
+            }
+            fs.rmSync(script, { force: true });
+        }
+    });
+
     await test("terminal_exec times out instead of hanging", async () => {
 
         const result =

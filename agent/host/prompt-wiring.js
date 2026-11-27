@@ -22,6 +22,8 @@ const {
     _isActiveSkill: isActiveSkill
 } = require("../tools/skills");
 const archive = require("../persistence/ArchiveRepository");
+const { runDirectives } = require("../runtime/RunDirectives");
+const ScopedRules = require("../prompt/ScopedRules");
 
 
 module.exports = function createPromptWiring(host) {
@@ -78,7 +80,11 @@ module.exports = function createPromptWiring(host) {
             TOOL_RESOLVER =
                 promptKit.createToolResolver({
                     TOOL_REGISTRY_OF: () => TOOL_REGISTRY_OF(),
-                    mcpToolDeclarations: () => mcpToolDeclarations()
+                    mcpToolDeclarations: options => mcpToolDeclarations(options),
+                    allMcpToolDeclarations: options =>
+                        typeof host.allMcpToolDeclarations === "function"
+                            ? host.allMcpToolDeclarations(options)
+                            : mcpToolDeclarations(options)
                 });
 
         }
@@ -158,7 +164,15 @@ module.exports = function createPromptWiring(host) {
                         agentsSpawned: () => currentAgentBudget().spawned,
                         runStartedAt: () => currentRun().started_at,
                         runRemainingMs: () => runRemainingMs(),
-                        mcpContext: () => mcpContext()
+                        mcpContext: () => mcpContext(),
+                        runDirectives: () => runDirectives(currentRun()),
+                        projectRules: () =>
+                            ScopedRules.rulesFor(
+                                effectiveProject(currentRun().project)
+                                    ? effectiveProject(currentRun().project).workspaceRoot
+                                    : WORKSPACE_ROOT,
+                                currentRun().touchedPaths
+                            )
                     },
 
                     request: {

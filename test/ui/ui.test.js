@@ -82,9 +82,25 @@ async function main() {
 
     await require("./scenarios/projects")({ test, Modal, backdrops, card, console_ });
 
+    console.log("\nparallel conversations, queue and notifications");
+
+    await require("./scenarios/conversations")({ test, console_ });
+
     console.log("\nprojects manager and attachments");
 
     await require("./scenarios/project-manager")({ test, backdrops, console_ });
+
+    console.log("\nlogs, terminal and files");
+
+    await require("./scenarios/operator-tools")({ test, backdrops, console_ });
+
+    console.log("\nserver readiness: clone, interrupted, system");
+
+    await require("./scenarios/server-readiness")({ test, backdrops, console_ });
+
+    console.log("\nagent quality: plan approval, cost, changes, review");
+
+    await require("./scenarios/agent-quality")({ test, backdrops, console_ });
 
     const failed =
         results.filter(item => !item.ok);

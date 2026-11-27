@@ -5,6 +5,7 @@ const settings = require("../../config");
 
 const {
     ignoredDirectories,
+    isSecretStoreFile,
     toRelativeInRoot,
     toWorkspaceRelative
 } = require("../../context/WorkspaceBoundary");
@@ -123,6 +124,11 @@ async function runSearch(session) {
             }
 
             if (!entry.isFile()) {
+                continue;
+            }
+
+            /* P4-01: the secret store is never listed or read */
+            if (isSecretStoreFile(fullPath)) {
                 continue;
             }
 

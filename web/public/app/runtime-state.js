@@ -19,6 +19,7 @@ import { LIMITS } from "./store.js";
 import { agentNode, graphNode, archiveCurrentExecution, resetRun } from "./execution-model.js";
 import { normalizeConversationMessage, normalizeConversationMessages, TURN_REFRESH_TYPES } from "./conversation-model.js";
 import { reduceDiscussion } from "./discussion-model.js";
+import { reduceRunExtras } from "./run-extras.js";
 
 
 export function eventVisibleForProject(state, event) {
@@ -73,6 +74,27 @@ export function reduce(state, event) {
         return { regions: new Set(), effects };
     }
 
+    /* a project's background turn belongs to that project's tab, not to
+       the default conversation on screen; the default view follows only
+       the project it sent a task to (a labelled multi-project run) */
+    if (
+        !state.currentProjectId && event.background === true &&
+        event.project_id && event.project_id !== state.activeProjectId
+    ) {
+        if (event.type === "run:status" && event.status !== "running") {
+            effects.push({ type: "runSettled", projectId: event.project_id });
+        }
+        appendLogRow(state, event);
+        return { regions, effects };
+    }
+
+    /* the metadata shadow of another conversation's event (a project
+       stream sees unscoped events this way): logged, never applied */
+    if (event.aggregate === true) {
+        appendLogRow(state, event);
+        return { regions, effects };
+    }
+
     if (event.plan) {
         state.plan = event.plan;
         regions.add("plan");
@@ -90,6 +112,8 @@ export function reduce(state, event) {
     }
 
     const tree = () => regions.add("tree");
+
+    reduceRunExtras(state, event, regions);
 
     switch (event.type) {
 
@@ -352,6 +376,23 @@ export function reduce(state, event) {
             effects.push({ type: "loadSettings" });
             break;
 
+        /* P1-07: a resource warning appeared or cleared */
+        case "system:resources":
+            effects.push({ type: "systemChanged" });
+            break;
+
+        /* P1-06: a restart cut conversations off */
+        case "session:interrupted":
+            effects.push({ type: "refreshInterrupted" });
+            break;
+
+        case "queue:changed":
+            if (event.project_id && event.project_id === state.currentProjectId) {
+                state.queue = { project_id: event.project_id, paused: Boolean(event.paused), items: event.items || [] };
+                regions.add("queue").add("run");
+            }
+            break;
+
         case "session:cleared":
             resetRun(state, true);
             state.messages = [];
@@ -410,6 +451,13 @@ export function applySnapshot(state, snapshot) {
     /* a reload mid-discussion resumes the transcript at the right round */
     state.discussion = snapshot.discussion || null;
     state.sessions = snapshot.sessions || [];
+    state.queue = snapshot.queue || null;
+    state.interrupted = Array.isArray(snapshot.interrupted) ? snapshot.interrupted : [];
+    state.conversationMode = snapshot.conversation || null;
+
+    if (Array.isArray(snapshot.conversations)) {
+        state.conversations = snapshot.conversations;
+    }
     state.waiting = null;
 
     for (const event of snapshot.events || []) {

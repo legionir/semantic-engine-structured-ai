@@ -17,6 +17,7 @@ const path = require("path");
 const fs = require("fs");
 const { sendJson } = require("../Response");
 const { readBody } = require("../RequestBody");
+const { maskDeep } = require("../../../agent/events/EventRedactor");
 
 
 module.exports = async function McpRoutes(shared, request) {
@@ -46,12 +47,14 @@ module.exports = async function McpRoutes(shared, request) {
         const manager = toolRuntime.mcp._manager;
         manager.load();
         const loader = require(path.join(__dirname, "..", "..", "..", "agent", "mcp", "McpConfigLoader"));
-        const file = loader.workspaceFile(manager.workspaceRoot);
+        /* P4-02: ?target=user is the operator's own file in the data home */
+        const target = url.searchParams.get("target") === "user" ? "user" : "workspace";
+        const file = target === "user" ? loader.userFile() : loader.workspaceFile(manager.workspaceRoot);
         const text = fs.existsSync(file)
             ? fs.readFileSync(file, "utf8")
             : `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`;
 
-        sendJson(res, 200, { text, path: file });
+        sendJson(res, 200, { text, path: file, target });
         return true;
     }
 
@@ -79,7 +82,19 @@ module.exports = async function McpRoutes(shared, request) {
             const manager = toolRuntime.mcp._manager;
             manager.load();
             const root = manager.workspaceRoot;
-            const file = loader.workspaceFile(root);
+            const target = url.searchParams.get("target") === "user" || body.target === "user" ? "user" : "workspace";
+            const file = target === "user" ? loader.userFile() : loader.workspaceFile(root);
+
+            /* P4-01: a repository file may never reference the secret store */
+            if (
+                target === "workspace" &&
+                require(path.join(__dirname, "..", "..", "..", "agent", "secrets", "SecretStore")).referencesIn(document).size > 0
+            ) {
+                throw new Error(
+                    "${secret:NAME} references are not allowed in the workspace file (.agent/mcp.json), which the agent can edit; " +
+                    "save them in the user MCP config instead"
+                );
+            }
             const container = document.mcpServers || document.mcp_servers || document.servers;
             if (!container || typeof container !== "object" || Array.isArray(container)) {
                 throw new Error('MCP config must contain an object under "mcpServers"');
@@ -112,11 +127,14 @@ module.exports = async function McpRoutes(shared, request) {
 
             fs.mkdirSync(path.dirname(file), { recursive: true });
             loader.writePrivateFile(file, `${JSON.stringify(document, null, 2)}\n`);
+            if (target === "user") {
+                loader.changes.emit("change", { file });
+            }
             manager.invalidate();
             manager.load();
             await toolRuntime.discoverMcpTools({ force: true }).catch(() => {});
 
-            sendJson(res, 200, { ok: true, path: file });
+            sendJson(res, 200, { ok: true, path: file, target });
         } catch (error) {
             sendJson(res, error.status || 400, { error: error.message || "invalid MCP config" });
         }
@@ -142,7 +160,9 @@ module.exports = async function McpRoutes(shared, request) {
         const manager =
             toolRuntime.mcp._manager;
 
-        sendJson(res, 200, {
+        /* P4-01: an argument, URL or error that carries a stored secret
+           is masked by value before it leaves the server */
+        sendJson(res, 200, maskDeep({
             ...manager.status(),
 
             tools:
@@ -152,7 +172,7 @@ module.exports = async function McpRoutes(shared, request) {
                     tool: entry.tool,
                     description: entry.description
                 }))
-        });
+        }));
 
         return true;
     }

@@ -14,6 +14,10 @@ const { host } = require("./engineContext");
 
 const Delegation = require("./DelegationRunner");
 
+const { isInitCommand, initTask } = require("../prompt/ProjectInstructionsBuilder");
+const { expandTask } = require("../prompt/TaskMentions");
+const { channel: imageChannel } = require("./ImageChannel");
+
 
 async function runAgentCore(options = {}) {
 
@@ -67,6 +71,11 @@ async function runAgentCore(options = {}) {
     */
 
     await h.discoverMcpTools();
+
+    /* `/init` writes the project's AGENTS.md (roadmap P1-01) */
+    if (isInitCommand(options.task)) {
+        options = { ...options, task: initTask() };
+    }
 
     h.currentRun().task =
         options.task ||
@@ -127,10 +136,25 @@ async function runAgentCore(options = {}) {
         await h.refreshRepositoryContext();
     }
 
+    /*
+    | @path mentions are read into the message and attached pictures are
+    | shown to the model (roadmap P1-09); the run keeps the user's own
+    | words as its task.
+    */
+
+    const prepared =
+        expandTask(
+            options.task && options.task.trim() !== ""
+                ? options.task
+                : h.readTask(),
+            (projectContext && (projectContext.workspaceRoot || projectContext.rootPath)) ||
+                require("../context/WorkspaceBoundary").WORKSPACE_ROOT
+        );
+
     if (messages.length === 0) {
 
         messages.push(
-            ...h.createMainAgentMessages(options.task)
+            ...h.createMainAgentMessages(prepared.task)
         );
 
     } else {
@@ -141,9 +165,14 @@ async function runAgentCore(options = {}) {
             turn_id,
 
             content:
-                options.task && options.task.trim() !== ""
-                    ? options.task
-                    : h.readTask()
+                prepared.task
+        });
+    }
+
+    if (prepared.images.length > 0) {
+
+        imageChannel.appendFor(messages, prepared.images, {
+            label: "Pictures the user attached to this message"
         });
     }
 
@@ -196,7 +225,8 @@ async function runAgentCore(options = {}) {
 
     const mainAgentTools =
         h.resolveTools(
-            mainAgentDefinition.tools
+            mainAgentDefinition.tools,
+            mainAgentDefinition.name || "main_agent"
         );
 
     const allowedTools =

@@ -91,7 +91,7 @@ function createAgentProfileResolver({
         return {
             persona: resolvePersona(agentDefinition.persona),
             skills: resolveSkills(agentDefinition.skills),
-            tools: resolveTools(agentDefinition.tools)
+            tools: resolveTools(agentDefinition.tools, agentDefinition.name)
         };
     }
 

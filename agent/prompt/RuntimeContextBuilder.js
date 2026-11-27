@@ -19,6 +19,18 @@
 const settings = require("../config");
 
 
+function optionalSection(name, provider) {
+
+    if (typeof provider !== "function") {
+        return {};
+    }
+
+    const value = provider();
+
+    return value ? { [name]: value } : {};
+}
+
+
 class RuntimeContextBuilder {
 
     constructor(deps) {
@@ -151,7 +163,17 @@ class RuntimeContextBuilder {
             */
 
             mcp:
-                deps.mcpContext()
+                deps.mcpContext(),
+
+            /*
+            | Present only when they say something, so a run without plan
+            | mode, goal, cost cap or rule files keeps its prompt unchanged:
+            | run_mode (roadmap P3-03, P3-05), project_rules (P3-06).
+            */
+
+            ...optionalSection("run_mode", deps.runDirectives),
+
+            ...optionalSection("project_rules", deps.projectRules)
         };
 
     }

@@ -13,6 +13,32 @@ import { applySnapshot as reduceSnapshot, reduce } from "./runtime-state.js";
 import { refreshSession } from "./history-controller.js";
 import { loadSettings } from "./settings-controller.js";
 import { projectRunSettled } from "./queue-controller.js";
+import { refreshSystemWarnings } from "./system-view.js";
+import { refreshInterrupted } from "./interrupted-controller.js";
+import { onMcpEvent } from "./mcp-controller.js";
+
+
+/*
+| The summary of every conversation (tabs, notifications) arrives beside
+| the events and is not one of them: whoever shows it subscribes here, so
+| this module does not depend on its readers.
+*/
+const summaryListeners = new Set();
+
+export function onConversationSummary(listener) {
+
+    summaryListeners.add(listener);
+
+    return () => summaryListeners.delete(listener);
+}
+
+
+function applySummary(conversations) {
+
+    for (const listener of summaryListeners) {
+        listener(conversations);
+    }
+}
 
 
 /*
@@ -29,6 +55,10 @@ function runEffects(effects) {
             loadSettings();
         } else if (effect.type === "refreshSession") {
             refreshSession(effect.id);
+        } else if (effect.type === "systemChanged") {
+            refreshSystemWarnings();
+        } else if (effect.type === "refreshInterrupted") {
+            refreshInterrupted();
         }
     }
 }
@@ -116,7 +146,21 @@ export function connect() {
 
         if (payload.type === "snapshot") {
             applySnapshot(payload.snapshot);
+            applySummary(state.conversations);
+            /* a question a server asked before this page loaded */
+            onMcpEvent({ type: "mcp:elicitation" });
             return;
+        }
+
+        if (payload.type === "conversations") {
+            if (Array.isArray(payload.conversations)) applySummary(payload.conversations);
+            return;
+        }
+
+        /* P4-10: a server's question, progress or sign-in (the event may
+           be metadata only; the MCP module asks for the details) */
+        if (typeof payload.type === "string" && payload.type.startsWith("mcp:")) {
+            onMcpEvent(payload);
         }
 
         apply(payload);

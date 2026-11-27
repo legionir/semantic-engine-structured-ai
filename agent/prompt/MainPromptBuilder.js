@@ -10,6 +10,8 @@
 |   2. execution rules (text)
 |   3. runtime_context (JSON)
 |   3a. project_context (JSON — additive, only when a project is scoped)
+|   3b. project_instructions (JSON — additive, only when the workspace has
+|       AGENTS.md / CLAUDE.md files; see ProjectInstructionsBuilder)
 |   4. available_skills (JSON)
 |   5. available_personas (JSON, only when the agent may delegate)
 |   6. available_agents (JSON)
@@ -22,6 +24,7 @@
 */
 
 const { jsonSystem } = require("./PromptMessages");
+const { matchTriggers } = require("../tools/skills/MarkdownSkills");
 
 
 class MainPromptBuilder {
@@ -39,6 +42,21 @@ class MainPromptBuilder {
 
         const projectMessage =
             deps.projectContextBuilder.build(project);
+
+        const instructionsMessage =
+            deps.projectInstructionsBuilder
+                ? deps.projectInstructionsBuilder.build()
+                : null;
+
+        const skills =
+            deps.skillIndex();
+
+        /* skills whose trigger words occur in the task (roadmap P3-02) */
+        const suggested =
+            matchTriggers(
+                skills,
+                task && task.trim() !== "" ? task : ""
+            );
 
         return [
 
@@ -64,6 +82,8 @@ class MainPromptBuilder {
 
             projectMessage,
 
+            instructionsMessage,
+
             jsonSystem({
                 type:
                     "available_skills",
@@ -71,8 +91,11 @@ class MainPromptBuilder {
                 note:
                     "Names and descriptions only. Call skill_get before doing that kind of work to read its procedure and constraints.",
 
-                skills:
-                    deps.skillIndex()
+                skills,
+
+                ...(suggested.length > 0
+                    ? { suggested_for_this_task: suggested }
+                    : {})
             }),
 
             /*

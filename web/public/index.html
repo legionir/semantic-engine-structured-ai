@@ -12,6 +12,8 @@
 <link rel="stylesheet" href="/styles/dialogs.css">
 <link rel="stylesheet" href="/styles/projects.css">
 <link rel="stylesheet" href="/styles/composition.css">
+<link rel="stylesheet" href="/styles/operator.css">
+<link rel="stylesheet" href="/vendor/xterm.css">
 <link rel="stylesheet" href="/console-login.css">
 </head>
 <body>
@@ -43,6 +45,11 @@
       <button type="button" id="planButton" class="chip button" title="open the plan">Plan</button>
       <button type="button" id="llmSettingsButton" class="chip button" title="LLM providers, layers, and proxy">LLM settings</button>
       <button type="button" id="mcpButton" class="chip button" title="connect and inspect MCP servers">MCP</button>
+      <button type="button" id="logsButton" class="chip button" title="application log: AI request errors, failures, crashes">Logs <span id="logsBadge" class="logs-badge" hidden>0</span></button>
+      <button type="button" id="systemButton" class="chip button" title="CPU, memory, disk, runs and background processes">System</button>
+      <button type="button" id="terminalButton" class="chip button" title="open a system terminal in the workspace">Terminal</button>
+      <button type="button" id="filesButton" class="chip button" title="browse and edit workspace files">Files</button>
+      <button type="button" id="notificationsButton" class="chip button" title="browser notifications when a conversation in the background finishes, fails or needs an approval" aria-pressed="false">Notify · off</button>
       <button type="button" id="settingsButton" class="chip button" title="open runtime settings">Settings</button>
     </nav>
   </div>
@@ -73,17 +80,28 @@
         <div class="head-tools">
           <div class="attachment-list" id="attachmentList" aria-live="polite"></div>
           <span class="muted" id="sessionTitle"></span>
+          <button type="button" id="taskChangesButton" class="chip button" title="What each task changed in the workspace; revert a whole task" aria-label="Task changes"><span>Changes</span></button>
+          <button type="button" id="reviewButton" class="chip button" title="Review the current diff, a branch, a commit or a pull request" aria-label="Review"><span>Review</span></button>
           <button type="button" id="attachFilesButton" class="chip button" title="Attach files to the next task" aria-label="Attach files"><span>Attach</span></button>
           <input type="file" id="attachmentInput" multiple hidden>
         </div>
       </div>
 
+      <div id="conversationTabs" class="conversation-tabs-host"></div>
+
+      <div id="interruptedBanner" class="interrupted-host"></div>
+
       <div id="chat" class="chat">
         <p class="empty">No messages yet. Describe a task to start.</p>
       </div>
 
+      <div id="planApproval" class="plan-approval-host"></div>
+
+      <div id="messageQueue" class="message-queue-host"></div>
+
       <form id="taskForm" class="composer">
-        <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why"></textarea>
+        <textarea id="task" rows="3" placeholder="Describe a task, for example: find the slowest test and explain why. Type @ to point at a file; paste a screenshot to attach it" aria-autocomplete="list" aria-controls="mentionList" aria-expanded="false"></textarea>
+        <ul id="mentionList" class="mention-list" role="listbox" aria-label="Files matching the @ mention" hidden></ul>
         <label class="effort-control" for="taskEffort">
           <span>Effort</span>
           <select id="taskEffort" aria-label="Reasoning effort for all agent layers">
@@ -95,14 +113,29 @@
           </select>
           <span class="effort-hint">applies to all layers when changed</span>
         </label>
+        <div class="run-options" id="runOptions">
+          <label class="effort-control" title="The agent only investigates and writes a plan; nothing changes until you approve it">
+            <input type="checkbox" id="taskPlanMode"> Plan first
+          </label>
+          <label class="effort-control run-goal" for="taskGoal">
+            <span>Goal</span>
+            <input type="text" id="taskGoal" maxlength="2000" placeholder="optional: the condition that ends the run" aria-label="Goal of the run">
+          </label>
+          <label class="effort-control" for="taskMaxCost" title="Stop the run when it has cost this many dollars (empty: the server setting)">
+            <span>Cap $</span>
+            <input type="number" id="taskMaxCost" min="0" step="0.05" placeholder="—" aria-label="Dollar cap for the run">
+          </label>
+        </div>
         <div id="discussionOptions" class="discussion-options-row" hidden></div>
         <div class="actions">
           <button type="submit" id="runButton">Run task</button>
+          <button type="button" id="correctButton" class="ghost" title="Send the text to the running turn: the agent reads it before its next step" hidden>Correct now</button>
           <button type="button" id="cancelButton" class="ghost" disabled>Stop</button>
           <button type="button" id="discussionButton" class="ghost" title="Multi-agent discussion: specialist personas deliberate in rounds and an observer writes the synthesis">
             Discussion
           </button>
           <span class="muted grow-right" id="runTimer"></span>
+          <span class="run-cost" id="runCost" aria-live="polite"></span>
         </div>
       </form>
     </div>

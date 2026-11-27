@@ -10,7 +10,7 @@
 import { state, touch } from "./store.js";
 import { el, failureText, notifyError, setStatus } from "./console-core.js";
 import { projectById } from "./project-routing.js";
-import { drainProjectTaskQueue, labelChatForProject } from "./queue-controller.js";
+import { drainProjectTaskQueue, labelChatForProject, sendCorrection } from "./queue-controller.js";
 
 
 function selectedTaskScope() {
@@ -19,7 +19,7 @@ function selectedTaskScope() {
 }
 
 
-function selectedTaskProjectIds() {
+export function selectedTaskProjectIds() {
 
     if (selectedTaskScope() === "multiple") {
         return [...state.taskProjectIds];
@@ -91,7 +91,7 @@ function setUploadingState(uploading) {
 }
 
 
-function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = new Map(), reasoningEffort = null) {
+function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = new Map(), reasoningEffort = null, runFlags = {}) {
 
     state.multiQueue = projectIds.map(id => ({
         projectId: id,
@@ -99,10 +99,30 @@ function startLabeledProjectQueue(task, projectIds, attachmentFilesByProject = n
             `[${(projectById(id) || { name: id }).name}] ${task}`,
             attachmentFilesByProject.get(id) || []
         ),
-        reasoningEffort
+        reasoningEffort,
+        runFlags
     }));
 
     drainProjectTaskQueue();
+}
+
+
+/*
+| Plan first / goal / dollar cap of the next task (roadmap P3-03, P3-05),
+| as the request fields the server reads. Empty fields send nothing.
+*/
+export function selectedRunFlags() {
+
+    const flags = {};
+    const plan = el("taskPlanMode");
+    const goal = (el("taskGoal")?.value || "").trim();
+    const cap = (el("taskMaxCost")?.value || "").trim();
+
+    if (plan && plan.checked) flags.plan_mode = true;
+    if (goal !== "") flags.goal = goal;
+    if (cap !== "" && Number.isFinite(Number(cap)) && Number(cap) >= 0) flags.max_cost_usd = Number(cap);
+
+    return flags;
 }
 
 
@@ -119,6 +139,13 @@ export function clearComposer() {
     const task = el("task");
 
     if (task) task.value = "";
+
+    /* plan first and the goal belong to one task; the dollar cap stays */
+    const plan = el("taskPlanMode");
+    const goal = el("taskGoal");
+
+    if (plan) plan.checked = false;
+    if (goal) goal.value = "";
 
     state.attachments = [];
     state.attachmentError = null;
@@ -150,7 +177,23 @@ export async function uploadFor(projectIds, filesByProject) {
 }
 
 
-export async function submitTask(task, reasoningEffort) {
+/* "Correct now": the text reaches the running turn before its next step */
+export async function submitCorrection() {
+
+    const field = el("task");
+    const text = field ? field.value.trim() : "";
+
+    if (text === "" || !state.currentProjectId) {
+        return;
+    }
+
+    if (await sendCorrection(text)) {
+        clearComposer();
+    }
+}
+
+
+export async function submitTask(task, reasoningEffort, runFlags = selectedRunFlags()) {
 
     const targets = selectedTaskProjectIds();
     const projectIds = targets.length > 0 ? targets : [null];
@@ -161,7 +204,7 @@ export async function submitTask(task, reasoningEffort) {
     }
 
     if (targets.length > 1) {
-        startLabeledProjectQueue(task, targets, files, reasoningEffort);
+        startLabeledProjectQueue(task, targets, files, reasoningEffort, runFlags);
         clearComposer();
         return;
     }
@@ -171,6 +214,9 @@ export async function submitTask(task, reasoningEffort) {
     if (state.attachments.length > 0) {
         task = taskWithAttachments(task, files.get(projectId || "__default__"));
     }
+
+    /* a busy project queues the message for its next turn (P1-04) */
+    const busy = state.status === "running";
 
     state.activeProjectId = projectId;
     setStatus("running");
@@ -188,7 +234,8 @@ export async function submitTask(task, reasoningEffort) {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
                 task,
-                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
+                ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+                ...runFlags
             })
         });
     } catch (error) {
@@ -198,12 +245,19 @@ export async function submitTask(task, reasoningEffort) {
     }
 
     if (!response.ok) {
-        setStatus("idle");
+        if (!busy) setStatus("idle");
         notifyError(await failureText(response, "The task was not started"));
         return;
     }
 
+    const accepted = typeof response.json === "function" ? await response.json().catch(() => ({})) : {};
+
     clearComposer();
+
+    if (accepted && accepted.queued === true) {
+        /* the queue panel shows it; the run on screen goes on */
+        return;
+    }
 
     if (projectId) {
         labelChatForProject(projectId);

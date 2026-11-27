@@ -15,12 +15,15 @@
 */
 
 const consoleAuth = require("../../../agent/config/ConsoleAuth");
+const { isImageMessage } = require("../../../agent/runtime/ImageChannel");
 
 
 module.exports = function createSnapshot(shared) {
 
     const {
         approvalStore,
+        conversations,
+        projectQueue,
         runtime,
         sessions,
         sessionsEnabled,
@@ -77,7 +80,7 @@ module.exports = function createSnapshot(shared) {
 
             turns:
                 state.history.filter(
-                    message => message.role === "user"
+                    message => message.role === "user" && !isImageMessage(message)
                 ).length,
 
             pending_approvals:
@@ -129,7 +132,17 @@ module.exports = function createSnapshot(shared) {
                     : [],
 
             project:
-                runtime.project.loadProject()
+                runtime.project.loadProject(),
+
+            /* every live conversation, for the console's tabs (P1-03) */
+            conversations:
+                conversations.list(),
+
+            /* conversations a restart cut off, with Continue (P1-06) */
+            interrupted:
+                shared.interrupted
+                    ? shared.interrupted.list()
+                    : []
         };
     }
 
@@ -194,12 +207,147 @@ module.exports = function createSnapshot(shared) {
                     consoleAuth.allowsProject(claims, item.project_id)
             );
 
+        snap.conversations = conversationsFor(claims, snap.conversations);
+
+        snap.interrupted =
+            snap.interrupted.filter(
+                item =>
+                    item.project_id !== null &&
+                    consoleAuth.allowsProject(claims, item.project_id)
+            );
+
         return snap;
     }
 
+
+    /* the conversations a token may see: its projects, never the default */
+    function conversationsFor(claims, list = conversations.list()) {
+
+        if (!claims || consoleAuth.allowsAllProjects(claims)) {
+            return list;
+        }
+
+        return list.filter(item =>
+            item.project_id !== null &&
+            consoleAuth.allowsProject(claims, item.project_id)
+        );
+    }
+
+    function planFor(projectId) {
+
+        try {
+
+            return runtime.runWithProject(
+                runtime.resolveRunProjectContext({ projectId }),
+                () => runtime.currentPlanView()
+            );
+
+        } catch {
+
+            return runtime.currentPlanView();
+        }
+    }
+
+
+    /* the project's own buffer first, then what the shared buffer still has */
+    function projectEvents(conv, client) {
+
+        const seen = new Set();
+        const events = [];
+
+        const add = event => {
+
+            const key = `${event.seq}|${event.type}`;
+
+            if (!seen.has(key)) {
+                seen.add(key);
+                events.push(event);
+            }
+        };
+
+        for (const event of conv ? conv.events : []) {
+            add(event);
+        }
+
+        for (const event of state.events) {
+
+            const visible = eventForClient(event, client);
+
+            if (visible) {
+                add(visible);
+            }
+        }
+
+        return events.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    }
+
+
+    /*
+    | What one project's stream starts from (P1-03). The project's events
+    | come from its own buffer, so a conversation that ran while another
+    | was on screen replays in full. A conversation the foreground does not
+    | hold right now (a background turn, or the foreground moved on) is drawn
+    | from the project's own transcript and status.
+    */
+    function projectSnapshot(projectId, claims) {
+
+        const snap = snapshotFor(claims);
+
+        const conv = conversations.get(projectId);
+
+        snap.project_id = projectId;
+
+        snap.events = projectEvents(conv, { projectId, claims });
+
+        snap.pending_approvals =
+            snap.pending_approvals.filter(
+                item => !item.project_id || item.project_id === projectId
+            );
+
+        snap.plan = planFor(projectId);
+
+        snap.queue = projectQueue.view(projectId);
+
+        const own =
+            conv && (conv.background || state.projectId !== projectId);
+
+        snap.conversation =
+            own
+                ? (conv.background ? "background" : "project")
+                : "foreground";
+
+        /* the project's own transcript, also while the foreground holds it:
+           the shared foreground session may hold other conversations too */
+        if (conv && !own) {
+
+            snap.messages = conv.messages;
+        }
+
+        if (own) {
+
+            Object.assign(snap, {
+                status: conv.status,
+                task: conv.task,
+                answer: conv.answer,
+                error: conv.error,
+                started_at: conv.startedAt,
+                finished_at: conv.finishedAt,
+                cycles: conv.cycles,
+                turns: conv.messages.filter(message => message.role === "user").length,
+                messages: conv.messages,
+                session: conv.session ? sessions.summarise(conv.session) : snap.session
+            });
+        }
+
+        return snap;
+    }
+
+
     return {
         snapshot,
+        conversationsFor,
         eventForClient,
+        projectSnapshot,
         snapshotFor
     };
 };

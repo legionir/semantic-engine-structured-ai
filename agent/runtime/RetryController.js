@@ -11,6 +11,7 @@
 */
 
 const { host } = require("./engineContext");
+const { logs } = require("./LogStore");
 
 
 function isRetryableStatus(status) {
@@ -110,6 +111,13 @@ async function callAI(options) {
                 !retryable ||
                 attempt > h.settings.get("MAX_REQUEST_RETRIES")
             ) {
+                if (retryable && attempt > 1) {
+                    logs.error("ai", `AI request gave up after ${attempt} attempts: ${String(error.message).slice(0, 300)}`, {
+                        scope: options.scope || "main_agent",
+                        attempts: attempt,
+                        status: error.status
+                    });
+                }
                 throw error;
             }
 
@@ -120,6 +128,12 @@ async function callAI(options) {
                 );
 
             if (h.runRemainingMs() <= delay) {
+
+                logs.error("ai", `AI request failed and the run budget leaves no time to retry: ${String(error.message).slice(0, 300)}`, {
+                    scope: options.scope || "main_agent",
+                    attempt,
+                    status: error.status
+                });
 
                 throw new Error(
                     `${error.message} (no time left in the run budget to retry)`
@@ -134,6 +148,13 @@ async function callAI(options) {
                     attempt
                 }/${h.settings.get("MAX_REQUEST_RETRIES")}]`
             );
+
+            logs.warn("ai", `Retrying AI request in ${delay} ms (attempt ${attempt}/${h.settings.get("MAX_REQUEST_RETRIES")}): ${String(error.message).slice(0, 200)}`, {
+                scope: options.scope || "main_agent",
+                attempt,
+                delay_ms: delay,
+                status: error.status
+            });
 
             await new Promise(
                 resolve =>

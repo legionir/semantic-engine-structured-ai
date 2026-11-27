@@ -41,7 +41,16 @@ export const REGIONS = Object.freeze([
     "settings",
     "mcp",
     "history",
-    "dashboard"
+    "dashboard",
+    "logs",
+    "terminal",
+    "files",
+    "tabs",
+    "queue",
+    "system",
+    "interrupted",
+    "quality",
+    "review"
 ]);
 
 
@@ -119,6 +128,16 @@ export function createState() {
 
         /* mcpState: filled by mcp-view's createMcpState when the modal opens */
         mcp: null,
+        /* operator tools: filled by their controllers when first opened */
+        logs: null,
+        terminal: null,
+        files: null,
+        /* how often the Logs badge checks for new errors (ms) */
+        logBadgePollMs: 20000,
+        /* keystrokes typed within this window go in one request (ms) */
+        terminalInputFlushMs: 8,
+        /* a dialog resize settles this long before the shell is told (ms) */
+        terminalResizeDebounceMs: 120,
 
         /* discussion */
         discussion: null,
@@ -137,6 +156,18 @@ export function createState() {
         taskProjectIds: [],
         dashboard: { open: false, projectId: null, tab: "overview", request: 0, loading: false, data: null, saving: false, saveMessage: "" },
         multiQueue: [],
+
+        /* conversationState per project (P1-03 / P1-04 / P1-05): one line
+           per live conversation, the visible project's message queue, the
+           conversations that finished or asked while the page was hidden,
+           and whether the operator wants browser notifications */
+        conversations: [],
+        queue: null,
+        conversationMode: null,
+        attention: new Set(),
+        notificationsEnabled: false,
+        editingQueueItem: null,
+
         attachments: [],
         attachmentError: null,
         gatewayHealth: null

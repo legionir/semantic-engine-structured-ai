@@ -5,8 +5,11 @@
 | Task runner
 |--------------------------------------------------------------------------
 |
-| Starting a task in the default workspace or in a project slot, and the
-| background runs that keep one project's run off the shared state.
+| Starting a task in the default workspace or in a project's conversation:
+| the foreground turn (the console's `state`, the /api/state contract) and,
+| when the foreground is taken, the project's background turn
+| (background-turns.js). Each project keeps its own conversation
+| (conversations.js) and message queue (project-queue.js).
 |
 | Part of the console server's closure (ServerImplementation): it reads what
 | it needs from `shared`, which the earlier factories have filled in, and
@@ -14,168 +17,97 @@
 |
 */
 
+const createTurnSupport = require("./turn-support");
+const createBackgroundTurns = require("./background-turns");
+const startCheckpoint = require("./turn-checkpoint");
+const { runFlagOptions } = require("./run-flags");
+
 
 module.exports = function createTaskRunner(shared) {
 
     const {
         addMessage,
-        approvalStore,
+        calls,
+        conversations,
+        projectQueue,
         recordGitReport,
-        resolveApproval,
         runtime,
         saveSession,
         state
     } = shared;
 
-    /*
-    | runOptions (EXECUTION_PLAN Phase 7 گام ۲): when the caller names a
-    | projectId the run is resolved against the project registry and the
-    | whole run is scoped to that project (the project context is resolved before accepting). Legacy callers pass nothing
-    | and the historical single-run behaviour is untouched.
-    */
-    /*
-    | The plan lives in the run's PROJECT data root. Outside the run (before it
-    | starts and in the finally block that decides on auto-continue) there is no
-    | run context, so plan lookups must be made inside that project's frame;
-    | otherwise a project run is judged by the default project's plan and never
-    | continues (or continues on the wrong plan).
-    */
-    function inRunProject(runOptions, fn) {
+    const support = createTurnSupport(shared);
 
-        if (
-            !runOptions.projectId ||
-            typeof runtime.runWithProject !== "function" ||
-            typeof runtime.resolveRunProjectContext !== "function"
-        ) {
-            return fn();
-        }
-
-        const context =
-            runtime.resolveRunProjectContext({ projectId: runOptions.projectId });
-
-        return runtime.runWithProject(context, fn);
-    }
-
+    const {
+        attribution,
+        continuationTask,
+        inRunProject,
+        projectWorkspace,
+        rememberPlan,
+        shouldAutoContinue,
+        sweepApprovals
+    } = support;
 
     /*
-    | Per-project run slots (plan phase 7 / step 3). The console has ONE
-    | foreground conversation (`state`), but that must not serialise the
-    | whole process: a run for project B may start while project A's run is in
-    | progress. Rules:
-    |   - a project with a run in progress refuses another (409) - the
-    |     "same project" policy, on top of the scheduler's MAX_RUNS_PER_PROJECT;
-    |   - a run for another project starts at once and, when the foreground is
-    |     busy, runs in the BACKGROUND (own slot, no clobbering of `state`);
+    | Per-project conversations (plan phase 7 / step 3, roadmap P1-03). The
+    | console has ONE foreground conversation (`state`), but that must not
+    | serialise the whole process: a run for project B may start while
+    | project A's run is in progress. Rules:
+    |   - a project with a run in progress takes no second run: the route
+    |     queues the message for its next turn (P1-04) or answers 409;
+    |   - a run for another project starts at once and, when the foreground
+    |     is busy, runs in the BACKGROUND as a full turn of its own
+    |     conversation (no clobbering of `state`); a conversation that
+    |     lives in the background stays there until it is reset;
     |   - a run with no project keeps the historical single-run gate.
     */
-    const projectSlots = new Map();
-
     function projectSlotBusy(projectId) {
 
-        const slot = projectSlots.get(projectId);
-
-        return Boolean(slot && slot.status === "running");
+        return conversations.busy(projectId);
     }
 
     function slotView(projectId) {
 
-        const slot = projectSlots.get(projectId);
-
-        if (!slot) {
-            return { project_id: projectId, status: "idle" };
-        }
-
-        return {
-            project_id: projectId,
-            status: slot.status,
-            task: slot.task,
-            answer: slot.answer,
-            error: slot.error,
-            started_at: slot.startedAt,
-            finished_at: slot.finishedAt,
-            background: slot.background
-        };
+        return conversations.view(projectId);
     }
 
 
-    async function startBackgroundRun(task, runOptions) {
+    /* the next turn of a conversation starts once this one has unwound */
+    function scheduleNext(task, runOptions) {
 
-        const projectId = runOptions.projectId;
-
-        const slot = {
-            projectId,
-            status: "running",
-            task,
-            answer: null,
-            error: null,
-            startedAt: Date.now(),
-            finishedAt: null,
-            background: true,
-            history: []
-        };
-
-        projectSlots.set(projectId, slot);
-
-        try {
-
-            const action =
-                await runtime.runAgent({
-                    task,
-                    history: slot.history,
-                    projectId,
-                    ...(runOptions.reasoningEffort ? { reasoning_effort: runOptions.reasoningEffort } : {})
-                });
-
-            slot.answer = action.response ? action.response.content : null;
-            slot.error = action.error || null;
-            slot.status = action.error ? "failed" : "done";
-
-        } catch (error) {
-
-            const cancelled =
-                error.code === "RUN_CANCELLED" || /cancel/i.test(error.message);
-
-            slot.error = {
-                code: cancelled ? "CANCELLED" : error.name || "RUNTIME_ERROR",
-                message: error.message,
-                retryable: false
-            };
-
-            slot.status = cancelled ? "cancelled" : "failed";
-
-            if (!error.runTerminalEmitted) {
-
-                runtime.events.emit("run:error", {
-                    project_id: projectId,
-                    message: error.message,
-                    cancelled
-                });
-            }
-
-        } finally {
-
-            slot.finishedAt = Date.now();
-        }
+        setTimeout(
+            () => startTask(task, runOptions).catch(() => {}),
+            50
+        );
     }
+
+
+    const background =
+        createBackgroundTurns(shared, support, scheduleNext);
 
 
     async function startTask(task, runOptions = {}) {
 
-        if (runOptions.projectId) {
+        const projectId = runOptions.projectId || null;
 
-            if (projectSlotBusy(runOptions.projectId)) {
+        if (projectId) {
+
+            if (projectSlotBusy(projectId)) {
 
                 throw Object.assign(
-                    new Error(`project ${runOptions.projectId} already has a run in progress`),
+                    new Error(`project ${projectId} already has a run in progress`),
                     { status: 409 }
                 );
             }
 
-            /* the foreground is taken (by another project or the default
-               project): run in the background instead of refusing */
-            if (state.status === "running") {
+            const existing = conversations.get(projectId);
 
-                return startBackgroundRun(task, runOptions);
+            /* the foreground is taken (by another project or the default
+               project), or this conversation already lives in the
+               background: run there instead of refusing */
+            if (state.status === "running" || (existing && existing.background)) {
+
+                return background.run(task, runOptions);
             }
 
         } else if (state.status === "running") {
@@ -188,32 +120,27 @@ module.exports = function createTaskRunner(shared) {
 
         state.status = "running";
         state.stopRequested = false;
-        state.projectId = runOptions.projectId || null;
+        state.projectId = projectId;
 
-        if (runOptions.projectId) {
+        const conv =
+            projectId ? conversations.ensure(projectId) : null;
 
-            projectSlots.set(runOptions.projectId, {
-                projectId: runOptions.projectId,
+        if (conv) {
+
+            Object.assign(conv, {
                 status: "running",
                 task,
                 answer: null,
                 error: null,
                 startedAt: Date.now(),
                 finishedAt: null,
-                background: false
+                background: false,
+                stopRequested: false
             });
         }
 
-        if (state.lastPlanSignature === null) {
+        rememberPlan(state, runOptions);
 
-            const before =
-                inRunProject(runOptions, () => runtime.currentPlanSummary());
-
-            state.lastPlanSignature =
-                before.exists
-                    ? `${before.steps}:${before.done}:${before.blocked}`
-                    : "none";
-        }
         state.task = task;
         state.answer = null;
         state.error = null;
@@ -225,12 +152,27 @@ module.exports = function createTaskRunner(shared) {
 
         state.currentTurnId = turn_id;
 
+        if (conv) {
+            conv.currentTurnId = turn_id;
+        }
+
         addMessage({
             role: "user",
-            kind: "message",
+            kind: runOptions.kind || "message",
             content: task,
             turn_id
         });
+
+        /* P1-06: saved now and while it runs, so a restart can continue it */
+        state.session.project_id = projectId;
+        state.session.task = task;
+
+        const stopCheckpoint =
+            startCheckpoint(
+                runtime,
+                saveSession,
+                () => `${state.history.length}:${state.session.messages.length}:${calls.size}`
+            );
 
         try {
 
@@ -243,12 +185,13 @@ module.exports = function createTaskRunner(shared) {
                     history:
                         state.history,
 
-                    ...(runOptions.projectId
-                        ? { projectId: runOptions.projectId }
+                    ...(projectId
+                        ? { projectId }
                         : {}),
                     ...(runOptions.reasoningEffort
                         ? { reasoning_effort: runOptions.reasoningEffort }
-                        : {})
+                        : {}),
+                    ...runFlagOptions(runOptions.runFlags)
                 });
 
             state.answer =
@@ -300,7 +243,7 @@ module.exports = function createTaskRunner(shared) {
             };
 
             state.status =
-                runtime.isRunCancelled()
+                runtime.isRunCancelled() || (conv && conv.stopRequested)
                     ? "cancelled"
                     : "failed";
 
@@ -310,7 +253,8 @@ module.exports = function createTaskRunner(shared) {
 
                 runtime.events.emit("run:error", {
                     message: error.message,
-                    cancelled: runtime.isRunCancelled()
+                    cancelled: runtime.isRunCancelled(),
+                    ...attribution(projectId)
                 });
             }
 
@@ -323,138 +267,75 @@ module.exports = function createTaskRunner(shared) {
 
         } finally {
 
+            stopCheckpoint();
+
             state.finishedAt = Date.now();
 
-            const foregroundSlot =
-                runOptions.projectId
-                    ? projectSlots.get(runOptions.projectId)
-                    : null;
+            /* how this turn ended, kept apart from the shared state a turn
+               started while this one unwinds would overwrite */
+            const settled = {
+                status: state.status,
+                answer: state.answer,
+                error: state.error
+            };
 
-            if (foregroundSlot && !foregroundSlot.background) {
+            if (conv) {
 
-                foregroundSlot.status = state.status;
-                foregroundSlot.answer = state.answer;
-                foregroundSlot.error = state.error;
-                foregroundSlot.finishedAt = state.finishedAt;
+                Object.assign(conv, {
+                    answer: state.answer,
+                    error: state.error,
+                    finishedAt: state.finishedAt,
+                    /* a later background turn of this project continues here */
+                    history: state.history.slice()
+                });
             }
 
             /* Record what this run changed in git — shown in the
                conversation and streamed as a git:report event. */
-            await recordGitReport();
+            await recordGitReport(
+                projectId ? { workspace: projectWorkspace(projectId), turnId: turn_id } : {}
+            );
             if (runtime.eventstore && typeof runtime.eventstore.flush === "function") {
                 await runtime.eventstore.flush();
             }
 
-            /*
-            | The console equivalent of --until-done: while the plan has
-            | open steps and the operator has not stopped, the next
-            | cycle starts on its own.
-            */
+            /* the project is free only now that its turn has unwound: a
+               message sent meanwhile waited in the queue instead of
+               starting a turn this one's ending would then trample */
+            if (conv) {
+                conv.status = settled.status;
+            }
 
-            const plan =
-                inRunProject(runOptions, () => runtime.currentPlanSummary());
+            /* a message queued for this project is the operator's next
+               turn; it goes before the next plan cycle */
+            const next =
+                conv ? projectQueue.takeNext(conv) : null;
 
-            /*
-            | Progress is any movement of the plan: a step finished, a
-            | step added, or the plan appearing for the first time.
-            */
-
-            const signature =
-                plan.exists
-                    ? `${plan.steps}:${plan.done}:${plan.blocked}`
-                    : "none";
-
-            const madeProgress =
-                state.lastPlanSignature === null ||
-                signature !== state.lastPlanSignature;
-
-            state.lastPlanSignature = signature;
-
-            const shouldContinue =
-                runtime.settings.get("AUTO_CONTINUE") === true &&
-                state.status === "done" &&
-                plan.exists &&
-                !plan.complete &&
-                !state.stopRequested &&
-                state.cycles < runtime.settings.get("MAX_AUTO_CYCLES");
-
-            if (shouldContinue && !madeProgress) {
-
-                /*
-                | A cycle that finished no step would repeat for ever,
-                | so the loop stops and says why.
-                */
-
-                runtime.events.emit("run:loop", {
-                    agent: "main_agent",
-                    scope: "main_agent",
-                    outcome: "stalled",
-                    signature,
-                    repeats: state.cycles,
-                    reason: "a cycle finished without completing a step"
-                });
-
-                runtime.events.emit("run:auto_stopped", {
-                    reason: "no step was completed in the last cycle",
-                    done: plan.done,
-                    steps: plan.steps
-                });
-
-            } else if (shouldContinue) {
-
-                state.cycles++;
-
-                /*
-                | Each cycle is a fresh conversation. The plan on disk
-                | carries the state, so the transcript never has to,
-                | which is what keeps a long build inside the context
-                | budget.
-                */
-
-                state.history = [];
-
-                runtime.events.emit("run:auto_continue", {
-                    cycle: state.cycles,
-                    open_steps:
-                        plan.pending + plan.in_progress,
-                    next_step: plan.next_step
-                });
-
-                /*
-                | The continuation is the SAME run for the same project: it
-                | inherits the options (projectId, ...) of the run that just
-                | ended. Without them the next cycle silently fell back to the
-                | default project (audit F-002 / AUTO_CONTINUE drops project scope).
-                */
-                setTimeout(
-                    () =>
-                        startTask(
-                            "Continue the plan: read it, take the next open step, verify it, and record the result.",
-                            { ...runOptions }
-                        ).catch(() => {}),
-                    50
-                );
+            if (conv && state.stopRequested) {
+                conv.stopRequested = true;
             }
 
             /*
-            | Nothing may stay pending once THIS run is over — but only the
-            | approvals this run created. A finishing run used to resolve every
-            | pending approval, including one a newer run had already surfaced
-            | during the git-report/eventstore drain, silently auto-denying it.
+            | The continuation is the SAME run for the same project: it
+            | inherits the options (projectId, ...) of the run that just
+            | ended. Without them the next cycle silently fell back to the
+            | default project (audit F-002 / AUTO_CONTINUE drops project scope).
             */
+            if (!next && shouldAutoContinue(state, runOptions)) {
 
-            for (const id of approvalStore.pendingKeys()) {
-                const owned = approvalStore.getPending(id);
-                if (owned && owned.ownerTurnId === turn_id) {
-                    resolveApproval(id, false);
-                }
+                scheduleNext(continuationTask(), { ...runOptions, kind: "message" });
             }
+
+            sweepApprovals(turn_id);
 
             runtime.events.emit("run:status", {
                 status: state.status,
                 answer: state.answer,
                 error: state.error,
-                turn_id
+                turn_id,
+                /* P3-03: the panel offers approve / revise for this plan */
+                ...(runOptions.runFlags && runOptions.runFlags.planMode ? { plan_mode: true } : {}),
+                ...attribution(projectId)
             });
 
             state.session.turns =
@@ -463,10 +344,21 @@ module.exports = function createTaskRunner(shared) {
                 ).length;
 
             saveSession();
+
+            if (next) {
+
+                scheduleNext(next.text, {
+                    projectId,
+                    reasoningEffort: next.reasoningEffort,
+                    runFlags: next.runFlags,
+                    kind: next.kind
+                });
+            }
         }
     }
 
     return {
+        inRunProject,
         projectSlotBusy,
         slotView,
         startTask

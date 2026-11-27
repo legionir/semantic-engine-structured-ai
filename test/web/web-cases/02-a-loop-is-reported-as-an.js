@@ -383,7 +383,9 @@ module.exports = async function aLoopIsReportedAsAnCases(ctx) {
 
         const counts = new Map();
 
-        for (const event of stream.seen) {
+        /* the stream's own messages (the snapshot, the conversations
+           summary) are not runtime events and carry no seq */
+        for (const event of stream.seen.filter(item => !["snapshot", "conversations"].includes(item.type))) {
 
             counts.set(
                 event.seq,

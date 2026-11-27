@@ -254,5 +254,55 @@ module.exports = [
         ],
         "default": "inherit",
         "description": "Whether calling an MCP tool needs approval. inherit follows the policy rules and each server's trust setting, always asks every time, never asks at all."
+    },
+    {
+        "key": "SECRET_STORE_KEY",
+        "group": "mcp",
+        "type": "string",
+        "default": "",
+        "secret": true,
+        "fixed": true,
+        "description": "Passphrase that encrypts the secret store (<data home>/secrets.enc). Empty: a random key is kept in <data home>/secrets.key. Set through the environment and restart to change it."
+    },
+    {
+        "key": "MCP_RECONNECT_ENABLED",
+        "group": "mcp",
+        "type": "boolean",
+        "default": true,
+        "description": "Start a stdio MCP server again on its own when it exits unexpectedly, waiting longer after each failed attempt."
+    },
+    {
+        "key": "MCP_RECONNECT_BASE_MS",
+        "group": "mcp",
+        "type": "number",
+        "default": 1000,
+        "min": 10,
+        "max": 60000,
+        "description": "Wait before the first reconnect attempt; each further attempt doubles it, up to MCP_RECONNECT_MAX_MS."
+    },
+    {
+        "key": "MCP_RECONNECT_MAX_MS",
+        "group": "mcp",
+        "type": "number",
+        "default": 60000,
+        "min": 100,
+        "max": 3600000,
+        "description": "Longest wait between two reconnect attempts."
+    },
+    {
+        "key": "MCP_RECONNECT_MAX_ATTEMPTS",
+        "group": "mcp",
+        "type": "number",
+        "default": 10,
+        "min": 1,
+        "max": 1000,
+        "description": "Reconnect attempts before a server is marked unreachable; the next tool call or Reconnect in the console tries again."
+    },
+    {
+        "key": "PLAYWRIGHT_BROWSERS_PATH",
+        "group": "mcp",
+        "type": "string",
+        "default": "",
+        "description": "Where the headless Chromium for browser MCP servers is installed and looked for. Empty: Playwright's default cache (~/.cache/ms-playwright on Linux)."
     }
 ];

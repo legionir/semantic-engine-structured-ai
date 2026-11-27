@@ -85,7 +85,8 @@ repository-root/
 ## ۳. پیش‌نیازها و راه‌اندازی سریع
 
 ### پیش‌نیازها
-* **Node.js:** نسخهٔ `>= 18.0.0`
+* **Node.js:** نسخهٔ `>= 20` (همان `engines` در `package.json`)
+* **git:** برای ابزارهای git و ساختن پروژه از URL
 * **مدل زبانی سازگار با OpenAI:** یک اندپوینت فعال مانند Local vLLM, Ollama, OpenRouter, OpenAI یا LMStudio.
 
 ### تنظیم متغیرهای اولیه
@@ -113,6 +114,62 @@ node bin/agent.js --proxy-url http://proxy.example:3128 -w /path/to/project "...
 npm test
 ```
 
+### نصب روی سرور (VPS) به‌عنوان سرویس
+
+این مراحل روی Ubuntu 22.04/24.04 یا Debian 12 تازه حدود ده دقیقه طول می‌کشد. فایل‌های آماده در پوشهٔ `deploy/` هستند.
+
+**۱. پیش‌نیازها** (Node.js 22، git و ابزار build برای `node-pty`):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs git build-essential python3
+```
+
+**۲. کاربر، کد و پوشه‌ها:**
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/structured-ai --shell /usr/sbin/nologin structured-ai
+sudo git clone https://github.com/legionir/semantic-engine-structured-ai /opt/structured-ai
+cd /opt/structured-ai && sudo npm ci --omit=dev
+sudo mkdir -p /srv/projects && sudo chown structured-ai: /srv/projects
+```
+
+**۳. تنظیمات:** فایل نمونه را کپی کنید و دست‌کم `AGENT_CONSOLE_TOKEN` (مثلاً خروجی `openssl rand -base64 32`) و اندپوینت مدل را در آن بنویسید.
+
+```bash
+sudo cp deploy/structured-ai.env.example /etc/structured-ai.env
+sudo chmod 600 /etc/structured-ai.env
+sudo nano /etc/structured-ai.env
+```
+
+**۴. بررسی با `doctor`:** نسخهٔ Node، git، npx/uvx/python، آزاد بودن پورت، قابل نوشتن بودن پوشهٔ داده و ورک‌اسپیس و پروژه‌ها، مجوز فایل‌های secret، token کنسول، اندپوینت مدل، حافظه و دیسک و sandbox را بررسی می‌کند. هر مورد مشکل‌دار با راه‌حلش چاپ می‌شود و اگر چیزی مانع اجرا باشد، کد خروج 1 است.
+
+```bash
+sudo bash -c 'set -a; . /etc/structured-ai.env; set +a; cd /opt/structured-ai &&
+  exec sudo -E -u structured-ai node bin/agent.js doctor -s 7777 --host 127.0.0.1 -w /srv/projects'
+```
+
+**۵. سرویس systemd** (با ری‌استارت خودکار):
+
+```bash
+sudo cp deploy/structured-ai.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now structured-ai
+journalctl -u structured-ai -f
+```
+
+**۶. HTTPS با reverse proxy:** کنسول فقط روی `127.0.0.1:7777` گوش می‌دهد. ساده‌ترین راه Caddy است که گواهی Let's Encrypt را خودش می‌گیرد:
+
+```bash
+sudo apt install -y caddy
+sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile   # دامنه را عوض کنید
+sudo systemctl reload caddy
+```
+
+برای nginx از `deploy/nginx.conf.example` استفاده کنید. دو نکته لازم است: هدر `Host` باید دست‌نخورده برسد، چون کنسول درخواستی را که `Origin` آن با `Host` نخواند رد می‌کند؛ و `proxy_buffering off` لازم است، چون نمای زنده با server-sent events کار می‌کند.
+
+پس از ری‌استارت سرویس، گفتگویی که وسط اجرا قطع شده با وضعیت «قطع‌شده» و دکمهٔ **Continue** در کنسول دیده می‌شود. از خط فرمان هم می‌توان آن را ادامه داد: `agent resume [session-id] [پیام]`.
+
 ---
 
 ## ۴. حالت‌های سه‌گانهٔ استفاده (Usage Modes)
@@ -130,6 +187,30 @@ node bin/agent.js -w /path/to/project "بررسی کن چرا تست لاگین 
 node bin/agent.js -w /path/to/project --json "لیست تمامی کنترلرهای موجود"
 ```
 
+حالت headless برای CI (roadmap P3-07):
+
+```bash
+# پاسخ نهایی باید با JSON Schema بخواند؛ فقط همان JSON روی stdout می‌آید
+node bin/agent.js -w . --json-schema out.schema.json "فایل‌های تغییرکرده را فهرست کن"
+
+# سقف هزینه، هدف (پایان فقط وقتی هدف برآورده شد) و حالت برنامه‌ریزی
+node bin/agent.js -w . --max-cost 0.50 --goal "npm test سبز است" "تست‌ها را درست کن"
+node bin/agent.js -w . --plan "کش را اضافه کن"
+
+# بازبینی کد: diff (پیش‌فرض)، staged، branch <ref>، commit <ref>، pr <n>
+node bin/agent.js -w . review branch --base main --json
+node bin/agent.js -w . review pr 42 --post
+```
+
+| کد خروج | معنی |
+|---|---|
+| `0` | موفق |
+| `1` | شکست اجرا؛ در `review`: یافتهٔ high یا critical |
+| `2` | خطای استفاده (پرچم نامعتبر، پروژهٔ بدون git در review) |
+| `3` | پاسخ نهایی با `--json-schema` نخواند (تخلف‌ها روی stdout) |
+| `4` | بودجه تمام شد (`--max-cost`، `MAX_RUN_MS`، سقف توکن) |
+| `130` | قطع با سیگنال |
+
 ---
 
 ### حالت ۲: نشست تعاملی در ترمینال (Interactive REPL)
@@ -146,6 +227,13 @@ node bin/agent.js -i -w /path/to/project
 * `/approve` — تغییر حالت تأییدیه به `auto`، `prompt` یا `deny`
 * `/tools` — مشاهده ابزارهای فعال
 * `/save` — ذخیره آخرین پاسخ در یک فایل
+* `/init` — بررسی پروژه و نوشتن یا به‌روزکردن `AGENTS.md` (معادل `node bin/agent.js init`)
+
+**دستورالعمل پروژه (`AGENTS.md` / `CLAUDE.md`):** اگر ریشهٔ پروژه `AGENTS.md` یا `CLAUDE.md` داشته باشد، متن آن (حداکثر `PROJECT_INSTRUCTIONS_MAX_CHARS` نویسه) در هر درخواست به ایجنت اصلی و زیرایجنت‌ها می‌رسد؛ `AGENTS.override.md` جای هر دو را می‌گیرد. فایل‌های هم‌نام در زیرپوشه‌ها (تا عمق `PROJECT_INSTRUCTIONS_SCAN_DEPTH`) فقط فهرست می‌شوند تا ایجنت هنگام کار در آن پوشه بخواندشان. symlinkی که به بیرون پروژه اشاره کند خوانده نمی‌شود.
+
+**اشاره به فایل و تصویر:** `@مسیر` در متن تسک (مثلاً `@src/app.js` یا `@docs/`) هنگام ارسال خوانده و به پیام افزوده می‌شود (مجموعاً تا `TASK_MENTION_MAX_CHARS`)؛ پوشه به‌صورت فهرست و تصویر به‌صورت تصویر. فقط مسیرهای داخل پروژه پذیرفته می‌شوند. در کنسول وب، تایپ `@` فهرست فایل‌ها را پیشنهاد می‌دهد و اسکرین‌شاتِ paste‌شده پیوست می‌شود؛ تصویرهای پیوست و تصویرهایی که ابزارهای MCP برمی‌گردانند به مدل نشان داده می‌شوند، مگر `MODEL_IMAGE_INPUT=off` باشد.
+
+**گفتگوهای موازی پروژه‌ها:** هر پروژه گفتگوی زندهٔ خودش را دارد (transcript، وضعیت، رویدادها و approvalها) و چند پروژه هم‌زمان اجرا می‌شوند؛ در کنسول وب هر گفتگو یک تب با نشان وضعیت (running، awaiting approval، done، failed) دارد و انتخاب تب استریم همان پروژه را با snapshot کاملش باز می‌کند. پیامی که به پروژهٔ مشغول فرستاده شود در صف نوبت بعد می‌نشیند (زیر composer قابل ویرایش، حذف و ادامه است) و دکمهٔ «Correct now» متن را پیش از قدم بعدی به همان run می‌رساند. Stop صف را پاک نمی‌کند. با دکمهٔ «Notify» اعلان مرورگر برای پایان، خطا یا انتظار approval فقط وقتی صفحه در پس‌زمینه است فعال می‌شود؛ کلیک روی اعلان همان گفتگو را باز می‌کند و عنوان صفحه تعداد گفتگوهای نیازمند توجه را نشان می‌دهد.
 
 ---
 
@@ -175,7 +263,14 @@ PORT=8080 npm start
 می‌خواند دوباره رسم می‌کند؛ reducerها (`runtime-state.js`، `*-model.js`) خالص‌اند
 و viewها (`*-view.js`، `chat.js`) هیچ‌گاه HTML رشته‌ای نمی‌سازند. درخواست‌ها و
 جریان رویدادها در کنترلرهای جدا برای هر بخش هستند (`*-controller.js`،
-`project-*.js`) و `console.js` فقط کنترل‌های صفحه را به آن‌ها وصل می‌کند. صفحه با یک
+`project-*.js`) و `console.js` فقط کنترل‌های صفحه را به آن‌ها وصل می‌کند.
+دکمه‌های **Logs**، **Terminal** و **Files** در هدر سه ابزار عملیاتی را باز می‌کنند:
+لاگ سراسری برنامه (به‌ویژه خطاهای درخواست به مدل با status، endpoint و بدنهٔ پاسخ
+redact‌شده، به‌صورت زنده و با نشان تعداد خطاهای جدید روی دکمه)، ترمینال سیستم با
+xterm.js (چند تب، اتصال مجدد با scrollback) و مدیریت فایل (مرور، ساخت، ویرایش،
+تغییر نام، حذف و دانلود با جلوگیری از بازنویسی تغییرات هم‌زمان). لاگ در
+`<data home>/logs/structured-ai.jsonl` هم با rotate نوشته می‌شود. xterm.js استایل
+پویای خود را از طریق CSSOM (`csp-style-bridge.js`) اعمال می‌کند تا CSP شل نشود. صفحه با یک
 Content-Security-Policy سخت‌گیر سرو می‌شود: اسکریپت، استایل و اتصال فقط از همان origin مجازند و
 اسکریپت inline خود صفحه با sha256 مجاز می‌شود که سرور هنگام سرو کردن حساب می‌کند. تست‌های UI روی happy-dom با
 `index.html` واقعی اجرا می‌شوند: `npm run test:ui`.
@@ -350,6 +445,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `PROCESS_SANDBOX_MEMORY_MB` | number | `2048` | Memory limit in MiB for one Docker/Podman sandbox. |
 | `PROCESS_SANDBOX_PIDS_LIMIT` | number | `256` | Maximum process count for one Docker/Podman sandbox. |
 | `PROCESS_SANDBOX_TMP_MB` | number | `512` | Size of the writable /tmp tmpfs inside a Docker/Podman sandbox, in MiB. |
+| `PROCESS_ORPHAN_SWEEP` | boolean | `true` | When the console starts, stop the background processes a previous runtime started and could not stop because it was killed (recorded in `<data home>/processes.json`; on Linux a process is stopped only when its start time still matches). |
 | `TERMINAL_TIMEOUT_MS` | number | `30000` | Default timeout for terminal_exec when the call does not set one. |
 | `GIT_TIMEOUT_MS` | number | `30000` | Timeout for a single git command. |
 | `HOOKS_ENABLED` | boolean | `false` | Run declarative before_task and after_task hooks. Off by default; projects opt in through .agent/project.json. |
@@ -373,6 +469,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `SESSIONS_ENABLED` | boolean | `true` | Keep each conversation, with its events and tool calls, in .agent/sessions so it can be reopened. |
 | `SESSION_MAX_KEPT` | number | `50` | Conversations kept on disk before the oldest is removed. |
 | `SESSION_MAX_MESSAGES` | number | `400` | Chat entries kept per conversation. |
+| `SESSION_CHECKPOINT_MS` | number | `3000` | While a turn runs, its conversation (with the agent's progress so far) is saved at most this often, so a server restart loses at most this much and the turn can be continued (roadmap P1-06). 0 saves only when a turn ends. |
 | `SESSION_MAX_EVENTS` | number | `2000` | Runtime events kept per conversation, so a reopened session redraws the same cards. |
 | `SESSION_MAX_CALLS` | number | `300` | Tool calls kept per conversation with their full arguments and results. |
 | `SESSION_HISTORY_SIZE` | number | `200` | Lines of input history kept by the interactive session. |
@@ -391,19 +488,85 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 | `MCP_ALLOW_RUNTIME_ADD` | boolean | `true` | Allow a server to be added or removed while the runtime is running, with mcp_add, mcp_remove or the console. |
 | `MCP_APPROVAL` | enum | `"inherit"` | Whether calling an MCP tool needs approval. inherit follows the policy rules and each server's trust setting, always asks every time, never asks at all. |
 | `MCP_GATEWAY_APPROVAL_TTL_MS` | number | `900000` | How long an approval answer for a global MCP server is reused before the next call asks again (P0-2). 0 asks every time. |
+| `SECRET_STORE_KEY` | string | `""` | Passphrase that encrypts the secret store (`<data home>/secrets.enc`). Empty: a random key is kept in `<data home>/secrets.key`. Set through the environment and restart to change it. |
+| `MCP_RECONNECT_ENABLED` | boolean | `true` | Start an MCP server again on its own when it exits unexpectedly, waiting longer after each failed attempt. |
+| `MCP_RECONNECT_BASE_MS` | number | `1000` | Wait before the first reconnect attempt; each further attempt doubles it (±20% jitter), up to `MCP_RECONNECT_MAX_MS`. |
+| `MCP_RECONNECT_MAX_MS` | number | `60000` | Longest wait between two reconnect attempts. |
+| `MCP_RECONNECT_MAX_ATTEMPTS` | number | `10` | Reconnect attempts before a server is marked unreachable; the next tool call or Reconnect in the console tries again. |
+| `MCP_TOOL_LOADING` | enum | `auto` | How MCP tool definitions reach the model (roadmap P4-06). eager declares tools until MCP_TOOL_DEFINITIONS_BUDGET is spent; lazy declares none and lists each by name and one line, loaded on demand with mcp_search_tools and called with mcp_call; auto is eager while everything fits the budget and lazy once it does not. |
+| `MCP_TOOL_DEFINITIONS_BUDGET` | number | `24000` | Ceiling, in characters of JSON, on the MCP tool definitions declared in one model request (roadmap P4-06). The rest are listed by name and loaded with mcp_search_tools. |
+| `MCP_OAUTH_REDIRECT_BASE` | string | `""` | The console's public address (https://host:port) an OAuth provider redirects back to after an MCP sign-in, ending in /api/mcp/oauth/callback (roadmap P4-08). Empty: the address the panel was opened at. |
+| `MCP_SAMPLING_ENABLED` | boolean | `false` | Whether an MCP server whose definition says sampling: true may ask this runtime's model for a completion (sampling/createMessage, roadmap P4-10). Off: the capability is not advertised and every request is refused. |
+| `MCP_SAMPLING_MAX_TOKENS` | number | `1024` | Largest completion one sampling request may produce; a server asking for more gets this many (roadmap P4-10). |
+| `MCP_SAMPLING_BUDGET_TOKENS` | number | `20000` | Tokens (prompt plus completion) each MCP server may spend on sampling while this process runs; a request beyond it is refused (roadmap P4-10). 0 refuses every request. |
+| `MCP_ELICITATION_TIMEOUT_MS` | number | `300000` | How long a server's question to the user (elicitation/create) waits in the panel before it is answered with cancel (roadmap P4-10). |
+| `MCP_SERVE_ENABLED` | boolean | `true` | Whether this console answers MCP clients at /mcp (and agent mcp-serve over stdio), offering list_projects, run_task and task_status to a caller holding a console or project token (roadmap P4-11). |
+| `MCP_REGISTRY_URL` | string | `https://registry.modelcontextprotocol.io` | The MCP registry the console searches for servers that are not in the bundled catalogue (roadmap P4-12). Empty: registry search is off. |
+| `MCP_OAUTH_REFRESH_MARGIN_MS` | number | `60000` | How long before an MCP server's OAuth access token expires it is refreshed (roadmap P4-08); a refused call also refreshes it once. |
+| `MCP_OAUTH_FLOW_TTL_MS` | number | `600000` | How long an MCP OAuth sign-in started from the console may take before its one-time state expires (roadmap P4-08). |
+| `MCP_OPENAPI_MAX_OPERATIONS` | number | `64` | Most operations of an OpenAPI document mcp_build turns into tools of one generated MCP server (roadmap P4-09); the rest are left out. |
+| `MCP_DEFERRED_LINE_CHARS` | number | `120` | Length of the one-line description each deferred MCP tool gets in the model's index when tool definitions are loaded lazily (roadmap P4-06). |
+| `PLAYWRIGHT_BROWSERS_PATH` | string | `""` | Where the headless Chromium for browser MCP servers is installed and looked for. Empty: Playwright's default cache (`~/.cache/ms-playwright` on Linux). |
 | `WORKSPACE_ROOT` | string · fixed at startup | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Directory the agent may act in. Fixed at startup because every path check depends on it. اگر unset باشد، در runtime به `process.cwd()` برمی‌گردد. |
 | `STRUCTURED_AI_DATA_HOME` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | Data home for the project registry and per-project state (Phase 2+). Empty means ~/.local/share/structured-ai. اگر unset باشد، مسیر پیش‌فرض کاربر (معمولاً `~/.local/share/structured-ai`) استفاده می‌شود. |
 | `STRUCTURED_AI_TRUST_FILE` | string | `تنظیم‌نشده (fallback در مصرف‌کننده)` | File that records which workspaces the operator trusted (roadmap P0-1). Empty means ~/.config/structured-ai/trusted-workspaces.json (~\AppData\Roaming\structured-ai on Windows). Never taken from a project file. اگر unset باشد، مسیر پیش‌فرض trust store سیستم‌عامل استفاده می‌شود. |
 | `RUN_HISTORY_LIMIT` | number | `100` | How many settled runs the RunManager keeps queryable after they finish. |
 | `APPROVAL_HISTORY_LIMIT` | number | `500` | How many settled approval decisions the ApprovalStore keeps in its bounded in-process history (POL-045). |
-| `MAX_CONCURRENT_PROJECT_RUNS` | number | `4` | How many distinct projects may have an active run at once (Phase 10). Extra projects wait on their own queue. |
+| `MAX_CONCURRENT_PROJECT_RUNS` | number | `4` | How many distinct projects may have an active run at once (Phase 10). Extra projects wait on their own queue instead of being refused; their tab says "waiting for a slot" (`run:queued`). On a 1 vCPU / 2 GB server keep it at 4–5. |
 | `MAX_RUNS_PER_PROJECT` | number | `1` | Active runs allowed inside one project (Phase 10). Default 1 serializes a project's runs. |
 | `MAX_WORKERS_PER_USER` | number | `8` | Hard cap on total inflight runs for this process (Phase 10). |
 | `RUN_QUEUE_LIMIT` | number | `16` | Per-project waiting-run depth (Phase 10). Overflow is rejected with RUN_QUEUE_FULL rather than hanging. |
 | `PROJECT_MEMORY_LIMIT` | number | `0` | Bytes of recorded per-project memory after which new runs are refused (Phase 10). 0 disables the cap; the value is always exposed on /api/metrics. |
 | `PROJECT_CPU_LIMIT` | number | `0` | Observational CPU percent ceiling per project (Phase 10). 0 means unlimited; the live percent is reported on /api/metrics. |
+| `RESOURCE_MONITOR_INTERVAL_MS` | number | `30000` | How often the console samples CPU, memory and disk and checks the low-memory and low-disk limits (roadmap P1-07). 0 turns the warnings off; the System view still samples on demand. |
+| `RESOURCE_MIN_FREE_MEMORY_MB` | number | `200` | Available memory in MB below which a warning goes to the global log and the System view. 0 disables the memory warning. |
+| `RESOURCE_MIN_FREE_DISK_MB` | number | `1024` | Free disk space in MB (where the data home and the workspace live) below which a warning goes to the global log and the System view. 0 disables the disk warning. |
+| `PROJECTS_ROOT` | string | `""` | Folder that projects cloned from a git URL are created in (roadmap P1-02). Empty: `<data home>/projects`. A clone can never be placed outside it. |
+| `GIT_CLONE_TOKEN` | string · secret | `""` | Access token for cloning private repositories over https when no secret is named in the clone form. Read from the environment; prefer a secret in the secret store (`GITHUB_PAT` for github.com, `GITLAB_TOKEN` for gitlab.com are used automatically). |
+| `GIT_CLONE_TIMEOUT_MS` | number | `900000` | Longest a clone may run before it is stopped and its half-written folder removed. |
+| `LOG_LEVEL` | enum | `"info"` | Lowest level kept in the application log (Logs in the console): failed AI requests and retries, run, tool, hook and MCP failures, server errors and crashes. |
+| `LOG_BUFFER_ENTRIES` | number | `2000` | Application log entries kept in memory for the console. |
+| `LOG_FILE_ENABLED` | boolean | `true` | When the console is served, also append the application log to <data home>/logs/structured-ai.jsonl. |
+| `LOG_FILE_MAX_MB` | number | `10` | Size at which the application log file is rotated. |
+| `LOG_FILE_KEEP` | number | `3` | Rotated application log files kept next to the current one (.1 is the newest). |
+| `LOG_MAX_FIELD_CHARS` | number | `8000` | Longest message or detail text (such as a model's error response) kept in one log entry before it is clipped. |
+| `CONSOLE_TERMINAL_ENABLED` | boolean · fixed at startup | `true` | Allow the admin console token to open system terminals (an unsandboxed shell in the workspace, running as the server's user). Set through the environment and restart to change it. |
+| `CONSOLE_TERMINAL_MAX_SESSIONS` | number | `4` | Terminals that may be open at the same time. |
+| `CONSOLE_TERMINAL_SCROLLBACK_CHARS` | number | `262144` | Terminal output the server keeps per terminal, replayed when the console reconnects or reopens it. |
+| `CONSOLE_FILE_MANAGER_ENABLED` | boolean · fixed at startup | `true` | Allow the admin console token to browse, create, edit, rename and delete files inside the workspace. Set through the environment and restart to change it. |
+| `CONSOLE_FILE_MAX_BYTES` | number | `2097152` | Largest file the console file manager opens or saves as text. |
+| `CONSOLE_FILE_LIST_MAX` | number | `5000` | Entries the console file manager lists in one folder; a larger folder is shown truncated. |
+| `AGENT_REASONING_EFFORT` | enum | `"inherit"` | Default reasoning effort inherited by layer models whose effort is set to inherit. |
+| `ENDPOINT_MAIN_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for the root orchestrator. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_L1_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for depth-1 agents. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_L2_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for depth-2 agents. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_L3_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for depth-3+ agents. Inherit uses AGENT_REASONING_EFFORT. |
+| `ENDPOINT_SUMMARY_REASONING_EFFORT` | enum | `"inherit"` | Reasoning effort for the context summariser. Inherit uses AGENT_REASONING_EFFORT. |
+| `UPLOAD_MAX_REQUEST_BYTES` | number | `41943040` | Maximum size of one multipart upload request in bytes. |
+| `UPLOAD_MAX_FILE_BYTES` | number | `20971520` | Maximum size of one uploaded file in bytes. |
+| `UPLOAD_MAX_FILES` | number | `8` | Maximum number of files accepted in one upload request. |
+| `PROJECT_INSTRUCTIONS_ENABLED` | boolean | `true` | Put the workspace's AGENTS.md / CLAUDE.md (AGENTS.override.md wins) into every prompt, and list the instruction files of sub-directories for the agent to read (roadmap P1-01). |
+| `PROJECT_INSTRUCTIONS_MAX_CHARS` | number | `32768` | How many characters of the root instruction files reach the model; the rest is cut and the cut is reported once to the application log. |
+| `PROJECT_INSTRUCTIONS_SCAN_DEPTH` | number | `3` | How many directory levels below the workspace root are searched for AGENTS.md / CLAUDE.md files to list. 0 lists none. |
+| `CHILD_ENV_PASSTHROUGH` | string | `""` | Extra environment variable names (comma or space separated) passed to processes started for the model: terminal, background processes, git, stdio MCP servers. A name that looks like a credential (KEY, TOKEN, SECRET, PASSWORD, AUTH...) is never passed, even when listed (roadmap P2-02). |
+| `MODEL_IMAGE_INPUT` | enum | `"on"` | Whether pictures reach the model: screenshots and other images returned by MCP tools, and images attached to a message. off keeps a text placeholder, for a model that cannot read images (roadmap P3-01, P1-09). |
+| `MODEL_IMAGE_MAX_BYTES` | number | `3932160` | Largest picture (decoded bytes) sent to the model; a larger one is replaced by a note saying why. |
+| `IMAGE_CONTEXT_CHARS` | number | `3000` | How many characters one image part counts as when the conversation size is measured for compaction; its base64 text is not counted. |
+| `SKILLS_MARKDOWN_ENABLED` | boolean | `true` | Load SKILL.md skills from .agent/skills and .claude/skills of the project, <data home>/skills and agent/skills, next to the registry skills (roadmap P3-02). |
+| `TASK_MENTION_MAX_CHARS` | number | `40000` | How many characters of the files named with @path in a message are read into it, for all mentions together; the rest is named but not inlined (roadmap P1-09). |
+| `SKILL_COMMANDS` | enum | `"read-only"` | Whether !`command` in a SKILL.md body is replaced by its output when the skill is loaded: read-only runs commands CommandRisk rates low, from shipped or operator skills and trusted workspaces only; off runs none. |
+| `PROJECT_QUEUE_MAX` | number | `20` | Messages a project's conversation keeps queued while its run is busy; each starts as the next turn when the run ends. 0 turns the queue off and a busy project answers 409 as before (roadmap P1-04). |
+| `GIT_ALLOW_FORCE_PUSH` | boolean | `false` | Whether git_push may be asked for force: true (sent as --force-with-lease). Off: every force push is refused, approved or not (roadmap P3-04). |
+| `GIT_WORKTREE_ROOTS` | string | `""` | Comma-separated absolute folders git_worktree may create worktrees in, besides the workspace itself (roadmap P3-04). A path outside both is refused. |
+| `RUN_SNAPSHOTS` | boolean | `true` | Before and after every run in a git workspace, record the whole working tree under refs/structured-ai/runs/<run> without touching the branch or the index, so a task can be diffed and reverted as a unit (roadmap P3-09). |
+| `MAX_RUN_COST_USD` | number | `0` | Dollar cap for one run, from the token usage the endpoint reports and the model's price (roadmap P3-05). 0: no cap; the cost is still counted and shown. |
+| `MODEL_PRICES` | string | `""` | JSON object of extra or corrected prices in dollars per million tokens, by model name or prefix: {"my-model": {"input": 0.5, "output": 1.5}}. Merged over the built-in table. |
+| `GOAL_MAX_CHECKS` | number | `3` | How many times a run with a goal is sent back to work when its final answer does not meet the goal (roadmap P3-05). 0 checks the goal but never sends it back. |
+| `PROJECT_RULES_ENABLED` | boolean | `true` | Read rule files from .agent/rules, .claude/rules and .cursor/rules (roadmap P3-06). A rule with globs front matter reaches the model only once the agent works on a matching file; one without globs always applies. |
+| `PROJECT_RULES_MAX_CHARS` | number | `12000` | Most characters of project rules placed in one request. |
+| `REVIEW_MAX_DIFF_CHARS` | number | `60000` | Longest diff the reviewer reads in one review (roadmap P3-08); a longer one is cut and the cut is reported. |
 
-این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۱۸۶ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
+این فهرست شامل تمام **تنظیمات قابل پیکربندی runtime (۲۵۴ مورد)** است. علاوه بر آن، کد به چند متغیر عملیاتی/سیستمی که settingهای runtime نیستند نیز مستقیم دسترسی دارد:
 
 | متغیر | مقدار پیش‌فرض/رفتار | محل استفاده و توضیح |
 |---|---|---|
@@ -469,6 +632,7 @@ method/path کامل در
 | روش | مسیر | پاسخ قراردادی |
 |---|---|---|
 | `POST` | `/api/tasks` | `202 {"accepted":true}` برای مسیر single-project تاریخی |
+| `GET` | `/api/mentions?q=&projectId=` | تا ۳۰ فایل/پوشهٔ داخل پروژه برای تکمیل `@` در composer (دسترسی `project:read`) |
 | `GET` | `/api/events` | SSE event stream؛ با `projectId` قابل فیلتر است |
 | `GET` | `/api/state` | snapshot وضعیت، messages، events، approvals و run |
 | `POST` | `/api/cancel` | لغو run جاری |
@@ -476,8 +640,63 @@ method/path کامل در
 | `GET/POST` | `/api/settings` | مشاهده یا تغییر settingهای schema |
 | `GET` | `/api/health`، `/api/metrics`، `/api/stats` | سلامت و metrics gateway/project |
 | `GET/POST` | `/api/mcp` | وضعیت یا افزودن MCP server |
+| `POST` | `/api/mcp/:name/reconnect` | اتصال دوباره به یک سرور MCP و صفر کردن شمارش تلاش‌ها |
+| `GET` | `/api/mcp/catalog` | کاتالوگ سرورهای MCP با پیش‌نیازها، ورودی‌ها و نصب‌های فعلی (ادمین) |
+| `POST` | `/api/mcp/catalog/:id/activate` | فعال‌سازی یک مدخل کاتالوگ: ذخیرهٔ توکن، نوشتن config، اتصال و فهرست ابزارها (ادمین) |
+| `POST` | `/api/mcp/catalog/:name/deactivate` | غیرفعال‌سازی و برگرداندن config، با `forget_secrets` اختیاری (ادمین) |
+| `GET` | `/api/mcp/prerequisites` | بررسی npx/uvx/python/chromium با راهنمای نصب (ادمین) |
+| `GET/POST` | `/api/mcp/prerequisites/:id/install` | نصب یک‌کلیکی Chromium و پیگیری پیشرفت آن (ادمین) |
+| `POST` | `/api/mcp/import/preview` | پیش‌نمایش ادغام config یک کلاینت دیگر (Claude Desktop، Cursor، VS Code، Zed): وضعیت هر سرور `new`/`identical`/`conflict`/`invalid` (ادمین) |
+| `POST` | `/api/mcp/import` | ادغام با `{text, target: user\|workspace, resolutions: {name: skip\|replace\|rename:<new>}}`؛ تا تعارضی بی‌تصمیم بماند `409` و هیچ چیز نوشته نمی‌شود (ادمین) |
+| `PATCH` | `/api/mcp/:name/controls` | کنترل هر ابزار `{tool, enabled}`، `approval: {read, write}` (`inherit`/`always`/`never`)، `agents`، `projects`؛ در `<data home>/mcp-overrides.json` (ادمین) |
+| `POST` | `/api/mcp/:name/oauth/start` | شروع ورود OAuth 2.1 (PKCE S256، ثبت پویای client)؛ آدرس صفحهٔ ورود را برمی‌گرداند (ادمین) |
+| `GET` | `/api/mcp/oauth/callback` | بازگشت از provider؛ بدون token کنسول، با `state` یک‌بارمصرف محافظت می‌شود |
+| `POST` | `/api/mcp/:name/oauth/signout` | خروج و پاک کردن tokenها، با `forget_client` اختیاری (ادمین) |
+| `GET` | `/api/mcp/elicitations` | سؤال‌هایی که سرورهای MCP منتظر پاسخشان هستند |
+| `POST` | `/api/mcp/elicitations/:id` | پاسخ `{action: accept\|decline\|cancel, content}`؛ محتوا با schema سرور بررسی می‌شود |
+| `GET` | `/api/mcp/:name/resources[?uri=]` | فهرست resourceها و templateها، یا خواندن یکی |
+| `GET` | `/api/mcp/prompts` | promptهای همهٔ سرورهای آماده (دستورهای `/` در کادر پیام) |
+| `GET`/`POST` | `/api/mcp/:name/prompts[/:prompt]` | فهرست promptهای یک سرور، یا رندر یکی با `{arguments}` |
+| `GET` | `/api/mcp/registry?q=&cursor=` | جست‌وجو در MCP registry رسمی (`MCP_REGISTRY_URL`) همراه با هشدار اعتماد (ادمین) |
+| `POST` | `/api/mcp/registry/add` | افزودن از registry با `{name, inputs, acknowledge_untrusted: true}`؛ بدون تأیید `428`؛ سرور `restricted` اضافه می‌شود و secretها به secret store می‌روند (ادمین) |
+| `POST` | `/mcp` | خود structured-ai به‌عنوان سرور MCP (Streamable HTTP)؛ فقط `Authorization: Bearer` با token کنسول یا پروژه؛ ابزارهای `list_projects`، `run_task`، `task_status` |
+| `GET` | `/api/secrets` | فهرست نام secretها و محل استفاده؛ مقدار هرگز برنمی‌گردد (ادمین) |
+| `PUT/DELETE` | `/api/secrets/:name` | ذخیره یا حذف یک secret (ادمین) |
+| `GET` | `/api/interrupted` | گفتگوهایی که ری‌استارت سرور وسط اجرا قطع کرد (P1-06)، با فیلتر token |
+| `POST` | `/api/interrupted/:id/resume` | ادامهٔ یک گفتگوی قطع‌شده با همان context، با `{message}` اختیاری؛ پاسخ `202 {where: foreground\|background}`، اگر پروژه مشغول باشد `409` |
+| `DELETE` | `/api/interrupted/:id` | کنار گذاشتن؛ وضعیت گفتگو «stopped» (`cancelled`) می‌شود |
 | `GET/POST/DELETE` | `/api/sessions` و `/api/sessions/:id` | session persistence و replay |
 | `GET` | `/api/calls/:key` | نتیجهٔ کامل یک tool call |
+
+### لاگ، ترمینال و مدیریت فایل (فقط token ادمین)
+
+این سه گروه فقط با token master کار می‌کنند؛ token محدود به پروژه پاسخ `403`
+می‌گیرد. ترمینال و مدیریت فایل با `CONSOLE_TERMINAL_ENABLED=false` و
+`CONSOLE_FILE_MANAGER_ENABLED=false` (فقط از محیط و با restart) خاموش می‌شوند.
+
+| روش | مسیر | توضیح |
+|---|---|---|
+| `GET` | `/api/logs` | ورودی‌های لاگ با فیلتر `level` (حداقل سطح)، `source`، `q`، `after` (خواندن افزایشی) و `limit`، به‌همراه `summary` |
+| `POST` | `/api/logs` | ثبت خطای مرورگر پنل `{level, message, details}` با منبع `panel` |
+| `DELETE` | `/api/logs` | پاک کردن لاگ؛ فایل جاری rotate می‌شود و حذف نمی‌شود |
+| `GET` | `/api/logs/stream` | SSE ورودی‌های جدید (`snapshot`، `entry`، `cleared`) |
+| `GET` | `/api/logs/download` | دانلود کل فایل JSONL |
+| `GET` | `/api/system` | CPU، حافظه، دیسک، runهای در حال اجرا و در صف، پردازه‌های پس‌زمینه و هشدارها (P1-07) |
+| `POST` | `/api/system/processes/:id/stop` | توقف یک پردازهٔ پس‌زمینه |
+| `GET` | `/api/snapshots` | تسک‌های ثبت‌شده با snapshot گیت (P3-09)، با `projectId` اختیاری؛ پروژهٔ بدون git پاسخ `409 NOT_A_REPOSITORY` |
+| `GET` | `/api/snapshots/:runId` | فایل‌های تغییرکردهٔ یک تسک `{status, path}` و patch آن |
+| `POST` | `/api/snapshots/:runId/revert` | برگرداندن کل تسک `{projectId?, force?}`؛ فایلی که بعد از تسک دوباره تغییر کرده `409 SNAPSHOT_CONFLICT` با فهرست `conflicts` می‌دهد مگر `force: true` |
+| `POST` | `/api/review` | بازبینی ساختاریافته (P3-08) `{projectId?, target: diff\|staged\|branch\|commit\|pr, ref?, base?, number?, focus?, post?}`؛ پاسخ `{summary, findings[], fix_task}` |
+| `GET/POST` | `/api/terminal` | وضعیت و فهرست ترمینال‌ها / باز کردن ترمینال `{cols, rows}` |
+| `GET` | `/api/terminal/:id/stream` | SSE خروجی (`snapshot` با scrollback، `output`، `exit`) |
+| `POST` | `/api/terminal/:id/input` و `/resize` | ورودی صفحه‌کلید `{data}` / تغییر اندازه `{cols, rows}` |
+| `DELETE` | `/api/terminal/:id` | بستن ترمینال |
+| `GET/POST/DELETE` | `/api/files` | فهرست پوشه (`path`) / ساخت `{path, type: file\|directory}` / حذف (`recursive=1` برای پوشه) |
+| `GET/PUT` | `/api/files/content` | خواندن / ذخیرهٔ atomic `{path, content, expected_mtime_ms}`؛ اگر فایل در این فاصله تغییر کرده باشد `409` |
+| `POST` | `/api/files/rename` | تغییر نام یا جابه‌جایی `{from, to}` |
+| `GET` | `/api/files/download` | دانلود فایل |
+
+همهٔ مسیرهای `/api/files` پارامتر اختیاری `projectId` را می‌پذیرند (ریشهٔ همان پروژه)؛ هیچ مسیری، حتی از طریق symlink، از ریشه خارج نمی‌شود.
 
 ### API پروژه‌ها
 
@@ -485,12 +704,21 @@ method/path کامل در
 |---|---|---|
 | `GET` | `/api/projects` | فهرست پروژه‌های ثبت‌شده، با فیلتر token |
 | `POST` | `/api/projects` | ثبت پروژه با `rootPath` و permissionهای آن |
+| `GET/POST` | `/api/project-clones` | ریشهٔ پروژه‌ها و jobهای clone / ساخت پروژه از git URL با `{url, branch, shallow, folder, name, secret}` (P1-02)؛ پاسخ `202 {job}`، پوشهٔ موجود `409`. token از secret نام‌برده، سپس `GIT_CLONE_TOKEN`، سپس `GITHUB_PAT`/`GITLAB_TOKEN` خوانده و فقط به‌صورت header به git داده می‌شود. فقط tokenی که به همهٔ پروژه‌ها دسترسی دارد |
+| `GET` | `/api/project-clones/:id` | پیشرفت clone (`phase`، `percent`، خروجی git) و پروژهٔ ثبت‌شده پس از پایان |
 | `GET/PATCH/DELETE` | `/api/projects/:projectId` | دریافت، ویرایش یا حذف یک registry record |
 | `GET` | `/api/projects/:projectId/state` | snapshot محدود به همان پروژه |
 | `GET` | `/api/projects/:projectId/events` | event stream پروژه‌ای |
 | `GET` | `/api/projects/:projectId/sessions` | sessionهای همان پروژه |
-| `POST` | `/api/projects/:projectId/tasks` یا `/chat` | اجرای task با پاسخ `202 {accepted, project_id}` |
-| `POST` | `/api/projects/:projectId/cancel` | لغو فقط runهای همان پروژه |
+| `POST` | `/api/projects/:projectId/tasks` یا `/chat` | اجرای task با پاسخ `202 {accepted, project_id}`؛ اگر پروژه مشغول باشد پیام در صف نوبت بعد می‌نشیند: `202 {queued:true, queued_message, queue_length}` (با `queue:false` یا `PROJECT_QUEUE_MAX=0` همان `409` تاریخی؛ صف پر: `429 PROJECT_QUEUE_FULL`) |
+| `POST` | `/api/projects/:projectId/cancel` | لغو فقط runهای همان پروژه؛ صف پیام‌ها پاک نمی‌شود و فقط متوقف (paused) می‌شود مگر بدنه `{clear_queue:true}` باشد (پاسخ: `queue_cleared`) |
+| `GET` | `/api/projects/:projectId/run` | وضعیت گفتگوی پروژه: `status`، `task`، `background`، `turn_id`، `pending_approvals`، `queue_length`، `queue_paused` |
+| `GET/POST/DELETE` | `/api/projects/:projectId/queue` | صف پیام‌های نوبت بعد: خواندن، افزودن (`text`، اختیاری `reasoning_effort`؛ پروژهٔ بیکار فوراً شروع می‌کند) و پاک‌کردن کامل |
+| `PATCH/DELETE` | `/api/projects/:projectId/queue/:itemId` | ویرایش متن یا حذف یک پیام صف |
+| `POST` | `/api/projects/:projectId/queue/resume` | ادامهٔ صفی که با Stop متوقف شده |
+| `POST` | `/api/projects/:projectId/correction` | پیام اصلاحی وسط اجرا: پیش از قدم بعدی مدل تزریق و در journal ثبت می‌شود (`run:correction`)؛ اگر run تمام شده باشد به صف یا اجرای جدید می‌رود |
+| `POST` | `/api/projects/:projectId/clear` | شروع دوبارهٔ گفتگوی همان پروژه (بدون اثر روی گفتگوهای دیگر) |
+| `GET` | `/api/conversations` | یک خط برای هر گفتگوی زنده (پیش‌فرض و هر پروژه): وضعیت، approvalهای منتظر، طول صف؛ همین خلاصه با پیام `{type:"conversations"}` روی هر event stream هم ارسال می‌شود |
 | `GET` | `/api/projects/:projectId/health` یا `/metrics` | سلامت و metrics همان پروژه |
 | `GET/POST` | `/api/projects/:projectId/discussions` | list یا شروع discussion پایدار |
 | `GET` | `/api/projects/:projectId/discussions/:discussionId` | replay transcript کامل همان پروژه |
@@ -685,6 +913,27 @@ MCP_SERVERS                       متغیر محیطی، بالاترین او�
 * `POST /api/mcp` — افزودن سرور
 * `POST /api/mcp/:name/enabled` — روشن یا خاموش کردن
 * `DELETE /api/mcp/:name` — حذف
+* `POST /api/mcp/:name/reconnect` — اتصال دوباره (همان دکمهٔ Reconnect)
+
+#### کاتالوگ، secretها و پیش‌نیازها
+
+زبانهٔ **Catalogue** فهرست سرورهای آماده (`agent/registry/mcp_catalog.json`) را با نسخهٔ pin‌شده، پیش‌نیازها و سطح اعتماد نشان می‌دهد. **Activate** فرم توکن را باز می‌کند؛ توکن در secret store رمزنگاری‌شده (`<data home>/secrets.enc`، AES-256-GCM) ذخیره می‌شود، config با ارجاع `${secret:NAME}` در `<data home>/mcp.json` (سراسری یا فقط برای پروژهٔ جاری) نوشته می‌شود، سرور وصل و ابزارهایش فهرست می‌شوند. اگر اتصال شکست بخورد config و secret تازه برگردانده می‌شوند. **Deactivate** config را برمی‌گرداند و می‌تواند secretی را که دیگر استفاده نمی‌شود پاک کند.
+
+* `${secret:NAME}` فقط در config اپراتور (registry، `<data home>/mcp.json`، `MCP_SERVERS` و افزودن از کنسول) پذیرفته می‌شود؛ در فایل‌های مخزن، `mcp_add` و config ورک‌اسپیس رد می‌شود.
+* مقدار secretها هرگز از API برنمی‌گردد و در لاگ، journal و پاسخ‌های API ماسک می‌شود. هیچ ابزار agent آن را نمی‌خواند و ابزارهای فایل به `secrets.enc`/`secrets.key` دسترسی ندارند.
+* پیش از هر اتصال، npx/uvx/python و Chromium بررسی می‌شوند و نبودشان با راهنمای نصب گزارش می‌شود (کد 412). Chromium را می‌توان با یک کلیک (`playwright-mcp install-browser chromium`) نصب کرد و پیشرفتش را دید.
+* اگر سرور به‌طور غیرمنتظره قطع شود، با backoff نمایی دوباره وصل می‌شود (`MCP_RECONNECT_*`)؛ وضعیت و آخرین خطا کنار هر سرور و در لاگ سراسری (`source=mcp`) دیده می‌شود.
+
+#### تکمیل MCP (گروه ۶ نقشهٔ راه)
+
+* **Import:** config کلاینت‌های دیگر را paste کنید؛ پیش‌نمایش نشان می‌دهد کدام سرور تازه، یکسان، متعارض یا نامعتبر است. برای هر تعارض skip، replace یا نام تازه انتخاب می‌شود. JSONC (کامنت و ویرگول آخر) و `${input:…}` پذیرفته و گزارش می‌شوند.
+* **بارگذاری تنبل ابزارها:** `MCP_TOOL_LOADING` (`auto`/`eager`/`lazy`) و `MCP_TOOL_DEFINITIONS_BUDGET`. ابزارهایی که در سقف جا نشوند با نام و یک خط در context می‌آیند و agent با `mcp_search_tools` تعریف کاملشان را می‌گیرد و با `mcp_call` صدا می‌زند.
+* **کنترل هر ابزار:** کلید روشن/خاموش هر ابزار، تأیید جدا برای ابزارهای فقط‌خواندنی (`readOnlyHint`) و نویسنده، و محدود کردن سرور به چند agent (`agents`) یا پروژه. ابزار خاموش از فهرست مدل حذف و فراخوانی مستقیمش رد می‌شود.
+* **OAuth 2.1:** برای سرورهای راه دور با `oauth: true` (یا `{client_id, client_secret, scopes, authorization_server}`): کشف از `WWW-Authenticate`/`.well-known`، ثبت پویای client، PKCE، ذخیرهٔ token در secret store، refresh خودکار پیش از انقضا و پس از 401. دکمهٔ **Sign in** کنار سرور.
+* **ساخت سرور توسط agent:** `mcp_build` یک سرور Node یا Python بدون وابستگی در `.agent/mcp-servers/<name>/` می‌سازد (یا از یک سند OpenAPI)، ثبت و بی‌ری‌استارت بارگذاری می‌کند؛ پس از ویرایش `tools.js` با `action: reload` دوباره بالا می‌آید.
+* **پروتکل کامل:** resourceها و promptها هم ابزار agent‌اند (`mcp_resources`، `mcp_prompts`) و هم در پنل؛ promptها با تایپ `/` در کادر پیام دستورند. سؤال سرور (elicitation) در پنجره‌ای در کنسول پرسیده می‌شود (بدون کنسول فوراً cancel)، پیشرفت فراخوانی‌ها کنار سرور دیده می‌شود، و sampling فقط با `MCP_SAMPLING_ENABLED` و `sampling: true` سرور و در بودجهٔ `MCP_SAMPLING_BUDGET_TOKENS` مجاز است.
+* **structured-ai به‌عنوان سرور MCP:** `POST /mcp` روی کنسول، یا برای کلاینت‌های stdio: `AGENT_CONSOLE_TOKEN=<token> agent mcp-serve http://host:7777`. token پروژه فقط پروژهٔ خودش را می‌بیند. خاموش کردن: `MCP_SERVE_ENABLED=false`.
+* **Registry:** زبانهٔ **Registry** در MCP registry رسمی جست‌وجو می‌کند؛ هشدار «بررسی‌نشده» پیش از نتایج می‌آید، افزودن تأیید صریح می‌خواهد و سرور با trust `restricted` (هر فراخوانی تأیید) اضافه می‌شود.
 
 ---
 
@@ -754,6 +1003,14 @@ integration/e2e اجرا می‌شوند. برای وضعیت جاری، خرو�
 
 - skillهای declarative در `agent/registry/skills.json` و منابع حجیم در
   `agent/skills/<name>/` قرار می‌گیرند؛ `SkillTools` آن‌ها را lazy می‌خواند.
+- skill با فرمت استاندارد `SKILL.md` (front matter با `name`، `description`،
+  و اختیاری `triggers` و `mcp_server`) از `.agent/skills/<dir>/` و
+  `.claude/skills/<dir>/` پروژه، `<data home>/skills/<dir>/` و
+  `agent/skills/<dir>/` خوانده می‌شود؛ بقیهٔ فایل‌های پوشه منابع آن‌اند و
+  تغییرها بدون ری‌استارت دیده می‌شوند. نام skillهای registry قابل جایگزینی
+  نیست. `` !`command` `` در متن skill هنگام `skill_get` با خروجی دستور جایگزین
+  می‌شود، فقط برای دستورهای فقط‌خواندنی و skillهای خود سرور یا workspace
+  مورد اعتماد (`SKILL_COMMANDS`).
 - agent profile در `agent/registry/agents.json` و personaهای discussion در
   `agent/registry/personas.json` ثبت می‌شوند. toolها و policy آن profile باید
   هم‌زمان contract-tested باشند.

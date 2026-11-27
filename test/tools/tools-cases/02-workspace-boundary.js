@@ -297,6 +297,39 @@ module.exports = async function workspaceBoundaryCases(ctx) {
         );
     });
 
+    await test("every path-taking tool refuses absolute, .. and platform-specific escapes (roadmap P2-01)", async () => {
+
+        const outside = path.join(path.dirname(WORKSPACE), "p201-outside");
+        fs.mkdirSync(outside, { recursive: true });
+
+        const escapes = [outside, "../p201-outside", "src/../../p201-outside", "./.././p201-outside"];
+
+        if (process.platform === "win32") {
+            escapes.push("..\\p201-outside", `${outside.slice(0, 2)}\\`, "\\\\localhost\\c$\\p201");
+        }
+
+        const calls = target => [
+            ["fs_read", { path: target }],
+            ["fs_list", { path: target }],
+            ["fs_write", { path: path.join(target, "x.txt"), content: "x" }],
+            ["fs_mkdir", { path: path.join(target, "d") }],
+            ["terminal_exec", { command: "echo nope", cwd: target }],
+            ["git_status", { cwd: target }],
+            ["search_start", { query: "x", path: target }]
+        ];
+
+        try {
+            for (const target of escapes) {
+                for (const [tool, args] of calls(target)) {
+                    await rejects(run(tool, args), /outside workspace|escapes the workspace|not allowed|outside the workspace/i);
+                }
+            }
+            assert.deepEqual(fs.readdirSync(outside), [], "nothing was written outside the workspace");
+        } finally {
+            fs.rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
     await test("symlinks cannot escape the workspace", async () => {
 
         fs.symlinkSync(

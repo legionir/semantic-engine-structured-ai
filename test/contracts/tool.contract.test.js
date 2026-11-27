@@ -61,7 +61,8 @@ async function main() {
         assert.deepStrictEqual(canonical, snapshot);
 
         const names = canonical.map(item => item.function?.name);
-        assert.equal(names.length, 48);
+        assert.equal(names.length, 54);
+        for (const name of ["mcp_search_tools", "mcp_resources", "mcp_prompts", "mcp_build"]) assert.ok(names.includes(name), name);
         assert.equal(new Set(names).size, names.length);
         assert.ok(names.includes("fs_read"));
         assert.ok(names.includes("checkpoint_undo"));

@@ -46,6 +46,43 @@
   {
     "type": "function",
     "function": {
+      "name": "mcp_search_tools",
+      "description": "Load the full definitions (description and input schema) of MCP tools that are not declared in this request. The runtime context lists them under mcp.deferred_tools by name and one line; search by words or exact names, then run one with mcp_call.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words describing what the tool should do, or an exact tool name."
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact tool names (mcp__<server>__<tool> or the server's own name) to load."
+          },
+          "server": {
+            "type": "string",
+            "description": "Only search the tools of this server."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many definitions to return (1-25, default 5)."
+          },
+          "refresh": {
+            "type": "boolean",
+            "description": "Ask the servers again instead of using the cached catalogue."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "mcp_call",
       "description": "Call a tool on an MCP server. Use this for any server tool, including one that is not declared as its own function. Name the server and the tool, or pass the full mcp__<server>__<tool> name as tool.",
       "parameters": {
@@ -181,6 +218,156 @@
           "persist": {
             "type": "boolean",
             "description": "Also remove it from .agent/mcp.json. Defaults to true."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_resources",
+      "description": "List an MCP server's resources and resource templates, or read one resource by its uri.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Server name, as reported by mcp_servers."
+          },
+          "uri": {
+            "type": "string",
+            "description": "Read this resource instead of listing them."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of resources to list."
+          }
+        },
+        "required": [
+          "server"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_prompts",
+      "description": "List an MCP server's prompts, or render one prompt with its arguments into the messages it expands to.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Server name, as reported by mcp_servers."
+          },
+          "name": {
+            "type": "string",
+            "description": "Render this prompt instead of listing them."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "Values for the prompt's arguments.",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "server"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mcp_build",
+      "description": "Write a small dependency-free MCP server into the workspace (.agent/mcp-servers/<name>) from the node or python template, or from an OpenAPI JSON document, and load it at once: its tools are callable through mcp_call in this same conversation. After editing its tools file, call again with action reload.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "reload"
+            ],
+            "description": "create (default) writes and registers the server; reload restarts an existing one after its tools file was edited."
+          },
+          "name": {
+            "type": "string",
+            "description": "Server name: letters, digits, dot, dash or underscore."
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "node",
+              "python"
+            ],
+            "description": "Template language (default node)."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the server is for."
+          },
+          "tools": {
+            "type": "array",
+            "description": "The tools, unless openapi is given.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Tool name: letters, digits, _ and -."
+                },
+                "description": {
+                  "type": "string"
+                },
+                "input_schema": {
+                  "type": "object",
+                  "description": "JSON schema of the arguments.",
+                  "additionalProperties": true
+                },
+                "body": {
+                  "type": "string",
+                  "description": "Body of the handler: JavaScript for async handler(args) { … } or Python for def handler(args): …, returning the result."
+                },
+                "read_only": {
+                  "type": "boolean",
+                  "description": "The tool only reads (annotated readOnlyHint)."
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "openapi": {
+            "type": "string",
+            "description": "A workspace path to an OpenAPI 3 JSON document, or the document itself; one tool per operation."
+          },
+          "base_url": {
+            "type": "string",
+            "description": "The API's base URL when the document has no absolute servers[0].url."
+          },
+          "register": {
+            "type": "boolean",
+            "description": "Start and load the server now (default true)."
+          },
+          "persist": {
+            "type": "boolean",
+            "description": "Keep it for later runs (operator's user file, this project only). Default false: this process only."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Replace a server of the same name already in the workspace."
           }
         },
         "required": [

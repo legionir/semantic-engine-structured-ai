@@ -17,6 +17,7 @@ const events = require("../events");
 const settings = require("../config");
 const { createAgentRequestExecutor } = require("../providers/AgentRequestExecutor");
 const actionKit = require("../actions");
+const { createUsageRecorder } = require("../runtime/RunCostTracker");
 
 
 module.exports = function createModelRequests(host) {
@@ -40,7 +41,13 @@ module.exports = function createModelRequests(host) {
         assertRunActive,
         createRequestSignal,
         isRunCancelled,
-        isRetryableStatus
+        isRetryableStatus,
+        recordUsage: createUsageRecorder({
+            events,
+            currentRun: (...args) => host.currentRun(...args),
+            cancelRun: (...args) => host.cancelRun(...args),
+            logLine
+        })
     });
 
     const {

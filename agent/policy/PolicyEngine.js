@@ -5,9 +5,45 @@ const settings = require("../config");
 const { PolicyMatcher, DECISIONS } = require("./PolicyMatcher");
 const { PolicyRegistry } = require("./PolicyRegistry");
 const { ApprovalManager } = require("./ApprovalManager");
+const { planModeRefusal, isPlanModeRun } = require("./PlanModeGate");
 const {
     PolicyDeniedError
 } = require("./PolicyErrors");
+
+
+function currentRunContext() {
+
+    try {
+
+        const runtime = require("../runtime");
+
+        return runtime.runManager && typeof runtime.runManager.current === "function"
+            ? runtime.runManager.current()
+            : null;
+
+    } catch {
+        return null;
+    }
+}
+
+
+function planModeRefusalForCurrentRun(toolName, args) {
+
+    if (!isPlanModeRun(currentRunContext())) {
+        return null;
+    }
+
+    return planModeRefusal(toolName, args || {}, {
+        catalogueEntry: (name, callArgs) => {
+            try {
+                const { manager } = require("../mcp/McpManager");
+                return manager ? destructiveHintEntry(manager, name, callArgs || {}) : null;
+            } catch {
+                return null;
+            }
+        }
+    });
+}
 
 
 function currentProjectId() {
@@ -236,7 +272,7 @@ function destructiveHintEntry(manager, toolName, args) {
 }
 
 
-function mcpEscalation(toolName, { settingsStore = settings, args, mcpManager } = {}) {
+function mcpEscalation(toolName, { settingsStore = settings, args, agent, mcpManager } = {}) {
 
     const isGatewayCall =
         toolName === "mcp_call";
@@ -251,6 +287,26 @@ function mcpEscalation(toolName, { settingsStore = settings, args, mcpManager } 
     const mode =
         settingsStore.get("MCP_APPROVAL");
 
+    let manager = mcpManager;
+
+    if (!manager) {
+        try {
+            ({ manager } = require("../mcp/McpManager"));
+        } catch {
+            manager = null;
+        }
+    }
+
+    /* P4-07: the server's own rules — agent scope and switched-off tools
+       deny before anything else; its read/write approval comes next */
+    const own = manager
+        ? require("./McpToolRules").mcpToolRule(manager, toolName, { args, agent, globalMode: mode })
+        : null;
+
+    if (own && own.decision === DECISIONS.DENY) {
+        return own;
+    }
+
     if (mode === "always") {
 
         return {
@@ -260,14 +316,8 @@ function mcpEscalation(toolName, { settingsStore = settings, args, mcpManager } 
         };
     }
 
-    let manager = mcpManager;
-
-    if (!manager) {
-        try {
-            ({ manager } = require("../mcp/McpManager"));
-        } catch {
-            manager = null;
-        }
+    if (own) {
+        return own;
     }
 
     const annotated = manager
@@ -337,7 +387,8 @@ class PolicyEngine {
                     (toolName, context = {}) =>
                         mcpEscalation(toolName, {
                             settingsStore: this.settings,
-                            args: context.args
+                            args: context.args,
+                            agent: context.agent
                         })
             });
 
@@ -397,6 +448,21 @@ class PolicyEngine {
 
 
     async enforce(toolName, args, agent) {
+
+        /* P3-03: plan mode refuses project changes before any rule or approval */
+        const planRefusal = planModeRefusalForCurrentRun(toolName, args);
+
+        if (planRefusal) {
+
+            this.onDecision({
+                tool: toolName,
+                agent,
+                decision: DECISIONS.DENY,
+                reason: planRefusal,
+                rule: "plan_mode"
+            });
+            throw new PolicyDeniedError(toolName, planRefusal);
+        }
 
         const evaluation =
             this.evaluate(toolName, args, agent);

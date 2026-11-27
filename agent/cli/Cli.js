@@ -31,12 +31,15 @@ const { actionError } = require("./OutputFormatter");
 const { createCliWorkflows } = require("./CliWorkflows");
 const { createCliOptions } = require("./CliOptions");
 const { createCliWorkspaceCommands } = require("./CliWorkspaceCommands");
+const Headless = require("./HeadlessOutput");
 
 
 const EXIT = {
     SUCCESS: 0,
     FAILED: 1,
     USAGE: 2,
+    SCHEMA: 3,
+    BUDGET: 4,
     INTERRUPTED: 130
 };
 
@@ -123,7 +126,15 @@ Options
       --list-tools          Print the tool catalogue and exit
       --list-agents         Print the agent profiles and exit
       --list-policy         Print the policy rules and exit
-      doctor, --doctor      Report process sandbox backend and capabilities
+      doctor, --doctor      Check this server: Node.js, git, port, folder
+                            permissions, token, endpoint, memory and disk,
+                            then the process sandbox (with -s/--host: the
+                            port the console would use)
+      init                  Write AGENTS.md (instructions for coding agents)
+                            for the workspace; same as the task /init
+      resume [id] [message] Continue the newest conversation a restart cut
+                            off (or the newest, or the one named) with its
+                            saved context; -w/--project pick where to look
       --trust               Trust the workspace (-w, --project or cwd): its
                             project file may then enable hooks and MCP auto
                             discovery; security settings always stay locked
@@ -132,8 +143,27 @@ Options
   -h, --help                Print this help and exit
       --version             Print the version and exit
 
+Headless / CI
+      --json-schema <file>  The final answer must be JSON matching this schema;
+                            it is validated and printed alone on stdout
+      --plan                Plan only: investigate and write a plan, change
+                            nothing (writes are refused by the policy)
+      --goal <text>         The condition that ends the run; the final answer
+                            is checked against it (GOAL_MAX_CHECKS)
+      --max-cost <dollars>  Stop the run once it has cost this much
+      review [target]       Review a change set: diff (default), staged,
+                            commit <ref>, branch <ref> [--base <b>], pr <n>
+                            [--post]; exits 1 when a finding is high or worse
+      mcp-serve [url]       Serve this runtime to an MCP client over stdio,
+                            bridged to a running console (default
+                            http://127.0.0.1:7777, or --port); the console
+                            or project token comes from AGENT_CONSOLE_TOKEN
+
 Exit codes
-  0 completed        1 failed        2 usage error        130 interrupted
+  0 completed        1 failed        2 usage error
+  3 output does not match --json-schema
+  4 budget reached (MAX_RUN_MS, --max-cost / MAX_RUN_COST_USD)
+  130 interrupted
 
 Environment
   AGENT_BASE_URL, AGENT_API_KEY, AGENT_PROXY_URL, AGENT_MODEL, AGENT_APPROVAL,
@@ -227,18 +257,61 @@ async function main() {
         process.exit(EXIT.SUCCESS);
     }
 
+    /*
+    | P4-11: `agent mcp-serve [url]` — an MCP client starts this command; its
+    | stdin/stdout carry JSON-RPC to the console's /mcp. No runtime boots
+    | here, and nothing but protocol messages is written to stdout.
+    */
+    if (options.positional[0] === "mcp-serve") {
+
+        const url = options.positional[1] || `http://127.0.0.1:${options.port || 7777}`;
+        const token = process.env.AGENT_CONSOLE_TOKEN || "";
+
+        if (!token) {
+            fail("mcp-serve needs the console's token, or a project token, in AGENT_CONSOLE_TOKEN");
+        }
+
+        try {
+            new URL(url);
+        } catch {
+            fail(`mcp-serve: "${url}" is not a URL`);
+        }
+
+        await require(path.join(REPO_ROOT, "agent", "mcp", "McpServerHost")).runStdioBridge({ url, token });
+
+        process.exit(EXIT.SUCCESS);
+    }
+
     if (options.doctor) {
 
         if (options.positional.length > 0) {
             fail("doctor does not accept a task");
         }
 
+        /* P1-08: the server checks first, then the sandbox in detail */
+        try {
+            resolveWebServerOptions(options);
+        } catch (error) {
+            fail(error.message);
+        }
+
+        const serverDoctor =
+            require(path.join(REPO_ROOT, "agent", "cli", "ServerDoctor"));
+        const server = await serverDoctor.diagnose({
+            host: options.host,
+            port: options.port,
+            explicitPort: options.port !== undefined,
+            workspace: options.workspace
+        });
+
+        process.stdout.write(`${serverDoctor.formatReport(server)}\n`);
+
         const doctor =
             require(path.join(REPO_ROOT, "agent", "tools", "process", "SandboxDoctor"));
         const report = doctor.diagnose();
 
         process.stdout.write(doctor.formatReport(report));
-        process.exit(report.ok ? EXIT.SUCCESS : EXIT.FAILED);
+        process.exit(report.ok && server.ok ? EXIT.SUCCESS : EXIT.FAILED);
     }
 
     try {
@@ -422,6 +495,32 @@ async function main() {
         process.exit(code);
     }
 
+    if (options.review) {
+
+        const { runReview } = require("./ReviewCommand");
+        const code = await runReview(runtime, options, { EXIT });
+
+        await runtime.application.lifecycle.shutdown({
+            tools: require(path.join(REPO_ROOT, "agent", "tools")),
+            eventstore: runtime.eventstore
+        });
+
+        process.exit(code);
+    }
+
+    if (options.resume) {
+
+        const { runResume } = require("./ResumeCommand");
+        const result = await runResume(runtime, options, { fail });
+
+        await runtime.application.lifecycle.shutdown({
+            tools: require(path.join(REPO_ROOT, "agent", "tools")),
+            eventstore: runtime.eventstore
+        });
+
+        process.exit(result.error ? EXIT.FAILED : EXIT.SUCCESS);
+    }
+
     /* ---------------------------------------------------------------- */
 
     let task =
@@ -447,6 +546,26 @@ async function main() {
 
         if (piped) {
             task = piped;
+        }
+    }
+
+    /* P3-07: the output contract travels with the task */
+    let outputSchema = null;
+
+    if (options.jsonSchema) {
+
+        try {
+            outputSchema = Headless.loadSchema(path.resolve(options.jsonSchema));
+        } catch (error) {
+            fail(error.message);
+        }
+
+        if (!task) {
+            task = runtime.readTask().trim();
+        }
+
+        if (task) {
+            task = Headless.taskWithSchema(task, outputSchema);
         }
     }
 
@@ -483,11 +602,12 @@ async function main() {
     try {
 
         action =
-            await runtime.runAgent(
-                options.project
-                    ? { projectId: options.project }
-                    : undefined
-            );
+            await runtime.runAgent({
+                ...(options.project ? { projectId: options.project } : {}),
+                ...(options.planMode ? { plan_mode: true } : {}),
+                ...(options.goal ? { goal: options.goal } : {}),
+                ...(options.maxCost !== undefined ? { max_cost_usd: options.maxCost } : {})
+            });
 
     } catch (error) {
 
@@ -510,9 +630,11 @@ async function main() {
         });
 
         process.exit(
-            runtime.isRunCancelled()
-                ? EXIT.INTERRUPTED
-                : EXIT.FAILED
+            Headless.budgetStop(error)
+                ? EXIT.BUDGET
+                : runtime.isRunCancelled() || /^sig/.test(String(error.cancelledReason || ""))
+                    ? EXIT.INTERRUPTED
+                    : EXIT.FAILED
         );
     }
 
@@ -520,6 +642,23 @@ async function main() {
         tools: require(path.join(REPO_ROOT, "agent", "tools")),
         eventstore: runtime.eventstore
     });
+
+    if (outputSchema) {
+
+        const checked = Headless.checkOutput(action, outputSchema);
+
+        process.stdout.write(
+            `${JSON.stringify(checked.ok ? checked.value : { error: checked.error, violations: checked.violations || [], raw: checked.raw }, null, 2)}\n`
+        );
+
+        process.exit(
+            checked.ok
+                ? EXIT.SUCCESS
+                : action.error
+                    ? (Headless.budgetStop(action) ? EXIT.BUDGET : EXIT.FAILED)
+                    : EXIT.SCHEMA
+        );
+    }
 
     if (options.json) {
 
@@ -536,7 +675,7 @@ async function main() {
 
     process.exit(
         action.error
-            ? EXIT.FAILED
+            ? (Headless.budgetStop(action) ? EXIT.BUDGET : EXIT.FAILED)
             : EXIT.SUCCESS
     );
 }

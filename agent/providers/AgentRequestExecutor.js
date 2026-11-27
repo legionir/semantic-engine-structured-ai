@@ -4,10 +4,22 @@
    agent.js. Runtime-specific behavior is injected at construction. */
 
 const { httpTransport } = require("./HttpTransport");
+const { logs: defaultLogs, clip } = require("../runtime/LogStore");
+
+/* Where a request went, without credentials or query parameters. */
+function describeEndpoint(url) {
+    try {
+        const parsed = new URL(String(url));
+        return { endpoint: `${parsed.origin}${parsed.pathname}`, host: parsed.host };
+    } catch {
+        return { endpoint: "(invalid endpoint URL)", host: "unknown host" };
+    }
+}
 
 function createAgentRequestExecutor(deps) {
 
     const transport = deps.transport || httpTransport;
+    const logs = deps.logs || defaultLogs;
     const degradedSchemas = new Set();
 
     function schemaKeyFor(profile, role) {
@@ -87,6 +99,18 @@ function createAgentRequestExecutor(deps) {
             duration_ms: Date.now() - waitingSince
         });
 
+        /* what every failure record says about the request */
+        const target = describeEndpoint(profile.endpoint);
+        const failureContext = extra => ({
+            agent,
+            role: role || "MAIN",
+            model: profile.model,
+            provider: profile.provider || target.host,
+            endpoint: target.endpoint,
+            duration_ms: Date.now() - waitingSince,
+            ...extra
+        });
+
         const requestSignal = deps.createRequestSignal(timeoutMs);
         let response;
         let text;
@@ -108,11 +132,23 @@ function createAgentRequestExecutor(deps) {
                 const aborted = new Error(`Model request aborted: ${requestSignal.reason || "unknown reason"}`);
                 aborted.retryable = !deps.isRunCancelled();
                 finishWaiting("aborted");
+                logs.record(
+                    deps.isRunCancelled() ? "info" : "warn",
+                    "ai",
+                    `AI request aborted (${profile.model}): ${requestSignal.reason || "unknown reason"}`,
+                    failureContext({ retryable: aborted.retryable })
+                );
                 throw aborted;
             }
 
             error.retryable = true;
             finishWaiting("failed");
+            const cause = error.cause && (error.cause.message || error.cause.code);
+            logs.error(
+                "ai",
+                `AI request to ${target.host} failed (${profile.model}): ${error.message}${cause && cause !== error.message ? ` — ${cause}` : ""}`,
+                failureContext({ code: error.code || error.cause?.code, cause, retryable: true })
+            );
             throw error;
         } finally {
             requestSignal.release();
@@ -136,11 +172,32 @@ function createAgentRequestExecutor(deps) {
             failure.retryable = deps.isRetryableStatus(response.status);
             failure.retryAfter = response.header("retry-after");
             failure.schema_rejected = Boolean(request.response_format) && mentionsSchemaRejection(text);
+            logs.error(
+                "ai",
+                `AI request failed: HTTP ${response.status} from ${target.host} (${profile.model})`,
+                failureContext({
+                    status: response.status,
+                    retryable: failure.retryable,
+                    retry_after: failure.retryAfter || undefined,
+                    schema_rejected: failure.schema_rejected || undefined,
+                    response: clip(text, 4000)
+                })
+            );
             throw failure;
         }
 
         if (!parsed) {
+            logs.error(
+                "ai",
+                `AI response from ${target.host} is not valid JSON (${profile.model})`,
+                failureContext({ status: response.status, response: clip(text, 4000) })
+            );
             throw new Error(`Invalid JSON response: ${text}`);
+        }
+
+        /* P3-05: what the response cost, against the run's cap */
+        if (typeof deps.recordUsage === "function" && data && data.usage) {
+            deps.recordUsage({ model: data.model || profile.model, usage: data.usage, agent, role: role || "MAIN" });
         }
 
         return data;

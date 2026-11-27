@@ -1,0 +1,11 @@
+# HTTPS for the console with Caddy (automatic Let's Encrypt certificate).
+#   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile   # replace the domain
+#   sudo systemctl reload caddy
+#
+# Caddy passes the Host header through and streams server-sent events as they
+# come, which is all the console needs.
+
+agent.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:7777
+}

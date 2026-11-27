@@ -7,6 +7,8 @@ const events = require("../../events");
 
 const { isInsideRoot, truncateText } = require("../../context/WorkspaceBoundary");
 
+const { loadMarkdownSkills, renderCommands } = require("./MarkdownSkills");
+
 
 /*
 |--------------------------------------------------------------------------
@@ -124,7 +126,14 @@ function loadSkills() {
         CACHE.dirMtime = dirStats.mtimeMs;
     }
 
-    return CACHE.skills;
+    /* SKILL.md skills depend on the active workspace and are scanned on
+       every call (roadmap P3-02); registry names cannot be taken over */
+    return [
+        ...CACHE.skills,
+        ...loadMarkdownSkills({
+            takenNames: new Set(CACHE.skills.map(skill => skill.name))
+        })
+    ];
 }
 
 
@@ -155,7 +164,7 @@ function resolveResource(skill, resourceId) {
 
     const root =
         fs.realpathSync(
-            path.join(SKILLS_DIR, skill.directory)
+            skill.root || path.join(SKILLS_DIR, skill.directory)
         );
 
     const target =
@@ -222,13 +231,16 @@ function skillIndex() {
     return activeSkills().map(
         skill => ({
             name: skill.name,
-            description: skill.description
+            description: skill.description,
+            ...(Array.isArray(skill.triggers) && skill.triggers.length > 0
+                ? { triggers: skill.triggers }
+                : {})
         })
     );
 }
 
 
-function skill_get(args = {}) {
+async function skill_get(args = {}, context) {
 
     const requested =
         Array.isArray(args.names)
@@ -294,12 +306,33 @@ function skill_get(args = {}) {
             JSON.stringify(found).length
     });
 
+    /* !`command` output is rendered into SKILL.md bodies (roadmap P3-02) */
+    const bodies = new Map();
+
+    for (const skill of found) {
+        if (skill.format === "SKILL.md") {
+            bodies.set(skill.name, await renderCommands(skill, context));
+        }
+    }
+
     return {
         skills:
             found.map(skill => ({
                 ...skill,
 
                 directory: undefined,
+
+                root: undefined,
+
+                markdown: undefined,
+
+                /* a SKILL.md body is its procedure, capped like a resource */
+                ...(skill.format === "SKILL.md"
+                    ? (() => {
+                          const capped = truncateText(bodies.get(skill.name) || "", settings.get("SKILL_RESOURCE_CHARS"));
+                          return { instructions: capped.text, ...(capped.truncated ? { instructions_truncated: true } : {}) };
+                      })()
+                    : {}),
 
                 resources:
                     (skill.resources || []).map(
@@ -337,7 +370,7 @@ function skill_read(args = {}) {
         );
     }
 
-    if (!skill.directory) {
+    if (!skill.directory && !skill.root) {
 
         throw new Error(
             `Skill ${skill.name} has no resources; its instructions are the whole of it.`

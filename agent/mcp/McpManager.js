@@ -92,6 +92,30 @@ function currentProjectId() {
 }
 
 
+/* two definitions that reach the same process / endpoint the same way */
+const CONTROL_ONLY = ["source", "origin", "include", "exclude", "agents", "approval", "scope", "projects", "description", "catalog", "trust"];
+
+function sameConnection(left, right) {
+
+    const strip = config => {
+        const copy = { ...config };
+        for (const field of CONTROL_ONLY) delete copy[field];
+        return JSON.stringify(copy);
+    };
+
+    return strip(left) === strip(right);
+}
+
+
+/* two definitions of one server that differ only in where they were read */
+function sameServer(left, right) {
+
+    const strip = config => JSON.stringify({ ...config, source: null, origin: null });
+
+    return strip(left) === strip(right);
+}
+
+
 class McpManager {
 
     /*
@@ -126,6 +150,17 @@ class McpManager {
                 this.invalidate();
             }
         });
+
+        /*
+        | P4-01/P4-02: the user MCP file and the secret store are shared by
+        | every project's manager; a change to either is picked up on the
+        | next load. A client whose resolved definition did not change keeps
+        | its connection (load() compares them).
+        */
+        const reload = () => this.invalidate();
+
+        loader.changes.on("change", reload);
+        require("../secrets/SecretStore").changes.on("change", reload);
     }
 
 
@@ -166,7 +201,12 @@ class McpManager {
 
         const seen = new Set();
 
-        for (const definition of loaded.servers) {
+        const overrides = require("./McpOverrides");
+
+        for (const declared of loaded.servers) {
+
+            /* P4-07: the operator's per-tool switches and limits */
+            const definition = overrides.apply(declared);
 
             seen.add(definition.name);
 
@@ -186,6 +226,31 @@ class McpManager {
                 continue;
             }
 
+            /*
+            | The same server, now read from the file it was just saved to
+            | (add() persisted it): only where it came from changed, so the
+            | running connection is kept and told its new origin.
+            */
+            if (
+                existing &&
+                sameServer(existing.config, definition)
+            ) {
+                existing.config.source = definition.source;
+                existing.config.origin = definition.origin;
+                existing.ephemeral = false;
+                continue;
+            }
+
+            /*
+            | Only the switches changed (a tool turned off, an approval
+            | rule, an agent limit): the connection is kept and told.
+            */
+            if (existing && sameConnection(existing.config, definition)) {
+                Object.assign(existing.config, definition);
+                existing.ephemeral = false;
+                continue;
+            }
+
             if (existing) {
 
                 void closeClient(existing);
@@ -199,7 +264,9 @@ class McpManager {
 
         for (const [name, client] of [...this.clients.entries()]) {
 
-            if (seen.has(name)) {
+            /* a server added for this process only (persist: false) is in
+               no file, and a reload must not drop it */
+            if (seen.has(name) || client.ephemeral) {
                 continue;
             }
 
@@ -366,22 +433,27 @@ class McpManager {
     | building a prompt must not wait on a network round trip.
     */
 
-    catalogueEntries(projectId) {
+    catalogueEntries(projectId, options = {}) {
 
         const entries = [...this.catalogue.values()];
 
-        if (!projectId) {
+        /* P4-07: a server limited to some agents is invisible to the others */
+        const agent = options.agent ? String(options.agent).replace(/#\d+$/, "") : null;
+
+        if (!projectId && !agent) {
             return entries;
         }
 
         return entries.filter(entry => {
 
             const client = this.clients.get(entry.server);
+            const config = client ? client.config : { scope: "global" };
 
-            return trust.serverVisibleTo(
-                client ? client.config : { scope: "global" },
-                projectId
-            );
+            if (agent && Array.isArray(config.agents) && config.agents.length > 0 && !config.agents.includes(agent)) {
+                return false;
+            }
+
+            return !projectId || trust.serverVisibleTo(config, projectId);
         });
     }
 
@@ -404,9 +476,9 @@ class McpManager {
     }
 
 
-    toolDeclarations(projectId) {
+    toolDeclarations(projectId, options = {}) {
 
-        return this.catalogueEntries(projectId).map(
+        return this.catalogueEntries(projectId, options).map(
             entry => this.toolDeclaration(entry)
         );
     }
@@ -428,7 +500,12 @@ class McpManager {
     }
 
 
-    async call(serverName, tool, args, options = {}) {
+    /*
+    | The checks every use of a server makes, a tool call or a resource or
+    | prompt read alike: it exists, is switched on, is trusted to start,
+    | and is in scope for the active project (and, P4-07, the agent).
+    */
+    usableClient(serverName, options = {}) {
 
         if (!this.enabled()) {
 
@@ -488,6 +565,31 @@ class McpManager {
             );
         }
 
+        const agent =
+            options.agent ? String(options.agent).replace(/#\d+$/, "") : null;
+
+        if (
+            agent &&
+            agent !== "web_console" &&
+            Array.isArray(client.config.agents) &&
+            client.config.agents.length > 0 &&
+            !client.config.agents.includes(agent)
+        ) {
+
+            throw new Error(
+                `MCP server "${serverName}" is limited to ${client.config.agents.join(", ")}.`
+            );
+        }
+
+        return client;
+    }
+
+
+    async call(serverName, tool, args, options = {}) {
+
+        const client =
+            this.usableClient(serverName, options);
+
         if (
             !catalogue.matchesFilter(
                 tool,
@@ -510,13 +612,17 @@ class McpManager {
 
         try {
 
+            /* pictures go to the image channel, a placeholder stays (P3-01) */
             const result =
-                await client.callTool(tool, args, {
-                    timeoutMs:
-                        options.timeoutMs ||
-                        settings.get("MCP_CALL_TIMEOUT_MS") ||
-                        undefined
-                });
+                require("../runtime/ImageChannel").channel.extract(
+                    await client.callTool(tool, args, {
+                        timeoutMs:
+                            options.timeoutMs ||
+                            settings.get("MCP_CALL_TIMEOUT_MS") ||
+                            undefined
+                    }),
+                    { source: `${serverName}/${tool}` }
+                );
 
             events.emit("mcp:result", {
                 server: serverName,
@@ -552,12 +658,38 @@ class McpManager {
 
         this.load();
 
+        /*
+        | options.secrets: false for a server the agent adds (mcp_add), so a
+        | ${secret:NAME} reference is refused instead of resolved.
+        */
         const normalized =
             validator.normalizeOne(
                 name,
                 definition,
-                this.workspaceRoot
+                this.workspaceRoot,
+                { secrets: options.secrets !== false }
             );
+
+        /*
+        | What is written back keeps ${secret:NAME} as a reference, so a
+        | stored token never lands in a file. Such a server belongs in the
+        | user file: a repository file may not reference the store.
+        */
+        const references =
+            require("../secrets/SecretStore").referencesIn(definition);
+
+        const persistable =
+            references.size > 0
+                ? validator.normalizeOne(
+                    name,
+                    definition,
+                    this.workspaceRoot,
+                    { secrets: true, expandSecrets: false }
+                )
+                : normalized;
+
+        const target =
+            options.target || (references.size > 0 ? "user" : "workspace");
 
         const previous =
             this.clients.get(normalized.name);
@@ -585,6 +717,8 @@ class McpManager {
             await closeClient(previous);
         }
 
+        client.ephemeral = options.persist === false;
+
         this.clients.set(normalized.name, client);
 
         let persistedTo = null;
@@ -594,7 +728,11 @@ class McpManager {
             try {
 
                 persistedTo =
-                    loader.persist(this.workspaceRoot || this.boundRoot, normalized);
+                    loader.persist(
+                        this.workspaceRoot || this.boundRoot,
+                        persistable,
+                        { target }
+                    );
 
             } catch (error) {
 

@@ -28,7 +28,10 @@ const SOURCES = {
     PROJECT: "project",
     WORKSPACE: "workspace",
     ENVIRONMENT: "environment",
-    RUNTIME: "runtime"
+    RUNTIME: "runtime",
+    /* P4-01/P4-02: the operator's own file in the data home, written by
+       the console's catalogue; may reference the secret store */
+    USER: "user"
 };
 
 
@@ -100,17 +103,48 @@ function inferTransport(definition) {
 | A value like "${env:GITHUB_TOKEN}" or "${GITHUB_TOKEN}" is read from
 | the environment when the configuration is loaded, so a token never has
 | to be written into a file that lives in a repository.
+|
+| P4-01: "${secret:GITHUB_PAT}" is read from the encrypted secret store.
+| Only operator configuration may do that (options.secrets): a model can
+| write .mcp.json or call mcp_add, and a server it chose must never be
+| handed a stored token. A reference to a secret that is not stored is an
+| error, not a literal string sent to the server.
 */
 
-function expand(value) {
+function expand(value, options = {}) {
 
     if (typeof value !== "string") {
         return value;
     }
 
     return value.replace(
-        /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g,
-        (whole, name) => {
+        /\$\{(?:(env|secret):)?([A-Za-z_][A-Za-z0-9_]*)\}/g,
+        (whole, kind, name) => {
+
+            if (kind === "secret") {
+
+                if (options.secrets !== true) {
+                    throw new Error(
+                        `\${secret:${name}} may only be used in operator MCP configuration ` +
+                        "(the console's catalogue, the user MCP config in the data home, the registry or MCP_SERVERS), " +
+                        "never in a repository file or a server the agent adds"
+                    );
+                }
+
+                if (options.expandSecrets === false) {
+                    return whole;
+                }
+
+                const found = require("../secrets/SecretStore").resolve(name);
+
+                if (found === undefined) {
+                    throw new Error(
+                        `secret "${name}" is not in the secret store; add it in the console (MCP → Secrets)`
+                    );
+                }
+
+                return found;
+            }
 
             const found = process.env[name];
 
@@ -120,21 +154,21 @@ function expand(value) {
 }
 
 
-function expandDeep(value) {
+function expandDeep(value, options = {}) {
 
     if (typeof value === "string") {
-        return expand(value);
+        return expand(value, options);
     }
 
     if (Array.isArray(value)) {
-        return value.map(expandDeep);
+        return value.map(item => expandDeep(item, options));
     }
 
     if (value && typeof value === "object") {
 
         return Object.fromEntries(
             Object.entries(value).map(
-                ([key, item]) => [key, expandDeep(item)]
+                ([key, item]) => [key, expandDeep(item, options)]
             )
         );
     }
@@ -153,7 +187,7 @@ function expandDeep(value) {
 */
 
 const placeholderPattern =
-    /\$\{(?:env:)?[A-Za-z_][A-Za-z0-9_]*\}/;
+    /\$\{(?:env:|secret:)?[A-Za-z_][A-Za-z0-9_]*\}/;
 
 
 function containsPlaceholder(value) {
@@ -243,6 +277,80 @@ function normalizeStringList(value) {
 }
 
 
+const APPROVAL_VALUES = new Set(["inherit", "always", "never"]);
+
+function normalizeApproval(value) {
+
+    if (value === undefined || value === null) {
+        return { read: "inherit", write: "inherit" };
+    }
+
+    if (typeof value === "string") {
+        if (!APPROVAL_VALUES.has(value)) {
+            throw new Error(`approval must be inherit, always or never, or {read, write}: ${value}`);
+        }
+        return { read: value, write: value };
+    }
+
+    if (typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("approval must be inherit, always or never, or {read, write}");
+    }
+
+    const pick = key => {
+        const item = value[key] === undefined ? "inherit" : value[key];
+        if (!APPROVAL_VALUES.has(item)) {
+            throw new Error(`approval.${key} must be inherit, always or never: ${item}`);
+        }
+        return item;
+    };
+
+    return { read: pick("read"), write: pick("write") };
+}
+
+
+function loosenOnlyIf(approval, allowed) {
+
+    if (allowed) return approval;
+
+    return {
+        read: approval.read === "never" ? "inherit" : approval.read,
+        write: approval.write === "never" ? "inherit" : approval.write
+    };
+}
+
+
+function normalizeOAuth(value) {
+
+    if (value === undefined || value === null || value === false) {
+        return null;
+    }
+
+    if (value === true) {
+        return {};
+    }
+
+    if (typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("oauth must be true or an object {client_id?, client_secret?, scopes?}");
+    }
+
+    const out = {};
+
+    for (const key of ["client_id", "client_secret", "authorization_server"]) {
+        if (value[key] !== undefined) {
+            if (typeof value[key] !== "string" || value[key] === "") throw new Error(`oauth.${key} must be a non-empty string`);
+            out[key] = value[key];
+        }
+    }
+
+    if (value.scopes !== undefined) {
+        const scopes = Array.isArray(value.scopes) ? value.scopes : String(value.scopes).split(/[\s,]+/);
+        out.scopes = scopes.map(String).filter(Boolean);
+    }
+
+    return out;
+}
+
+
 function normalize(name, rawDefinition, context) {
 
     if (
@@ -258,8 +366,21 @@ function normalize(name, rawDefinition, context) {
         );
     }
 
+    /*
+    | Secrets: operator sources may reference them; a repository file
+    | never may, trusted or not, because the agent can write it. The
+    | caller can narrow this further (mcp_add passes secrets: false) and
+    | ask for the references to be kept (expandSecrets: false) when the
+    | definition is about to be written back to disk.
+    */
     const definition =
-        expandDeep(rawDefinition || {});
+        expandDeep(rawDefinition || {}, {
+            secrets:
+                context.secrets === undefined
+                    ? !isRepositorySource(context)
+                    : context.secrets === true && !isRepositorySource(context),
+            expandSecrets: context.expandSecrets !== false
+        });
 
     const serverName =
         String(name || definition.name || "").trim();
@@ -296,6 +417,10 @@ function normalize(name, rawDefinition, context) {
 
         description:
             definition.description || null,
+
+        /* P4-02: the catalogue entry this server was activated from */
+        catalog:
+            typeof definition.catalog === "string" ? definition.catalog : null,
 
         /*
         | An approval policy per server, because a server that only
@@ -340,6 +465,27 @@ function normalize(name, rawDefinition, context) {
 
         projects:
             normalizeStringList(definition.projects),
+
+        /*
+        | P4-07: the agents that may see and call this server's tools (empty:
+        | every agent), and an approval rule per kind of tool — read for a
+        | tool annotated readOnlyHint, write for every other one — each
+        | inherit (the policy rules and trust), always or never.
+        */
+        agents:
+            normalizeStringList(definition.agents),
+
+        /* like trust, a repository file may ask for more approval, never less */
+        approval:
+            loosenOnlyIf(normalizeApproval(definition.approval), mayDeclareTrusted(context)),
+
+        /* P4-08: OAuth 2.1 sign-in for a remote server (true, or settings) */
+        oauth:
+            normalizeOAuth(definition.oauth),
+
+        /* P4-10: the server may ask the model for completions (sampling) */
+        sampling:
+            definition.sampling === true,
 
         timeouts: {
             connect:
@@ -416,7 +562,7 @@ function normalize(name, rawDefinition, context) {
 }
 
 
-function normalizeOne(name, definition, workspaceRoot) {
+function normalizeOne(name, definition, workspaceRoot, options = {}) {
 
     return normalize(
         name,
@@ -424,7 +570,9 @@ function normalizeOne(name, definition, workspaceRoot) {
         {
             source: SOURCES.RUNTIME,
             origin: "runtime",
-            workspaceRoot: workspaceRoot || process.cwd()
+            workspaceRoot: workspaceRoot || process.cwd(),
+            secrets: options.secrets,
+            expandSecrets: options.expandSecrets
         }
     );
 }
@@ -442,6 +590,8 @@ module.exports = {
     workspaceTrusted,
     expandsEnvironment,
     normalizeStringList,
+    normalizeApproval,
+    normalizeOAuth,
     normalize,
     normalizeOne
 };

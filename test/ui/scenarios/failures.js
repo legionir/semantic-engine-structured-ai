@@ -207,6 +207,101 @@ module.exports = async function Failures({ test, console_, settle, byId, card, b
         Modal.closeTop("test");
     });
 
+    await test("MCP: a reconnecting server shows its countdown; the catalogue activates with a token; secrets list names only", async () => {
+        const lost = {
+            name: "github", transport: "http", enabled: true, state: "reconnecting", tool_count: 0,
+            connection: { url: "https://api.githubcopilot.com/mcp/" },
+            reconnect: { attempt: 2, next_at: Date.now() + 3000, count: 1, last_error: "MCP server \"github\" disconnected: boom", last_error_at: Date.now() }
+        };
+        console_.reply("/api/mcp", { enabled: true, servers: [lost], tools: [], problems: [], tool_count: 0 });
+        console_.reply("/api/mcp/config", { text: "{}", path: "/w/.agent/mcp.json" });
+        byId("mcpButton").dispatch("click");
+        await settle();
+        const dialog = backdrops().at(-1);
+        assert.match(dialog.querySelector(".mcp-server .state").textContent, /reconnecting in [0-9]s \(attempt 2\)/);
+        assert.ok(dialog.querySelector(".mcp-dot.reconnecting"), "the status dot says so too");
+        assert.match(dialog.querySelector(".mcp-server").textContent, /last error .*disconnected: boom/);
+        assert.match(dialog.querySelector(".mcp-server").textContent, /reconnected 1×/);
+        assert.ok([...dialog.querySelectorAll(".mcp-actions button")].some(button => button.textContent.trim() === "Reconnect"));
+
+        const github = {
+            id: "github", title: "GitHub", category: "code", description: "Issues and PRs", transport: "http",
+            pinned: "https://api.githubcopilot.com/mcp/", trust: "default",
+            inputs: [{ id: "token", label: "GitHub personal access token", required: true, secret_name: "GITHUB_PAT", secret_stored: false, link: "https://github.com/settings/personal-access-tokens/new", placeholder: "github_pat_…", default: null }],
+            prerequisites: [], installed: []
+        };
+        const playwright = {
+            id: "playwright", title: "Playwright", category: "browser", description: "Browser", transport: "stdio",
+            pinned: "npx -y @playwright/mcp@0.0.86", trust: "default", inputs: [],
+            prerequisites: [
+                { id: "npx", label: "npx (Node.js)", ok: true, path: "/usr/bin/npx", installable: false },
+                { id: "chromium", label: "Headless Chromium", ok: false, hint: "Install the Chromium build", installable: true }
+            ],
+            installed: []
+        };
+        console_.reply("/api/mcp/catalog", { categories: { code: "Code", browser: "Browser" }, servers: [github, playwright] });
+        [...dialog.querySelectorAll(".mcp-tab")].find(button => button.textContent.trim() === "Catalogue").dispatch("click");
+        await settle();
+
+        const cards = () => [...dialog.querySelectorAll(".mcp-card")];
+        assert.equal(cards().length, 2);
+        const activateOf = item => [...item.querySelectorAll("button")].find(button => /^Activate/.test(button.textContent.trim()));
+        assert.equal(activateOf(cards()[1]).disabled, true, "a missing prerequisite blocks activation");
+        assert.match(cards()[1].textContent, /Install the Chromium build/);
+        assert.ok([...cards()[1].querySelectorAll("button")].some(button => button.textContent.trim() === "Install"));
+
+        activateOf(cards()[0]).dispatch("click");
+        await settle();
+        const form = dialog.querySelector(".mcp-activate");
+        assert.ok(form, "the token form opens");
+        const token = form.querySelector('input[name="token"]');
+        assert.equal(token.type, "password");
+        token.value = "github_pat_from_the_form";
+
+        console_.reply("POST /api/mcp/catalog/github/activate", { ok: true, server: "github", catalog: "github", scope: "global", tools: [{ name: "get_me", description: "who am I" }] });
+        console_.reply("/api/mcp/catalog", { categories: { code: "Code" }, servers: [{ ...github, installed: [{ name: "github", scope: "global", projects: null, state: "ready", tool_count: 1, error: null }] }, playwright] });
+        console_.reply("/api/mcp", { enabled: true, servers: [{ ...lost, state: "ready", reconnect: { ...lost.reconnect, attempt: 0, next_at: null } }], tools: [], problems: [], tool_count: 1 });
+        form.dispatch("submit");
+        await settle();
+        const sent = console_.posted.filter(item => item.url === "/api/mcp/catalog/github/activate").at(-1);
+        assert.deepEqual(sent.body.inputs, { token: "github_pat_from_the_form" });
+        assert.equal(sent.body.scope, "global");
+        assert.match(dialog.querySelector(".mcp-activated").textContent, /Connected: 1 tool/);
+        assert.match(dialog.querySelector(".mcp-activated").textContent, /get_me/);
+        assert.equal(dialog.querySelector(".mcp-activate"), null, "the form is closed");
+
+        console_.reply("POST /api/mcp/catalog/github/deactivate", { ok: true, server: "github", removed: true, secrets_removed: ["GITHUB_PAT"] });
+        console_.reply("/api/mcp/catalog", { categories: { code: "Code" }, servers: [github, playwright] });
+        [...cards()[0].querySelectorAll("button")].find(button => button.textContent.trim() === "Deactivate").dispatch("click");
+        await settle();
+        const deactivated = console_.posted.filter(item => item.url === "/api/mcp/catalog/github/deactivate").at(-1);
+        assert.equal(deactivated.body.forget_secrets, true);
+        assert.equal(dialog.querySelector(".mcp-activated"), null, "the old result is gone with the server");
+
+        console_.reply("/api/secrets", { secrets: [{ name: "BRAVE_API_KEY", used_by: ["brave-search"], updated_at: "2026-11-25T10:00:00.000Z", created_at: "2026-11-25T10:00:00.000Z", length: 12 }] });
+        [...dialog.querySelectorAll(".mcp-tab")].find(button => button.textContent.trim() === "Secrets").dispatch("click");
+        await settle();
+        assert.match(dialog.querySelector(".mcp-secret").textContent, /BRAVE_API_KEY/);
+        assert.match(dialog.querySelector(".mcp-secret").textContent, /used by brave-search/);
+
+        const add = dialog.querySelector(".mcp-secret-add");
+        add.querySelector('input[name="name"]').value = "NEW_ONE";
+        add.querySelector('input[name="value"]').value = "typed-secret";
+        assert.equal(add.querySelector('input[name="value"]').type, "password");
+        console_.reply("PUT /api/secrets/NEW_ONE", { ok: true, name: "NEW_ONE", created: true });
+        add.dispatch("submit");
+        await settle();
+        const put = console_.posted.filter(item => item.url === "/api/secrets/NEW_ONE").at(-1);
+        assert.equal(put.method, "PUT");
+        assert.deepEqual(put.body, { value: "typed-secret" });
+        assert.equal(dialog.querySelector('.mcp-secret-add input[name="value"]').value, "", "the value leaves the page once saved");
+        assert.match(dialog.querySelector(".mcp-secret-add .mcp-message").textContent, /NEW_ONE saved/);
+
+        [...dialog.querySelectorAll(".mcp-tab")].find(button => button.textContent.trim() === "Servers").dispatch("click");
+        await settle();
+        Modal.closeTop("test");
+    });
+
     await test("an archived run opened in the Execution modal is open the next time too", async () => {
         console_.send({ type: "run:start", task: "first task" });
         console_.send({ type: "agent:start", agent: "main_agent", depth: 0 });

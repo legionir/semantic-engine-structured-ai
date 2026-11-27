@@ -20,8 +20,11 @@ const { readBody } = require("../RequestBody");
 module.exports = async function ProjectRunsRoutes(shared, request, project) {
 
     const {
+        conversations,
+        projectQueue,
         projectSlotBusy,
         requestReasoningEffort,
+        requestRunFlags,
         runtime,
         slotView,
         startTask,
@@ -45,7 +48,16 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
         requireAccess(projectId, "project:write");
         requireRecord(projectId);
 
+        const options = await readBody(req).catch(() => ({}));
+
         const cancelled = [];
+
+        /* the turn that ends now must not start its next plan cycle */
+        const conv = conversations.get(projectId);
+
+        if (conv && conv.status === "running") {
+            conv.stopRequested = true;
+        }
 
         if (
             typeof runtime.runManager.activeRuns === "function"
@@ -73,11 +85,18 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
                 ? runtime.runScheduler.cancelQueued(projectId, "web console")
                 : 0;
 
+        /* the message queue survives a cancel unless asked (P1-04) */
+        const clearedQueue =
+            options && options.clear_queue === true
+                ? projectQueue.clear(projectId)
+                : 0;
+
         sendJson(res, 200, {
             cancelled: true,
             project_id: projectId,
             run_ids: cancelled,
-            queued_dropped: dropped
+            queued_dropped: dropped,
+            queue_cleared: clearedQueue
         });
         return true;
     }
@@ -98,8 +117,10 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
                     ? body.message.trim()
                     : "";
         let reasoningEffort;
+        let runFlags;
         try {
             reasoningEffort = requestReasoningEffort(body);
+            runFlags = requestRunFlags(body);
         } catch (error) {
             sendJson(res, error.status || 400, { error: error.message });
             return true;
@@ -113,13 +134,47 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
             return true;
         }
 
-        /* per-project gate: only THIS project's own run blocks it */
+        /*
+        | Per-project gate: only THIS project's own run blocks it. The
+        | message then waits in the project's queue for the next turn
+        | (P1-04); `queue: false` (or PROJECT_QUEUE_MAX=0) keeps the
+        | historical 409.
+        */
         if (projectSlotBusy(projectId)) {
 
-            sendJson(res, 409, {
-                error: `project ${projectId} already has a run in progress`,
-                project_id: projectId
-            });
+            requireRecord(projectId);
+
+            if (body.queue === false || !projectQueue.enabled()) {
+
+                sendJson(res, 409, {
+                    error: `project ${projectId} already has a run in progress`,
+                    project_id: projectId
+                });
+                return true;
+            }
+
+            try {
+
+                const item =
+                    projectQueue.add(projectId, task, { reasoningEffort, runFlags });
+
+                sendJson(res, 202, {
+                    accepted: true,
+                    project_id: projectId,
+                    queued: true,
+                    queued_message: item,
+                    queue_length: projectQueue.view(projectId).items.length
+                });
+
+            } catch (error) {
+
+                sendJson(res, error.status || 400, {
+                    error: error.message,
+                    project_id: projectId,
+                    ...(error.status === 429 ? { code: "PROJECT_QUEUE_FULL" } : {})
+                });
+            }
+
             return true;
         }
 
@@ -141,7 +196,7 @@ module.exports = async function ProjectRunsRoutes(shared, request, project) {
             return true;
         }
 
-        startTask(task, { projectId: record.id, reasoningEffort }).catch(() => {});
+        startTask(task, { projectId: record.id, reasoningEffort, runFlags }).catch(() => {});
 
         sendJson(res, 202, {
             accepted: true,

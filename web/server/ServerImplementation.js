@@ -38,25 +38,44 @@ const { ApprovalStore } = require("../../agent/policy");
 const ProcessOutputBus = require("../../agent/tools/process/ProcessOutputBus");
 
 const createCallLog = require("./console/call-log");
+const createConversations = require("./console/conversations");
+const createProjectQueue = require("./console/project-queue");
 const createSessionLog = require("./console/session-log");
 const createSnapshot = require("./console/snapshot");
 const createLiveEvents = require("./console/live-events");
 const createTaskRunner = require("./console/task-runner");
 const createDiscussionRunner = require("./console/discussion-runner");
+const createOperatorTools = require("./console/operator-tools");
+const createInterruptedRuns = require("./console/interrupted-runs");
 const { wellEncodedPath, serveStatic } = require("./console/static-files");
 
 const ROUTE_GROUPS = [
     require("./routes/auth-and-state"),
+    require("./routes/mcp-serve"),
+    require("./routes/mcp-completion"),
+    require("./routes/mcp-platform"),
     require("./routes/mcp"),
     require("./routes/sessions"),
+    require("./routes/interrupted"),
     require("./routes/tasks"),
     require("./routes/projects"),
     require("./routes/discussion"),
-    require("./routes/control")
+    require("./routes/control"),
+    require("./routes/logs"),
+    require("./routes/system"),
+    require("./routes/terminal"),
+    require("./routes/files"),
+    require("./routes/agent-quality")
 ];
+
+/* keystrokes and resizes of an open terminal come in bursts */
+const TERMINAL_IO = /^\/api\/terminal\/[a-f0-9]{16}\/(input|resize)$/;
 
 
 function createServer(runtime, options = {}) {
+
+    /* P4-10: a server's questions (elicitation) now have someone to answer them */
+    require("../../agent/mcp/McpInteractions").setInteractive(true);
 
     /*
     | The console is a control plane, not a public static site. A token is
@@ -91,6 +110,8 @@ function createServer(runtime, options = {}) {
             )
         );
 
+    const { requestRunFlags } = require("./console/run-flags");
+
     const requestReasoningEffort = body => {
         const value = body && body.reasoning_effort;
         if (value === undefined || value === null || value === "" || value === "inherit") return null;
@@ -100,35 +121,20 @@ function createServer(runtime, options = {}) {
 
     const state = {
         status: "idle",
-
         cycles: 0,
-
         lastPlanSignature: null,
-
         stopRequested: false,
-
         task: null,
-
         history: [],
-
         events: [],
-
         turnCounter: 0,
-
         currentTurnId: null,
-
         approvals: new Map(),
-
         answer: null,
-
         error: null,
-
         startedAt: null,
-
         finishedAt: null,
-
         discussion: null,
-
         projectId: null
     };
 
@@ -153,9 +159,12 @@ function createServer(runtime, options = {}) {
             windowMs: 60_000
         });
     const loginRateLimiter = new RateLimiter({ limit: 5, windowMs: 60_000 });
+    const terminalRateLimiter = new RateLimiter({ limit: 6000, windowMs: 60_000 });
 
-    function allowApiRequest(req) {
-        return apiRateLimiter.allow(req);
+    function allowApiRequest(req, pathname) {
+        return req.method === "POST" && TERMINAL_IO.test(pathname)
+            ? terminalRateLimiter.allow(req)
+            : apiRateLimiter.allow(req);
     }
 
     function passwordSessionMatches(req) {
@@ -185,17 +194,22 @@ function createServer(runtime, options = {}) {
     };
 
     Object.assign(shared, createCallLog(shared));
+    Object.assign(shared, createConversations(shared));
+    Object.assign(shared, createProjectQueue(shared));
     Object.assign(shared, createSessionLog(shared));
     Object.assign(shared, createSnapshot(shared));
     Object.assign(shared, createLiveEvents(shared));
     Object.assign(shared, createTaskRunner(shared));
     Object.assign(shared, createDiscussionRunner(shared));
+    Object.assign(shared, createInterruptedRuns(shared));
+    Object.assign(shared, createOperatorTools(shared, options.terminal));
 
     const {
         DISCUSSION_MODULE,
         activateSession,
         broadcastProcessOutput,
         calls,
+        closeOperatorTools,
         discussionService,
         eventForClient,
         projectSlotBusy,
@@ -217,16 +231,26 @@ function createServer(runtime, options = {}) {
     const ctx = {
         DISCUSSION_MODULE,
         activateSession,
+        addMessage: shared.addMessage,
         approvalStore,
         calls,
+        clearForeground: shared.clearForeground,
+        conversations: shared.conversations,
+        conversationsFor: shared.conversationsFor,
         consolePasswordRequired,
         discussionService,
         eventForClient,
+        interrupted: shared.interrupted,
         loginRateLimiter,
+        logHub: shared.logHub,
+        logs: shared.logs,
         passwordMatches,
         passwordSessionToken,
+        projectQueue: shared.projectQueue,
         projectSlotBusy,
+        projectSnapshot: shared.projectSnapshot,
         requestReasoningEffort,
+        requestRunFlags,
         resolveApproval,
         runtime,
         saveSession,
@@ -238,7 +262,9 @@ function createServer(runtime, options = {}) {
         startDiscussion,
         startTask,
         state,
-        toolRuntime
+        terminals: shared.terminals,
+        toolRuntime,
+        workspaceRoot: shared.workspaceRoot
     };
 
 
@@ -265,7 +291,7 @@ function createServer(runtime, options = {}) {
             const { pathname } = url;
             const isApiRequest = pathname.startsWith("/api/");
 
-            if (isApiRequest && !allowApiRequest(req)) {
+            if (isApiRequest && !allowApiRequest(req, pathname)) {
                 sendJson(res, 429, { error: "console API rate limit exceeded" });
                 return;
             }
@@ -310,9 +336,19 @@ function createServer(runtime, options = {}) {
                 setConsoleCookie(res, CONSOLE_COOKIE, consoleToken);
             }
 
+            /*
+            | P4-08: an OAuth provider redirects the browser back here; the
+            | one-time state of a sign-in the operator started is the
+            | credential, because the console cookie may not travel on a
+            | cross-site redirect.
+            */
+            const oauthCallback =
+                pathname === "/api/mcp/oauth/callback" && req.method === "GET";
+
             if (
                 pathname.startsWith("/api/") &&
                 !authenticated &&
+                !oauthCallback &&
                 pathname !== "/auth/status" &&
                 pathname !== "/auth/login"
             ) {
@@ -397,11 +433,18 @@ function createServer(runtime, options = {}) {
 
             } catch (error) {
 
+                const status = error instanceof URIError ? 400 : error.status || 500;
+
+                if (status >= 500) {
+                    shared.logs.error("server", `${req.method} ${pathname} failed: ${error.message}`, {
+                        status,
+                        stack: String(error.stack || "").slice(0, 4000)
+                    });
+                }
+
                 sendJson(
                     res,
-                    error instanceof URIError
-                        ? 400
-                        : error.status || 500,
+                    status,
                     {
                         error: error instanceof URIError
                             ? "malformed percent-encoding in request path"
@@ -445,6 +488,8 @@ function createServer(runtime, options = {}) {
         close() {
 
             ProcessOutputBus.removeListener(ProcessOutputBus.outputEvent, broadcastProcessOutput);
+
+            closeOperatorTools();
 
             /* Do not leave MCP children/background processes behind. */
             toolRuntime.shutdown();

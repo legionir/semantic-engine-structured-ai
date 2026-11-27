@@ -1,6 +1,8 @@
 const { execFile } = require("child_process");
+const path = require("path");
 
 const settings = require("../../config");
+const childEnvironment = require("../process/ChildEnvironment");
 
 const {
     truncateText
@@ -22,17 +24,49 @@ const ToolContext = require("../ToolContext");
 
 
 
+function gitCwd(ctx, inputCwd) {
+
+    return inputCwd
+        ? ctx.resolvePath(
+            inputCwd,
+            {
+                mustExist: true
+            }
+        )
+        : ctx.root;
+}
+
+
+/*
+| A pathspec is resolved by git against the whole repository, which can be
+| larger than the workspace (a project opened at a sub-directory of a
+| repository), so "../other" or the magic ":/" would reach outside it.
+| Each path is therefore checked against the workspace boundary first
+| (roadmap P2-01); pathspec magic is refused outright.
+*/
+
+function confinedPathspecs(ctx, inputCwd, items, field) {
+
+    const cwd = gitCwd(ctx, inputCwd);
+
+    return items.map(item => {
+
+        assertString(item, field);
+
+        if (item.startsWith(":")) {
+            throw new Error(`${field}: pathspec magic is not allowed: ${item}`);
+        }
+
+        ctx.resolvePath(path.resolve(cwd, item));
+
+        return item;
+    });
+}
+
+
 function gitExec(ctx, inputCwd, argv) {
 
-    const cwd =
-        inputCwd
-            ? ctx.resolvePath(
-                inputCwd,
-                {
-                    mustExist: true
-                }
-            )
-            : ctx.root;
+    const cwd = gitCwd(ctx, inputCwd);
 
     return new Promise((resolve, reject) => {
 
@@ -41,6 +75,9 @@ function gitExec(ctx, inputCwd, argv) {
             argv,
             {
                 cwd,
+                /* a hook or core.fsmonitor in the repository runs with this
+                   environment, and the model can write both (roadmap P2-02) */
+                env: childEnvironment.build({ GIT_TERMINAL_PROMPT: "0" }),
                 timeout: settings.get("GIT_TIMEOUT_MS"),
                 maxBuffer: 10 * 1024 * 1024,
                 windowsHide: true
@@ -134,7 +171,7 @@ async function gitDiff(args, context) {
 
         argv.push(
             "--",
-            assertString(args.path, "path")
+            ...confinedPathspecs(ctx, args.cwd, [args.path], "path")
         );
     }
 
@@ -233,17 +270,13 @@ async function gitAdd(args, context) {
         );
     }
 
-    for (const item of paths) {
-        assertString(item, "paths[]");
-    }
-
     return gitExec(
         ctx,
         args.cwd,
         [
             "add",
             "--",
-            ...paths
+            ...confinedPathspecs(ctx, args.cwd, paths, "paths[]")
         ]
     );
 }
@@ -271,16 +304,12 @@ async function gitCommit(args, context) {
             throw new Error("paths must contain at least one path when provided.");
         }
 
-        for (const item of paths) {
-            assertString(item, "paths[]");
-        }
-
         /*
         | --only makes an automatic hook commit exactly the declared paths,
         | even when unrelated changes were already staged by the operator.
         */
 
-        argv.push("--only", "--", ...paths);
+        argv.push("--only", "--", ...confinedPathspecs(ctx, args.cwd, paths, "paths[]"));
     }
 
     return gitExec(ctx, args.cwd, argv);
@@ -294,5 +323,8 @@ module.exports = {
     git_branch: gitBranch,
     git_checkout: gitCheckout,
     git_add: gitAdd,
-    git_commit: gitCommit
+    git_commit: gitCommit,
+
+    /* shared with GitRemoteTools; not a tool (objects are not published) */
+    _internal: { gitExec, gitCwd, assertString }
 };

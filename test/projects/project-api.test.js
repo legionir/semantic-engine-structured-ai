@@ -11,6 +11,7 @@ const fs = require("fs");
 const os = require("os");
 const http = require("http");
 const path = require("path");
+const { removeTempDirs } = require("../helpers/cleanup");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -407,6 +408,30 @@ async function main() {
     });
 
 
+    await test("@ completion lists the project's entries inside its root only (roadmap P1-09)", async () => {
+
+        fs.mkdirSync(path.join(WORKSPACE, "mention-src", "deep"), { recursive: true });
+        fs.writeFileSync(path.join(WORKSPACE, "mention-src", "app.js"), "x");
+        fs.writeFileSync(path.join(WORKSPACE, "mention-src", ".hidden"), "x");
+
+        const list = async (q, token = SCOPED_A) => request(baseUrl, "GET", `/api/mentions?projectId=prj-a&q=${encodeURIComponent(q)}`, { token });
+
+        const top = await list("mention-");
+        assert.equal(top.status, 200);
+        assert.deepEqual(top.body.entries, [{ path: "mention-src/", type: "directory" }]);
+
+        const inner = await list("mention-src/");
+        assert.deepEqual(inner.body.entries.map(entry => entry.path), ["mention-src/deep/", "mention-src/app.js"]);
+        assert.deepEqual((await list("mention-src/.h")).body.entries.map(entry => entry.path), ["mention-src/.hidden"]);
+
+        for (const escape of ["../", "/etc/", "mention-src/../../"]) {
+            assert.deepEqual((await list(escape)).body.entries, [], `${escape} lists nothing`);
+        }
+
+        assert.equal((await list("mention-", SCOPED_B)).status, 403);
+    });
+
+
     await test("token limited to A cannot read B (403)", async () => {
 
         const denied = await request(
@@ -635,11 +660,8 @@ async function main() {
         await stub.close();
     } catch { /* best-effort */ }
 
-    await runtime.eventstore.flush();
-    await runtime.journal.flush();
-    fs.rmSync(WORKSPACE, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    fs.rmSync(OTHER_ROOT, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    fs.rmSync(DATA_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    /* flushes both stores and never fails the suite over a temp folder (Windows EBUSY) */
+    await removeTempDirs(runtime, WORKSPACE, OTHER_ROOT, DATA_HOME);
 
     process.exit(failed.length === 0 ? 0 : 1);
 }
