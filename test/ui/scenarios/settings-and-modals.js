@@ -9,6 +9,8 @@
 
 const assert = require("assert");
 const path = require("path");
+/* import() needs a file:// URL: a Windows path (D:\\...) reads as a URL scheme */
+const { pathToFileURL } = require("url");
 const harness = require("../harness");
 
 
@@ -525,7 +527,7 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
 
     await test("MCP view supports custom arbitrary headers for remote transports", async () => {
 
-        const { parseHeadersInput, connectBody } = await import(path.join(harness.PUBLIC_DIR, "app", "mcp-view.js"));
+        const { parseHeadersInput, connectBody } = await import(pathToFileURL(path.join(harness.PUBLIC_DIR, "app", "mcp-view.js")).href);
 
         /* JSON headers */
         const parsedJson = parseHeadersInput('{"X-API-Key": "secret123", "Authorization": "Bearer token456"}');
@@ -607,7 +609,7 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
             registerCommand,
             registerCommandProvider,
             executeSlashCommand
-        } = await import(path.join(harness.PUBLIC_DIR, "app", "slash-commands.js"));
+        } = await import(pathToFileURL(path.join(harness.PUBLIC_DIR, "app", "slash-commands.js")).href);
 
         /* isolated registry extensibility */
         const registry = createSlashCommandRegistry();
@@ -695,7 +697,7 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
 
         const {
             createTaskTemplateService
-        } = await import(path.join(harness.PUBLIC_DIR, "app", "task-templates.js"));
+        } = await import(pathToFileURL(path.join(harness.PUBLIC_DIR, "app", "task-templates.js")).href);
 
         /* isolated unit service */
         const memStore = new Map();

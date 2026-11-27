@@ -223,7 +223,7 @@ async function main() {
         }
     });
 
-    await test("tests do not spawn POSIX-only programs (sleep, cat, sh, timeout) or use /dev/null", () => {
+    await test("tests do not spawn POSIX-only programs (sleep, cat, sh, timeout), use /dev/null or import() a bare file path", () => {
 
         const programs = ["sleep", "cat", "sh", "bash", "timeout", "true", "false", "yes"];
         const quote = "[\"'`]";
@@ -231,7 +231,10 @@ async function main() {
         const patterns = [
             new RegExp(call + quote + "(" + programs.join("|") + ")(\\s|" + quote + ")"),
             new RegExp(quote + "/dev/" + "null" + quote),
-            new RegExp(quote + "/bin/" + "(sh|bash)" + quote)
+            new RegExp(quote + "/bin/" + "(sh|bash)" + quote),
+            /* import() of a bare file path: on Windows "D:\\..." reads as a URL
+               scheme; use pathToFileURL(...).href or a relative specifier */
+            new RegExp("\\bimport\\(\\s*path\\.(join|resolve)\\(")
         ];
 
         const self = path.resolve(__filename);
