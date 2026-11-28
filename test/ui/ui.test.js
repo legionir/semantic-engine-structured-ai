@@ -106,6 +106,10 @@ async function main() {
 
     await require("./scenarios/skills")({ test, backdrops, console_ });
 
+    console.log("\nphone tab bar");
+
+    await require("./scenarios/mobile-tabs")({ test, backdrops, console_ });
+
     const failed =
         results.filter(item => !item.ok);
 

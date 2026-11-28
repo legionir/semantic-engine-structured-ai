@@ -1,0 +1,107 @@
+/*
+| Phone tab bar (mobile-tabs.js), under 640px only
+|
+| Chat · History · Files · Projects · More. More opens the header menu
+| as a sheet above the bar; the project bar's controls move into that
+| sheet, so the page keeps one bar at the bottom. From 640px up the
+| header menu and the project bar are back and the tab bar is gone.
+*/
+
+.mobile-tabs,
+.mobile-sheet-project { display: none; }
+
+@media (max-width: 639.98px) {
+
+  .mobile-tabs {
+    /* last in the page column, also below the project dashboard */
+    order: 99;
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border-top: 1px solid var(--line);
+    background: var(--bg-bar);
+    padding: 0 4px env(safe-area-inset-bottom);
+    z-index: 40;
+  }
+
+  .mobile-tab {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 54px;
+    padding: 6px 2px 5px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .01em;
+  }
+  .mobile-tab:hover { background: transparent; color: var(--text); filter: none; transform: none; }
+  .mobile-tab[aria-current="page"],
+  .mobile-tab[aria-expanded="true"] { color: var(--accent); }
+
+  .mobile-tab::before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: currentColor;
+    -webkit-mask: var(--i) no-repeat center / contain;
+    mask: var(--i) no-repeat center / contain;
+  }
+  #tabChat { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 5.5A1.5 1.5 0 0 0 19.5 4h-15A1.5 1.5 0 0 0 3 5.5V15a1.5 1.5 0 0 0 1.5 1.5H8V20l4.5-3.5H19.5A1.5 1.5 0 0 0 21 15z'/%3E%3C/svg%3E"); }
+  #tabHistory { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3.5 2'/%3E%3C/svg%3E"); }
+  #tabFiles { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 2v6h6M10 13l-2 2 2 2M14 13l2 2-2 2'/%3E%3C/svg%3E"); }
+  #tabProjects { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E"); }
+  #tabMore { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fff'%3E%3Ccircle cx='5' cy='12' r='2'/%3E%3Ccircle cx='12' cy='12' r='2'/%3E%3Ccircle cx='19' cy='12' r='2'/%3E%3C/svg%3E"); }
+
+  .mobile-tab-badge {
+    position: absolute;
+    top: 5px;
+    left: calc(50% + 6px);
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: var(--r-pill);
+    background: var(--bad);
+    color: #fff;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+  }
+  .mobile-tab-badge.dot { min-width: 8px; width: 8px; height: 8px; padding: 0; top: 8px; left: calc(50% + 8px); }
+
+  /* the menu, as the More sheet: above the tab bar instead of under the header */
+  .mobile-menu-toggle { display: none; }
+  .project-bar { display: none; }
+
+  .meta {
+    position: fixed;
+    top: auto;
+    bottom: calc(60px + env(safe-area-inset-bottom));
+    max-height: min(72dvh, 620px);
+  }
+
+  /* already in the tab bar */
+  .bar-nav #historyButton,
+  .bar-nav #filesButton { display: none; }
+
+  .mobile-sheet-project {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line-soft, var(--line));
+  }
+  .mobile-sheet-project-info { display: flex; flex-direction: column; min-width: 0; }
+  .mobile-sheet-project-info strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-sheet-project-info span { color: var(--faint); font-family: var(--mono); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-sheet-project-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .mobile-sheet-project-actions .chip { max-width: none; min-height: 40px; justify-content: center; }
+
+  .mobile-tabs[hidden] { display: none; }
+}
