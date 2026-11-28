@@ -141,10 +141,19 @@ async function loadConsole() {
             key: "AGENT_PROXY_URL",
             group: "endpoint",
             type: "string",
-            value: "so…05",
+            value: "socks5://proxy-user:****@proxy.local:1080",
             source: "environment",
-            secret: true,
+            format: "proxy-url",
             description: "Optional outbound HTTP or SOCKS5 proxy."
+        },
+        {
+            key: "ENDPOINT_MAIN_API_KEY",
+            group: "endpoint.main",
+            type: "string",
+            value: "sk…ab",
+            source: "override",
+            secret: true,
+            description: "Main endpoint API key."
         },
         {
             key: "ENDPOINT_MAIN_MODEL",

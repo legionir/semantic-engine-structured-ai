@@ -186,12 +186,35 @@ module.exports = async function SettingsAndModals({ test, Modal, backdrops, card
         assert.match(llmDialog.textContent, /LLM settings/);
         const llmTitle = llmDialog.querySelector(".setting .setting-title");
         assert.ok(llmTitle && llmTitle.querySelector(".label") && llmTitle.querySelector(".src"), "LLM setting badge sits beside the title");
-        const proxyInput = [...llmDialog.querySelectorAll(".setting")]
-            .flatMap(row => [...row.children])
-            .find(child => child.tagName === "INPUT" && child.type === "password");
-        assert.ok(proxyInput, "proxy credentials use a password input");
-        assert.equal(proxyInput.value, "", "masked credentials are never written back into the field");
-        assert.match(proxyInput.placeholder, /enter a replacement/);
+        const proxyInput = llmDialog.querySelector('.setting[data-key="AGENT_PROXY_URL"] input');
+        assert.equal(proxyInput.type, "text", "the proxy URL is readable; only its password is masked");
+        assert.equal(proxyInput.value, "socks5://proxy-user:****@proxy.local:1080");
+
+        const keyRow = llmDialog.querySelector('.setting[data-key="ENDPOINT_MAIN_API_KEY"]');
+        const keyInput = keyRow.querySelector('input[type="password"]');
+        assert.ok(keyInput, "a secret still uses a password input");
+        assert.equal(keyInput.value, "", "masked credentials are never written back into the field");
+        assert.match(keyInput.placeholder, /enter a replacement/);
+        const clearSecret = keyRow.querySelector(".secret-clear");
+        assert.ok(clearSecret, "a configured secret can be cleared: emptying the field alone saves nothing");
+        assert.equal(llmDialog.querySelector('.setting[data-key="AGENT_PROXY_URL"] .secret-clear'), null);
+
+        clearSecret.dispatch("click");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const declineClear = document.querySelector(".modal.confirm-modal");
+        assert.ok(declineClear, "clearing a secret asks first");
+        [...declineClear.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Cancel").dispatch("click");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const clearPosts = () => console_.posted.filter(item => item.url === "/api/settings" && item.body && item.body.key === "ENDPOINT_MAIN_API_KEY");
+        assert.equal(clearPosts().length, 0, "declined: nothing saved");
+
+        clearSecret.dispatch("click");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const acceptClear = document.querySelector(".modal.confirm-modal");
+        [...acceptClear.querySelectorAll(".modal-foot button")].find(button => button.textContent === "Clear").dispatch("click");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.deepEqual(clearPosts().map(item => item.body.value), [""], "Clear saves the secret as empty");
+        assert.equal(document.querySelector(".modal.confirm-modal"), null);
 
         await new Promise(resolve => setTimeout(resolve, 0));
         const modelRequests = console_.posted

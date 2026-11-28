@@ -281,9 +281,10 @@ function createAgentRequestExecutor(deps) {
             response = await transport.request({
                 url: profile.endpoint,
                 method: "POST",
+                /* a cleared key sends no Authorization at all, not "Bearer " */
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${profile.api_key}`
+                    ...(profile.api_key ? { "Authorization": `Bearer ${profile.api_key}` } : {})
                 },
                 body: JSON.stringify(request),
                 signal: requestSignal.signal

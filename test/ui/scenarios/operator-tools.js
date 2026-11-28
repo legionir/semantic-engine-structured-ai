@@ -298,6 +298,52 @@ module.exports = async function OperatorTools({ test, backdrops, console_ }) {
         assert.equal(backdrops().length, 0);
     });
 
+    await test("the key row sends what a phone keyboard lacks; Ctrl and Alt modify the next key once", async () => {
+        document.getElementById("terminalButton").dispatch("click");
+        await settle(10);
+        const modal = dialog("terminal");
+        const key = id => modal.querySelector(`.terminal-keys [data-key="${id}"]`);
+        assert.ok(key("ctrl-c"), "the row sits in the dialog");
+        assert.equal(key("ctrl-c").disabled, true, "nothing to send to before the stream connects");
+
+        const term = xterm.made.at(-1);
+        deliver(console_.streams.at(-1), { type: "snapshot", session: terminals.at(-1), data: "$ " });
+        await settle();
+        assert.equal(key("ctrl-c").disabled, false);
+
+        const press = new window.Event("pointerdown", { bubbles: true, cancelable: true });
+        key("ctrl-c").dispatchEvent(press);
+        assert.equal(press.defaultPrevented, true, "a tap keeps the focus (and the phone keyboard) in the terminal");
+
+        const before = server.calls.filter(call => call.url.endsWith("/input")).length;
+        const sent = async () => {
+            await new Promise(resolve => setTimeout(resolve, 30));
+            await settle();
+            return server.calls.filter(call => call.url.endsWith("/input")).slice(before).map(call => call.body.data).join("");
+        };
+
+        key("ctrl-c").dispatch("click");
+        assert.equal(await sent(), "\x03");
+
+        key("ctrl").dispatch("click");
+        await settle();
+        assert.equal(key("ctrl").getAttribute("aria-pressed"), "true");
+        assert.ok(key("ctrl").classList.contains("armed"));
+        term.type("d");
+        await settle();
+        assert.equal(key("ctrl").getAttribute("aria-pressed"), "false", "Ctrl is spent on one key");
+        term.type("d");
+        assert.equal(await sent(), "\x03\x04d");
+
+        key("alt").dispatch("click");
+        key("left").dispatch("click");
+        term.modes = { applicationCursorKeysMode: true };
+        key("up").dispatch("click");
+        key("tab").dispatch("click");
+        assert.equal(await sent(), "\x03\x04d\x1b\x1b[D\x1bOA\t", "Alt prefixes ESC; arrows follow the cursor-key mode");
+        close("terminal");
+    });
+
     await test("a disabled terminal shows the server's reason", async () => {
         server.on("GET", "/api/terminal", () => ({ __status: 403, body: { error: "The system terminal is disabled (CONSOLE_TERMINAL_ENABLED=false)." } }));
         document.getElementById("terminalButton").dispatch("click");

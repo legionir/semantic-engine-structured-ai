@@ -112,8 +112,10 @@ async function main() {
     const originAddress = await listen(origin);
     const originUrl = `http://127.0.0.1:${originAddress.port}/provider-test`;
 
+    let lastProxyAuthorization = null;
     const httpProxy = http.createServer((req, res) => {
         httpProxyHits += 1;
+        lastProxyAuthorization = req.headers["proxy-authorization"] || null;
         let target;
         try {
             target = new URL(req.url);
@@ -162,22 +164,38 @@ async function main() {
         assert.deepEqual(runtimeAnswer, { path: "/provider-test", body: JSON.stringify({ messages: [] }) });
         assert.equal(httpProxyHits, 2, "the live runtime request also uses the configured proxy");
 
+        /* a plain field: the URL is shown, its password is not */
         const described = settings.describe(settings.definitionOf("AGENT_PROXY_URL"));
-        assert.equal(described.secret, true);
-        assert.notEqual(described.value, settings.get("AGENT_PROXY_URL"));
+        assert.equal(described.secret, false);
+        assert.equal(described.value, `http://proxy-user:****@127.0.0.1:${httpProxyAddress.port}`);
         assert.doesNotMatch(JSON.stringify(described), /proxy-password/);
+        assert.doesNotMatch(JSON.stringify(settings.snapshot()), /proxy-password/);
+
+        /* saved back with the mask in place, the stored password stays */
+        await settings.set("AGENT_PROXY_URL", described.value);
+        assert.equal(settings.get("AGENT_PROXY_URL"), `http://proxy-user:proxy-password@127.0.0.1:${httpProxyAddress.port}`);
+        assert.equal((await httpTransport.request({ method: "POST", url: originUrl, body: "kept" })).status, 200);
+        assert.equal(httpProxyHits, 3);
+        assert.equal(lastProxyAuthorization, `Basic ${Buffer.from("proxy-user:proxy-password").toString("base64")}`, "the kept password still reaches the proxy");
+
+        /* the password stays out of events, logs and saved project settings */
+        const { redactSecrets } = require(path.join(__dirname, "..", "..", "agent", "events", "EventRedactor"));
+        assert.doesNotMatch(JSON.stringify(redactSecrets({ text: "auth failed for proxy-password" })), /proxy-password/);
+        const { currentOverrides } = require(path.join(__dirname, "..", "..", "agent", "projects", "WorkspaceProfile"));
+        assert.equal("AGENT_PROXY_URL" in currentOverrides(), false, "a proxy URL with a password is saved like a secret");
 
         await settings.set("AGENT_PROXY_URL", `socks5h://127.0.0.1:${socksProxyAddress.port}`);
         const viaSocks = await httpTransport.request({ method: "POST", url: originUrl, body: "via-socks" });
         assert.equal(viaSocks.status, 200);
         assert.deepEqual(JSON.parse(await viaSocks.text()), { path: "/provider-test", body: "via-socks" });
         assert.equal(socksProxyHits, 1);
+        assert.equal(currentOverrides().AGENT_PROXY_URL, `socks5h://127.0.0.1:${socksProxyAddress.port}`, "without a password it is an ordinary setting");
 
         await settings.reset("AGENT_PROXY_URL");
         const direct = await httpTransport.request({ method: "POST", url: originUrl, body: "direct" });
         assert.equal(direct.status, 200);
         assert.deepEqual(JSON.parse(await direct.text()), { path: "/provider-test", body: "direct" });
-        assert.equal(originHits, 4);
+        assert.equal(originHits, 5);
 
         assert.throws(
             () => settings.set("AGENT_PROXY_URL", "file:///tmp/proxy"),

@@ -119,7 +119,40 @@ function hintText(setting, status, catalog, catalogLoading = false) {
 }
 
 
-function Control({ setting, catalog, onSave }) {
+/*
+| A secret field starts empty (the value never comes back), so emptying it
+| changes nothing: a configured secret gets its own Clear button instead.
+*/
+function SecretControl({ setting, onSave, onClear }) {
+
+    const configured = Boolean(setting.value) && !setting.fixed;
+
+    return html`<div class="secret-control">
+        <input
+            type="password"
+            autocomplete="new-password"
+            placeholder=${setting.value ? "Configured — enter a replacement" : undefined}
+            defaultValue=""
+            disabled=${Boolean(setting.fixed)}
+            onChange=${event => onSave(setting, event.currentTarget)}
+        />
+        ${configured ? html`<button
+            type="button"
+            class="ghost secret-clear"
+            title=${`Clear ${setting.key}: save it as empty`}
+            aria-label=${`Clear ${setting.key}`}
+            onClick=${() => onClear(setting)}
+        >Clear</button>` : null}
+    </div>`;
+}
+
+
+function Control({ setting, catalog, onSave, onClear }) {
+
+    if (setting.secret && setting.type !== "boolean" && setting.type !== "enum") {
+        return html`<${SecretControl} setting=${setting} onSave=${onSave} onClear=${onClear} />`;
+    }
+
 
     const save = event => onSave(setting, event.currentTarget);
 
@@ -143,18 +176,17 @@ function Control({ setting, catalog, onSave }) {
     }
 
     return html`<input
-        type=${setting.secret ? "password" : setting.type === "number" ? "number" : "text"}
-        placeholder=${setting.secret && setting.value ? "Configured — enter a replacement" : undefined}
+        type=${setting.type === "number" ? "number" : "text"}
         min=${setting.min}
         max=${setting.max}
-        defaultValue=${setting.secret || setting.value === null || setting.value === undefined ? "" : String(setting.value)}
+        defaultValue=${setting.value === null || setting.value === undefined ? "" : String(setting.value)}
         disabled=${Boolean(setting.fixed)}
         onChange=${save}
     />`;
 }
 
 
-function Row({ setting, status, catalog, catalogLoading, term, onSave, onReset }) {
+function Row({ setting, status, catalog, catalogLoading, term, onSave, onReset, onClear }) {
 
     const catalogTrouble =
         isModelSetting(setting) &&
@@ -185,7 +217,7 @@ function Row({ setting, status, catalog, catalogLoading, term, onSave, onReset }
             </div>
             <div class="hint">${hintText(setting, status, catalog, catalogLoading)}</div>
         </div>
-        <${Control} setting=${setting} catalog=${catalog} onSave=${onSave} />
+        <${Control} setting=${setting} catalog=${catalog} onSave=${onSave} onClear=${onClear} />
     </div>`;
 }
 
@@ -234,7 +266,7 @@ function PolicyRow({ policy, term }) {
 | onApprovalMode, onAutoContinue} draws the runtime policy rows; null
 | leaves them out).
 */
-export function SettingsBody({ list, ui, status, catalog, loading = false, catalogLoading = false, policy, onFilter, onSave, onReset }) {
+export function SettingsBody({ list, ui, status, catalog, loading = false, catalogLoading = false, policy, onFilter, onSave, onReset, onClear }) {
 
     const term = ui.filter;
 
@@ -262,6 +294,7 @@ export function SettingsBody({ list, ui, status, catalog, loading = false, catal
                 term=${term}
                 onSave=${onSave}
                 onReset=${onReset}
+                onClear=${onClear}
             />`)}
         </div>`)}
     `;

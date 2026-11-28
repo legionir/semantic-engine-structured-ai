@@ -346,7 +346,9 @@ async function terminalTests() {
         child.stdin.emit("error", new Error("EPIPE"));
         child.stdout.emit("data", Buffer.from([0xe2, 0x82]));
         child.stderr.emit("data", Buffer.from([0xac, 0x0a]));
-        assert.equal(terminals.get(session.id).scrollback, "€\n", "a character split across chunks is decoded whole");
+        assert.equal(terminals.get(session.id).scrollback, "€\r\n", "a character split across chunks is decoded whole, and the newline gets its carriage return");
+        child.stdout.emit("data", Buffer.from("a\r\nb\n\n"));
+        assert.equal(terminals.get(session.id).scrollback, "€\r\na\r\nb\r\n\r\n", "no staircase and no doubled carriage return");
         assert.equal(terminals.resize(session.id, 100, 30).applied, false);
 
         child.emit("error", new Error("spawn /opt/shells/sh ENOENT"));
@@ -362,22 +364,69 @@ async function terminalTests() {
         const session = linux.create();
         const linuxArgs = spawnImpl.spawned[0].args;
         assert.equal(spawnImpl.spawned[0].file, "/usr/bin/script");
-        assert.deepEqual(linuxArgs.slice(0, 5), ["-q", "-f", "-e", "-c", "/opt/shells/bash -i"]);
+        assert.deepEqual(linuxArgs.slice(0, 5), ["-q", "-f", "-e", "-c", "stty rows 30 cols 100 2>/dev/null; exec /opt/shells/bash -i"], "the pty starts at the screen's size, not 0x0");
         assert.match(linuxArgs[5], /^\/dev\/null$/, "the typescript itself is discarded");
         linux.write(session.id, "pwd\r");
         assert.deepEqual(spawnImpl.spawned[0].written, ["pwd\r"], "the pty inside script(1) handles Enter itself");
         linux.shutdown();
 
         const mac = new TerminalSessions({ cwd: ROOT, ptyModule: null, scriptPath: "/usr/bin/script", spawnImpl, shell: "/opt/shells/zsh", platform: "darwin" });
-        mac.create();
+        mac.create({ cols: 40, rows: 12 });
         const macArgs = spawnImpl.spawned[1].args;
-        assert.deepEqual([macArgs[0], macArgs[2], macArgs[3]], ["-q", "/opt/shells/zsh", "-i"]);
+        assert.deepEqual([macArgs[0], macArgs[3], macArgs[4]], ["-q", "-c", "stty rows 12 cols 40 2>/dev/null; exec /opt/shells/zsh -i"]);
+        assert.match(macArgs[2], /\/sh$/, "macOS script(1) takes no -c: a POSIX sh runs stty first");
         assert.match(macArgs[1], /^\/dev\/null$/);
         mac.shutdown();
 
         assert.equal(defaultShell("win32", { COMSPEC: "C:\\Windows\\cmd.exe" }), "C:\\Windows\\cmd.exe");
         assert.equal(defaultShell("win32", {}), "powershell.exe");
         assert.equal(defaultShell("linux", { SHELL: "relative/sh" }) !== "relative/sh", true);
+    });
+
+    await test("script mode resizes the shell's own tty with stty, the last size winning", async () => {
+        const calls = [];
+        const execFileImpl = (file, args, options, done) => {
+            calls.push([file, ...args]);
+            setTimeout(() => done(null, file === "ps" ? "    1 ?\n 4242 ?\n 4242 pts/7\n" : ""), 5);
+        };
+        const spawnImpl = fakeSpawn();
+        const terminals = new TerminalSessions({ cwd: ROOT, ptyModule: null, scriptPath: "/usr/bin/script", spawnImpl, execFileImpl, shell: "/opt/shells/bash", platform: "linux" });
+        const session = terminals.create();
+        const live = terminals.get(session.id);
+        live.pid = 4242;
+
+        assert.deepEqual(terminals.resize(session.id, 60, 20), { cols: 60, rows: 20, applied: true });
+        terminals.resize(session.id, 61, 21);
+        terminals.resize(session.id, 62, 22);
+        await live.resizing;
+        assert.deepEqual(calls, [
+            ["ps", "-A", "-o", "ppid=,tty="],
+            ["stty", "-F", "/dev/pts/7", "rows", "22", "cols", "62"]
+        ], "the tty is looked up once; sizes asked for meanwhile collapse into the last one");
+
+        terminals.resize(session.id, 62, 22);
+        await live.resizing;
+        terminals.resize(session.id, 70, 25);
+        await live.resizing;
+        assert.deepEqual(calls.slice(2), [["stty", "-F", "/dev/pts/7", "rows", "25", "cols", "70"]], "an unchanged size is not sent again");
+
+        const mac = new TerminalSessions({ cwd: ROOT, ptyModule: null, scriptPath: "/usr/bin/script", spawnImpl, execFileImpl, shell: "/opt/shells/zsh", platform: "darwin" });
+        const macSession = mac.create();
+        mac.get(macSession.id).pid = 4242;
+        mac.resize(macSession.id, 50, 10);
+        await mac.get(macSession.id).resizing;
+        assert.deepEqual(calls.at(-1), ["stty", "-f", "/dev/pts/7", "rows", "10", "cols", "50"]);
+        terminals.shutdown();
+        mac.shutdown();
+    });
+
+    await test("a trimmed scrollback starts at a line, not inside an escape sequence", async () => {
+        const pty = fakePty();
+        const terminals = new TerminalSessions({ cwd: ROOT, ptyModule: pty, scrollbackChars: () => 20 });
+        const session = terminals.create();
+        pty.spawned[0].emitData("\x1b[01;32mfirst line\r\nsecond\r\nthird");
+        assert.equal(terminals.get(session.id).scrollback, "second\r\nthird");
+        terminals.shutdown();
     });
 
     await test("the real backend available here runs a command", async () => {

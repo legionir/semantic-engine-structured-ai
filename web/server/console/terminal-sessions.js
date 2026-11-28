@@ -21,7 +21,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
 const { StringDecoder } = require("string_decoder");
 
 const ChildEnvironment = require("../../../agent/tools/process/ChildEnvironment");
@@ -71,6 +71,24 @@ function quotePosixShellArg(value) {
 }
 
 
+/* the shell inside script(1) sets its own size first: script starts the pty at 0x0 */
+function sizedShellCommand(shell, cols, rows) {
+    return `stty rows ${rows} cols ${cols} 2>/dev/null; exec ${quotePosixShellArg(shell)} -i`;
+}
+
+
+/*
+| A replay must not start inside an escape sequence or a half line: the
+| trimmed scrollback begins at the next line when one is near.
+*/
+function trimScrollback(text, limit) {
+    if (text.length <= limit) return text;
+    const kept = text.slice(-limit);
+    const newline = kept.indexOf("\n");
+    return newline >= 0 && newline < 4096 ? kept.slice(newline + 1) : kept;
+}
+
+
 class TerminalSessions {
 
     constructor(options = {}) {
@@ -86,6 +104,7 @@ class TerminalSessions {
         this.ptyModule = options.ptyModule === undefined ? loadPty() : options.ptyModule;
         this.scriptPath = options.scriptPath === undefined ? findScript() : options.scriptPath;
         this.spawnImpl = options.spawnImpl || spawn;
+        this.execFileImpl = options.execFileImpl || execFile;
         this.platform = options.platform || process.platform;
         this.shell = options.shell || defaultShell(this.platform);
         this.onLog = options.onLog || (() => {});
@@ -194,8 +213,8 @@ class TerminalSessions {
 
         const args = mode === "script"
             ? (this.platform === "darwin"
-                ? ["-q", "/dev/null", this.shell, "-i"]
-                : ["-q", "-f", "-e", "-c", `${quotePosixShellArg(this.shell)} -i`, "/dev/null"])
+                ? ["-q", "/dev/null", "/bin/sh", "-c", sizedShellCommand(this.shell, cols, rows)]
+                : ["-q", "-f", "-e", "-c", sizedShellCommand(this.shell, cols, rows), "/dev/null"])
             : (this.platform === "win32" ? [] : ["-i"]);
 
         return this.spawnImpl(mode === "script" ? this.scriptPath : this.shell, args, {
@@ -210,9 +229,11 @@ class TerminalSessions {
     wire(session) {
 
         const output = chunk => {
-            const text = typeof chunk === "string" ? chunk : session.decoder.write(chunk);
+            let text = typeof chunk === "string" ? chunk : session.decoder.write(chunk);
             if (!text) return;
-            session.scrollback = (session.scrollback + text).slice(-this.scrollbackChars());
+            /* no tty adds the carriage return in pipe mode: a bare newline would leave a staircase */
+            if (session.mode === "pipe") text = text.replace(/(?<!\r)\n/g, "\r\n");
+            session.scrollback = trimScrollback(session.scrollback + text, this.scrollbackChars());
             session.hub.broadcast({ type: "output", data: text });
         };
 
@@ -291,8 +312,71 @@ class TerminalSessions {
             } catch {
                 /* the shell is exiting */
             }
+        } else if (session.mode === "script" && !session.exited) {
+            this.resizeScript(session);
         }
-        return { cols: nextCols, rows: nextRows, applied: session.mode === "pty" };
+        return { cols: nextCols, rows: nextRows, applied: session.mode !== "pipe" };
+    }
+
+
+    /*
+    | script(1) cannot be told a new size, but its pty can: stty on the
+    | shell's own tty sets it, and the kernel sends SIGWINCH to whatever runs
+    | there. One resize at a time; the last size asked for wins.
+    */
+    resizeScript(session) {
+
+        if (session.resizing) {
+            session.resizeAgain = true;
+            return session.resizing;
+        }
+
+        const run = async () => {
+            do {
+                session.resizeAgain = false;
+                if (session.exited) return;
+                if (!session.ttyPath) session.ttyPath = await this.scriptTty(session.pid);
+                if (!session.ttyPath) return;
+                const size = `${session.rows}x${session.cols}`;
+                if (size === session.ttySize) continue;
+                const flag = this.platform === "darwin" ? "-f" : "-F";
+                await this.exec("stty", [flag, session.ttyPath, "rows", String(session.rows), "cols", String(session.cols)]);
+                session.ttySize = size;
+            } while (session.resizeAgain);
+        };
+
+        session.resizing = run().catch(() => {}).finally(() => {
+            session.resizing = null;
+        });
+
+        return session.resizing;
+    }
+
+
+    /* the tty of the shell script(1) started: its child's controlling terminal */
+    async scriptTty(pid) {
+
+        if (!pid) return null;
+
+        const table = await this.exec("ps", ["-A", "-o", "ppid=,tty="]).catch(() => "");
+        for (const line of String(table).split("\n")) {
+            const [ppid, tty] = line.trim().split(/\s+/);
+            if (Number(ppid) === pid && tty && tty !== "?" && !tty.startsWith("-")) {
+                return tty.startsWith("/") ? tty : `/dev/${tty}`;
+            }
+        }
+
+        return null;
+    }
+
+
+    exec(file, args) {
+        return new Promise((resolve, reject) => {
+            this.execFileImpl(file, args, { timeout: 5000, windowsHide: true }, (error, stdout) => {
+                if (error) reject(error);
+                else resolve(String(stdout || ""));
+            });
+        });
     }
 
 

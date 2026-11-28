@@ -83,17 +83,26 @@ module.exports = async function aSecondTaskIsRefusedWhileCases(ctx) {
         assert.equal(byKey.MAX_ITERATIONS.type, "number");
         assert.equal(byKey.WORKSPACE_ROOT.fixed, true);
         assert.equal(byKey.AGENT_API_KEY.secret, true);
-        assert.equal(byKey.AGENT_PROXY_URL.secret, true);
+        assert.equal(byKey.AGENT_PROXY_URL.secret, false, "the proxy URL is a plain field");
 
-        const proxyValue = "socks5h://proxy.example:1080";
+        const proxyValue = "socks5h://proxy-user:proxy-pass-123@proxy.example:1080";
         const proxyChange = await request("POST", "/api/settings", {
             key: "AGENT_PROXY_URL",
             value: proxyValue
         });
         assert.equal(proxyChange.status, 200);
         assert.equal(runtime.settings.get("AGENT_PROXY_URL"), proxyValue);
-        assert.notEqual(proxyChange.body.setting.value, proxyValue);
+        assert.equal(proxyChange.body.setting.value, "socks5h://proxy-user:****@proxy.example:1080", "only its password is masked");
+        const proxyKept = await request("POST", "/api/settings", { key: "AGENT_PROXY_URL", value: proxyChange.body.setting.value });
+        assert.equal(proxyKept.status, 200);
+        assert.equal(runtime.settings.get("AGENT_PROXY_URL"), proxyValue, "saving the mask back keeps the password");
         await request("POST", "/api/settings", { key: "AGENT_PROXY_URL", reset: true });
+
+        /* Clear in the console: a secret saved as empty */
+        const cleared = await request("POST", "/api/settings", { key: "AGENT_API_KEY", value: "" });
+        assert.equal(cleared.status, 200);
+        assert.equal(runtime.settings.get("AGENT_API_KEY"), "");
+        await request("POST", "/api/settings", { key: "AGENT_API_KEY", reset: true });
 
         const changed =
             await request("POST", "/api/settings", {
