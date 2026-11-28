@@ -48,6 +48,7 @@ import { listTemplates } from "./task-templates.js";
 import { seedSampleTemplates } from "./task-template-samples.js";
 import { applyTemplateToComposer, closeTemplatesModal, loadTemplateByName, openTemplatesModal } from "./templates-controller.js";
 import { openSkillsModal, skillSlashCommand } from "./skills-controller.js";
+import { initMobileTabs } from "./mobile-tabs.js";
 
 
 function clearComposerInput() {
@@ -191,7 +192,8 @@ el("consoleMenu").addEventListener("click", event => {
 });
 
 document.addEventListener("click", event => {
-    if (!event.target.closest("#consoleHeader")) closeMobileMenu();
+    /* the phone tab bar's More button opens this menu as a sheet */
+    if (!event.target.closest("#consoleHeader, #tabMore")) closeMobileMenu();
 });
 
 document.addEventListener("keydown", event => {
@@ -408,6 +410,7 @@ initTaskDraft();
 registerConsoleSlashCommands();
 
 initMentions();
+initMobileTabs();
 
 mount(el("messageQueue"), () => QueuePanel({ state, actions: messageQueueActions }), ["queue", "projects"]);
 

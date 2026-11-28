@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="/styles/projects.css">
 <link rel="stylesheet" href="/styles/composition.css">
 <link rel="stylesheet" href="/styles/operator.css">
+<link rel="stylesheet" href="/styles/mobile-tabs.css">
 <link rel="stylesheet" href="/vendor/xterm.css">
 <link rel="stylesheet" href="/console-login.css">
 </head>
@@ -37,6 +38,18 @@
   </div>
 
   <div class="meta" id="consoleMenu">
+    <!-- phones: this menu is the More tab's sheet; the project bar's
+         controls move here because the tab bar takes its place -->
+    <div class="mobile-sheet-project" id="mobileSheetProject">
+      <div class="mobile-sheet-project-info">
+        <strong id="mobileSheetProjectName"></strong>
+        <span id="mobileSheetWorkspace"></span>
+      </div>
+      <div class="mobile-sheet-project-actions">
+        <button type="button" id="sheetNewConversation" class="chip button">New conversation</button>
+        <button type="button" id="sheetNewProject" class="chip button">New project</button>
+      </div>
+    </div>
     <button type="button" id="approvalsButton" class="chip alert" hidden>
       approvals <span id="approvalsCount">0</span>
     </button>
@@ -177,6 +190,15 @@
     <span class="project-workspace-path" id="workspace" title="workspace"></span>
   </div>
 </footer>
+
+<!-- phones only (under 640px): the everyday views, everything else under More -->
+<nav class="mobile-tabs" id="mobileTabs" aria-label="Main views">
+  <button type="button" class="mobile-tab" id="tabChat" data-tab="chat" aria-current="page"><span>Chat</span></button>
+  <button type="button" class="mobile-tab" id="tabHistory" data-tab="history"><span>History</span></button>
+  <button type="button" class="mobile-tab" id="tabFiles" data-tab="files"><span>Files</span></button>
+  <button type="button" class="mobile-tab" id="tabProjects" data-tab="projects"><span>Projects</span></button>
+  <button type="button" class="mobile-tab" id="tabMore" data-tab="more" aria-expanded="false" aria-controls="consoleMenu"><span>More</span><span class="mobile-tab-badge" id="tabMoreBadge" hidden></span></button>
+</nav>
 
 <section id="consoleLogin" class="console-login" hidden>
   <form id="consoleLoginForm" class="console-login-card">

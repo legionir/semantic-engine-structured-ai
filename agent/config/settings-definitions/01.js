@@ -21,9 +21,8 @@ module.exports = [
         "group": "endpoint",
         "type": "string",
         "default": "",
-        "secret": true,
         "format": "proxy-url",
-        "description": "Optional outbound proxy for all LLM provider requests. Supports http://, socks5:// and socks5h://. Changes apply to the next request."
+        "description": "Optional outbound proxy for all LLM provider requests. Supports http://, socks5:// and socks5h://. A password in the URL is shown as ****; saving with **** keeps it. Changes apply to the next request."
     },
     {
         "key": "AGENT_MODEL",

@@ -82,6 +82,19 @@ function knownSecretValues() {
 
         for (const definition of schema.DEFINITIONS || []) {
 
+            /* a proxy URL is shown, its password is not */
+            if (definition && definition.format === "proxy-url") {
+                try {
+                    const raw = new URL(String(settings.get(definition.key))).password || "";
+                    for (const password of new Set([raw, decodeURIComponent(raw)])) {
+                        if (password.length >= minimumSecretLength) values.add(password);
+                    }
+                } catch {
+                    /* no proxy, or not a URL */
+                }
+                continue;
+            }
+
             if (!definition || definition.secret !== true) {
                 continue;
             }

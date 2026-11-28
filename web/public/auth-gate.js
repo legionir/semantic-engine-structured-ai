@@ -40,6 +40,8 @@
         if (header) header.hidden = false;
         if (main) main.hidden = false;
         if (bar) bar.hidden = false;
+        const tabs = document.getElementById("mobileTabs");
+        if (tabs) tabs.hidden = false;
     }
 
     function showLogin(message = "", tokenMode = false) {
@@ -64,6 +66,8 @@
         if (main) main.hidden = true;
         if (bar) bar.hidden = true;
         if (dashboard) dashboard.hidden = true;
+        const tabs = document.getElementById("mobileTabs");
+        if (tabs) tabs.hidden = true;
         if (login) login.hidden = false;
         if (error) {
             error.textContent = message;

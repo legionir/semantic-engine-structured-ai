@@ -4,7 +4,17 @@ const { EventEmitter } = require("events");
 
 const { DEFINITIONS, coerce, definitionOf } = require("./SettingsSchema");
 const { resolve } = require("./SettingsResolver");
-const { maskSecret } = require("./SecretMasker");
+const { maskSecret, maskUrlPassword, restoreUrlPassword } = require("./SecretMasker");
+
+
+/* what leaves the store for the console, logs and snapshots */
+function shown(definition, value) {
+
+    if (definition.secret) return maskSecret(value);
+    if (definition.format === "proxy-url") return maskUrlPassword(value);
+
+    return value;
+}
 
 
 /*
@@ -50,9 +60,19 @@ function set(key, value) {
 
     }
 
-    const coerced = coerce(definition, value);
-
     const previous = get(key);
+
+    /*
+    | A secret saved as empty stays empty (Clear in the console), even when
+    | its default is a placeholder; elsewhere "" still means the default.
+    */
+    const coerced =
+        definition.secret && value === ""
+            ? ""
+            : coerce(
+                definition,
+                definition.format === "proxy-url" ? restoreUrlPassword(value, previous) : value
+            );
 
     overrides.set(key, coerced);
 
@@ -125,6 +145,9 @@ function describe(definition) {
         secret:
             Boolean(definition.secret),
 
+        format:
+            definition.format,
+
         description:
             definition.description,
 
@@ -134,9 +157,7 @@ function describe(definition) {
                 : definition.default,
 
         value:
-            definition.secret
-                ? maskSecret(value)
-                : value,
+            shown(definition, value),
 
         source:
             sourceOf(definition.key)
@@ -160,7 +181,7 @@ function snapshot() {
             .map(
                 definition => [
                     definition.key,
-                    get(definition.key)
+                    shown(definition, get(definition.key))
                 ]
             )
     );

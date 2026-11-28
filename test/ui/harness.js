@@ -187,6 +187,7 @@ function installGlobals(window, { withPage = true } = {}) {
         File: window.File,
         Blob: window.Blob,
         DocumentFragment: window.DocumentFragment,
+        MutationObserver: window.MutationObserver,
         getComputedStyle: window.getComputedStyle.bind(window),
         matchMedia: window.matchMedia.bind(window),
         requestAnimationFrame: callback => setTimeout(() => callback(Date.now()), 0),

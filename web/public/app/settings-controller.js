@@ -13,6 +13,7 @@ import { mountInModal } from "./dom.js";
 import { APPROVAL_MODES, isLlmSetting, isModelSetting, modelCatalogConfigChanged, SettingsBody } from "./settings-view.js";
 import { failureText, notifyError } from "./console-core.js";
 import { apiFetch } from "./auth-transport.js";
+import { confirmDialog } from "./operator-api.js";
 
 
 /* one aggregate request per catalog; a failure is kept for 10 s so a
@@ -120,6 +121,19 @@ async function saveSetting(setting, control) {
 }
 
 
+/* a secret saved as empty: asked first, it may switch a provider off */
+async function clearSecretSetting(setting) {
+
+    const sure = await confirmDialog(`Clear ${setting.key}? It is saved as empty and the current value is gone.`, {
+        title: "Clear secret",
+        confirmLabel: "Clear",
+        confirmClass: "danger"
+    });
+
+    if (sure) await saveSetting(setting, { value: "" });
+}
+
+
 async function resetSetting(setting) {
 
     try {
@@ -192,7 +206,8 @@ function mountSettings(handle, kind) {
             },
             onFilter: value => { ui.filter = value; touch("settings"); },
             onSave: saveSetting,
-            onReset: resetSetting
+            onReset: resetSetting,
+            onClear: clearSecretSetting
         }),
         ["settings", "header"],
         {},

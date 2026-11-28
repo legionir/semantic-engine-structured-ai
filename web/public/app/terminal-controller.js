@@ -8,7 +8,8 @@
 | posted in order to /input; the size follows the dialog. Closing the
 | dialog only detaches — the shells keep running and their scrollback is
 | replayed when the dialog opens again. Escape goes to the shell (vim,
-| less…), not to the dialog; use the ✕ button to close it.
+| less…), not to the dialog; use the ✕ button to close it. A row of key
+| buttons (terminal-keys.js) sends what a phone keyboard cannot type.
 */
 
 import { state, touch } from "./store.js";
@@ -17,6 +18,8 @@ import { createTerminalState, TerminalStatus, TerminalToolbar, terminalSubtitle 
 import { apiRequest } from "./operator-api.js";
 import { installCspStyleBridge } from "./csp-style-bridge.js";
 import { createEventSource } from "./auth-transport.js";
+import { installTouchScroll } from "./terminal-touch.js";
+import { applyModifiers, createModifiers, keySequence, TerminalKeys } from "./terminal-keys.js";
 
 
 const THEME = Object.freeze({
@@ -97,76 +100,6 @@ function monoFont() {
     } catch {
         return "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     }
-}
-
-
-function installTouchScroll(element, term) {
-
-    if (typeof term.scrollLines !== "function") return () => {};
-
-    let tracking = false;
-    let scrolling = false;
-    let startY = 0;
-    let lastY = 0;
-    let carry = 0;
-
-    const lineHeight = () => {
-        const rows = Math.max(1, Number(term.rows) || 24);
-        const height = element.clientHeight || (element.getBoundingClientRect ? element.getBoundingClientRect().height : 0);
-        return Math.max(12, height > 0 ? height / rows : 18);
-    };
-
-    const onStart = event => {
-        if (!event.touches || event.touches.length !== 1) {
-            tracking = false;
-            scrolling = false;
-            return;
-        }
-        if (event.target && typeof event.target.closest === "function" && event.target.closest(".scrollbar")) {
-            tracking = false;
-            return;
-        }
-        tracking = true;
-        scrolling = false;
-        startY = event.touches[0].clientY;
-        lastY = startY;
-        carry = 0;
-    };
-
-    const onMove = event => {
-        if (!tracking || !event.touches || event.touches.length !== 1) return;
-        const y = event.touches[0].clientY;
-        if (!scrolling && Math.abs(y - startY) < 4) return;
-        scrolling = true;
-        if (event.cancelable) event.preventDefault();
-        const deltaY = y - lastY;
-        lastY = y;
-        carry += deltaY;
-        const step = lineHeight();
-        const lines = Math.trunc(carry / step);
-        if (lines !== 0) {
-            carry -= lines * step;
-            term.scrollLines(-lines);
-        }
-    };
-
-    const onEnd = () => {
-        tracking = false;
-        scrolling = false;
-        carry = 0;
-    };
-
-    element.addEventListener("touchstart", onStart, { passive: true });
-    element.addEventListener("touchmove", onMove, { passive: false });
-    element.addEventListener("touchend", onEnd, { passive: true });
-    element.addEventListener("touchcancel", onEnd, { passive: true });
-
-    return () => {
-        element.removeEventListener("touchstart", onStart);
-        element.removeEventListener("touchmove", onMove);
-        element.removeEventListener("touchend", onEnd);
-        element.removeEventListener("touchcancel", onEnd);
-    };
 }
 
 
@@ -369,7 +302,15 @@ async function attach(id, host) {
         });
     }
 
-    term.onData(data => queueInput(current, data));
+    term.onData(data => {
+        /* a sticky Ctrl/Alt from the key row modifies the next typed key, once */
+        const modified = applyModifiers(data, target.modifiers);
+        if (modified !== null) {
+            target.modifiers = createModifiers();
+            changed();
+        }
+        queueInput(current, modified ?? data);
+    });
     term.onResize(({ cols, rows }) => queueResize(current, cols, rows));
 
     if (typeof ResizeObserver === "function") {
@@ -387,6 +328,21 @@ async function attach(id, host) {
 function actionsFor(host) {
 
     return {
+
+        sendKey(key) {
+            if (!screen) return;
+            const sequence = keySequence(key, { applicationCursor: Boolean(screen.term.modes?.applicationCursorKeysMode) });
+            const data = applyModifiers(sequence, terminal().modifiers) ?? sequence;
+            terminal().modifiers = createModifiers();
+            changed();
+            queueInput(screen, data);
+        },
+
+        toggleModifier(name) {
+            const target = terminal();
+            target.modifiers = { ...(target.modifiers || createModifiers()), [name]: !target.modifiers?.[name] };
+            changed();
+        },
 
         async activate(id) {
             const target = terminal();
@@ -445,14 +401,16 @@ export async function openTerminal() {
     const container = document.createElement("div");
     const toolbar = document.createElement("div");
     const host = document.createElement("div");
+    const keys = document.createElement("div");
 
     container.className = "terminal-workspace";
     host.className = "terminal-host";
-    container.append(toolbar, host);
+    container.append(toolbar, host, keys);
 
     const actions = actionsFor(host);
     let disposeToolbar = () => {};
     let disposeStatus = () => {};
+    let disposeKeys = () => {};
 
     const handle = Modal.open({
         title: "Terminal",
@@ -462,6 +420,7 @@ export async function openTerminal() {
         onClose: () => {
             disposeToolbar();
             disposeStatus();
+            disposeKeys();
             detach();
             state.terminalModal = null;
         }
@@ -479,6 +438,7 @@ export async function openTerminal() {
     }
 
     disposeToolbar = mount(toolbar, () => TerminalToolbar({ terminal: state.terminal, actions }), ["terminal"]);
+    disposeKeys = mount(keys, () => TerminalKeys({ terminal: state.terminal, actions }), ["terminal"]);
 
     if (!(await refreshSessions()) || state.terminalModal !== handle) return handle;
 

@@ -24,7 +24,9 @@ export function createTerminalState() {
         activeId: null,
         error: null,
         busy: false,
-        connection: "idle"
+        connection: "idle",
+        /* sticky Ctrl/Alt armed from the key row */
+        modifiers: { ctrl: false, alt: false }
     };
 }
 

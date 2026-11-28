@@ -402,8 +402,13 @@ function currentOverrides() {
             continue;
         }
 
+        /* a proxy URL with a password is a credential too: its shown value hides it */
+        const credential =
+            setting.secret ||
+            (setting.format === "proxy-url" && setting.value !== settings.get(setting.key));
+
         if (
-            setting.secret &&
+            credential &&
             settings.get("PROJECT_SAVE_SECRETS") !== true
         ) {
             continue;

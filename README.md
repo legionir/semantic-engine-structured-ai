@@ -106,8 +106,13 @@ node bin/agent.js --proxy-url http://proxy.example:3128 -w /path/to/project "...
 ```
 
 از کنسول وب هم `AGENT_PROXY_URL` را در تنظیمات Endpoint تغییر دهید؛ مقدار جدید
-از درخواست بعدی استفاده می‌شود. نشانی پراکسی secret است و مقدار کامل آن در UI
-نمایش داده نمی‌شود.
+از درخواست بعدی استفاده می‌شود. نشانی پراکسی یک فیلد متنی عادی است. فقط رمز
+داخل آن (`user:****@host`) پنهان می‌ماند و در رویدادها و لاگ‌ها redact می‌شود. اگر
+نشانی را با همان `****` ذخیره کنید، رمز قبلی حفظ می‌شود.
+
+فیلدهای secret (مثل API keyها) هیچ‌وقت مقدار فعلی را نشان نمی‌دهند. برای پاک کردن
+مقدار یک secret تنظیم‌شده، دکمهٔ **Clear** کنار آن را بزنید. خالی کردن فیلد به‌تنهایی
+چیزی ذخیره نمی‌کند.
 
 ### اجرای تست‌های ران‌تایم
 ```bash
@@ -314,7 +319,7 @@ AGENT_CONSOLE_PASSWORD='choose-a-long-password'
 |---|---|---|---|
 | `AGENT_BASE_URL` | string | `"http://localhost:4414/p/smart_routing/v1"` | Base URL of the OpenAI compatible endpoint. |
 | `AGENT_API_KEY` | string · secret | `"your-api-key"` | Bearer token sent with every request. |
-| `AGENT_PROXY_URL` | string · secret | `""` | Optional outbound proxy for all LLM provider requests. Supports http://, socks5:// and socks5h://. Changes apply to the next request. |
+| `AGENT_PROXY_URL` | string | `""` | Optional outbound proxy for all LLM provider requests. Supports http://, socks5:// and socks5h://. A password in the URL is shown as ****; saving with **** keeps it. Changes apply to the next request. |
 | `AGENT_MODEL` | string | `"auto-switch"` | Model requested when a profile does not name one. |
 | `AGENT_CONSOLE_TOKEN` | string · secret | `""` | Bearer token for the web console control plane. Empty generates a token at startup. |
 | `AGENT_CONSOLE_TOKENS` | string · secret | `""` | JSON map of extra console tokens to { allowedProjects, permissions } (Phase 9). The AGENT_CONSOLE_TOKEN itself remains a master token. |
@@ -713,6 +718,15 @@ method/path کامل در
 می‌گیرد. ترمینال و مدیریت فایل با `CONSOLE_TERMINAL_ENABLED=false` و
 `CONSOLE_FILE_MANAGER_ENABLED=false` (فقط از محیط و با restart) خاموش می‌شوند.
 
+اندازهٔ ترمینال همیشه با پنجره هماهنگ است، حتی بدون node-pty:
+- در حالت `script(1)` اندازهٔ اولیه با `stty` تنظیم می‌شود. تغییر اندازه هم روی tty
+  همان شل اعمال می‌شود، پس خطوط بلند و ویرایش خط درست شکسته می‌شوند.
+- در حالت pipe هر `\n` بدون `\r` به `\r\n` تبدیل می‌شود.
+
+روی صفحهٔ لمسی یک ردیف دکمه زیر ترمینال کلیدهایی را می‌فرستد که کیبورد گوشی ندارد:
+Esc، Tab، `^C`، `^D`، `^Z`، `^L`، جهت‌ها، Home/End و PgUp/PgDn. Ctrl و Alt
+چسبنده‌اند؛ مثلاً Ctrl را بزنید و بعد `r` را تایپ کنید تا `^R` فرستاده شود.
+
 | روش | مسیر | توضیح |
 |---|---|---|
 | `GET` | `/api/logs` | ورودی‌های لاگ با فیلتر `level` (حداقل سطح)، `source`، `q`، `after` (خواندن افزایشی) و `limit`، به‌همراه `summary` |
@@ -747,6 +761,11 @@ method/path کامل در
   - **Monitor:** Plan، Execution، Events، Logs، System
   - **Configure:** Settings، LLM settings، MCP، Skills، Notify
   - **Account:** Sign out
+- **نوار تب پایین در موبایل (عرض کمتر از 640px):** Chat، History، Files، Projects و More.
+  - Chat به گفتگو برمی‌گردد و پنجره‌های باز را می‌بندد.
+  - More همان منوی بالا را به شکل یک برگه بالای نوار باز می‌کند. نام پروژه و دکمه‌های New conversation و New project هم در همین برگه‌اند، چون نوار پروژه در موبایل جایش را به تب‌ها می‌دهد.
+  - روی More تعداد تأییدهای منتظر نشان داده می‌شود، یا یک نقطه وقتی لاگ خطای تازه دارد.
+  - در دسکتاپ همان منوی بالا و نوار پروژه می‌مانند.
 - **پالت فرمان:** با `Ctrl+K` (یا `Cmd+K`) یا از نوار ناوبری باز می‌شود و همهٔ نماها، پنجره‌ها و کارها را جست‌وجو می‌کند.
 - **دستورهای `/` در کادر پیام:**
   - دستورهای داخلی `/raw` (نمایش متن خام یا Markdown) و `/templates`

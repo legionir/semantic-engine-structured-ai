@@ -65,6 +65,7 @@ function page(replies) {
         !byId("consoleLogin").hidden &&
         byId("consoleMain").hidden &&
         byId("projectBar").hidden &&
+        byId("mobileTabs").hidden &&
         byId("projectDashboard").hidden &&
         document.querySelector("header").hidden;
 
